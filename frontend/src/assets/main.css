@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply bg-canvas text-ink font-sans;
+  }
+
+  ::selection {
+    @apply bg-bauhaus-yellow text-ink;
+  }
+}
+
+@layer utilities {
+  .active-press {
+    @apply active:translate-x-[2px] active:translate-y-[2px] active:shadow-none;
+  }
+}
