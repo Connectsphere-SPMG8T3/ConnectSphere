@@ -2,7 +2,9 @@
 -- ConnectSphere — local/dev seed data
 -- Creates one confirmed test account per user role directly in auth.users /
 -- auth.identities. public.profiles rows are populated automatically by the
--- on_auth_user_created trigger from raw_user_meta_data.
+-- on_auth_user_created trigger from raw_user_meta_data. That trigger only
+-- accepts external roles from sign-up metadata, so internal staff roles are
+-- set explicitly on the profile afterwards.
 --
 -- Run after applying migrations, e.g.:
 --   psql "$DATABASE_URL" -f supabase/seed.sql
@@ -137,5 +139,10 @@ begin
             now()
         )
         on conflict (provider, provider_id) do nothing;
+
+        update public.profiles
+        set role = (v_user ->> 'role')::public.user_role
+        where id = (v_user ->> 'id')::uuid
+          and role is distinct from (v_user ->> 'role')::public.user_role;
     end loop;
 end $$;

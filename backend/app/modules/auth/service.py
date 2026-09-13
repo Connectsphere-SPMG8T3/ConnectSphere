@@ -1,7 +1,7 @@
-from supabase_auth.errors import AuthApiError
+from supabase_auth.errors import AuthApiError, AuthError
 
-from app.core.exceptions import InvalidCredentialsError, ProfileNotFoundError
-from app.db.supabase import get_supabase_admin_client, get_supabase_anon_client
+from app.core.exceptions import InvalidCredentialsError, InvalidOrExpiredTokenError, ProfileNotFoundError
+from app.db.supabase import create_auth_client, get_supabase_admin_client, get_supabase_anon_client
 from app.modules.auth.schemas import ProfileResponse, TokenResponse, UserLoginRequest, UserResponse
 
 
@@ -19,23 +19,8 @@ def _fetch_profile(user_id: str) -> ProfileResponse:
     return ProfileResponse(**response.data)
 
 
-async def login(credentials: UserLoginRequest) -> TokenResponse:
-    """Authenticate a user against Supabase Auth (GoTrue) and return a session."""
-    anon_client = get_supabase_anon_client()
-    try:
-        auth_response = anon_client.auth.sign_in_with_password(
-            {"email": credentials.email, "password": credentials.password}
-        )
-    except AuthApiError as exc:
-        raise InvalidCredentialsError() from exc
-
-    session = auth_response.session
-    user = auth_response.user
-    if session is None or user is None:
-        raise InvalidCredentialsError()
-
+def _token_response(session, user) -> TokenResponse:
     profile = _fetch_profile(user.id)
-
     return TokenResponse(
         access_token=session.access_token,
         refresh_token=session.refresh_token,
@@ -45,16 +30,46 @@ async def login(credentials: UserLoginRequest) -> TokenResponse:
     )
 
 
-async def get_profile(user_id: str) -> ProfileResponse:
+def login(credentials: UserLoginRequest) -> TokenResponse:
+    """Authenticate a user against Supabase Auth (GoTrue) and return a session."""
+    auth_client = create_auth_client()
+    try:
+        auth_response = auth_client.auth.sign_in_with_password(
+            {"email": credentials.email, "password": credentials.password}
+        )
+    except AuthApiError as exc:
+        raise InvalidCredentialsError() from exc
+
+    if auth_response.session is None or auth_response.user is None:
+        raise InvalidCredentialsError()
+
+    return _token_response(auth_response.session, auth_response.user)
+
+
+def refresh(refresh_token: str) -> TokenResponse:
+    """Exchange a refresh token for a new session. Supabase rotates the refresh token on use."""
+    auth_client = create_auth_client()
+    try:
+        auth_response = auth_client.auth.refresh_session(refresh_token)
+    except AuthError as exc:
+        raise InvalidOrExpiredTokenError() from exc
+
+    if auth_response.session is None or auth_response.user is None:
+        raise InvalidOrExpiredTokenError()
+
+    return _token_response(auth_response.session, auth_response.user)
+
+
+def get_profile(user_id: str) -> ProfileResponse:
     return _fetch_profile(user_id)
 
 
-async def logout(access_token: str) -> None:
-    """Invalidate the given session with Supabase Auth."""
+def logout(access_token: str) -> None:
+    """Revoke the caller's own session (this device only) with Supabase Auth."""
     anon_client = get_supabase_anon_client()
     try:
-        anon_client.auth.sign_out()
+        anon_client.auth.admin.sign_out(access_token, "local")
     except AuthApiError:
-        # Sign-out is best-effort: an already-expired or already-revoked
-        # session should not surface as an error to the client.
+        # Best-effort: an already-expired or already-revoked session should not
+        # surface as an error to the client, which has cleared its session anyway.
         pass

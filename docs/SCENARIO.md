@@ -188,6 +188,44 @@ The initial implementation was built and unit-tested entirely against a Supabase
 
 **Lesson for future stories:** a green `pytest` run against fully mocked Supabase clients proves the code's own logic is internally consistent — it does not prove the code is compatible with the actual pinned SDK version's behaviour or the actual live project's configuration (key format, JWT signing scheme, exception types). Before marking any story that touches Supabase Auth as done, run it at least once against the real project with real credentials, the way §7 of `docs/SETUP.md` describes.
 
+### 4.2. Bug fix — auth session isolation, sign-up role escalation, RLS recursion, session renewal (PROJECT_REVIEW D1–D6)
+
+| Field | Value |
+|---|---|
+| Issue key | None yet — defects D1–D6 in `docs/PROJECT_REVIEW.md` (log a Jira **Bug** linked to `SCRUM-48` when updating the board) |
+| Summary | Fix six defects in the SCRUM-48 auth layer found during the 13 Sep design review |
+| Issue type | Bug |
+| Status | Fixed on branch `fix/auth-security-bugs`; database migration applied to the live project |
+| Parent epic | `SCRUM-7` — User authorisation and authentication |
+| Sprint | SCRUM Sprint 1 |
+| Supersedes | §4.1 behaviour: logout implementation, sign-up role mapping, `profiles` RLS policies; `docs/TEST_CASES.md` TC-DATA-007's old expected result |
+
+Every defect was reproduced against the live project **before** changing code, and each has a regression test that failed on the old code for the reason the defect describes.
+
+| Defect | Severity | Symptom (reproduced live) | Root cause | Why earlier tests missed it | Fix |
+|---|---|---|---|---|---|
+| **D1** | Critical | Two users log in; when the *first* logs out, the *second* user's refresh token is revoked (`400 refresh_token_not_found`) while the first user's session stays alive. | `get_supabase_anon_client()` is `@lru_cache`'d and shared by every request. supabase-py stores the session from `sign_in_with_password` **on the client instance**, and `sign_out()` revokes whatever session that instance holds, with `scope="global"`. It also starts a background timer that silently refreshes (and rotates) the stored user's token. | Every test used one user and a `MagicMock` client, so the shared state the bug lives in was mocked away. | `create_auth_client()` (`app/db/supabase.py`) builds a fresh client per sign-in/refresh with `persist_session=False, auto_refresh_token=False`; logout calls `auth.admin.sign_out(<caller's token>, "local")`. Tests: two-login isolation, real-client option checks, logout-uses-caller's-token. |
+| **D2** | Critical (security) | A sign-up whose metadata requests `event_coordinator` gets a coordinator profile. Exploitation check: only the 5 seeded accounts existed, so it had not been abused. | `handle_new_user()` copied `raw_user_meta_data ->> 'role'` — client-supplied data — into `profiles.role`, and public sign-up is enabled with the publishable key shipped to the browser. | Only exercised through the seed script, which legitimately wants staff roles. | Migration `20260913120749_fix_auth_security_defects.sql`: role allow-list (`event_organiser`, `attendee`; everything else → `attendee`) per QA-3/QA-4; `EXECUTE` revoked from `anon`/`authenticated`. `seed.sql` now sets staff roles explicitly after insert. |
+| **D3** | High | Any query on `profiles` as a logged-in user fails: `42P17 infinite recursion detected in policy for relation "profiles"`. | Policy `profiles_select_internal_staff` queried `public.profiles` from inside a `profiles` policy. | The backend uses the secret key, which bypasses RLS, so no API path ever evaluated the policy. | Same migration: role lookup moved to `private.current_user_role()` (security definer, pinned `search_path`, non-exposed schema); the two SELECT policies merged into one `to authenticated` policy using `(select auth.uid())`. |
+| **D4** | High | The SPA discarded the refresh token, so the session died when the 1-hour access token expired; the app also never re-checked a stored session, so an expired/revoked session kept showing the dashboard until an API call failed. | No refresh endpoint and no renewal logic in the store/router. | No frontend tests; manual testing never ran past token expiry. | `POST /api/v1/auth/refresh`; `stores/auth.js` persists the refresh token, `withSession()` renews once on 401 and retries (single in-flight refresh, since Supabase rotates refresh tokens), the router guard verifies the session once per page load, and logout renews-then-revokes if the access token has expired. |
+| **D5** | Medium | 8 concurrent `/auth/me` calls took 6× as long as one. | Synchronous supabase-py calls inside `async def` endpoints/dependencies block the event loop. | Tests ran one request at a time. | Auth endpoints, `get_current_user`, and `require_roles` are plain `def` (FastAPI runs them in its threadpool). Test: 4 concurrent requests with a 0.25 s simulated DB call must finish in < 0.6 s. |
+| **D6** | Low | Supabase advisors: mutable `search_path` ×2, security-definer function executable via RPC ×2, per-row `auth.uid()` ×3, multiple permissive policies ×6. | Hygiene gaps in the initial migration. | Advisors weren't run after the initial DDL. | Same migration. Remaining advisor findings: leaked-password protection (a dashboard toggle) and one "unused index" INFO (no traffic yet). |
+
+**Verification after the fix:**
+
+- `pytest`: 19/19 passing, including 10 new or changed regression tests.
+- Live reproduction script, rerun unchanged:
+  - D1: the other user's session survives, and the logged-out user's session is revoked.
+  - D4: refresh returns 200, rotates the refresh token, and returns 401 for a bogus token.
+  - D5: the burst ratio dropped from 6.0× to 2.9×; the remainder is network round-trips to Supabase.
+- `supabase/verification/auth_security_checks.sql` failed on the old schema (`D2 FAIL`), passed in a rolled-back dry run of the migration, and passed again after applying it.
+- A live sign-up through the Supabase Auth admin API confirmed the trigger still fires after the `EXECUTE` revoke, a requested `event_coordinator` becomes `attendee`, and a requested `event_organiser` is honoured. The temporary users were deleted.
+- A headless-browser run against the real app passed 5/5: login stores the refresh token; an expired access token is renewed silently; a session that can't be renewed signs out with a message; logout revokes the server session; logout with an expired access token still revokes it.
+
+**Known limitation (unchanged):** Supabase access tokens are stateless JWTs verified locally via JWKS, so a revoked session's *access* token stays valid until it expires (up to 1 hour). Revocation takes effect at the next refresh.
+
+**Process follow-up:** `list_migrations` showed the original migration `20260912000001` was applied as raw SQL and isn't recorded in Supabase's migration history, so only `20260913120749` is tracked. That history should be backfilled before anyone uses `supabase db push`.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.
@@ -202,6 +240,8 @@ This architecture choice is a direct response to the customer briefing's **maint
 `app/modules/auth/service.py` calls Supabase's GoTrue API (`sign_in_with_password`) rather than checking a password hash itself. On success it gets back a Supabase-issued JWT, which `app/core/security.py` then verifies on every subsequent authenticated request via the Supabase SDK's `get_claims()` — this checks the token's signature and expiry against the project's published JWKS (fetched once and cached locally), so it works whether the project signs sessions with the legacy HS256 shared secret or the current asymmetric ES256 signing keys, without the backend hardcoding either. (`get_claims` does not itself check the `aud` claim, so `decode_access_token` verifies that explicitly.) This still avoids a live call to Supabase on the *common* path (only the first request after startup or JWKS-cache expiry triggers a fetch), while trusting Supabase as the single source of truth for "is this password correct" and "is this token genuinely ours."
 
 One thing worth knowing if you're extending this: `supabase-py`'s exception classes live in the `supabase_auth` package at runtime — the older `gotrue` package name still exists (installed as a dependency of `supabase-py`) but defines a **separate, unrelated set of exception classes** that happen to share the same names (`AuthApiError`, `AuthInvalidJwtError`, etc.). Importing from `gotrue.errors` instead of `supabase_auth.errors` will silently fail to catch real runtime errors — code will type-check and pass mocked tests (if the tests import from the same wrong module) while still 500ing in production. Always import Supabase auth exceptions from `supabase_auth.errors`.
+
+A second SDK trap (§4.2, D1): supabase-py keeps the session from `sign_in_with_password`/`refresh_session` **on the client instance** and auto-refreshes it in the background. Never call those on a cached/shared client — use `app.db.supabase.create_auth_client()`, which returns a fresh client with persistence and auto-refresh disabled. The shared publishable-key client is only for stateless calls that take the token explicitly (`get_claims(token)`, `auth.admin.sign_out(token, scope)`).
 
 ### Why role checks need a profile lookup, not just the JWT
 
@@ -228,6 +268,8 @@ This design system is a project-specific/team choice (matching the customer brie
 - `user_role` is a Postgres enum (`event_organiser`, `event_coordinator`, `venue_staff`, `tech_support`, `attendee`), not a free-text column.
 - B-tree indexes on `profiles(role)` and `profiles(email)` for the lookups the auth flow performs on every request.
 - Row Level Security is enabled on `profiles`: users can read/update their own row; internal staff (`event_coordinator`, `venue_staff`, `tech_support`) can read every profile (for cross-role coordination); a trigger explicitly blocks users from changing their own `role` column, since role elevation must go through a privileged path in a future story, not self-service.
+- A policy must never query its own table (that recurses, `42P17`): role checks inside policies use the `private.current_user_role()` security-definer helper, and per-request functions are wrapped as `(select auth.uid())`. Security-definer functions pin `search_path = ''` and are not callable via RPC (§4.2).
+- Sign-up metadata is client-controlled: `handle_new_user()` only accepts the external roles `event_organiser` and `attendee` from it; staff roles are set by seed/migration only (§4.2, QA-3/QA-4).
 
 ## 8. Where to look for what
 

@@ -3,6 +3,7 @@ import { defineStore } from "pinia";
 import { ApiError, authApi } from "@/services/api";
 
 const STORAGE_KEY = "connectsphere.session";
+const SESSION_EXPIRED_MESSAGE = "Your session has expired. Please sign in again.";
 
 export const ROLE_DASHBOARD_ROUTES = {
   event_organiser: "/dashboard/organiser",
@@ -21,10 +22,10 @@ function loadPersistedSession() {
   }
 }
 
-function persistSession(token, profile) {
+function persistSession({ token, refreshToken, profile }) {
   try {
-    if (token && profile) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, profile }));
+    if (token && refreshToken && profile) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, refreshToken, profile }));
     } else {
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -36,10 +37,16 @@ function persistSession(token, profile) {
 
 const persisted = loadPersistedSession();
 
+// Supabase rotates the refresh token every time it is used, so concurrent 401s
+// must share a single refresh call instead of each spending the same token.
+let refreshInFlight = null;
+
 export const useAuthStore = defineStore("auth", {
   state: () => ({
     token: persisted?.token ?? null,
+    refreshToken: persisted?.refreshToken ?? null,
     profile: persisted?.profile ?? null,
+    sessionVerified: false,
     isLoading: false,
     error: null,
   }),
@@ -51,24 +58,73 @@ export const useAuthStore = defineStore("auth", {
   },
 
   actions: {
+    applySession(result) {
+      this.token = result.access_token;
+      this.refreshToken = result.refresh_token;
+      this.profile = result.profile;
+      this.sessionVerified = true;
+      persistSession(this);
+    },
+
+    clearSession(message = null) {
+      this.token = null;
+      this.refreshToken = null;
+      this.profile = null;
+      this.sessionVerified = false;
+      this.error = message;
+      persistSession(this);
+    },
+
     async login(email, password) {
       this.isLoading = true;
       this.error = null;
       try {
         const result = await authApi.login(email, password);
-        this.token = result.access_token;
-        this.profile = result.profile;
-        persistSession(this.token, this.profile);
+        this.applySession(result);
         return result.profile;
       } catch (err) {
-        this.token = null;
-        this.profile = null;
-        persistSession(null, null);
-        this.error =
-          err instanceof ApiError ? err.message : "Unable to reach the server. Please try again.";
+        this.clearSession(
+          err instanceof ApiError ? err.message : "Unable to reach the server. Please try again.",
+        );
         throw err;
       } finally {
         this.isLoading = false;
+      }
+    },
+
+    refreshSession() {
+      if (!this.refreshToken) {
+        this.clearSession(SESSION_EXPIRED_MESSAGE);
+        return Promise.reject(new ApiError(SESSION_EXPIRED_MESSAGE, 401));
+      }
+      if (!refreshInFlight) {
+        refreshInFlight = authApi
+          .refresh(this.refreshToken)
+          .then((result) => this.applySession(result))
+          .catch((err) => {
+            if (err instanceof ApiError) this.clearSession(SESSION_EXPIRED_MESSAGE);
+            throw err;
+          })
+          .finally(() => {
+            refreshInFlight = null;
+          });
+      }
+      return refreshInFlight;
+    },
+
+    /**
+     * Run an authenticated API call; if the access token has expired, renew the
+     * session once with the refresh token and retry. Use this for every call
+     * that needs a token instead of passing `authStore.token` directly.
+     */
+    async withSession(call) {
+      if (!this.token) throw new ApiError(SESSION_EXPIRED_MESSAGE, 401);
+      try {
+        return await call(this.token);
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status !== 401) throw err;
+        await this.refreshSession();
+        return call(this.token);
       }
     },
 
@@ -76,14 +132,15 @@ export const useAuthStore = defineStore("auth", {
       if (!this.token) return null;
       this.isLoading = true;
       try {
-        const profile = await authApi.me(this.token);
+        const profile = await this.withSession((token) => authApi.me(token));
         this.profile = profile;
-        persistSession(this.token, this.profile);
+        this.sessionVerified = true;
+        persistSession(this);
         return profile;
       } catch (err) {
-        this.token = null;
-        this.profile = null;
-        persistSession(null, null);
+        // The server rejected the session (401/404): sign out. Network errors
+        // keep the stored session so a brief outage doesn't log the user out.
+        if (err instanceof ApiError && this.token) this.clearSession(SESSION_EXPIRED_MESSAGE);
         throw err;
       } finally {
         this.isLoading = false;
@@ -91,17 +148,22 @@ export const useAuthStore = defineStore("auth", {
     },
 
     async logout() {
-      const token = this.token;
-      this.token = null;
-      this.profile = null;
-      this.error = null;
-      persistSession(null, null);
-      if (token) {
-        try {
-          await authApi.logout(token);
-        } catch {
-          // The client-side session is already cleared; a failed
-          // server-side revocation should not block the user from logging out.
+      const { token, refreshToken } = this;
+      this.clearSession();
+      if (!token) return;
+      try {
+        await authApi.logout(token);
+      } catch (err) {
+        // An expired access token can't authorise the revoke, so renew once to
+        // still end the server-side session. Best-effort: the local session is
+        // already cleared either way.
+        if (err instanceof ApiError && err.status === 401 && refreshToken) {
+          try {
+            const renewed = await authApi.refresh(refreshToken);
+            await authApi.logout(renewed.access_token);
+          } catch {
+            // Session already revoked or unreachable server; nothing left to do.
+          }
         }
       }
     },

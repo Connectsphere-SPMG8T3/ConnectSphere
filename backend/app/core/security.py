@@ -54,13 +54,15 @@ def decode_access_token(token: str) -> dict:
     return claims
 
 
-async def get_current_user(
+def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
 ) -> CurrentUser:
     """FastAPI dependency: verify the bearer token and load the caller's profile.
 
     Raises 401 if the token is missing, malformed, expired, or fails signature
     verification; raises 404 if the token is valid but no profile row exists.
+    Plain `def` because the Supabase client is synchronous (FastAPI runs sync
+    dependencies in its threadpool rather than on the event loop).
     """
     if credentials is None:
         raise InvalidOrExpiredTokenError()
@@ -89,7 +91,7 @@ async def get_current_user(
 def require_roles(allowed_roles: list[str]):
     """Dependency factory: restrict an endpoint to the given profile roles."""
 
-    async def _dependency(
+    def _dependency(
         current_user: Annotated[CurrentUser, Depends(get_current_user)],
     ) -> CurrentUser:
         if current_user.role not in allowed_roles:

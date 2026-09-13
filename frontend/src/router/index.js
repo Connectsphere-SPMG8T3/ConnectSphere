@@ -63,11 +63,14 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const authStore = useAuthStore();
 
-  if (authStore.token && !authStore.profile) {
+  // Verify a stored session once per page load, renewing it if the access
+  // token has expired. A session the server rejects is cleared, so the checks
+  // below send the user to login.
+  if (authStore.token && !authStore.sessionVerified) {
     try {
       await authStore.fetchProfile();
     } catch {
-      // Session is stale or the token has been revoked server-side.
+      // Handled by fetchProfile; a network error keeps the stored session.
     }
   }
 

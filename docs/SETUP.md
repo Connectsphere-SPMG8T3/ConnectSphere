@@ -42,9 +42,15 @@ supabase db push                              # applies supabase/migrations/*.sq
 psql "$DATABASE_URL" -f supabase/seed.sql     # creates 5 test accounts, one per role
 ```
 
-`supabase/migrations/20260912000001_init_auth_and_profiles.sql` creates the `user_role` enum, `public.profiles` table, indexes, the `handle_new_user()` trigger (auto-populates a profile row when a new `auth.users` row is inserted), and RLS policies.
+`supabase/migrations/20260912000001_init_auth_and_profiles.sql` creates the `user_role` enum, `public.profiles` table, indexes, the `handle_new_user()` trigger (auto-populates a profile row when a new `auth.users` row is inserted), and RLS policies. `20260913120749_fix_auth_security_defects.sql` then restricts sign-up to the external roles (`event_organiser`, `attendee`), replaces the `profiles` policies with a non-recursive version backed by `private.current_user_role()`, and pins `search_path` on the auth functions (see `docs/SCENARIO.md` §4.2).
 
-`supabase/seed.sql` inserts directly into `auth.users` / `auth.identities` (the standard pattern for locally seeding confirmed Supabase Auth accounts outside the GoTrue signup API) so the five role-specific test accounts exist immediately, with no email confirmation step needed.
+`supabase/seed.sql` inserts directly into `auth.users` / `auth.identities` (the standard pattern for locally seeding confirmed Supabase Auth accounts outside the GoTrue signup API) so the five role-specific test accounts exist immediately, with no email confirmation step needed. Because the trigger no longer accepts staff roles from sign-up metadata, the seed sets each profile's role explicitly afterwards.
+
+Verify the auth/RLS security rules after applying migrations and seed (runs inside a transaction that rolls back, and raises on any failure):
+
+```bash
+psql "$DATABASE_URL" -f supabase/verification/auth_security_checks.sql   # expect: ALL AUTH SECURITY CHECKS PASSED
+```
 
 ### Seeded test accounts
 
@@ -77,7 +83,16 @@ cd backend
 pytest
 ```
 
-The test suite (`backend/tests/test_auth.py`) mocks the Supabase client at the seams (`app.modules.auth.service.get_supabase_admin_client` / `get_supabase_anon_client`, and `app.core.security.get_supabase_admin_client` / `get_supabase_anon_client`, the latter for mocking `auth.get_claims()`) rather than hitting a real Supabase project, so it runs offline and needs no real credentials — `backend/tests/conftest.py` seeds dummy env vars before importing the app.
+The test suite (`backend/tests/test_auth.py`) mocks the Supabase client at the seams rather than hitting a real Supabase project, so it runs offline and needs no real credentials — `backend/tests/conftest.py` seeds dummy env vars before importing the app. The seams are:
+
+- `app.modules.auth.service.create_auth_client` — the fresh per-request client used for sign-in and refresh;
+- `app.modules.auth.service.get_supabase_anon_client` — the shared client, used for logout's `auth.admin.sign_out`;
+- `app.modules.auth.service.get_supabase_admin_client` and `app.core.security.get_supabase_admin_client` — profile reads;
+- `app.core.security.get_supabase_anon_client` — `auth.get_claims()`.
+
+A few tests deliberately use real supabase-py client objects (no network) or real concurrency, because the defects they guard against lived in SDK session state and event-loop blocking, which mocks can't reproduce.
+
+Session lifecycle endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh` (exchanges a refresh token for a new session; Supabase rotates the refresh token on every use), `GET /api/v1/auth/me`, `POST /api/v1/auth/logout` (revokes only the caller's current session).
 
 ## 5. Frontend
 
