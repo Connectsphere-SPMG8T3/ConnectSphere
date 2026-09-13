@@ -37,6 +37,9 @@ export const authApi = {
   login(email, password) {
     return request("/auth/login", { method: "POST", body: { email, password } });
   },
+  refresh(refreshToken) {
+    return request("/auth/refresh", { method: "POST", body: { refresh_token: refreshToken } });
+  },
   me(token) {
     return request("/auth/me", { token });
   },
