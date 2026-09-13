@@ -1,0 +1,22 @@
+# Environment
+.env
+.env.local
+
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Editors / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Reusable Claude Code prompts/commands (local workflow aids, not project deliverables)
+.claude/
+docs/prompts/
