@@ -20,3 +20,5 @@ Thumbs.db
 # Reusable Claude Code prompts/commands (local workflow aids, not project deliverables)
 .claude/
 docs/prompts/
+
+supabase/.temp/
