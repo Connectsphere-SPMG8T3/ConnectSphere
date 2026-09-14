@@ -12,9 +12,18 @@ from app.modules.equipment.schemas import (
     EquipmentAvailabilityRequest,
     EquipmentAvailabilityResponse,
     EquipmentInventoryResponse,
+    EquipmentMaintenanceResponse,
 )
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
+
+
+@router.get("/maintenance", response_model=EquipmentMaintenanceResponse, status_code=status.HTTP_200_OK)
+def maintenance(
+    current_user: Annotated[CurrentUser, Depends(require_roles(["tech_support"]))],
+    db: Annotated[Session, Depends(get_db)],
+) -> EquipmentMaintenanceResponse:
+    return service.get_equipment_maintenance(db)
 
 
 @router.get("/inventory", response_model=EquipmentInventoryResponse, status_code=status.HTTP_200_OK)

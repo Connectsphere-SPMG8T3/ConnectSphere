@@ -45,3 +45,17 @@ class EquipmentInventoryItem(BaseModel):
 
 class EquipmentInventoryResponse(BaseModel):
     items: list[EquipmentInventoryItem]
+
+
+class EquipmentMaintenanceItem(BaseModel):
+    maintenance_id: UUID
+    equipment_id: UUID
+    equipment_name: str
+    start_at: datetime
+    end_at: datetime
+    reason: str | None = None
+    status: str
+
+
+class EquipmentMaintenanceResponse(BaseModel):
+    items: list[EquipmentMaintenanceItem]
