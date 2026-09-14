@@ -5,6 +5,13 @@ import { ApiError, authApi } from "@/services/api";
 const STORAGE_KEY = "connectsphere.session";
 const SESSION_EXPIRED_MESSAGE = "Your session has expired. Please sign in again.";
 
+// Only these statuses mean the server rejected the session itself. Anything
+// else (5xx, network failure) says nothing about the tokens, so the session is
+// kept rather than signing the user out during an outage.
+function isSessionRejected(err) {
+  return err instanceof ApiError && (err.status === 401 || err.status === 404);
+}
+
 export const ROLE_DASHBOARD_ROUTES = {
   event_organiser: "/dashboard/organiser",
   event_coordinator: "/dashboard/coordinator",
@@ -102,7 +109,7 @@ export const useAuthStore = defineStore("auth", {
           .refresh(this.refreshToken)
           .then((result) => this.applySession(result))
           .catch((err) => {
-            if (err instanceof ApiError) this.clearSession(SESSION_EXPIRED_MESSAGE);
+            if (isSessionRejected(err)) this.clearSession(SESSION_EXPIRED_MESSAGE);
             throw err;
           })
           .finally(() => {
@@ -138,9 +145,9 @@ export const useAuthStore = defineStore("auth", {
         persistSession(this);
         return profile;
       } catch (err) {
-        // The server rejected the session (401/404): sign out. Network errors
-        // keep the stored session so a brief outage doesn't log the user out.
-        if (err instanceof ApiError && this.token) this.clearSession(SESSION_EXPIRED_MESSAGE);
+        // The server rejected the session (401/404): sign out. Outages keep the
+        // stored session so a brief failure doesn't log the user out.
+        if (isSessionRejected(err) && this.token) this.clearSession(SESSION_EXPIRED_MESSAGE);
         throw err;
       } finally {
         this.isLoading = false;

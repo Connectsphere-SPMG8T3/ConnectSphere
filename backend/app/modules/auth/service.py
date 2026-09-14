@@ -1,6 +1,11 @@
-from supabase_auth.errors import AuthApiError, AuthError
+from supabase_auth.errors import AuthApiError, AuthError, AuthRetryableError
 
-from app.core.exceptions import InvalidCredentialsError, InvalidOrExpiredTokenError, ProfileNotFoundError
+from app.core.exceptions import (
+    AuthServiceUnavailableError,
+    InvalidCredentialsError,
+    InvalidOrExpiredTokenError,
+    ProfileNotFoundError,
+)
 from app.db.supabase import create_auth_client, get_supabase_admin_client, get_supabase_anon_client
 from app.modules.auth.schemas import ProfileResponse, TokenResponse, UserLoginRequest, UserResponse
 
@@ -37,6 +42,8 @@ def login(credentials: UserLoginRequest) -> TokenResponse:
         auth_response = auth_client.auth.sign_in_with_password(
             {"email": credentials.email, "password": credentials.password}
         )
+    except AuthRetryableError as exc:
+        raise AuthServiceUnavailableError() from exc
     except AuthApiError as exc:
         raise InvalidCredentialsError() from exc
 
@@ -51,6 +58,10 @@ def refresh(refresh_token: str) -> TokenResponse:
     auth_client = create_auth_client()
     try:
         auth_response = auth_client.auth.refresh_session(refresh_token)
+    except AuthRetryableError as exc:
+        # Supabase unreachable or failing: the refresh token may still be good,
+        # so this must not read as a rejected session (401 signs the SPA out).
+        raise AuthServiceUnavailableError() from exc
     except AuthError as exc:
         raise InvalidOrExpiredTokenError() from exc
 

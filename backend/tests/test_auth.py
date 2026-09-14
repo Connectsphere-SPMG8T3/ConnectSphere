@@ -4,12 +4,14 @@ from types import SimpleNamespace
 from typing import Annotated
 from unittest.mock import MagicMock
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, FastAPI
 from fastapi.testclient import TestClient
-from supabase_auth.errors import AuthApiError, AuthInvalidJwtError
+from supabase_auth.errors import AuthApiError, AuthInvalidJwtError, AuthRetryableError
 
 from app.main import app
 from app.modules.auth import service as auth_service_module
+
+SUPABASE_GATEWAY_UNAVAILABLE = AuthRetryableError("upstream unavailable", 503)
 
 TEST_USER_ID = "11111111-1111-1111-1111-111111111111"
 TEST_EMAIL = "coordinator@connectsphere.dev"
@@ -152,6 +154,16 @@ class TestLogin:
         for auth_client in created_clients:
             auth_client.auth.sign_in_with_password.assert_called_once()
 
+    def test_login_when_supabase_is_unavailable_returns_503(self, client, monkeypatch):
+        """A Supabase outage is not a wrong password: it must not surface as 401 or 500."""
+        auth_client = MagicMock()
+        auth_client.auth.sign_in_with_password.side_effect = SUPABASE_GATEWAY_UNAVAILABLE
+        monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client)
+
+        response = client.post("/api/v1/auth/login", json={"email": TEST_EMAIL, "password": "Cs1234"})
+
+        assert response.status_code == 503
+
 
 class TestAuthClientFactory:
     """D1: exercises the real supabase-py client objects (no network) rather than mocks,
@@ -233,6 +245,16 @@ class TestRefresh:
 
         assert response.status_code == 401
 
+    def test_refresh_when_supabase_is_unavailable_returns_503(self, client, monkeypatch):
+        """A 401 tells the SPA the session is dead and signs the user out; an outage must not."""
+        auth_client = MagicMock()
+        auth_client.auth.refresh_session.side_effect = SUPABASE_GATEWAY_UNAVAILABLE
+        monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client)
+
+        response = client.post("/api/v1/auth/refresh", json={"refresh_token": FAKE_REFRESH_TOKEN})
+
+        assert response.status_code == 503
+
     def test_refresh_with_empty_token_returns_422(self, client):
         response = client.post("/api/v1/auth/refresh", json={"refresh_token": ""})
         assert response.status_code == 422
@@ -277,6 +299,17 @@ class TestMe:
         response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"})
 
         assert response.status_code == 401
+
+    def test_me_when_supabase_is_unavailable_returns_503(self, client, monkeypatch):
+        """Token verification fetches the JWKS from Supabase; failing to fetch it is not an invalid token."""
+        monkeypatch.setattr(
+            "app.core.security.get_supabase_anon_client",
+            lambda: _make_anon_client_with_claims(raises=SUPABASE_GATEWAY_UNAVAILABLE),
+        )
+
+        response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"})
+
+        assert response.status_code == 503
 
     def test_me_when_profile_row_is_missing_returns_404(self, client, monkeypatch):
         monkeypatch.setattr(
@@ -328,7 +361,7 @@ class TestEventLoopIsNotBlocked:
 
 
 class TestRoleGuard:
-    def test_require_roles_blocks_mismatched_role(self, client, monkeypatch):
+    def test_require_roles_blocks_mismatched_role(self, monkeypatch):
         from app.core.security import CurrentUser, require_roles
 
         _authenticate_requests_as_test_user(monkeypatch)
@@ -340,8 +373,12 @@ class TestRoleGuard:
         ) -> dict:
             return {"ok": True}
 
-        client.app.include_router(probe_router, prefix="/api/v1")
+        # A throwaway app, so the probe route never leaks into the shared `app.main.app`.
+        probe_app = FastAPI()
+        probe_app.include_router(probe_router)
 
-        response = client.get("/api/v1/probe/venue-only", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"})
+        response = TestClient(probe_app).get(
+            "/probe/venue-only", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"}
+        )
 
         assert response.status_code == 403
