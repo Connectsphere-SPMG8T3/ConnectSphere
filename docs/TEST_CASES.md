@@ -1,4 +1,4 @@
-# ConnectSphere — Manual Test Cases (SCRUM-48: Basic User Authentication)
+# ConnectSphere — Manual Test Cases (SCRUM-48: Basic User Authentication · SCRUM-39: Venue Catalogue & Search)
 
 This document is a manual test-case suite for the only feature currently implemented in this repository: **SCRUM-48 — Basic user authentication** (epic SCRUM-7), covering login, session/profile retrieval, logout, and role-based dashboard routing. See [docs/SCENARIO.md](SCENARIO.md) for the full requirement context and [docs/SETUP.md](SETUP.md) for environment setup.
 
@@ -7,7 +7,8 @@ Every test case traces back to either the SCRUM-48 acceptance criteria, a custom
 ## 0. Scope, environment, and data notes
 
 - **In scope:** `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`, the `LoginView`/`ProfileView` pages, the five role dashboards as RBAC targets, and the Vue Router guards that protect them.
-- **Out of scope:** everything under the `events`, `venues`, and `equipment` modules — they are empty stub packages with no logic to test yet.
+- **Also in scope (§8):** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, the `/venues` search page and `/venues/:id` detail page (SCRUM-39).
+- **Out of scope:** the `events` and `equipment` modules — empty stub packages with no logic to test yet.
 - **Environment:** a Supabase project with every migration in `supabase/migrations/` applied and `supabase/seed.sql` run, backend on `http://localhost:8000`, frontend on `http://localhost:5173`. The live project (`vuiryrzzyfecjqftwicj`) has both migrations and the seed applied. The data-layer cases in §6 are automated by `supabase/verification/auth_security_checks.sql` (runs inside a rolled-back transaction and raises on any failure).
 - **Seeded accounts** (all share the password `Cs1234`, per `supabase/seed.sql`):
 
@@ -112,6 +113,46 @@ These require direct database access (e.g. the Supabase SQL editor or MCP `execu
 | TC-DATA-012 | Trigger and RLS helper functions are not callable as RPCs | Service-role/admin access | `select has_function_privilege('anon', 'public.handle_new_user()', 'execute'), has_function_privilege('authenticated', 'public.handle_new_user()', 'execute');` and `get_advisors` (security) | — | Both `false`; the security advisor reports no `function_search_path_mutable` or `*_security_definer_function_executable` findings. `private.current_user_role()` lives in a schema the Data API does not expose. | 🟢 |
 | TC-DATA-009 | `profiles.email` uniqueness is enforced | Service-role/admin access | Attempt to insert a second profile row reusing an existing email (bypassing the trigger, direct insert) | duplicate `email` | Insert fails on the `unique` constraint on `profiles.email`. | 🟢 |
 
+## 8. Venue catalogue, search and availability (SCRUM-39)
+
+Environment as in §0 plus the SCRUM-39 migration and the venue rows from `supabase/seed.sql` (8 venues, 3 blocks, 3 bookings around **10 Oct 2026**). All times are Singapore time. The §8.3 data cases are automated by `supabase/verification/venue_schema_checks.sql`.
+
+### 8.1 Search and filter (`/venues`, signed in as the Event Coordinator unless stated)
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-VENUE-001 | Empty search lists the whole active catalogue | Logged in as Coordinator | 1. Open `/dashboard/coordinator`. 2. Click **Search venues**. | — | `/venues` loads and immediately shows "7 matching venues" (every seeded venue except the inactive Old Lecture Theatre), each card badged **Availability not checked** with the note "Add a date and time to check availability". A **Show 1 excluded** button is present. | 🔴 |
+| TC-VENUE-002 | Acceptance search returns only venues that fit and are free (§6.10 AC 1) | On `/venues` | Fill date/time, attendance, tick Projector; click **Search venues** | date `2026-10-10`, `14:00`–`17:00`, attendance `150`, facilities `Projector` | "2 matching venues": **Auditorium A** and **Grand Ballroom**, both badged **Available**. Network: `GET /api/v1/venues?starts_at=2026-10-10T14:00:00%2B08:00&ends_at=…&min_capacity=150&facilities=projector&include_excluded=true` → 200. | 🔴 |
+| TC-VENUE-003 | Back-to-back booking does not exclude a venue (§6.10 AC 2, §6.14 zero turnaround) | TC-VENUE-002 result | Inspect the Auditorium A card; open its detail page | — | Auditorium A is **Available** for 14:00–17:00 although it has an approved booking 11:00–14:00 on the same day; the detail page lists that booking under "Upcoming unavailability". | 🔴 |
+| TC-VENUE-004 | Excluded venues are revealed with reasons (§6.10 AC 3) | TC-VENUE-002 result | Click **Show 6 excluded** | — | An "Excluded venues" section appears with: Boardroom Orchid ("Capacity 16 is below the required 150", "Missing facilities: projector"); Heritage Hall (**Unavailable**, "Blocked: renovation 1 Oct 00:00 – 15 Oct 00:00"); Innovation Lab ("Capacity 80 …"); Old Lecture Theatre ("Venue is inactive"); Rooftop Terrace (capacity + projector); Seminar Room 1 (**Unavailable**, "Held by another event 10 Oct 13:00–16:00"). Clicking **Hide 6 excluded** collapses the section without a new request. | 🔴 |
+| TC-VENUE-005 | A block ending at the search start does not exclude; one overlapping by a minute does (CAL-R2) | On `/venues` | (a) Search `2026-10-10` `12:00`–`15:00`, location `Marina`. (b) Search `11:59`–`13:00`, same location. | as stated | (a) Grand Ballroom is **Available** (its maintenance block is 08:00–12:00). (b) Grand Ballroom is excluded, **Unavailable**, "Blocked: maintenance 10 Oct 08:00–12:00". | 🔴 |
+| TC-VENUE-006 | Per-layout capacity is used when a layout is chosen (§6.11 capacity rule) | On `/venues` | Search attendance `100`, layout `Banquet`, show excluded | — | Rooftop Terrace is excluded with "Banquet capacity 80 is below the required 100" (venue capacity 120 is not used). Grand Ballroom (banquet 300) and Heritage Hall (banquet 100, boundary: equal passes) match on capacity. | 🟠 |
+| TC-VENUE-007 | Layout and accessibility filters are strict | On `/venues` | Search layout `U-shape`, accessibility `Hearing loop`, show excluded | — | No venue matches ("No venue meets every requirement…"). Excluded reasons include "U shape layout is not supported" / "Missing accessibility features: hearing loop" as applicable. | 🟠 |
+| TC-VENUE-008 | Incomplete or inverted period is refused client-side | On `/venues` | (a) Enter date and start time only; submit. (b) Enter `17:00`–`14:00`; submit. | as stated | (a) "Enter the end time." under End time; no request sent. (b) "End time must be after start time."; no request sent. | 🟠 |
+| TC-VENUE-009 | Detail page shows full venue information and upcoming unavailability | On `/venues` | Click **Seminar Room 1** | — | `/venues/b0000000-0000-4000-8000-000000000003` shows location, capacity 60, hours 08:00–22:00, layouts (Classroom · 40 pax, U-shape · 24 pax, Boardroom · 20 pax, Theatre), facilities, accessibility, and a **Tentative hold** entry for 10 Oct 2026, 13:00–16:00. **← Back to venue search** returns to the previous results without re-searching. | 🟠 |
+| TC-VENUE-010 | Venue staff can search; organisers, attendees and tech support cannot | Logged in as each role | Visit `/venues` directly | — | Venue Staff: page renders (button also on their dashboard). Organiser / Attendee / Tech Support: router redirects to their own dashboard; `curl` with their token → `403 This action requires one of the following roles: event_coordinator, venue_staff.` | 🔴 |
+| TC-VENUE-011 | Unknown or malformed venue id | Coordinator token | `GET /api/v1/venues/b0000000-0000-4000-8000-0000000000ff` and `GET /api/v1/venues/not-a-uuid` | — | 404 `Venue not found.` and 422 respectively. `/venues/not-a-uuid` in the browser shows the error banner. | 🟢 |
+| TC-VENUE-012 | API outage keeps previous results on screen | Results shown; stop the backend | Click **Search venues** again | — | Red banner with the error message; the previous result cards remain; the session is not ended. | 🟢 |
+
+### 8.2 API contract (`curl` with a coordinator token)
+
+| ID | Title | Request | Expected Result | Priority |
+|----|-------|---------|------------------|----------|
+| TC-VENUE-020 | Period must be a timezone-aware pair with end after start | `?starts_at=2026-10-10T14:00:00%2B08:00` alone; `?starts_at=…17:00…&ends_at=…14:00…`; `?starts_at=2026-10-10T14:00:00&ends_at=2026-10-10T17:00:00` (no offset) | 422 each, with `detail[0].msg` naming the rule. | 🟠 |
+| TC-VENUE-021 | Unknown enum values are refused | `?facilities=jacuzzi`, `?layout=cinema`, `?min_capacity=0` | 422 each. | 🟢 |
+| TC-VENUE-022 | Response shape | any 200 search | `criteria` echoes the applied filters; `results[]` each have `venue{…}`, `availability ∈ {available, unavailable, not_checked}`, `excluded`, `reasons[{code, message}]`; `included_count`, `excluded_count`. Without `include_excluded=true` only non-excluded venues are in `results` but `excluded_count` still counts them. | 🟠 |
+
+### 8.3 Data integrity (automated by `supabase/verification/venue_schema_checks.sql`)
+
+| ID | Title | Test Steps | Expected Result | Priority |
+|----|-------|------------|------------------|----------|
+| TC-VENUE-030 | Overlapping occupying bookings are impossible (DB-1, QA-6, QA-10, QA-113) | Insert `held` 09:00–12:00 and `approved` 12:00–15:00 for one venue, then `held` 11:59–13:00 | First two succeed (back-to-back), third fails with `exclusion_violation`. | 🔴 |
+| TC-VENUE-031 | Non-occupying statuses do not block (§6.14) | Insert a `rejected` booking overlapping an `approved` one | Succeeds. | 🟠 |
+| TC-VENUE-032 | One occupying booking per event (BR-R1) | Insert a second `held` booking for an event that already has one | Fails with `unique_violation`. | 🔴 |
+| TC-VENUE-033 | Blocks may overlap bookings (CAL-R1) | Insert a block over an approved booking | Succeeds (resolution is manual). | 🟠 |
+| TC-VENUE-034 | Periods are bounded and half-open | Insert a block with `'[]'` bounds | Fails with `check_violation`. | 🟢 |
+| TC-VENUE-035 | RLS: staff read, external roles see nothing, nobody writes directly | As the seeded coordinator: select venues/bookings, insert a block. As the organiser: select venues. | Coordinator reads rows; insert fails with `insufficient_privilege`; organiser sees 0 rows. | 🔴 |
+
 ## 7. Traceability matrix
 
 | SCRUM-48 acceptance criterion / NFR | Covered by |
@@ -128,4 +169,15 @@ These require direct database access (e.g. the Supabase SQL editor or MCP `execu
 | Accounts: only Organisers and Attendees self-register; staff are system defaults (QA-3, QA-4) | TC-DATA-010, TC-DATA-012 |
 | Defect regressions (docs/PROJECT_REVIEW.md) | D1: TC-AUTH-029 · D2: TC-DATA-010 · D3: TC-DATA-001–003, TC-DATA-011 · D4: TC-AUTH-030–033 · D6: TC-DATA-012 |
 
-Cases with no seeded-data shortcut (forged/expired/wrong-audience JWTs, rate limiting, unconfirmed/banned accounts) require a small script/`curl` command or direct Supabase SQL access. The automated `pytest` suite (`backend/tests/test_auth.py`) covers the equivalents of TC-AUTH-001, TC-AUTH-006, TC-AUTH-020, TC-AUTH-021, TC-AUTH-025, TC-AUTH-026 (server-side revoke), TC-AUTH-028, TC-AUTH-029 (fresh auth client per sign-in), TC-AUTH-030–032, the backend half of TC-AUTH-034 and TC-AUTH-035 (503 on outage), and TC-RBAC-006. The Vitest suite (`frontend/src/**/__tests__/`) covers the frontend half of TC-AUTH-031 and TC-AUTH-034 (which errors end a session) and TC-RBAC-009. The §6 data-layer cases are automated by `supabase/verification/auth_security_checks.sql`.
+| SCRUM-39 acceptance criterion / rule | Covered by |
+|---|---|
+| "Venues with matching criterias are returned" | TC-VENUE-001, TC-VENUE-002, TC-VENUE-022 |
+| "Shows venue availability and information about the venue" | TC-VENUE-001, TC-VENUE-003, TC-VENUE-009 |
+| "Allows filtering by date, time, required attendance, room layout, accessibility, and required facilities" | TC-VENUE-002, TC-VENUE-006, TC-VENUE-007, TC-VENUE-008, TC-VENUE-020, TC-VENUE-021 |
+| "Excludes venues that are marked as unavailable due to maintenance, renovation, or safety restrictions" (any block, CAL-R3) | TC-VENUE-004, TC-VENUE-005, TC-VENUE-035 |
+| "Automatically incorporates setup, reset, and turnaround buffers" — **withdrawn (QA-28)**: back-to-back is allowed | TC-VENUE-003, TC-VENUE-005, TC-VENUE-030 |
+| VS-R1 (active, no hard failure, no hold/booking/block overlap) | TC-VENUE-002, TC-VENUE-004 |
+| DB-1 / BR-R1 / CAL-R1 | TC-VENUE-030–034 |
+| Access matrix §2 (coordinators read/search, venue staff manage, others none) | TC-VENUE-010, TC-VENUE-035 |
+
+Cases with no seeded-data shortcut (forged/expired/wrong-audience JWTs, rate limiting, unconfirmed/banned accounts) require a small script/`curl` command or direct Supabase SQL access. The automated `pytest` suite (`backend/tests/test_auth.py`) covers the equivalents of TC-AUTH-001, TC-AUTH-006, TC-AUTH-020, TC-AUTH-021, TC-AUTH-025, TC-AUTH-026 (server-side revoke), TC-AUTH-028, TC-AUTH-029 (fresh auth client per sign-in), TC-AUTH-030–032, the backend half of TC-AUTH-034 and TC-AUTH-035 (503 on outage), and TC-RBAC-006. The Vitest suite (`frontend/src/**/__tests__/`) covers the frontend half of TC-AUTH-031 and TC-AUTH-034 (which errors end a session) and TC-RBAC-009. The §6 data-layer cases are automated by `supabase/verification/auth_security_checks.sql`. For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cover TC-VENUE-002–007 (rules), TC-VENUE-010–011, TC-VENUE-020–022; the Vitest specs `stores/__tests__/venues.spec.js` and `views/__tests__/venueSearch.spec.js` cover TC-VENUE-004 (toggle), TC-VENUE-008, TC-VENUE-009 (rendering), TC-VENUE-012; `supabase/verification/venue_schema_checks.sql` automates TC-VENUE-030–035.
