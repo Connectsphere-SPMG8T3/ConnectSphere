@@ -2,10 +2,15 @@ from typing import Annotated
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from supabase_auth.errors import AuthError
+from supabase_auth.errors import AuthError, AuthRetryableError
 from pydantic import BaseModel
 
-from app.core.exceptions import InsufficientRoleError, InvalidOrExpiredTokenError, ProfileNotFoundError
+from app.core.exceptions import (
+    AuthServiceUnavailableError,
+    InsufficientRoleError,
+    InvalidOrExpiredTokenError,
+    ProfileNotFoundError,
+)
 from app.db.supabase import get_supabase_admin_client, get_supabase_anon_client
 
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -39,6 +44,9 @@ def decode_access_token(token: str) -> dict:
     anon_client = get_supabase_anon_client()
     try:
         claims_response = anon_client.auth.get_claims(token)
+    except AuthRetryableError as exc:
+        # Fetching the JWKS failed; that says nothing about the token itself.
+        raise AuthServiceUnavailableError() from exc
     except AuthError as exc:
         raise InvalidOrExpiredTokenError() from exc
 

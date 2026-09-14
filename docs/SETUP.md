@@ -106,6 +106,15 @@ Served at `http://localhost:5173`. Build for production with `npm run build` (ou
 
 The frontend resolves `@/` to `frontend/src/` (configured in `vite.config.js`).
 
+Run tests:
+
+```bash
+cd frontend
+npm test
+```
+
+Unit tests use Vitest with a jsdom environment and live in `__tests__/` folders next to the code they cover (e.g. `src/stores/__tests__/`). They mock `@/services/api`, so no backend is needed.
+
 ## 6. Docker Compose (optional)
 
 `docker-compose.yml` at the repo root runs both services against a shared `.env`:

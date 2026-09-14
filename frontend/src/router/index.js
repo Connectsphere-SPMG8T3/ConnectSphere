@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from "vue-router";
 
 import { ROLE_DASHBOARD_ROUTES, useAuthStore } from "@/stores/auth";
 
+const UNSUPPORTED_ROLE_MESSAGE = "Your account can't be opened in this app. Please contact support.";
+
 const routes = [
   {
     path: "/",
@@ -75,6 +77,13 @@ router.beforeEach(async (to) => {
   }
 
   const isAuthenticated = authStore.isAuthenticated;
+
+  // A session whose role has no dashboard (e.g. a stale stored profile) would
+  // bounce between /login and its "dashboard" (also /login) forever.
+  if (isAuthenticated && !ROLE_DASHBOARD_ROUTES[authStore.role]) {
+    authStore.clearSession(UNSUPPORTED_ROLE_MESSAGE);
+    return to.name === "login" ? true : { name: "login" };
+  }
 
   if (to.name === "login" && isAuthenticated) {
     return authStore.dashboardPath;
