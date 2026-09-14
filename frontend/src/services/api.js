@@ -48,4 +48,18 @@ export const authApi = {
   },
 };
 
+export const equipmentApi = {
+  checkEquipmentAvailability(payload, token) {
+    return request("/equipment/availability/check", {
+      method: "POST",
+      body: payload,
+      token,
+    });
+  },
+};
+
+export function checkEquipmentAvailability(payload, token) {
+  return equipmentApi.checkEquipmentAvailability(payload, token);
+}
+
 export { ApiError };
