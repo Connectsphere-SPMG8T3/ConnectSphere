@@ -1,14 +1,30 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.equipment import service
-from app.modules.equipment.schemas import EquipmentAvailabilityRequest, EquipmentAvailabilityResponse
+from app.modules.equipment.schemas import (
+    EquipmentAvailabilityRequest,
+    EquipmentAvailabilityResponse,
+    EquipmentInventoryResponse,
+)
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
+
+
+@router.get("/inventory", response_model=EquipmentInventoryResponse, status_code=status.HTTP_200_OK)
+def inventory(
+    current_user: Annotated[CurrentUser, Depends(require_roles(["tech_support"]))],
+    db: Annotated[Session, Depends(get_db)],
+    start_at: datetime | None = Query(default=None),
+    end_at: datetime | None = Query(default=None),
+) -> EquipmentInventoryResponse:
+    return service.get_equipment_inventory(db, start_at, end_at)
 
 
 @router.post(

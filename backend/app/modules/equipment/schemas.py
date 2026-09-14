@@ -32,3 +32,16 @@ class ItemAvailabilityResult(BaseModel):
 class EquipmentAvailabilityResponse(BaseModel):
     sufficient: bool
     items: list[ItemAvailabilityResult]
+
+
+class EquipmentInventoryItem(BaseModel):
+    equipment_id: UUID
+    name: str
+    total_quantity: int
+    reserved_quantity: int
+    maintenance_quantity: int
+    net_available: int
+
+
+class EquipmentInventoryResponse(BaseModel):
+    items: list[EquipmentInventoryItem]
