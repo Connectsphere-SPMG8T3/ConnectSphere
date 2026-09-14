@@ -13,4 +13,8 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  test: {
+    // The router and auth store use browser globals (history, localStorage).
+    environment: "jsdom",
+  },
 });
