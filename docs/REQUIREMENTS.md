@@ -226,7 +226,7 @@ C4Component
 
 **Module rules**
 
-- Each module keeps the `auth` layout (`router.py`, `schemas.py`, `service.py`, `dependencies.py`) and adds **`repository.py`**. The repository is the only file allowed to touch the Supabase client.
+- Each module keeps the `auth` layout (`router.py`, `schemas.py`, `service.py`, `dependencies.py`) and adds **`repository.py`**. The repository is the only file allowed to touch the Supabase client. **Status:** `venues` (SCRUM-39) is the first module built this way (`repository.py` plus a pure `search.py` rule file); `auth` predates it. Treat `venues` as the reference for new modules unless the team decides otherwise.
 - **Modules never import each other's repositories.** A module reads another module's data through that module's service interface. Reactions to what happens in another module go through domain events. For example, `events` publishes `CancellationApproved`, and `venues` and `equipment` subscribe to free their reservations. This is the Observer pattern: a new customer rule becomes a new subscriber, not an edit to the publisher.
 - **Pure domain logic** has no I/O. That covers the lifecycle, assignment policy, suitability rules, overlap and availability arithmetic, and change classification. It is unit-tested to 100%.
 
@@ -318,7 +318,7 @@ sequenceDiagram
 
 ## 4. Domain model
 
-This is the target schema. **Only `profiles` has been built so far.** It is 3NF, with UUID primary keys and `timestamptz` stored in UTC and displayed in Asia/Singapore.
+This is the target schema. **Built so far: `profiles` (SCRUM-48) and the venue tables `venues`, `venue_layouts`, `venue_facilities`, `venue_blocks`, `venue_bookings` (SCRUM-39, migration `20260915090000`).** It is 3NF, with UUID primary keys and `timestamptz` stored in UTC and displayed in Asia/Singapore.
 
 ```mermaid
 erDiagram
@@ -415,7 +415,7 @@ erDiagram
     string name
     string location
     int capacity
-    text accessibility_features
+    enum[] accessibility_features
     time opens_at
     time closes_at
     bool is_active
@@ -729,6 +729,13 @@ See §5 for the state machine.
 - Venue staff create, edit, deactivate, and reactivate venues (QA-101). Coordinators can browse and search them (W4).
 - Attributes: name, location (Singapore), capacity, capacity per layout, supported layouts, facilities, accessibility features, operating hours, and active flag (QA-43, W4).
 - **One venue hosts one event at a time** (QA-116). There are no separately bookable sub-rooms or shared spaces (QA-130).
+- **Controlled lists [Team decision, SCRUM-39].** The customer requires layouts and facilities to come from a controlled list (QA-24, W4) but never enumerated the values. They are Postgres enums (adding a value is a one-line migration) mirrored in `backend/app/modules/venues/schemas.py` and `frontend/src/stores/venues.js`:
+  - `venue_layout`: theatre, classroom, boardroom, banquet, u_shape, reception
+  - `facility`: projector, sound_system, microphone, video_conferencing, whiteboard, stage, wifi, catering_space
+  - `accessibility_feature`: wheelchair_access, step_free_entry, accessible_toilet, hearing_loop, lift_access — stored on the venue as an enum array (the ERD's free-text field could not be filtered exactly)
+  - `venue_block_reason`: maintenance, renovation, safety, internal_activity, other (§6.9)
+  - `venue_booking_status`: held, approved, re_review, rejected, cancelled, released (§6.12–6.14)
+  The event request (SCRUM-8) should reuse `venue_layout`, `facility` and `accessibility_feature` for `layout_preference`, required facilities and accessibility needs.
 
 **Rules**
 - **VC-R1:** Inactive venues are excluded from search and suitability but remain visible on historic bookings, labelled "Inactive".
@@ -754,21 +761,30 @@ See §5 for the state machine.
 - **Given** Hall A is blocked 1–3 Oct for maintenance, **when** a coordinator views October, **then** 1–3 Oct shows as blocked with the reason, and search excludes Hall A for those dates.
 - **Given** a confirmed event in Hall A on 2 Oct, **when** venue staff add that block, **then** they see a warning naming the event, the coordinator is notified, and the booking remains `approved` until someone acts on it.
 
-### 6.10 Venue search and filtering *(new story; currently inside SCRUM-39)*
+### 6.10 Venue search and filtering *(SCRUM-39 — built; the catalogue view is the same page with no criteria)*
 
 **Behaviour**
-- Filters (W4, QA-59): date and time (pre-filled from the event), minimum capacity (pre-filled from pax), location, layout, required facilities, accessibility features.
-- Each result shows capacity, layouts, facilities, a **suitability** badge (§6.11), and an **availability** badge.
-- Default sort: suitable → suitable with warnings. A "Show unavailable/unsuitable" toggle reveals excluded venues together with the reasons.
+- Filters (W4, QA-59): date and time (to be pre-filled from the event once `events` exists; until then entered by the coordinator), minimum capacity (pre-filled from pax), location, layout, required facilities, accessibility features.
+- Each result shows capacity, layouts (with per-layout capacity), facilities, accessibility features, operating hours, and an **availability** badge (`available` / `unavailable` / `not_checked` when no period was given). The **suitability** badge (§6.11) is SCRUM-18 and not shown yet.
+- Order: included venues by name, then excluded venues by name. A "Show N excluded" toggle reveals excluded venues together with their reasons; each reason has a code and a message (e.g. `capacity_below_minimum` "Capacity 100 is below the required 150", `held` "Held by another event 10 Oct 13:00–16:00", `blocked` "Blocked: renovation 1 Oct 00:00 – 15 Oct 00:00").
+- Detail page per venue: full attributes plus upcoming blocks and occupying bookings (raw material for the §6.9 calendar).
+- API: `GET /api/v1/venues?starts_at&ends_at&min_capacity&location&layout&facilities&accessibility&include_excluded` and `GET /api/v1/venues/{id}`, coordinators and venue staff only (§2).
 
 **Rules**
 - **VS-R1:** By default, results include only venues that are active, have no hard-rule failure, and have no hold, booking, or block overlapping `[starts_at, ends_at)`. **No setup or turnaround buffer** is applied (QA-28, QA-82, QA-93, QA-103).
-- **VS-R2:** Results come back in reasonable time. There is no numeric SLA (QA-29); see NFR-P1 for our own target.
+- **VS-R2:** Results come back in reasonable time. There is no numeric SLA (QA-29); see NFR-P1 for our own target. **[Team decision]** No pagination: the whole catalogue (≈50 venues) is one response; overlap detection runs in Postgres on the GiST-indexed ranges.
+- **VS-R3 [Team decision]:** When no venue satisfies every filter, the result is an empty state with the "Show N excluded" toggle, which is the partial-match view with reasons.
+- **VS-R4 [Team decision]:** **Every criterion the coordinator sets is strict**, including layout and accessibility, which §6.11 treats as warnings for the suitability badge. A filter the coordinator chose should filter; VS-R3's toggle keeps excluded venues discoverable. Unset criteria are not applied (no minimum capacity → no capacity check).
+- **VS-R5 [Team decision]:** Any block, whatever its reason (also `internal_activity`, `other`), excludes the venue (CAL-R3); SCRUM-39's "maintenance, renovation, or safety" are examples. `held`, `approved` and `re_review` bookings exclude; `rejected`, `cancelled`, `released` do not (§6.14). SCRUM-39's "setup, reset, and turnaround buffers" criterion is withdrawn under VS-R1.
+- **VS-R6 [Team decision]:** When a layout is requested and the venue records a capacity for it, that figure is compared with the minimum; otherwise the venue capacity (§6.11). Location matches as a case-insensitive substring of the venue's free-text location.
+- **VS-R7 [Team decision]:** The period is optional; without it availability is `not_checked` and no venue is excluded on availability. `starts_at`/`ends_at` must be given together, timezone-aware, with `ends_at > starts_at`. The SPA sends Singapore time as a fixed `+08:00` offset (no daylight saving); the database stores UTC. Operating hours are displayed but not enforced here (a §6.11 warning, SCRUM-18).
 
 **Acceptance criteria**
 - **Given** an event on 10 Oct 14:00–17:00 for 150 pax needing a projector, **when** I search with the pre-filled filters, **then** only active venues with capacity ≥ 150, a projector, and no hold, booking, or block overlapping 14:00–17:00 are listed.
 - **Given** Hall B has a booking 11:00–14:00 on that day, **then** Hall B *is* listed (back-to-back is allowed).
-- **Given** I enable "Show unavailable", **then** excluded venues appear with reasons such as "Capacity 100 < 150" or "Held by another event 13:00–16:00".
+- **Given** I enable "Show excluded", **then** excluded venues appear with reasons such as "Capacity 100 is below the required 150" or "Held by another event 10 Oct 13:00–16:00".
+- **Given** Hall C is blocked for maintenance 08:00–12:00, **when** I search 12:00–15:00, **then** Hall C is listed (a block's end is exclusive, CAL-R2); **when** I search 11:59–13:00, **then** it is excluded with "Blocked: maintenance 10 Oct 08:00–12:00".
+- **Given** I search with no date and time, **then** every active venue is listed with availability "not checked".
 
 ### 6.11 Venue suitability checking *(SCRUM-18)*
 
