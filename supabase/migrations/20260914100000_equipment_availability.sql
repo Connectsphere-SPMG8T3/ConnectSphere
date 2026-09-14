@@ -67,3 +67,89 @@ create trigger equipment_reservations_set_updated_at
     before update on public.equipment_reservations
     for each row
     execute function public.set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- Row-level security
+-- ---------------------------------------------------------------------------
+-- Equipment availability is readable by any authenticated user so coordinators
+-- and other internal workflows can inspect current stock. Mutations are
+-- restricted to the server-controlled app_metadata role claim; user_metadata
+-- is intentionally not used because users can edit it themselves.
+alter table public.equipment enable row level security;
+alter table public.equipment_unavailability enable row level security;
+alter table public.equipment_reservations enable row level security;
+
+create policy "equipment_select_authenticated"
+    on public.equipment
+    for select
+    to authenticated
+    using (true);
+
+create policy "equipment_insert_tech_support"
+    on public.equipment
+    for insert
+    to authenticated
+    with check ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support');
+
+create policy "equipment_update_tech_support"
+    on public.equipment
+    for update
+    to authenticated
+    using ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support')
+    with check ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support');
+
+create policy "equipment_delete_tech_support"
+    on public.equipment
+    for delete
+    to authenticated
+    using ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support');
+
+create policy "equipment_unavailability_select_authenticated"
+    on public.equipment_unavailability
+    for select
+    to authenticated
+    using (true);
+
+create policy "equipment_unavailability_insert_tech_support"
+    on public.equipment_unavailability
+    for insert
+    to authenticated
+    with check ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support');
+
+create policy "equipment_unavailability_update_tech_support"
+    on public.equipment_unavailability
+    for update
+    to authenticated
+    using ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support')
+    with check ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support');
+
+create policy "equipment_unavailability_delete_tech_support"
+    on public.equipment_unavailability
+    for delete
+    to authenticated
+    using ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support');
+
+create policy "equipment_reservations_select_authenticated"
+    on public.equipment_reservations
+    for select
+    to authenticated
+    using (true);
+
+create policy "equipment_reservations_insert_tech_support"
+    on public.equipment_reservations
+    for insert
+    to authenticated
+    with check ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support');
+
+create policy "equipment_reservations_update_tech_support"
+    on public.equipment_reservations
+    for update
+    to authenticated
+    using ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support')
+    with check ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support');
+
+create policy "equipment_reservations_delete_tech_support"
+    on public.equipment_reservations
+    for delete
+    to authenticated
+    using ((select auth.jwt() -> 'app_metadata' ->> 'role') = 'tech_support');
