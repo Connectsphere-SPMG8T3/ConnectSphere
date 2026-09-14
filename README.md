@@ -51,7 +51,7 @@ psql "$DATABASE_URL" -f supabase/seed.sql
 ```bash
 cd backend
 python -m venv .venv
-. .venv/Scripts/activate   # Windows: .venv\Scripts\activate
+. .venv/Scripts/activate   # Windows: .venv\Scripts\activate; for Mac: source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```

@@ -11,6 +11,8 @@ from app.modules.equipment.schemas import (
     EquipmentCheckItem,
     EquipmentInventoryItem,
     EquipmentInventoryResponse,
+    EquipmentMaintenanceItem,
+    EquipmentMaintenanceResponse,
     ItemAvailabilityResult,
 )
 
@@ -164,3 +166,39 @@ def get_equipment_inventory(
             )
         )
     return EquipmentInventoryResponse(items=items)
+
+
+def get_equipment_maintenance(db: Session) -> EquipmentMaintenanceResponse:
+    statement = (
+        select(
+            EquipmentUnavailability.id,
+            EquipmentUnavailability.equipment_id,
+            Equipment.name,
+            EquipmentUnavailability.start_at,
+            EquipmentUnavailability.end_at,
+            EquipmentUnavailability.reason,
+        )
+        .join(Equipment, Equipment.id == EquipmentUnavailability.equipment_id)
+        .order_by(EquipmentUnavailability.start_at)
+    )
+    now = datetime.now().astimezone()
+    items = []
+    for row in db.execute(statement).mappings():
+        if now < row["start_at"]:
+            maintenance_status = "SCHEDULED"
+        elif now < row["end_at"]:
+            maintenance_status = "IN_PROGRESS"
+        else:
+            maintenance_status = "COMPLETED"
+        items.append(
+            EquipmentMaintenanceItem(
+                maintenance_id=row["id"],
+                equipment_id=row["equipment_id"],
+                equipment_name=row["name"],
+                start_at=row["start_at"],
+                end_at=row["end_at"],
+                reason=row["reason"],
+                status=maintenance_status,
+            )
+        )
+    return EquipmentMaintenanceResponse(items=items)

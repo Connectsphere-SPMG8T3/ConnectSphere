@@ -63,6 +63,9 @@ export const equipmentApi = {
     const query = params.toString();
     return request(`/equipment/inventory${query ? `?${query}` : ""}`, { token });
   },
+  maintenance(token) {
+    return request("/equipment/maintenance", { token });
+  },
 };
 
 export function checkEquipmentAvailability(payload, token) {
