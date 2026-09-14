@@ -48,4 +48,25 @@ export const authApi = {
   },
 };
 
+// Repeats array values as `key=a&key=b`, which FastAPI reads as a list.
+function toQueryString(params) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value === undefined || value === null || value === "") continue;
+    if (Array.isArray(value)) value.forEach((entry) => query.append(key, entry));
+    else query.append(key, value);
+  }
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+export const venuesApi = {
+  search(params, token) {
+    return request(`/venues${toQueryString(params)}`, { token });
+  },
+  get(venueId, token) {
+    return request(`/venues/${encodeURIComponent(venueId)}`, { token });
+  },
+};
+
 export { ApiError };

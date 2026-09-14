@@ -1,5 +1,6 @@
-"""Venues module stub.
+"""Venues module: catalogue, search and availability (SCRUM-39).
 
-Reserved for venue catalogue, availability, and layout management domains.
-Intentionally empty until scoped.
+First module to follow the REQUIREMENTS §3.3 shape: `router.py` (HTTP),
+`service.py` (use cases), `repository.py` (all Supabase I/O) and `search.py`
+(pure rules). Blocks management, holds and booking decisions extend it.
 """

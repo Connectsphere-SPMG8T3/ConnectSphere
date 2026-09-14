@@ -35,6 +35,14 @@ class ProfileNotFoundError(HTTPException):
         )
 
 
+class VenueNotFoundError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Venue not found.",
+        )
+
+
 class InsufficientRoleError(HTTPException):
     def __init__(self, allowed_roles: list[str]) -> None:
         super().__init__(

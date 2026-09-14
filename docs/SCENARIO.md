@@ -255,6 +255,65 @@ Each defect was reproduced before changing code, and each has a regression test 
 
 **Not changed, noted for later:** a dropped connection to Supabase (`httpx.ConnectError`) is not converted by supabase-auth and still returns 500. The SPA no longer signs users out on it, but the backend could map it to 503 too. `logout` still returns 500 during an outage; the SPA ignores logout errors, and the server-side session can't be revoked while Supabase is down anyway.
 
+### 4.4. SCRUM-39 — View Venue Catalogue: venue search, filtering and availability (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-39` |
+| Summary | View Venue Catalogue |
+| Issue type | Story |
+| Status | In progress on branch `feature/scrum-39-venue-search` |
+| Parent epic | `SCRUM-15` — Venue catalogue |
+| Sprint | SCRUM Sprint 1 |
+| Story point estimate | 3.0 |
+| Priority | Medium |
+| Supersedes | The story's own "setup, reset, and turnaround buffers" criterion, withdrawn per QA-28 (see below) |
+
+**User story (verbatim):**
+
+> As an Event Coordinator, I want to search and filter for venues based on the Event Organiser's information so that I can quickly find venues that meet an event's requirements.
+
+**Acceptance criteria (verbatim from Jira, including the typo "criterias"):**
+
+> Venues with matching criterias are returned
+>
+> Shows venue availability and information about the venue
+>
+> Allows filtering by date, time, required attendance, room layout, accessibility, and required facilities
+>
+> Excludes venues that are marked as unavailable due to maintenance, renovation, or safety restrictions
+>
+> Automatically incorporates setup, reset, and turnaround buffers between consecutive bookings when checking availability
+
+#### How the implementation maps to the ticket
+
+The story was kept as one deliverable (catalogue view + search/filter + availability) rather than split into 39a/39b as `PROJECT_REVIEW` B4 suggested, because with empty filters the search page *is* the catalogue view. Decisions that the ticket left open, each recorded in `REQUIREMENTS.md` §6.8/§6.10:
+
+- **The buffer criterion was dropped.** The customer set setup/turnaround to zero (QA-28, QA-82, QA-93, QA-103); DB-1 and §6.14 are built on half-open `[starts_at, ends_at)` ranges so back-to-back bookings are allowed. Building the buffer would contradict the rule SCRUM-21 will test. Jira comment to add: *"Updated after Session 1 Q&A (QA-28): turnaround assumed zero; buffer criterion removed."*
+- **"Based on the Event Organiser's information"** means the event request's fields (date/time, pax, layout, facilities, accessibility). `events` does not exist yet, so the API takes those as explicit query parameters; pre-filling from an `event_id` is a thin adapter for when SCRUM-8 lands.
+- **"Marked as unavailable due to maintenance, renovation, or safety"** maps to **blocks** (§6.9). The three reasons are examples, not an allow-list: any block (also `internal_activity`, `other`) excludes, per CAL-R3, and so do `held`/`approved`/`re_review` bookings (BR-R2, §6.14).
+- **Every criterion the coordinator sets is strict** — including layout and accessibility, which §6.11 classes as *warnings* for the suitability badge. Filtering is what the coordinator asked for; SCRUM-18's badge covers the "found it, but with caveats" case. A "Show N excluded" toggle reveals excluded venues with reasons so nothing is silently hidden.
+- **Availability and suitability stay distinguishable** (§6.11): availability is its own field on each result; criterion failures are listed as reasons with codes.
+- **Controlled lists** for layouts, facilities and accessibility features were never enumerated by the customer; the values are a **[Team decision]** in §6.8. `accessibility_features` became an enum array instead of the ERD's free text so it can be filtered exactly.
+- Operating hours are displayed but not enforced (a SCRUM-18 warning). No pagination (≈50 venues, NFR-P1). Singapore has no daylight saving, so the SPA sends a fixed `+08:00` offset.
+
+What was actually built:
+
+1. **Schema** — `supabase/migrations/20260915090000_venues_catalogue_and_availability.sql`: enums `venue_layout`, `facility`, `accessibility_feature`, `venue_booking_status`, `venue_block_reason`; tables `venues`, `venue_layouts`, `venue_facilities`, `venue_blocks`, `venue_bookings`; **DB-1 exclusion constraint** (`btree_gist`, `venue_id WITH =, occupied_period WITH &&` over occupying statuses) and the **BR-R1 partial unique index** on `event_id`, both landed now while the table is empty; GiST index on blocks; RLS with staff-only `select` policies and no write policies (holds must go through the API). `venue_bookings.event_id` is a plain uuid until `public.events` exists (same choice as the SCRUM-23 branch). Verified by `supabase/verification/venue_schema_checks.sql` (overlap refused, back-to-back accepted, rejected bookings ignored, second active booking per event refused, blocks may overlap bookings, coordinator can read / organiser cannot / nobody inserts directly).
+2. **Seed** — `supabase/seed.sql` gains 8 venues, 3 blocks and 3 bookings around 10 Oct 2026 so a search for 10 Oct 14:00–17:00 demonstrates every exclusion reason (Auditorium A booked 11:00–14:00 stays listed; Seminar Room 1 held 13:00–16:00; Heritage Hall blocked for renovation; Grand Ballroom's maintenance block ends exactly at 12:00; Old Lecture Theatre inactive; Innovation Lab's *rejected* booking ignored).
+3. **Backend** — `backend/app/modules/venues/` is the **first module to adopt the REQUIREMENTS §3.3 shape**: `router.py` (`GET /api/v1/venues`, `GET /api/v1/venues/{id}`, both `require_roles(["event_coordinator", "venue_staff"])`), `schemas.py` (`VenueSearchCriteria` as a FastAPI query-parameter model; period must be given as a pair, timezone-aware, `ends_at > starts_at`), `service.py`, `repository.py` (the only file touching Supabase; overlap evaluated in Postgres with the range `&&` operator) and `search.py` (pure `evaluate(venue, criteria, occupants)` — the shape §6.11 wants for SCRUM-18's rules). The team has not otherwise adopted §3.3; this is the proposal, stated rather than slipped in.
+4. **Frontend** — routes `/venues` and `/venues/:id` (coordinator + venue staff); `views/venues/VenueSearchView.vue`, `VenueDetailView.vue`; `components/venues/VenueCriteriaForm.vue`, `VenueResultCard.vue`; new common `BauhausSelect.vue` and `BauhausCheckboxGroup.vue`; `venuesApi` in `services/api.js` (all calls via `authStore.withSession`); `stores/venues.js` keeps criteria and results so returning from a detail page keeps the search, and always requests `include_excluded=true` so the toggle is instant. A "Search venues" button on the coordinator and venue-staff dashboards.
+5. **Domain vocabulary** — `CONTEXT.md` (repo root) now defines Venue, Block, Hold, Booking, Occupied period, Turnaround (zero), Availability vs Suitability, Search criteria, Excluded venue.
+
+#### Verification
+
+- `pytest`: 75/75 (41 new: 36 pure-rule cases in `tests/test_venue_search.py` incl. boundaries pax = capacity, 12:00/12:00 back-to-back, 11:59 overlap, every block reason, UTC→SGT message rendering; 19 HTTP cases in `tests/test_venues_api.py` incl. 401/403/422 and the response shape). Written before the implementation; the first run failed on import.
+- Vitest: 20/20 (10 store cases; 4 view cases that mount `VenueSearchView`/`VenueDetailView` in jsdom with the real router and Pinia and assert rendered text, including the excluded-venues toggle and Singapore-time formatting of a UTC period).
+- Against the live project: migration pushed with `supabase db push`, `venue_schema_checks.sql` → `ALL VENUE SCHEMA CHECKS PASSED` (and rolled back, 0 rows left), `supabase db advisors` shows no new findings, seed loaded. The API was run with real credentials: the §6.10 acceptance search (10 Oct 14:00–17:00, 150 pax, projector) returned Auditorium A and Grand Ballroom, and with `include_excluded=true` the six others with the expected reasons; an 11:59 start against the Grand Ballroom block returned "Blocked: maintenance 10 Oct 08:00–12:00"; the organiser account got 403; an inverted period got 422. This also confirmed the PostgREST range-overlap filter (`ov`) and the `tstzrange` text format parsing, neither of which the mocked tests can prove.
+- **Not verified:** the pages in a real browser (no browser automation was available in the session; the SFCs compile under the Vite dev server and render in jsdom). Run TC-VENUE-001–012 manually before closing the story.
+
+**Found on the way (logged as PROJECT_REVIEW D8):** the live project's migration history was missing `20260912000001` although its schema was applied, so `supabase db push` would have re-run it and failed. Repaired with `supabase migration repair --status applied 20260912000001`.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.
@@ -309,6 +368,9 @@ This design system is a project-specific/team choice (matching the customer brie
 | "How is a role protected on the backend?" | `backend/app/core/security.py` (`require_roles`) |
 | "What does a user's profile contain?" | `supabase/migrations/20260912000001_init_auth_and_profiles.sql`, mirrored in `backend/app/modules/auth/schemas.py::ProfileResponse` |
 | "What test accounts exist?" | `supabase/seed.sql`, table in `docs/SETUP.md` |
+| "How does venue search decide what to show?" | `backend/app/modules/venues/search.py` (pure rules) → `repository.py` (Supabase reads) → `router.py`; SPA in `frontend/src/stores/venues.js` and `views/venues/` |
+| "Why can't two events book the same venue?" | `venue_bookings_no_overlap` in `supabase/migrations/20260915090000_venues_catalogue_and_availability.sql` (DB-1), checked by `supabase/verification/venue_schema_checks.sql` |
+| "What do Block, Hold, Availability, Suitability mean here?" | `CONTEXT.md` at the repo root |
 | "What exactly does story SCRUM-XX require, verbatim?" | §4's entry for that story (each entry is self-contained and quotes Jira verbatim) |
 | "What has been built so far, across all sprints?" | Skim §4's entries in order — it's the running log of every completed story |
 | "What's in scope for the whole first release?" | §3 of this document (20 features) |
