@@ -6,7 +6,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Equipment, EquipmentReservation, EquipmentUnavailability, ReservationStatus
-from app.modules.equipment.schemas import EquipmentCheckItem, EquipmentAvailabilityResponse, ItemAvailabilityResult
+from app.modules.equipment.schemas import (
+    EquipmentAvailabilityResponse,
+    EquipmentCheckItem,
+    EquipmentInventoryItem,
+    EquipmentInventoryResponse,
+    ItemAvailabilityResult,
+)
 
 
 def check_equipment_availability(
@@ -93,3 +99,68 @@ def check_equipment_availability(
         sufficient=all(item.sufficient for item in results),
         items=results,
     )
+
+
+def get_equipment_inventory(
+    db: Session,
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
+) -> EquipmentInventoryResponse:
+    reservation_filters = [EquipmentReservation.status == ReservationStatus.CONFIRMED.value]
+    maintenance_filters = []
+    if start_at and end_at:
+        reservation_filters.extend(
+            [
+                EquipmentReservation.start_at < end_at,
+                EquipmentReservation.end_at > start_at,
+            ]
+        )
+        maintenance_filters.extend(
+            [
+                EquipmentUnavailability.start_at < end_at,
+                EquipmentUnavailability.end_at > start_at,
+            ]
+        )
+
+    reservations = (
+        select(
+            EquipmentReservation.equipment_id,
+            func.coalesce(func.sum(EquipmentReservation.quantity), 0).label("reserved_quantity"),
+        )
+        .where(*reservation_filters)
+        .group_by(EquipmentReservation.equipment_id)
+        .subquery()
+    )
+    maintenance = (
+        select(
+            EquipmentUnavailability.equipment_id,
+            func.coalesce(func.sum(EquipmentUnavailability.quantity), 0).label("maintenance_quantity"),
+        )
+        .where(*maintenance_filters)
+        .group_by(EquipmentUnavailability.equipment_id)
+        .subquery()
+    )
+    statement = select(
+        Equipment.id,
+        Equipment.name,
+        Equipment.total_quantity,
+        func.coalesce(reservations.c.reserved_quantity, 0).label("reserved_quantity"),
+        func.coalesce(maintenance.c.maintenance_quantity, 0).label("maintenance_quantity"),
+    ).outerjoin(reservations, reservations.c.equipment_id == Equipment.id).outerjoin(
+        maintenance, maintenance.c.equipment_id == Equipment.id
+    )
+
+    items = []
+    for row in db.execute(statement).mappings():
+        net_available = max(0, row["total_quantity"] - row["reserved_quantity"] - row["maintenance_quantity"])
+        items.append(
+            EquipmentInventoryItem(
+                equipment_id=row["id"],
+                name=row["name"],
+                total_quantity=row["total_quantity"],
+                reserved_quantity=row["reserved_quantity"],
+                maintenance_quantity=row["maintenance_quantity"],
+                net_available=net_available,
+            )
+        )
+    return EquipmentInventoryResponse(items=items)
