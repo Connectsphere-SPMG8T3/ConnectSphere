@@ -1,4 +1,4 @@
-# ConnectSphere — Manual Test Cases (SCRUM-48: Basic User Authentication · SCRUM-39: Venue Catalogue & Search · SCRUM-72: Coordinator Dashboard)
+# ConnectSphere — Manual Test Cases (SCRUM-48: Basic User Authentication · SCRUM-39: Venue Catalogue & Search · SCRUM-72: Coordinator Dashboard · SCRUM-8: Event Request Creation)
 
 Manual test-case suite for the features implemented so far:
 
@@ -14,8 +14,8 @@ Every test case traces back to either the SCRUM-48 acceptance criteria, a custom
 
 - **In scope:** `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`, the `LoginView`/`ProfileView` pages, the five role dashboards as RBAC targets, and the Vue Router guards that protect them.
 - **Also in scope (§8):** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, the `/venues` search page and `/venues/:id` detail page (SCRUM-39).
-- **Also in scope (§9):** the Event Coordinator dashboard's presentation logic (SCRUM-72) — rendering, ordering, and empty states, not event data.
-- **Out of scope:** everything under the `events` and `equipment` **backend** modules — empty stub packages with no logic to test yet. §9 therefore tests the coordinator dashboard's rendering and empty states only.
+ **Also in scope (§9):** the Event Coordinator dashboard's presentation logic (SCRUM-72) — rendering, ordering, and empty states, plus organiser event drafts and event request submission (SCRUM-8).
+ **Out of scope:** coordinator assignment and reassignment (SCRUM-12 / SCRUM-68), and the equipment module.
 - **Environment:** a Supabase project with every migration in `supabase/migrations/` applied and `supabase/seed.sql` run, backend on `http://localhost:8000`, frontend on `http://localhost:5173`. The live project (`vuiryrzzyfecjqftwicj`) has both migrations and the seed applied. The data-layer cases in §6 are automated by `supabase/verification/auth_security_checks.sql` (runs inside a rolled-back transaction and raises on any failure).
 - **Seeded accounts** (all share the password `Cs1234`, per `supabase/seed.sql`):
 
@@ -183,6 +183,49 @@ Environment as in §0 plus the SCRUM-39 migration and the venue rows from `supab
 | TC-VENUE-034 | Periods are bounded and half-open | Insert a block with `'[]'` bounds | Fails with `check_violation`. | 🟢 |
 | TC-VENUE-035 | RLS: staff read, external roles see nothing, nobody writes directly | As the seeded coordinator: select venues/bookings, insert a block. As the organiser: select venues. | Coordinator reads rows; insert fails with `insufficient_privilege`; organiser sees 0 rows. | 🔴 |
 
+## 9. Event request creation (SCRUM-8)
+
+These cases cover the organiser's draft and submission workflow. They should be run with the backend and frontend from the current local setup (`http://localhost:8001` and `http://localhost:5174` respectively) once the events migration and API are available. Coordinator auto-assignment and its notifications are specified separately under SCRUM-12 / SCRUM-68; the final end-to-end release check should connect that story to successful submission.
+
+### 9.1 Drafts and organiser access
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-EVENT-001 | Organiser saves a minimal draft | Logged in as Event Organiser; on `/dashboard/organiser` | Click **Create event**, enter a name, and click **Save draft** | `name: Regional Planning Workshop` | The draft is saved with a unique event reference, appears in the organiser's event list with status **Draft**, and no submission validation errors are shown. | 🔴 |
+| TC-EVENT-002 | Draft name validation | Logged in as Event Organiser; create form open | Try to save a draft with each invalid name | empty, 2 characters, 151 characters | The draft is not saved. The form identifies the name error; no event is created. | 🟠 |
+| TC-EVENT-003 | Draft persists and remains editable | A draft exists; logged out after saving | Log in again, open the draft, change the name or another field, and save | `name: Updated Planning Workshop` | The saved values are restored after login and the update is visible when the draft is reopened. Status remains **Draft**. | 🔴 |
+| TC-EVENT-004 | Organiser sees only their own events | At least two organisers exist; each has an event | Log in as organiser A and open the event list; repeat as organiser B | Events owned by A and B | Each organiser sees only their own events. A cannot open B's event by direct URL or API request; the response is `404`. | 🔴 |
+| TC-EVENT-005 | Only organisers can create event requests | Logged in separately as Coordinator, Venue Staff, Tech Support, and Attendee | Visit the create route and call `POST /api/v1/events` directly | Any event payload | The UI redirects or hides the create action, and the API returns `403`. No event is created. | 🔴 |
+| TC-EVENT-006 | Submitted events cannot be discarded or directly edited | A submitted event exists | Open the event and try **Discard** and direct edits | Any changed event field | Discard is unavailable or rejected with `409`; direct editing is unavailable or rejected with `409`. The submitted values and status remain unchanged. | 🔴 |
+
+### 9.2 Submission validation
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-EVENT-010 | Missing required fields are reported together | Logged in as Event Organiser; draft has only a name | Click **Submit request** | Missing purpose, date/time, attendance, and layout | Submission is prevented. The form shows actionable errors for every missing required field, not only the first error, and the event remains **Draft**. | 🔴 |
+| TC-EVENT-011 | Event name and purpose limits are enforced | Draft exists | Submit values at and outside the limits | Name shorter than 3 or longer than 150; purpose longer than 500 | Invalid values are rejected with field-specific messages. Boundary values within the limits are accepted. | 🟠 |
+| TC-EVENT-012 | Start time must not be in the past | Draft contains all other required fields | Submit with a past start time | `starts_at: 2020-10-10T14:00:00+08:00` | Submission is rejected with a clear date/time error and the event remains **Draft**. | 🔴 |
+| TC-EVENT-013 | End time must be after start time | Draft contains all other required fields | Submit with equal and earlier end times | `14:00`-`14:00`; `17:00`-`14:00` | Submission is rejected with **End time must be after start time.** and the event remains **Draft**. | 🔴 |
+| TC-EVENT-014 | An event one day ahead is accepted | Draft contains all required fields; event starts tomorrow | Submit the request | Tomorrow, `14:00`-`17:00`, timezone `+08:00` | The request is accepted. No additional lead-time error is shown. | 🔴 |
+| TC-EVENT-015 | Registration settings are validated when enabled | Draft contains all other required fields | Enable registration and submit incomplete or invalid settings | Capacity `0`; opens after closes; closes after event start | Submission is rejected with errors naming the invalid registration settings. | 🟠 |
+| TC-EVENT-016 | Controlled venue requirements are validated | Draft contains all other required fields | Submit an unknown layout or facility | `layout: cinema`; `facilities: [jacuzzi]` | Submission is rejected with a controlled-list validation error; the request is not created or submitted. | 🟠 |
+
+### 9.3 Successful submission
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-EVENT-020 | Valid event request is submitted | Logged in as Event Organiser; draft contains all required fields | Click **Submit request** and inspect the response/list | Name, purpose, future Singapore date/time, attendance, layout, and optional requirements | The request is stored, has a unique reference, appears in the organiser's event list with **Under Review** status, and the confirmation identifies the submitted event. | 🔴 |
+| TC-EVENT-021 | Duplicate submission is refused | A valid event is already submitted | Click **Submit request** again or repeat the API request | Same event ID | The second attempt returns `409 Conflict`; no duplicate event is created and the original status is unchanged. | 🔴 |
+| TC-EVENT-022 | Submitted details can be retrieved by authorised users | A valid event request exists | Reload the organiser's event list and open the event detail page | Submitted event ID | The stored name, purpose, date/time, attendance, venue requirements, accessibility needs, equipment needs, and registration settings are returned and displayed. | 🔴 |
+
+### 9.4 Data integrity and security
+
+| ID | Title | Test Steps | Expected Result | Priority |
+|----|-------|------------|------------------|----------|
+| TC-EVENT-030 | Draft ownership is enforced by the API | Use organiser A's token to request organiser B's draft by ID; repeat with update and delete | Each request returns `404`; no B-owned data is returned or changed. | 🔴 |
+| TC-EVENT-031 | Event records persist after a browser session ends | Save a draft, log out, restart or reload the frontend, and log back in | The draft and all saved values remain available to its owner. | 🔴 |
+| TC-EVENT-032 | Submitted records are not hard-deleted | Submit an event, then attempt to delete it through the API/database test path | Deletion is rejected; the submitted record remains available for history and later processing. | 🔴 |
+
 ## 7. Traceability matrix
 
 | SCRUM-48 acceptance criterion / NFR | Covered by |
@@ -225,6 +268,16 @@ Environment as in §0 plus the SCRUM-39 migration and the venue rows from `supab
 | VS-R1 (active, no hard failure, no hold/booking/block overlap) | TC-VENUE-002, TC-VENUE-004 |
 | DB-1 / BR-R1 / CAL-R1 | TC-VENUE-030–034 |
 | Access matrix §2 (coordinators read/search, venue staff manage, others none) | TC-VENUE-010, TC-VENUE-035 |
+
+| SCRUM-8 acceptance criterion / rule | Covered by |
+|---|---|
+| Draft requires only an event name and remains private to its owner (DR-R1, DR-R2) | TC-EVENT-001, TC-EVENT-003, TC-EVENT-004, TC-EVENT-030 |
+| Drafts can be edited and submitted events cannot be discarded (DR-R3, ER-R3) | TC-EVENT-003, TC-EVENT-006, TC-EVENT-031, TC-EVENT-032 |
+| Required event fields and controlled venue requirements are validated | TC-EVENT-010, TC-EVENT-011, TC-EVENT-015, TC-EVENT-016 |
+| Invalid date/time values are rejected; no lead-time rule applies | TC-EVENT-012, TC-EVENT-013, TC-EVENT-014 |
+| Valid submission creates an under-review request visible in the organiser's list | TC-EVENT-020, TC-EVENT-022 |
+| Duplicate submission returns `409` (ER-R4) | TC-EVENT-021 |
+| Only Event Organisers can create requests; ownership is enforced server-side (AUTH-R1, S-R1) | TC-EVENT-005, TC-EVENT-030 |
 
 Cases with no seeded-data shortcut (forged/expired/wrong-audience JWTs, rate limiting, unconfirmed/banned accounts) require a small script/`curl` command or direct Supabase SQL access. The automated `pytest` suite (`backend/tests/test_auth.py`) covers the equivalents of TC-AUTH-001, TC-AUTH-006, TC-AUTH-020, TC-AUTH-021, TC-AUTH-025, TC-AUTH-026 (server-side revoke), TC-AUTH-028, TC-AUTH-029 (fresh auth client per sign-in), TC-AUTH-030–032, the backend half of TC-AUTH-034 and TC-AUTH-035 (503 on outage), and TC-RBAC-006. The Vitest suite (`frontend/src/**/__tests__/`) covers the frontend half of TC-AUTH-031 and TC-AUTH-034 (which errors end a session) and TC-RBAC-009. The §6 data-layer cases are automated by `supabase/verification/auth_security_checks.sql`. For SCRUM-74/75, `backend/tests/test_auth.py` covers the backend equivalents of TC-ROLE-002 (`roles` on the profile), TC-ROLE-003/006/009 (`POST /auth/active-role` success/reject, session-scoped `require_roles`), and TC-ROLE-007; the Vitest specs `stores/__tests__/auth.spec.js` and `components/common/__tests__/Nav.spec.js` cover the frontend equivalents of TC-ROLE-001–003 and TC-ROLE-010. TC-ROLE-004, TC-ROLE-005, and TC-ROLE-008's login/`/auth/me` parity were verified manually against the real Supabase project and a real browser (`docs/SCENARIO.md` §4.6) rather than by an automated test, since they depend on genuine cross-request/cross-session persistence that a mocked Supabase client can't demonstrate. For SCRUM-78, `views/__tests__/ProfileView.spec.js` covers the frontend equivalents of TC-ROLE-015 and TC-ROLE-016. For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cover TC-VENUE-002–007 (rules), TC-VENUE-010–011, TC-VENUE-020–022; the Vitest specs `stores/__tests__/venues.spec.js` and `views/__tests__/venueSearch.spec.js` cover TC-VENUE-004 (toggle), TC-VENUE-008, TC-VENUE-009 (rendering), TC-VENUE-012; `supabase/verification/venue_schema_checks.sql` automates TC-VENUE-030–035.
 

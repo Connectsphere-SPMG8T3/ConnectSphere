@@ -10,6 +10,13 @@
 
 begin;
 
+insert into public.events (id, organiser_id, status, name)
+values
+    ('e0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'planning', 'Venue check event 1'),
+    ('e0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', 'planning', 'Venue check event 2'),
+    ('e0000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', 'planning', 'Venue check event 3'),
+    ('e0000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000001', 'planning', 'Venue check event 4');
+
 insert into public.venues (id, name, location, capacity, opens_at, closes_at)
 values ('d0000000-0000-4000-8000-0000000000a1', 'Verify Hall', 'Verification Campus', 100, '08:00', '22:00');
 

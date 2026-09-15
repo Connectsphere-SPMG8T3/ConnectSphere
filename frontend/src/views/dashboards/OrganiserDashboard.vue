@@ -1,14 +1,17 @@
 <script setup>
+import { onMounted } from "vue";
+import { useRouter } from "vue-router";
+
+import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import { useAuthStore } from "@/stores/auth";
+import { useEventsStore } from "@/stores/events";
 
 const authStore = useAuthStore();
+const eventsStore = useEventsStore();
+const router = useRouter();
 
-const metrics = [
-  { label: "Active Event Requests", value: "3", background: "red", accent: "circle", accentColor: "bauhaus-yellow" },
-  { label: "Pending Coordinator Review", value: "1", background: "white", accent: "square", accentColor: "bauhaus-blue" },
-  { label: "Confirmed Events", value: "7", background: "blue", accent: "triangle", accentColor: "bauhaus-yellow" },
-];
+onMounted(() => eventsStore.load());
 </script>
 
 <template>
@@ -22,19 +25,41 @@ const metrics = [
         Track your event requests, liaise with your coordinator, and monitor progress toward launch —
         all from one place.
       </p>
+      <BauhausButton class="mt-6" variant="primary" @click="router.push({ name: 'event-new' })">New event request</BauhausButton>
     </BauhausCard>
 
     <div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
-      <BauhausCard
-        v-for="metric in metrics"
-        :key="metric.label"
-        :background="metric.background"
-        :accent="metric.accent"
-        :accent-color="metric.accentColor"
-      >
-        <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ metric.label }}</p>
-        <p class="mt-2 text-5xl font-black tracking-tighter">{{ metric.value }}</p>
+      <BauhausCard background="red" accent="circle" accent-color="bauhaus-yellow">
+        <p class="text-xs font-bold uppercase tracking-widest opacity-80">Drafts</p>
+        <p class="mt-2 text-5xl font-black tracking-tighter">{{ eventsStore.drafts.length }}</p>
+      </BauhausCard>
+      <BauhausCard background="white" accent="square" accent-color="bauhaus-blue">
+        <p class="text-xs font-bold uppercase tracking-widest opacity-80">Requests in progress</p>
+        <p class="mt-2 text-5xl font-black tracking-tighter">{{ eventsStore.requests.length }}</p>
+      </BauhausCard>
+      <BauhausCard background="blue" accent="triangle" accent-color="bauhaus-yellow">
+        <p class="text-xs font-bold uppercase tracking-widest opacity-80">Under review</p>
+        <p class="mt-2 text-5xl font-black tracking-tighter">{{ eventsStore.events.filter((event) => event.status === 'under_review').length }}</p>
       </BauhausCard>
     </div>
+
+    <p v-if="eventsStore.error" role="alert" class="mt-8 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4">{{ eventsStore.error }}</p>
+
+    <section class="mt-10">
+      <div class="mb-5 flex items-center justify-between gap-4">
+        <h2 class="text-2xl font-black uppercase tracking-tight">Your requests</h2>
+        <BauhausButton variant="outline" @click="router.push({ name: 'event-new' })">Create</BauhausButton>
+      </div>
+      <div v-if="eventsStore.events.length" class="grid gap-4">
+        <BauhausCard v-for="event in eventsStore.events" :key="event.id" background="white" accent="none" class="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 class="text-xl font-black uppercase tracking-tight">{{ event.name }}</h3>
+            <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/70">{{ event.status.replace('_', ' ') }}</p>
+          </div>
+          <BauhausButton v-if="event.status === 'draft'" variant="outline" @click="router.push({ name: 'event-new', query: { id: event.id } })">Continue draft</BauhausButton>
+        </BauhausCard>
+      </div>
+      <p v-else class="border-2 border-ink bg-canvas px-4 py-6 text-sm font-medium shadow-hard sm:border-4">No event requests yet. Start with a draft when you are ready.</p>
+    </section>
   </main>
 </template>

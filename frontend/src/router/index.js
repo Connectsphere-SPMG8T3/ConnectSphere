@@ -28,6 +28,12 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["event_organiser"] },
   },
   {
+    path: "/events/new",
+    name: "event-new",
+    component: () => import("@/views/events/EventRequestView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["event_organiser"] },
+  },
+  {
     path: "/dashboard/coordinator",
     name: "dashboard-coordinator",
     component: () => import("@/views/dashboards/CoordinatorDashboard.vue"),
