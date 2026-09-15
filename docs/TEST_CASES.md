@@ -1,6 +1,12 @@
-# ConnectSphere — Manual Test Cases (SCRUM-48: Basic User Authentication · SCRUM-39: Venue Catalogue & Search)
+# ConnectSphere — Manual Test Cases (SCRUM-48: Basic User Authentication · SCRUM-39: Venue Catalogue & Search · SCRUM-72: Coordinator Dashboard)
 
-This document is a manual test-case suite for the only feature currently implemented in this repository: **SCRUM-48 — Basic user authentication** (epic SCRUM-7), covering login, session/profile retrieval, logout, and role-based dashboard routing. See [docs/SCENARIO.md](SCENARIO.md) for the full requirement context and [docs/SETUP.md](SETUP.md) for environment setup.
+Manual test-case suite for the features implemented so far:
+
+- **§1–§7 — SCRUM-48: Basic user authentication** (epic SCRUM-7): login, session/profile retrieval, logout, and role-based dashboard routing.
+- **§8 — SCRUM-39: Venue catalogue, search and availability**.
+- **§9 — SCRUM-72: Event Coordinator dashboard**: the prioritised action list, the active-event status overview, and their empty states.
+
+See [docs/SCENARIO.md](SCENARIO.md) for the full requirement context and [docs/SETUP.md](SETUP.md) for environment setup.
 
 Every test case traces back to either the SCRUM-48 acceptance criteria, a customer-briefing non-functional requirement (security, reliability/consistency), or a concrete implementation detail (an exception type, a route guard) — see the traceability matrix in §7. Cases are written to be run manually against a running instance of the app, but each names the exact code path it exercises so it can be converted into an automated test later.
 
@@ -8,7 +14,8 @@ Every test case traces back to either the SCRUM-48 acceptance criteria, a custom
 
 - **In scope:** `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`, the `LoginView`/`ProfileView` pages, the five role dashboards as RBAC targets, and the Vue Router guards that protect them.
 - **Also in scope (§8):** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, the `/venues` search page and `/venues/:id` detail page (SCRUM-39).
-- **Out of scope:** the `events` and `equipment` modules — empty stub packages with no logic to test yet.
+- **Also in scope (§9):** the Event Coordinator dashboard's presentation logic (SCRUM-72) — rendering, ordering, and empty states, not event data.
+- **Out of scope:** everything under the `events` and `equipment` **backend** modules — empty stub packages with no logic to test yet. §9 therefore tests the coordinator dashboard's rendering and empty states only.
 - **Environment:** a Supabase project with every migration in `supabase/migrations/` applied and `supabase/seed.sql` run, backend on `http://localhost:8000`, frontend on `http://localhost:5173`. The live project (`vuiryrzzyfecjqftwicj`) has both migrations and the seed applied. The data-layer cases in §6 are automated by `supabase/verification/auth_security_checks.sql` (runs inside a rolled-back transaction and raises on any failure).
 - **Seeded accounts** (all share the password `Cs1234`, per `supabase/seed.sql`):
 
@@ -181,3 +188,45 @@ Environment as in §0 plus the SCRUM-39 migration and the venue rows from `supab
 | Access matrix §2 (coordinators read/search, venue staff manage, others none) | TC-VENUE-010, TC-VENUE-035 |
 
 Cases with no seeded-data shortcut (forged/expired/wrong-audience JWTs, rate limiting, unconfirmed/banned accounts) require a small script/`curl` command or direct Supabase SQL access. The automated `pytest` suite (`backend/tests/test_auth.py`) covers the equivalents of TC-AUTH-001, TC-AUTH-006, TC-AUTH-020, TC-AUTH-021, TC-AUTH-025, TC-AUTH-026 (server-side revoke), TC-AUTH-028, TC-AUTH-029 (fresh auth client per sign-in), TC-AUTH-030–032, the backend half of TC-AUTH-034 and TC-AUTH-035 (503 on outage), and TC-RBAC-006. The Vitest suite (`frontend/src/**/__tests__/`) covers the frontend half of TC-AUTH-031 and TC-AUTH-034 (which errors end a session) and TC-RBAC-009. The §6 data-layer cases are automated by `supabase/verification/auth_security_checks.sql`. For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cover TC-VENUE-002–007 (rules), TC-VENUE-010–011, TC-VENUE-020–022; the Vitest specs `stores/__tests__/venues.spec.js` and `views/__tests__/venueSearch.spec.js` cover TC-VENUE-004 (toggle), TC-VENUE-008, TC-VENUE-009 (rendering), TC-VENUE-012; `supabase/verification/venue_schema_checks.sql` automates TC-VENUE-030–035.
+
+---
+
+## 9. Event Coordinator dashboard (SCRUM-72)
+
+**Preconditions for every case:** logged in as `coordinator@connectsphere.dev` / `Cs1234`, on `/dashboard/coordinator`.
+
+**A note on how these are run.** The events module does not exist, so `GET /api/v1/events/dashboard/coordinator` returns `404` against a real backend. TC-DASH-001–005 exercise that real state directly. TC-DASH-006–012 need event data, so they are run by **stubbing the endpoint response** at the network layer (Playwright `page.route`, or DevTools' local-overrides / a request-interception extension). Once the events module ships, re-run 006–012 against real seeded data and delete this note.
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-DASH-001 | Dashboard loads with honest empty states when the events module is absent | Backend running; no events tables | Open `/dashboard/coordinator` and wait for the network to settle | — | `GET /events/dashboard/coordinator` returns 404. The page shows "AWAITING DATA — the events module has not been built yet…", all counters read `0`, and each widget's empty state explains it will populate once the module ships. No error banner. | 🔴 |
+| TC-DASH-002 | No fabricated metrics are displayed (regression, PROJECT_REVIEW D8) | As TC-DASH-001 | Read every number on the page | — | No counter shows a non-zero value. The strings "Requests Awaiting Review", "Venues to Coordinate" and "Events in Progress" do **not** appear — they were the hardcoded placeholders removed by this story. | 🔴 |
+| TC-DASH-003 | Counts are withheld until the first load settles | Throttle the network (DevTools → Slow 3G) before loading | Open `/dashboard/coordinator` and watch the counters while the request is in flight | — | While loading, the three category counters and the four status counters show "—", not `0`, and empty states read "Checking for updates…". They switch to real figures only once the request settles. A `0` must never be shown before the answer is known. | 🟠 |
+| TC-DASH-004 | A server failure is surfaced, not silently rendered as an empty dashboard | Point the backend at a stub that answers 503, or stop the backend | Reload `/dashboard/coordinator` | — | A red error banner shows the failure message. The dashboard does **not** claim the coordinator has nothing to do. (Contrast with TC-DASH-001: only a 404 is treated as "not built yet".) | 🔴 |
+| TC-DASH-005 | The dashboard is usable on a phone-width viewport (NFR-U1) | As TC-DASH-001 | Set the viewport to 390 × 844 | — | Category cards stack to one column, status cards stack to one column, no horizontal scrolling, all text legible. | 🟠 |
+| TC-DASH-006 | AC1 — the action list is ordered by what each item blocks | Stubbed payload containing one item of each kind: `awaiting_review`, `arrangement_issue`, `resubmitted`, `cancellation_request` | Read the numbered action list top to bottom | four action items, mixed order in the payload | Order is: arrangement issue → cancellation requested → amended and resubmitted → awaiting first review (REQUIREMENTS §6.21.1). Each row shows its kind badge, the event date in Asia/Singapore, and the organiser's name. | 🔴 |
+| TC-DASH-007 | AC1 — the three named categories are counted separately | Stubbed payload with 2 immediate-action items, 1 `awaiting_review`, 1 `resubmitted` | Read the three counter cards | as above | "Immediate action" = 2, "Awaiting approval" = 1, "Clarification responses" = 1. | 🔴 |
+| TC-DASH-008 | AC1 — ties are broken by the soonest event date | Stubbed payload with two `awaiting_review` items, differing only in `starts_at` | Read their relative order | two items, same kind | The event starting sooner appears first. | 🟠 |
+| TC-DASH-009 | AC1 — an unrecognised action kind is still shown, ranked last | Stubbed payload containing `"kind": "something_new"` alongside a known kind | Read the list | unknown kind | The unknown item appears, last, with the generic "Needs attention" badge. It is never dropped. | 🟠 |
+| TC-DASH-010 | AC2 — every active status is shown with its count and events | Stubbed payload with events in `under_review` (×2), `returned`, `planning`, `confirmed` | Read the "Active events by status" section | five events | Four cards appear — Under review (2), Returned for amendment (1), Approved – planning (1), Confirmed (1) — each listing its events with dates. Statuses with no events still appear, showing `0` and "None." | 🔴 |
+| TC-DASH-011 | AC2 — drafts never appear in a coordinator's view (DR-R2) | Stubbed payload including an event with `"status": "draft"` and a terminal-status event | Read the whole page | draft + cancelled event | Neither appears in any card, and neither is counted anywhere. | 🔴 |
+| TC-DASH-012 | Urgent alerts and the schedule overview render | Stubbed payload with `unassigned_count: 3`, one event flagged `venue_blocked`, and one `planning` event starting in 8 days with `readiness.venue = "pending"` | Read the alert banner, the status cards, and the readiness section | as above | A red "Urgent — awaiting assignment" card shows `3` (AS-R5). The flagged event shows a "VENUE BLOCKED" badge (§7 NFR-R1). "Readiness gaps — next 14 days" lists the event with "Outstanding: Venue". | 🟠 |
+
+### 9.1 Traceability — SCRUM-72
+
+| Acceptance criterion / rule | Covered by |
+|---|---|
+| AC1 "prioritized list of incoming event requests requiring immediate action" | TC-DASH-006, TC-DASH-007, TC-DASH-008 |
+| AC1 "requests awaiting initial approval/rejection" | TC-DASH-007, TC-DASH-010 |
+| AC1 "items with newly received client clarification responses" (QA-22, QA-77 return/resubmit) | TC-DASH-007 |
+| AC2 "Displays status for each active event" | TC-DASH-010, TC-DASH-011 |
+| REQUIREMENTS §6.21 "build a widget only when its data exists; until then, show an empty state" | TC-DASH-001, TC-DASH-003 |
+| REQUIREMENTS §6.21.1 prioritisation [Team decision] | TC-DASH-006, TC-DASH-008, TC-DASH-009 |
+| DR-R2 (drafts invisible to staff) | TC-DASH-011 |
+| AS-R5 (awaiting-assignment alert) | TC-DASH-012 |
+| §7 NFR-R1 (flags stay visible until resolved) | TC-DASH-012 |
+| NFR-U1 (desktop and mobile friendly) | TC-DASH-005 |
+| PROJECT_REVIEW D8 (fabricated metrics) | TC-DASH-002 |
+| Reliability (an outage is not rendered as "nothing to do") | TC-DASH-004 |
+
+Automated equivalents live in `frontend/src/features/events/__tests__/` (Vitest): `dashboard.spec.js` covers TC-DASH-006, 008, 009, 010, 011 and 012's readiness logic as pure unit tests; `store.spec.js` covers TC-DASH-001, 003 and 004. TC-DASH-002 and TC-DASH-005 are visual and remain manual.

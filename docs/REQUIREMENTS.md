@@ -1050,6 +1050,27 @@ Each dashboard composes widgets from the feature stores. **Build a widget only w
 | Tech support | Pending and re-review equipment lines · Events needing technical readiness · Equipment in maintenance · Upcoming reservations (7 days) |
 | Attendee | My upcoming registrations and waitlist invitations · Browse open events |
 
+#### 6.21.1 Coordinator dashboard prioritisation *(SCRUM-72)*
+
+SCRUM-72 asks for a **prioritised** list but does not define priority, and the customer ruled out SLA timers and review deadlines on every status (LC-R4, QA-55, QA-68). Ordering by how long something has waited would reintroduce exactly the deadline pressure the customer rejected.
+
+**[Team decision]** Priority is ranked by **what the item blocks**, not by how long it has waited. The ranking is held as one ordered list so re-prioritising is a one-line change (NFR-M1):
+
+| Rank | Action kind | Why it sits here |
+|---|---|---|
+| 1 | `arrangement_issue` | §7 NFR-R1: a flag stays on the event until someone resolves it, and a confirmed event with a broken arrangement is the worst inconsistency the system can display |
+| 2 | `re_review_rejected` | §6.19: the event has lost its venue or equipment and cannot be re-confirmed until an alternative is found |
+| 3 | `cancellation_request` | QA-12: arrangements stay held until the coordinator decides |
+| 4 | `change_request` | QA-12, §6.19 |
+| 5 | `resubmitted` | QA-22, QA-77: the organiser has answered; the coordinator is now the only blocker |
+| 6 | `awaiting_review` | §6.4: the initial approve/reject decision |
+| 7 | `booking_decision` | §6.13 |
+| 8 | `equipment_decision` | §6.17 |
+
+Ties break by **soonest event date**, then by longest wait, then by ID for stable ordering. An action kind the SPA does not recognise ranks last but is never dropped — losing a coordinator's action item silently is worse than rendering it unstyled.
+
+**Mapping to SCRUM-72's acceptance criteria.** AC1 names three categories: *immediate action* (ranks 1–4), *awaiting initial approval/rejection* (rank 6), and *newly received client clarification responses* (rank 5). The third is the **return-for-amendment** cycle the customer confirmed (QA-22, QA-77, §6.4) — a resubmission *is* the clarification response. This supersedes the older "clarification thread" reading in SCRUM-33 (PROJECT_REVIEW §B2a). AC2 is the active-status overview, covering `under_review`, `returned`, `planning` and `confirmed`; `draft` is excluded by DR-R2 and terminal statuses are out of scope for an "active" view.
+
 ---
 
 ## 7. Cross-feature consistency rules

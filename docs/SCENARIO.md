@@ -95,6 +95,8 @@ The instructions are explicit that these 20 features are **not isolated** — th
 
 As of the most recent entry in §4's implementation log, only feature #1 (User Authorisation and Authentication) has any implementation. Features 2–20 have empty stub packages (`backend/app/modules/{events,venues,equipment}/`) reserved for future sprints — do not assume any of that domain logic exists until a log entry below says otherwise. **When a story lands for one of features 2–20, add a log entry in §4 and update this sentence and the stub-package note.**
 
+One qualification, from §4.5 (SCRUM-72): `frontend/src/features/events/` now exists, but holds **presentation logic only** — the coordinator dashboard's ordering, grouping and labelling, plus the data contract it expects. There is still no events domain logic, no events table, and no events endpoint. The proposed schema in `docs/proposals/` has not been applied to any database.
+
 ## 4. Implementation log (append one entry per completed Scrum story)
 
 **How to use this section:** when a story is completed, copy the template below, fill it in from the Jira issue (don't paraphrase the user story or acceptance criteria — quote them verbatim, the same way SCRUM-48's entry does), and add it as a new `###` subsection *after* the most recent entry, so the log reads chronologically. Do not delete or rewrite prior entries when requirements change later — instead, add a new entry for the story that changes them, and note in that new entry which earlier entry/behaviour it supersedes. This keeps the log an honest history of what was built and when, which is exactly the kind of requirement → code traceability the course rubric (§1) rewards.
@@ -313,6 +315,66 @@ What was actually built:
 - **Not verified:** the pages in a real browser (no browser automation was available in the session; the SFCs compile under the Vite dev server and render in jsdom). Run TC-VENUE-001–012 manually before closing the story.
 
 **Found on the way (logged as PROJECT_REVIEW D8):** the live project's migration history was missing `20260912000001` although its schema was applied, so `supabase db push` would have re-run it and failed. Repaired with `supabase migration repair --status applied 20260912000001`.
+
+### 4.5. SCRUM-72 — Event Coordinator dashboard (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-72` |
+| Summary | Event Coordinator dashboard |
+| Issue type | Story |
+| Status | Implemented on branch `feature/scrum-72-coordinator-dashboard` |
+| Parent epic | `SCRUM-7` — User authorisation and authentication (**misfiled**; PROJECT_REVIEW §B3 asks for a "Role-Based Dashboard" epic) |
+| Sprint | SCRUM Sprint 1 |
+| Story point estimate | *not recorded in the ticket text supplied* |
+| Priority | *not recorded in the ticket text supplied* |
+
+> Fields marked *not recorded* were not in the ticket text handed to the implementer. Fill them in from the Jira export rather than assuming; they are left blank here deliberately instead of guessed.
+
+**User story (verbatim):**
+
+> As an Event Coordinator, I want to access a dashboard showing pending requests, urgent alerts and schedule overviews so that I can quickly prioritize day-to-day actions.
+
+**Acceptance criteria (verbatim from Jira):**
+
+> 1. Displays a prioritized list of incoming event requests requiring immediate action, requests awaiting initial approval/rejection, and items with newly received client clarification responses.
+> 2. Displays status for each active event
+
+#### How the implementation maps to the ticket
+
+**The blocking constraint, and the re-scope.** Every data item in both acceptance criteria depends on tables that do not exist. This was verified against the live project rather than inferred from the migration files (AGENTS.md): `GET {SUPABASE_URL}/rest/v1/` lists exactly one table, `profiles`. There is no `events`, `amendment_requests`, or `change_requests`, and `backend/app/modules/events/` is still an empty stub package.
+
+This is the risk `PROJECT_REVIEW.md` §B4 row 1 anticipated for stories 70–73, and the re-scope recorded there was followed: *"shell plus the first widget whose data exists, with empty states for the rest"*, per `REQUIREMENTS.md` §6.21 — *"Build a widget only when its data exists; until then, show an empty state."* The story therefore ships the complete widget structure, the real data contract, and honest empty states. **It does not ship rows.** AC1 and AC2 are structurally present and verified against a stubbed payload, but cannot be demonstrated with live data until the events module lands.
+
+The team chose this scope explicitly over (a) frontend-only with no schema work and (b) landing the core schema as part of this story. Landing the schema was rejected because §C3.5 requires whole-team review of the shared schema before merge. The schema was therefore drafted as a **reviewable proposal** instead: `docs/proposals/core-events-schema.sql`, not applied to any database, with a stand-up note in `docs/proposals/core-events-schema.md`.
+
+**Interpretation of "client clarification responses" (AC1).** The ticket's wording predates the Session 1 answers. The customer's confirmed model is *return for amendment*: the coordinator returns a request with a message, and the organiser edits the same request and resubmits (QA-22, QA-77, `REQUIREMENTS.md` §6.4). `PROJECT_REVIEW.md` §B2a records that this replaced SCRUM-33's older "clarification thread" reading. A resubmission therefore **is** the clarification response, and the widget counts `amendment_requests.resubmitted_at`. If an instructor asks where this mapping came from, the answer is QA-22/QA-77 via §B2a — not the ticket text.
+
+**Interpretation of "prioritized" (AC1).** The ticket does not define priority, and the customer ruled out SLA timers and review deadlines entirely (LC-R4, QA-55, QA-68), so urgency is **not** time-since-submission. Priority is ranked by *what the item blocks*, recorded as a **[Team decision]** in `REQUIREMENTS.md` §6.21. The ranking is an ordered config array, so re-prioritising moves one line (NFR-M1).
+
+**Defect fixed in passing.** The previous `CoordinatorDashboard.vue` displayed three hardcoded metrics — "Requests Awaiting Review: 5", "Venues to Coordinate: 4", "Events in Progress: 9" — as if they were real figures, against a database with no events. Logged and fixed as **D8** in `PROJECT_REVIEW.md` §A2.
+
+What was actually built:
+
+1. **Pure dashboard logic** — `frontend/src/features/events/dashboard.js`. No I/O, so it is unit-testable in isolation (REQUIREMENTS §3.3): the `ACTION_KINDS` priority config, `prioritiseActionItems()`, `summariseActionItems()` (AC1's three named categories), `groupActiveEventsByStatus()` (AC2), `outstandingReadiness()` and `readinessGaps()`, plus the single `STATUS_LABELS` mapping required by LC-R3.
+2. **Data contract and store** — `frontend/src/features/events/store.js` and `eventsApi.coordinatorDashboard()` in `services/api.js`, calling `GET /api/v1/events/dashboard/coordinator`. A `404` is treated as "the module isn't built yet" and renders empty; any other failure surfaces as an error, because an empty dashboard that silently swallowed a `500` would tell a coordinator they have nothing to do.
+3. **The dashboard** — `frontend/src/views/dashboards/CoordinatorDashboard.vue`: the AS-R5 awaiting-assignment alert, the three AC1 category counters, the prioritised action list with per-kind badges, the AC2 status overview across all four active statuses, and the 14-day readiness-gap schedule overview.
+4. **Empty-state component** — `frontend/src/components/common/BauhausEmptyState.vue`, which distinguishes *still loading* from *not built yet* from *genuinely clear*.
+5. **Schema proposal** — `docs/proposals/core-events-schema.{sql,md}`: `client_organisations`, `events`, `event_status_history`, `amendment_requests`, `change_requests`, with RLS following the D3 non-recursive pattern. Events side only; venues, equipment and registrations are left to the full §C3.5 migration.
+
+This follows the target SPA structure in `REQUIREMENTS.md` §3.4 (`features/<domain>` with views, store and service; dashboards *compose* from feature stores). It is the **first** part of the codebase to adopt it — `PROJECT_REVIEW.md` §A3.8 recommends it, and nothing had used it before. Noted here rather than diverged silently.
+
+#### Verification
+
+- **Live schema check:** PostgREST spec on `vuiryrzzyfecjqftwicj` returns `['profiles']` and no RPCs — the basis for the re-scope above.
+- **Real backend:** logged in as `coordinator@connectsphere.dev` against the running API; `GET /api/v1/events/dashboard/coordinator` returns exactly `404 {"detail":"Not Found"}`, confirming the store's 404 path matches reality rather than an assumption.
+- **Real browser (empty state):** Chrome via Playwright against the Vite dev server and the real backend — 13/13 assertions, covering both AC headings, all three AC1 categories, all four AC2 statuses, the awaiting-data notice, and the absence of the old fabricated metrics.
+- **Real browser (populated):** the same page with the endpoint stubbed at the network layer with a five-event payload — 14/14, including the exact priority ordering (`arrangement_issue` → `cancellation_request` → `resubmitted` → `awaiting_review`), per-status counts, the `venue_blocked` flag, readiness-gap detail, Asia/Singapore date rendering, and no page errors. This is what proves AC1 and AC2 are met in substance.
+- **Test suites:** Vitest 37/37 (28 new), pytest 22/22 unchanged, `npm run build` clean. Mobile (390 px) layout checked.
+
+**A bug this verification caught:** the first browser run showed the counters reading a confident `0` for the several seconds the request is in flight — a coordinator could read "0 immediate actions" as fact while the answer was still unknown. The store now exposes `hasSettled`, and the dashboard shows an em dash until the first load resolves. A mocked test would not have surfaced this; it only appears at real network latency.
+
+**Not verified:** anything requiring event rows — no live data exists to verify against. The priority ordering, status grouping and readiness logic are verified by unit tests and by a stubbed browser render, not against the database. The proposed schema has **not** been applied or run anywhere, so it is unproven SQL: it has not been parsed by Postgres, and no advisor run has been done against it.
 
 ## 5. Architecture: modular monolith
 

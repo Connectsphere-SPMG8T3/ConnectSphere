@@ -69,4 +69,12 @@ export const venuesApi = {
   },
 };
 
+export const eventsApi = {
+  // Not implemented by the backend yet — the `events` module is still an empty
+  // stub package, so this answers 404 until that story lands (SCRUM-72).
+  coordinatorDashboard(token) {
+    return request("/events/dashboard/coordinator", { token });
+  },
+};
+
 export { ApiError };
