@@ -2,6 +2,8 @@
 
 Instructions for any AI coding agent (Claude Code, Codex, Cursor, Copilot, etc.) working in this repository. Tool-specific workflows live under `.claude/`; this file is the shared baseline every agent should follow regardless of which tool is driving.
 
+**Claude Code users:** `CLAUDE.md` is gitignored so each developer can keep personal instructions. Claude Code reads `CLAUDE.md`, not `AGENTS.md`, so create your own `CLAUDE.md` at the repo root with `@AGENTS.md` as its first line, then add your personal instructions below it. For the backend and frontend rules to load automatically, also add a `CLAUDE.md` containing `@AGENTS.md` in `backend/` and `frontend/`.
+
 ## Project overview
 
 ConnectSphere is a regional event planning and venue booking platform for Singapore, built as a **Modular Monolith**:
@@ -11,15 +13,37 @@ ConnectSphere is a regional event planning and venue booking platform for Singap
 - **`supabase/`** — PostgreSQL schema migrations, seed data, and Supabase Auth configuration (project ref `vuiryrzzyfecjqftwicj`).
 - **`mcp/`** — Supabase MCP server configuration.
 
+Layer-specific rules (tech stack, conventions, design system) live in **`backend/AGENTS.md`** and **`frontend/AGENTS.md`**. Read the one for the layer you're touching, in addition to this file.
+
+## Start every task: Scrum story or fix?
+
+Before exploring or changing code, ask the developer which kind of work this is (skip the question if they've already said):
+
+1. **Scrum story**
+   - Ask for the Jira key (`SCRUM-<n>`).
+   - Fetch the issue through the Jira (Atlassian) MCP: user story, acceptance criteria, parent epic, and sprint.
+   - If the Jira MCP is unavailable or the fetch fails, ask the developer to paste the **user story** and **acceptance criteria**. Never work from the ticket title alone, and never invent acceptance criteria.
+   - **Suggest planning first.** In Claude Code, recommend switching to plan mode before any code is written. In other tools, write the plan out and get the developer's agreement. The plan maps every acceptance criterion to the files, tests, and verification that will satisfy it, and names anything from `docs/IMPLEMENTATION_MAP.md` it will reuse.
+   - Branch: `feature/scrum-<n>-<short-slug>`.
+2. **Fix**
+   - Ask for the defect ID from `docs/PROJECT_REVIEW.md` (D1, D2, …), or the observed vs expected behaviour and how to reproduce it.
+   - Reproduce the defect first, then write a failing regression test before changing code.
+   - Branch: `fix/<short-slug>`.
+
+Work that is neither (docs, tooling, config) is an enabler on a `chore/<short-slug>` branch.
+
+**Finish every story or fix by updating `docs/IMPLEMENTATION_MAP.md`** with what now exists and anything the next developer must know, before reporting the task done (see "Keep the paper trail current").
+
 ## Ground yourself before touching code
 
 Read, in this order:
 
 1. `docs/REQUIREMENTS.md` — what the system *should* do: behaviour specs, acceptance criteria, the domain model, customer clarifications cited as `QA-<row>`.
-2. `docs/SCENARIO.md` — project context and the append-only log of what each story actually built.
-3. `docs/SETUP.md` — how to run everything locally.
-4. `docs/PROJECT_REVIEW.md` — known defects (D1, D2, …), design decisions, and the sprint plan.
-5. `docs/TEST_CASES.md` — existing manual test cases.
+2. `docs/IMPLEMENTATION_MAP.md` — what exists **right now** (modules, endpoints, tables, reusable components) and what to know before building on it.
+3. `docs/SCENARIO.md` — project context and the append-only log of what each story actually built.
+4. `docs/SETUP.md` — how to run everything locally.
+5. `docs/PROJECT_REVIEW.md` — known defects (D1, D2, …), design decisions, and the sprint plan.
+6. `docs/TEST_CASES.md` — existing manual test cases.
 
 Customer rules take precedence in this order: session Q&A answers (`QA-<row>`), then the Week 4 core features, then the Week 1 briefing.
 
@@ -55,6 +79,15 @@ Plan any change that spans more than one file or layer before writing code.
 - Don't adopt new libraries, restructure modules, or change project-wide conventions without confirming with the user first.
 - New modules follow the target module design in `docs/REQUIREMENTS.md` §3.3. If the team hasn't adopted part of that design yet, say so rather than diverging silently.
 
+## Build for reuse
+
+Several roles and stories touch the same domains (venues, events, equipment), so the same logic and UI keep coming back.
+
+- **Check before building.** Look in `docs/IMPLEMENTATION_MAP.md` and the code for an existing module, service function, component, or helper, and extend it rather than writing a parallel version.
+- **Write likely-to-be-reused pieces as modules from the start.** "Likely" means another story in the backlog, another role's dashboard, or a second screen needs the same behaviour. Don't inline it into one endpoint or view.
+- **Don't generalise for hypothetical needs.** If nothing concrete will reuse it, keep it local. Extract it when the second use arrives.
+- Where reusable pieces go is specific to each layer: see "Reuse" in `backend/AGENTS.md` and `frontend/AGENTS.md`.
+
 ## Test-driven development
 
 Write the test before the implementation, for any new feature or bugfix:
@@ -78,6 +111,7 @@ Run the full test suite (`pytest` from `backend/`) before declaring done, not on
 
 ## Keep the paper trail current (graded evidence)
 
+- `docs/IMPLEMENTATION_MAP.md`: **after implementing anything that changes what exists**, update the map in the same branch. That includes a story or fix, a module, endpoint, table, or migration, a reusable component, store, or helper, or a changed contract (request/response shape, guard, enum). Unlike `SCENARIO.md`, this file is edited in place: update the status table, add the new pieces to the reuse tables, remove what no longer exists, and record any "know before you build" notes the next developer needs. Update the "Last updated" line as well.
 - `docs/SCENARIO.md` §4: append an entry for each completed story or bug fix, following the existing template. Never rewrite past entries.
 - `docs/TEST_CASES.md`: add manual cases for new behaviour, traced to Jira keys and acceptance criteria.
 - `docs/REQUIREMENTS.md`: update it when a rule, assumption, or design decision changes.
@@ -95,7 +129,9 @@ Run the full test suite (`pytest` from `backend/`) before declaring done, not on
 
 ## Definition of done (every task)
 
+- [ ] For a story: every acceptance criterion from Jira (or as supplied by the developer) is met and traced to a test or verification step.
 - [ ] Behaviour matches `docs/REQUIREMENTS.md`, or any deviation is recorded there.
+- [ ] Reusable pieces were extended or extracted rather than duplicated, and `docs/IMPLEMENTATION_MAP.md` reflects the new state.
 - [ ] Automated tests cover the happy path, boundaries, failures, and authorisation denials, and the full suite passes.
 - [ ] The change is verified against the real system wherever it crosses an integration boundary.
 - [ ] Database changes show no new security or performance advisories.
