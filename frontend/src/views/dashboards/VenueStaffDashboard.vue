@@ -1,4 +1,7 @@
 <script setup>
+import { RouterLink } from "vue-router";
+
+import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import { useAuthStore } from "@/stores/auth";
 
@@ -35,6 +38,11 @@ const metrics = [
         <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ metric.label }}</p>
         <p class="mt-2 text-5xl font-black tracking-tighter">{{ metric.value }}</p>
       </BauhausCard>
+    </div>
+    <div class="mt-10 flex flex-wrap gap-4">
+      <RouterLink to="/venues">
+        <BauhausButton variant="secondary">Search venues</BauhausButton>
+      </RouterLink>
     </div>
   </main>
 </template>

@@ -282,3 +282,114 @@ values
         'confirmed',
         'Evening awards ceremony audio'
     );
+
+-- =============================================================================
+-- SCRUM-39: venue catalogue with a few blocks and bookings on 10 Oct 2026, so
+-- a search for 10 Oct 14:00–17:00 (Asia/Singapore) demonstrates every
+-- exclusion reason. Idempotent: fixed ids, `on conflict do nothing`.
+-- Event ids are placeholders until the events module lands.
+-- =============================================================================
+
+insert into public.venues (id, name, location, capacity, accessibility_features, opens_at, closes_at, is_active, description)
+values
+    ('b0000000-0000-4000-8000-000000000001', 'Grand Ballroom', 'Marina Bay Convention Centre, Level 3', 500,
+     '{wheelchair_access,step_free_entry,accessible_toilet,lift_access}', '08:00', '23:00', true,
+     'Pillar-free ballroom with a built-in stage and pre-function foyer.'),
+    ('b0000000-0000-4000-8000-000000000002', 'Auditorium A', 'Bukit Timah Campus, Block A', 200,
+     '{wheelchair_access,hearing_loop,accessible_toilet}', '08:00', '22:00', true,
+     'Tiered auditorium with fixed seating.'),
+    ('b0000000-0000-4000-8000-000000000003', 'Seminar Room 1', 'Bukit Timah Campus, Block B, Level 2', 60,
+     '{wheelchair_access,lift_access}', '08:00', '22:00', true,
+     'Flexible seminar room with movable furniture.'),
+    ('b0000000-0000-4000-8000-000000000004', 'Boardroom Orchid', 'Orchard Road Office, Level 12', 16,
+     '{wheelchair_access,lift_access,accessible_toilet}', '09:00', '18:00', true,
+     'Executive boardroom.'),
+    ('b0000000-0000-4000-8000-000000000005', 'Rooftop Terrace', 'Orchard Road Office, Level 20', 120,
+     '{}', '10:00', '22:00', true,
+     'Open-air terrace; stairs only from Level 19.'),
+    ('b0000000-0000-4000-8000-000000000006', 'Innovation Lab', 'Jurong East Hub, Level 1', 80,
+     '{step_free_entry,accessible_toilet}', '08:00', '21:00', true,
+     'Workshop space with writable walls.'),
+    ('b0000000-0000-4000-8000-000000000007', 'Heritage Hall', 'Chinatown Heritage Centre', 150,
+     '{step_free_entry}', '09:00', '22:00', true,
+     'Restored shophouse hall.'),
+    ('b0000000-0000-4000-8000-000000000008', 'Old Lecture Theatre', 'Bukit Timah Campus, Block C', 300,
+     '{}', '08:00', '22:00', false,
+     'Decommissioned pending refurbishment.')
+on conflict (name) do nothing;
+
+insert into public.venue_layouts (venue_id, layout, capacity_for_layout)
+values
+    ('b0000000-0000-4000-8000-000000000001', 'theatre', 500),
+    ('b0000000-0000-4000-8000-000000000001', 'banquet', 300),
+    ('b0000000-0000-4000-8000-000000000001', 'reception', 500),
+    ('b0000000-0000-4000-8000-000000000001', 'classroom', 250),
+    ('b0000000-0000-4000-8000-000000000002', 'theatre', null),
+    ('b0000000-0000-4000-8000-000000000003', 'classroom', 40),
+    ('b0000000-0000-4000-8000-000000000003', 'u_shape', 24),
+    ('b0000000-0000-4000-8000-000000000003', 'boardroom', 20),
+    ('b0000000-0000-4000-8000-000000000003', 'theatre', null),
+    ('b0000000-0000-4000-8000-000000000004', 'boardroom', null),
+    ('b0000000-0000-4000-8000-000000000005', 'reception', null),
+    ('b0000000-0000-4000-8000-000000000005', 'banquet', 80),
+    ('b0000000-0000-4000-8000-000000000006', 'classroom', 60),
+    ('b0000000-0000-4000-8000-000000000006', 'u_shape', 30),
+    ('b0000000-0000-4000-8000-000000000006', 'reception', null),
+    ('b0000000-0000-4000-8000-000000000007', 'theatre', null),
+    ('b0000000-0000-4000-8000-000000000007', 'banquet', 100),
+    ('b0000000-0000-4000-8000-000000000008', 'theatre', null)
+on conflict do nothing;
+
+insert into public.venue_facilities (venue_id, facility)
+values
+    ('b0000000-0000-4000-8000-000000000001', 'projector'),
+    ('b0000000-0000-4000-8000-000000000001', 'sound_system'),
+    ('b0000000-0000-4000-8000-000000000001', 'microphone'),
+    ('b0000000-0000-4000-8000-000000000001', 'stage'),
+    ('b0000000-0000-4000-8000-000000000001', 'wifi'),
+    ('b0000000-0000-4000-8000-000000000001', 'catering_space'),
+    ('b0000000-0000-4000-8000-000000000002', 'projector'),
+    ('b0000000-0000-4000-8000-000000000002', 'sound_system'),
+    ('b0000000-0000-4000-8000-000000000002', 'microphone'),
+    ('b0000000-0000-4000-8000-000000000002', 'wifi'),
+    ('b0000000-0000-4000-8000-000000000003', 'projector'),
+    ('b0000000-0000-4000-8000-000000000003', 'whiteboard'),
+    ('b0000000-0000-4000-8000-000000000003', 'wifi'),
+    ('b0000000-0000-4000-8000-000000000003', 'video_conferencing'),
+    ('b0000000-0000-4000-8000-000000000004', 'video_conferencing'),
+    ('b0000000-0000-4000-8000-000000000004', 'whiteboard'),
+    ('b0000000-0000-4000-8000-000000000004', 'wifi'),
+    ('b0000000-0000-4000-8000-000000000005', 'sound_system'),
+    ('b0000000-0000-4000-8000-000000000005', 'catering_space'),
+    ('b0000000-0000-4000-8000-000000000006', 'projector'),
+    ('b0000000-0000-4000-8000-000000000006', 'whiteboard'),
+    ('b0000000-0000-4000-8000-000000000006', 'wifi'),
+    ('b0000000-0000-4000-8000-000000000006', 'video_conferencing'),
+    ('b0000000-0000-4000-8000-000000000007', 'sound_system'),
+    ('b0000000-0000-4000-8000-000000000007', 'stage'),
+    ('b0000000-0000-4000-8000-000000000007', 'microphone'),
+    ('b0000000-0000-4000-8000-000000000008', 'projector')
+on conflict do nothing;
+
+insert into public.venue_blocks (id, venue_id, blocked_period, reason, notes)
+values
+    ('c0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000007',
+     tstzrange('2026-10-01 00:00+08', '2026-10-15 00:00+08', '[)'), 'renovation', 'Floor restoration.'),
+    ('c0000000-0000-4000-8000-000000000002', 'b0000000-0000-4000-8000-000000000001',
+     tstzrange('2026-10-10 08:00+08', '2026-10-10 12:00+08', '[)'), 'maintenance', 'Air-con servicing; ends exactly at noon.'),
+    ('c0000000-0000-4000-8000-000000000003', 'b0000000-0000-4000-8000-000000000005',
+     tstzrange('2026-10-20 00:00+08', '2026-10-22 00:00+08', '[)'), 'safety', 'Railing inspection.')
+on conflict (id) do nothing;
+
+insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status)
+values
+    -- Back-to-back with a 14:00–17:00 search: Auditorium A stays listed.
+    ('d0000000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-000000000101',
+     'b0000000-0000-4000-8000-000000000002', tstzrange('2026-10-10 11:00+08', '2026-10-10 14:00+08', '[)'), 'approved'),
+    -- Overlaps a 14:00–17:00 search: Seminar Room 1 is "held by another event".
+    ('d0000000-0000-4000-8000-000000000002', 'e0000000-0000-4000-8000-000000000102',
+     'b0000000-0000-4000-8000-000000000003', tstzrange('2026-10-10 13:00+08', '2026-10-10 16:00+08', '[)'), 'held'),
+    -- Rejected bookings no longer occupy the venue: Innovation Lab stays listed.
+    ('d0000000-0000-4000-8000-000000000003', 'e0000000-0000-4000-8000-000000000103',
+     'b0000000-0000-4000-8000-000000000006', tstzrange('2026-10-10 14:00+08', '2026-10-10 17:00+08', '[)'), 'rejected')
+on conflict (id) do nothing;

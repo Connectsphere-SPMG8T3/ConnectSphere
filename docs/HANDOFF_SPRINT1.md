@@ -55,7 +55,7 @@ These are gitignored (local workflow aids), so they won't show up as a project d
 | Story | Needs new migration? | Backend module | Frontend |
 |---|---|---|---|
 | SCRUM-50 — See my own profile | No | `auth` (already has `GET /me`) | `ProfileView.vue` already wired up — **verify it actually satisfies SCRUM-50's acceptance criteria** and add a dedicated test if the story needs behaviour beyond what SCRUM-48 already covers |
-| SCRUM-39 — View Venue Catalogue | Yes — `venues` table | `venues/` | new list view (no placeholder yet — check with whoever owns SCRUM-70/71/72 dashboards, since they'll likely embed this) |
+| SCRUM-39 — View Venue Catalogue | **Done** — migration `20260915090000` (venues, layouts, facilities, blocks, bookings) | `venues/` (router / service / repository / search) | `/venues` and `/venues/:id` (`views/venues/`), linked from the coordinator and venue-staff dashboards |
 | SCRUM-70 — Venue Staff Dashboard | depends on venues/events | `venues/` (+ maybe `events/`) | `VenueStaffDashboard.vue` |
 | SCRUM-71 — Event Organiser Dashboard | depends on events | `events/` | `OrganiserDashboard.vue` |
 | SCRUM-8 — Event Request Creation | Yes — `events` table | `events/` | likely a form component, surfaced from `OrganiserDashboard.vue` |
@@ -63,7 +63,7 @@ These are gitignored (local workflow aids), so they won't show up as a project d
 | SCRUM-73 — Technical Support Staff Dashboard | depends on equipment | `equipment/` | `TechSupportDashboard.vue` |
 | SCRUM-23 — Equipment Availability Checking | Yes — `equipment` table | `equipment/` | likely surfaced in `TechSupportDashboard.vue` and/or the organiser's request flow |
 
-**Coordinate on migrations**: SCRUM-39, SCRUM-8, and SCRUM-23 each want a new table, and events/equipment likely reference venues. Whoever picks these up first should decide table shape together (or at least check `supabase/migrations/` for what's already landed) rather than each writing a conflicting migration independently.
+**Coordinate on migrations**: SCRUM-39's venue tables are live (`venue_bookings.event_id` is a plain uuid — add the FK when `events` lands); SCRUM-8 and SCRUM-23 still want their own tables, and SCRUM-8 should reuse the `venue_layout` / `facility` / `accessibility_feature` enums. Whoever picks these up first should decide table shape together (or at least check `supabase/migrations/` for what's already landed) rather than each writing a conflicting migration independently.
 
 ## 6. When a story is done
 
