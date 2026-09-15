@@ -12,6 +12,10 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 
+# Supabase CLI local state (.temp/ can contain generated local secrets)
+supabase/.temp/
+supabase/.branches/
+
 # Editors / OS
 .vscode/
 .DS_Store
@@ -20,3 +24,4 @@ Thumbs.db
 # Reusable Claude Code prompts/commands (local workflow aids, not project deliverables)
 .claude/
 docs/prompts/
+CLAUDE.md

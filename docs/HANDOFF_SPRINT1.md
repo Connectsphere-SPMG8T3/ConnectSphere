@@ -1,12 +1,12 @@
 # Sprint 1 Handoff — picking up the remaining stories
 
-> **Temporary document.** This is a one-time onboarding note for whoever picks up the stories below (and their AI assistant). It duplicates pointers that already live in `docs/SETUP.md` and `docs/SCENARIO.md` so you don't have to go hunting on your first hour on the repo. Once Sprint 1 is done, delete this file — `docs/SCENARIO.md` is the permanent, append-only record of what each story actually did.
+> **Temporary document.** This is a one-time onboarding note for whoever picks up the stories below (and their AI assistant). It duplicates pointers that already live in `docs/SETUP.md` and `docs/SCENARIO.md` so you don't have to go hunting on your first hour on the repo. Once Sprint 1 is done (22 Sep 2026), delete this file. `docs/IMPLEMENTATION_MAP.md` is the permanent record of what exists now, and `docs/SCENARIO.md` is the append-only record of what each story actually did.
 
 ## 1. What's already done
 
 **SCRUM-48 (Basic user authentication)** is fully implemented, tested, and verified end-to-end against the live Supabase project (login, `/auth/me`, logout, role-based dashboard redirect, router guards). Read `docs/SCENARIO.md` §4.1 before touching auth code — it also documents 5 real bugs found during live verification (wrong API key format, wrong JWT verification scheme, wrong exception module, etc.) so you don't reintroduce them.
 
-As a side effect of building auth, some scaffolding for *other* stories already exists — see §3 below. Check before creating new files.
+More has landed since this note was written (SCRUM-39 venue search, the SCRUM-72 coordinator dashboard). For the current list of what's done, see §1 of `docs/IMPLEMENTATION_MAP.md`.
 
 ## 2. Environment setup
 
@@ -28,16 +28,16 @@ Seeded test accounts (password `Cs1234` for all): `organiser@connectsphere.dev`,
 
 ## 3. What already exists — don't recreate it
 
-**Backend** (`backend/app/modules/`): `auth/` is fully built (use it as the reference pattern — `router.py` / `schemas.py` / `service.py` / `dependencies.py`). `equipment/`, `events/`, `venues/` already exist as **empty placeholder packages** (just `__init__.py`) — build inside these, don't create new top-level modules.
+This section has moved to **`docs/IMPLEMENTATION_MAP.md`**, which is kept up to date after every implementation. Read it before creating any file. It lists:
 
-**Frontend**: routes and dashboard shells already exist:
-- `frontend/src/router/index.js` already defines `/profile/me` and all 5 role-gated dashboard routes (`/dashboard/organiser`, `/dashboard/coordinator`, `/dashboard/venue-staff`, `/dashboard/tech-support`, `/dashboard/attendee`) with `meta.allowedRoles` guards.
-- `frontend/src/views/dashboards/{OrganiserDashboard,CoordinatorDashboard,VenueStaffDashboard,TechSupportDashboard,AttendeeDashboard}.vue` already exist as placeholders — **extend these files**, don't create new ones.
-- `frontend/src/views/ProfileView.vue` already exists and calls `GET /auth/me`.
-- Shared components live in `frontend/src/components/common/` (`BauhausButton`, `BauhausCard`, `BauhausInput`, `BauhausNavbar`) — reuse these for visual consistency, don't rebuild inputs/buttons/cards per story.
-- Pinia: only `frontend/src/stores/auth.js` exists so far. New stores (e.g. a `venues` or `events` store) should follow its shape.
+- the modules, endpoints, routes, and database migrations on `main`;
+- the reusable backend helpers, `Bauhaus*` components (with their props), stores, and pure functions;
+- the "know before you build" traps, and the unmerged branches (events, equipment) you may collide with.
 
-**Database**: only one migration exists, `supabase/migrations/20260912000001_init_auth_and_profiles.sql` (the `user_role` enum + `public.profiles`). No `venues`, `events`, or `equipment` tables exist yet — several stories below need a new migration before any backend work.
+Two rules from it matter most on day one:
+
+- Build inside the existing `backend/app/modules/<domain>/` packages, and extend the existing dashboard views rather than creating new ones.
+- Put new frontend stores in `features/<domain>/` (see `frontend/AGENTS.md`).
 
 ## 4. Reusable prompts — use these with your AI
 
