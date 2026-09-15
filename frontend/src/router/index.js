@@ -52,6 +52,18 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["attendee"] },
   },
   {
+    path: "/venues",
+    name: "venue-search",
+    component: () => import("@/views/venues/VenueSearchView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["event_coordinator", "venue_staff"] },
+  },
+  {
+    path: "/venues/:id",
+    name: "venue-detail",
+    component: () => import("@/views/venues/VenueDetailView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["event_coordinator", "venue_staff"] },
+  },
+  {
     path: "/:pathMatch(.*)*",
     redirect: "/login",
   },
