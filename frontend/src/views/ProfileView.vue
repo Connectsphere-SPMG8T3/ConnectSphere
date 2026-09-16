@@ -20,7 +20,7 @@ const roleLabel = computed(() => roleLabels[profile.value?.role] ?? profile.valu
 </script>
 
 <template>
-  <main class="mx-auto max-w-3xl px-4 py-12 sm:px-8">
+  <main class="py-12">
     <h1 class="mb-8 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">My Profile</h1>
 
     <BauhausCard v-if="profile" background="white" accent="circle" accent-color="bauhaus-blue">

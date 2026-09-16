@@ -44,7 +44,7 @@ watch(() => route.params.id, load);
 </script>
 
 <template>
-  <main class="mx-auto max-w-4xl px-4 py-12 sm:px-8">
+  <main class="py-12">
     <RouterLink
       :to="{ name: 'venue-search' }"
       class="mb-8 inline-block text-xs font-bold uppercase tracking-widest underline decoration-2 underline-offset-4"

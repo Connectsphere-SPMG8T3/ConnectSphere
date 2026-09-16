@@ -2,6 +2,11 @@
 import { computed } from "vue";
 
 const props = defineProps({
+  /**
+   * The card's tone. It colours a rule down the card's leading edge rather than
+   * filling the whole surface, so colour stays free to mean something (red for
+   * blocked, yellow for needs attention, blue for informational).
+   */
   background: {
     type: String,
     default: "white",
@@ -18,16 +23,16 @@ const props = defineProps({
   },
 });
 
-const backgroundClasses = {
-  white: "bg-canvas text-ink",
-  red: "bg-bauhaus-red text-canvas",
-  blue: "bg-bauhaus-blue text-canvas",
-  yellow: "bg-bauhaus-yellow text-ink",
-};
-
 // Tailwind's scanner needs full, static class names to keep them in the
 // build — dynamic template interpolation (e.g. `bg-${accentColor}`) is
-// invisible to it, so every accent colour variant is spelled out here.
+// invisible to it, so every colour variant is spelled out here.
+const toneClasses = {
+  white: "",
+  red: "bg-bauhaus-red",
+  blue: "bg-bauhaus-blue",
+  yellow: "bg-bauhaus-yellow",
+};
+
 const accentBgClasses = {
   "bauhaus-red": "bg-bauhaus-red",
   "bauhaus-blue": "bg-bauhaus-blue",
@@ -44,7 +49,7 @@ const accentBorderClasses = {
   canvas: "border-l-canvas",
 };
 
-const classes = computed(() => backgroundClasses[props.background]);
+const toneClass = computed(() => toneClasses[props.background] ?? "");
 const accentBgClass = computed(() => accentBgClasses[props.accentColor] ?? accentBgClasses["bauhaus-yellow"]);
 const accentBorderClass = computed(
   () => accentBorderClasses[props.accentColor] ?? accentBorderClasses["bauhaus-yellow"],
@@ -52,22 +57,25 @@ const accentBorderClass = computed(
 </script>
 
 <template>
-  <div class="relative overflow-hidden border-2 border-ink p-6 shadow-hard-lg sm:border-4 sm:p-8" :class="classes">
+  <div class="relative overflow-hidden border-2 border-ink bg-surface p-6 text-ink sm:p-8">
+    <span v-if="toneClass" class="absolute inset-y-0 left-0 w-1.5" :class="toneClass" aria-hidden="true" />
+    <!-- Marks stay small: on a paper surface they read as a mark, where the
+         old flood-fill sizes would out-shout the figure they sit beside. -->
     <span
       v-if="accent === 'circle'"
-      class="absolute -right-6 -top-6 h-16 w-16 rounded-full sm:h-20 sm:w-20"
+      class="absolute -right-3 -top-3 h-10 w-10 rounded-full sm:h-12 sm:w-12"
       :class="accentBgClass"
       aria-hidden="true"
     />
     <span
       v-else-if="accent === 'square'"
-      class="absolute -right-4 -top-4 h-14 w-14 border-2 border-ink sm:h-16 sm:w-16 sm:border-4"
+      class="absolute -right-2 -top-2 h-9 w-9 border-2 border-ink sm:h-10 sm:w-10"
       :class="accentBgClass"
       aria-hidden="true"
     />
     <span
       v-else-if="accent === 'triangle'"
-      class="absolute -right-2 -top-2 h-0 w-0 border-b-[56px] border-l-[56px] border-b-transparent sm:border-b-[72px] sm:border-l-[72px]"
+      class="absolute right-0 top-0 h-0 w-0 border-b-[34px] border-l-[34px] border-b-transparent sm:border-b-[40px] sm:border-l-[40px]"
       :class="accentBorderClass"
       aria-hidden="true"
     />
