@@ -22,7 +22,7 @@ function handleReset() {
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl px-4 py-12 sm:px-8">
+  <main class="py-12">
     <BauhausCard background="yellow" accent="square" accent-color="bauhaus-red" class="mb-10">
       <p class="text-xs font-bold uppercase tracking-widest opacity-80">Venue catalogue</p>
       <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">Find a venue</h1>
