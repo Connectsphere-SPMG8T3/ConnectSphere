@@ -5,7 +5,7 @@ import { ApiError, authApi } from "@/services/api";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
+  authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn(), setActiveRole: vi.fn() },
 }));
 
 const STORAGE_KEY = "connectsphere.session";
@@ -62,5 +62,57 @@ describe("auth store session verification", () => {
 
     expect(store.isAuthenticated).toBe(false);
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe("auth store role switching (SCRUM-74/75)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("has no roles and is not multi-role when the profile predates the roles field", async () => {
+    const store = await storeWithStoredSession();
+
+    expect(store.roles).toEqual([]);
+    expect(store.hasMultipleRoles).toBe(false);
+  });
+
+  it("is multi-role only once the profile lists two or more roles", async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ...STORED_SESSION,
+        profile: { ...PROFILE, roles: ["event_coordinator", "venue_staff"] },
+      }),
+    );
+    vi.resetModules();
+    const { useAuthStore } = await import("@/stores/auth");
+    setActivePinia(createPinia());
+    const store = useAuthStore();
+
+    expect(store.roles).toEqual(["event_coordinator", "venue_staff"]);
+    expect(store.hasMultipleRoles).toBe(true);
+  });
+
+  it("switches the active role and persists the updated profile", async () => {
+    const store = await storeWithStoredSession();
+    const updatedProfile = { ...PROFILE, role: "venue_staff", roles: ["event_coordinator", "venue_staff"] };
+    authApi.setActiveRole.mockResolvedValue(updatedProfile);
+
+    await store.setActiveRole("venue_staff");
+
+    expect(authApi.setActiveRole).toHaveBeenCalledWith(STORED_SESSION.token, "venue_staff");
+    expect(store.role).toBe("venue_staff");
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)).profile).toEqual(updatedProfile);
+  });
+
+  it("leaves the active role unchanged when the switch is rejected", async () => {
+    const store = await storeWithStoredSession();
+    authApi.setActiveRole.mockRejectedValue(new ApiError("You do not hold the 'venue_staff' role.", 403));
+
+    await expect(store.setActiveRole("venue_staff")).rejects.toThrow();
+
+    expect(store.role).toBe("event_coordinator");
   });
 });

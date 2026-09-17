@@ -20,6 +20,14 @@ export const ROLE_DASHBOARD_ROUTES = {
   attendee: "/dashboard/attendee",
 };
 
+export const ROLE_LABELS = {
+  event_organiser: "Event Organiser",
+  event_coordinator: "Event Coordinator",
+  venue_staff: "Venue Staff",
+  tech_support: "Technical Support",
+  attendee: "Attendee",
+};
+
 function loadPersistedSession() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -61,6 +69,8 @@ export const useAuthStore = defineStore("auth", {
   getters: {
     isAuthenticated: (state) => Boolean(state.token && state.profile),
     role: (state) => state.profile?.role ?? null,
+    roles: (state) => state.profile?.roles ?? [],
+    hasMultipleRoles: (state) => (state.profile?.roles ?? []).length >= 2,
     dashboardPath: (state) => ROLE_DASHBOARD_ROUTES[state.profile?.role] ?? "/login",
   },
 
@@ -152,6 +162,13 @@ export const useAuthStore = defineStore("auth", {
       } finally {
         this.isLoading = false;
       }
+    },
+
+    async setActiveRole(role) {
+      const profile = await this.withSession((token) => authApi.setActiveRole(token, role));
+      this.profile = profile;
+      persistSession(this);
+      return profile;
     },
 
     async logout() {

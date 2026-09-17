@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends, status
 
 from app.modules.auth import service
 from app.modules.auth.dependencies import CurrentUser, get_current_user
-from app.modules.auth.schemas import ProfileResponse, RefreshTokenRequest, TokenResponse, UserLoginRequest
+from app.modules.auth.schemas import (
+    ProfileResponse,
+    RefreshTokenRequest,
+    SetActiveRoleRequest,
+    TokenResponse,
+    UserLoginRequest,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -41,7 +47,17 @@ def read_current_user(
         organisation_name=current_user.organisation_name,
         department=current_user.department,
         phone_number=current_user.phone_number,
+        roles=service.get_roles(current_user.id),
     )
+
+
+@router.post("/active-role", response_model=ProfileResponse, status_code=status.HTTP_200_OK)
+def set_active_role(
+    body: SetActiveRoleRequest,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> ProfileResponse:
+    """Switch the caller's session to a role they hold (SCRUM-75)."""
+    return service.set_active_role(current_user, body.role)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

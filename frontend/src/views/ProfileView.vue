@@ -3,20 +3,13 @@ import { computed } from "vue";
 import { RouterLink } from "vue-router";
 
 import BauhausCard from "@/components/common/BauhausCard.vue";
-import { useAuthStore } from "@/stores/auth";
+import { ROLE_LABELS, useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
 const profile = computed(() => authStore.profile);
 
-const roleLabels = {
-  event_organiser: "Event Organiser",
-  event_coordinator: "Event Coordinator",
-  venue_staff: "Venue Staff",
-  tech_support: "Technical Support",
-  attendee: "Attendee",
-};
-
-const roleLabel = computed(() => roleLabels[profile.value?.role] ?? profile.value?.role);
+const roleLabel = computed(() => ROLE_LABELS[profile.value?.role] ?? profile.value?.role);
+const allRoleLabels = computed(() => authStore.roles.map((role) => ROLE_LABELS[role] ?? role));
 </script>
 
 <template>
@@ -48,6 +41,18 @@ const roleLabel = computed(() => roleLabels[profile.value?.role] ?? profile.valu
           <div v-if="profile.phone_number">
             <dt class="text-xs font-bold uppercase tracking-widest text-ink/60">Phone</dt>
             <dd class="text-base font-medium">{{ profile.phone_number }}</dd>
+          </div>
+          <div v-if="authStore.hasMultipleRoles">
+            <dt class="text-xs font-bold uppercase tracking-widest text-ink/60">All Roles</dt>
+            <dd class="mt-1 flex flex-wrap gap-2">
+              <span
+                v-for="label in allRoleLabels"
+                :key="label"
+                class="border-2 border-ink bg-canvas px-2 py-0.5 text-xs font-bold uppercase tracking-widest"
+              >
+                {{ label }}
+              </span>
+            </dd>
           </div>
         </dl>
 

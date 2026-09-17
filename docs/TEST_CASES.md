@@ -19,13 +19,13 @@ Every test case traces back to either the SCRUM-48 acceptance criteria, a custom
 - **Environment:** a Supabase project with every migration in `supabase/migrations/` applied and `supabase/seed.sql` run, backend on `http://localhost:8000`, frontend on `http://localhost:5173`. The live project (`vuiryrzzyfecjqftwicj`) has both migrations and the seed applied. The data-layer cases in §6 are automated by `supabase/verification/auth_security_checks.sql` (runs inside a rolled-back transaction and raises on any failure).
 - **Seeded accounts** (all share the password `Cs1234`, per `supabase/seed.sql`):
 
-  | Role | Email |
-  |------|-------|
-  | Event Organiser | `organiser@connectsphere.dev` |
-  | Event Coordinator | `coordinator@connectsphere.dev` |
-  | Venue Staff | `venue.staff@connectsphere.dev` |
-  | Technical Support | `tech.support@connectsphere.dev` |
-  | Attendee | `attendee@connectsphere.dev` |
+  | Role | Email | Notes |
+  |------|-------|-------|
+  | Event Organiser | `organiser@connectsphere.dev` | Single role |
+  | Event Coordinator | `coordinator@connectsphere.dev` | Dual-role account (double hat): `event_coordinator` (default) + `venue_staff` in `user_roles` |
+  | Venue Staff | `venue.staff@connectsphere.dev` | Single role |
+  | Technical Support | `tech.support@connectsphere.dev` | Single role |
+  | Attendee | `attendee@connectsphere.dev` | Single role |
 
 - **Dashboard route map** (`frontend/src/stores/auth.js::ROLE_DASHBOARD_ROUTES`): `event_organiser → /dashboard/organiser`, `event_coordinator → /dashboard/coordinator`, `venue_staff → /dashboard/venue-staff`, `tech_support → /dashboard/tech-support`, `attendee → /dashboard/attendee`.
 - **Priority key:** 🔴 High (blocks core AC) · 🟠 Medium (important edge case) · 🟢 Low (nice-to-have / defensive).
@@ -100,6 +100,29 @@ Every test case traces back to either the SCRUM-48 acceptance criteria, a custom
 | TC-RBAC-007 | Backend role guard allows a request when the caller's role is in the allowed list | Logged in as Venue Staff | Call the same hypothetical endpoint with the Venue Staff token | Venue Staff's bearer token | HTTP 200 — request proceeds normally. | 🟠 |
 | TC-RBAC-008 | Stale/invalid persisted token is cleared on route-guard hydration, not left in a broken half-logged-in state | `localStorage` manually seeded with a `token` but no matching valid session server-side (e.g. token revoked or malformed) | Reload the app on a protected route | corrupted/invalid persisted token | `fetchProfile()` first tries to renew the session with the stored refresh token; when that also fails, the store clears `token`/`refreshToken`/`profile`, and the guard redirects to `/login?redirect=...` with the session-expired message (TC-AUTH-031). | 🟠 |
 | TC-RBAC-009 | A stored session whose role has no dashboard shows the login page instead of looping | Backend stopped (so the stored profile can't be re-verified); `localStorage` seeded with `connectsphere.session` whose `profile.role` is missing or not one of the five roles | Navigate to (a) `/login` and (b) `/dashboard/attendee` | `{"token": "x", "refreshToken": "y", "profile": {"id": "u1", "role": "platform_admin"}}` | Both end on the **Sign In** form with "Your account can't be opened in this app. Please contact support."; the `connectsphere.session` entry is removed; the console shows no `[Vue Router warn]` infinite-redirection warning. | 🟢 |
+
+## 5a. Role dropdown and active-role switching (SCRUM-74/75/78)
+
+Environment as in §0, plus the `20260917000000_role_switching.sql` migration and the `venue_staff` grant on `coordinator@connectsphere.dev` in `supabase/seed.sql` (the seeded account that holds two roles).
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-ROLE-001 | The nav shows no role dropdown for a single-role account | Logged in as `attendee@connectsphere.dev` (one role) | Look at the nav sidebar | — | No "Acting as" dropdown is rendered anywhere in the nav. | 🔴 |
+| TC-ROLE-002 | The nav shows a role dropdown listing exactly the held roles, with human-readable labels | Logged in as `coordinator@connectsphere.dev` (`event_coordinator` + `venue_staff`) | Look at the nav sidebar | — | An "Acting as" dropdown is present, its options are exactly "Event Coordinator" and "Venue Staff" (no other role, no raw enum value like `venue_staff` shown as text), and the currently active role is selected. | 🔴 |
+| TC-ROLE-003 | Selecting a held role switches the active role and redirects to that role's dashboard | Logged in as `coordinator@connectsphere.dev`, currently acting as Event Coordinator | Select "Venue Staff" from the dropdown | — | Browser navigates to `/dashboard/venue-staff` and renders the Venue Staff dashboard; the dropdown now shows "Venue Staff" selected. | 🔴 |
+| TC-ROLE-004 | The switched role persists across a page reload | Continuing from TC-ROLE-003 (acting as Venue Staff) | Reload the page | — | Still on `/dashboard/venue-staff` with "Venue Staff" selected in the dropdown — the active role is read back from the server (`session_active_roles`), not just cached client state. | 🔴 |
+| TC-ROLE-005 | Switching roles in one session does not affect another concurrent session for the same account | Log in as `coordinator@connectsphere.dev` in two separate browsers (or one normal + one private window) | In session A, switch to Venue Staff. In session B, reload and check the active role. | — | Session B still shows/acts as Event Coordinator (the account's default); session A stays on Venue Staff. Proves the switch is scoped to the session (`session_id`), not the account. | 🟠 |
+| TC-ROLE-006 | The backend rejects switching to a role the account does not hold | Logged in as `coordinator@connectsphere.dev`, valid access token | `curl -X POST http://localhost:8000/api/v1/auth/active-role -H "Authorization: Bearer <token>" -d '{"role":"attendee"}'` | `{"role": "attendee"}` | HTTP 403, `detail: "You do not hold the 'attendee' role."` (`RoleNotAssignedError`); the account's active role is unchanged. | 🔴 |
+| TC-ROLE-007 | `POST /auth/active-role` without a token is rejected | No session | `curl -X POST http://localhost:8000/api/v1/auth/active-role -d '{"role":"venue_staff"}'` with no Authorization header | — | HTTP 401 (same guard as every other authenticated endpoint). | 🟢 |
+| TC-ROLE-008 | `GET /auth/me` and `POST /auth/login` both report every role the account holds | Logged in as `coordinator@connectsphere.dev` | `GET /auth/me` and, separately, `POST /auth/login` | — | Both responses include `"roles": ["event_coordinator", "venue_staff"]`, sourced from `user_roles`, not hardcoded. | 🟠 |
+| TC-ROLE-009 | The backend role guard (`require_roles`) checks the session's active role, not the account's default | Logged in as `coordinator@connectsphere.dev`, switched to Venue Staff (TC-ROLE-003) | Call a `venue_staff`-only endpoint (e.g. `GET /venues`) with the same token | — | HTTP 200 — the endpoint treats this session as Venue Staff, even though the account's default role is Event Coordinator. | 🟠 |
+| TC-ROLE-010 | Selecting the dropdown's empty placeholder option is a no-op, not a crash (code review follow-up) | Logged in as `coordinator@connectsphere.dev` | Select the dropdown's top ("Select a role") option | — | No `POST /auth/active-role` call is made, no console error, and the dropdown still shows the actual active role. | 🟠 |
+| TC-ROLE-011 | Revoking a role via direct SQL invalidates any session currently acting as it (code review follow-up) | An account holding 2 roles, with a session currently switched to the second role | As a system admin, `delete from user_roles where profile_id = ... and role = '<second role>'` | — | The session's `session_active_roles` row is cascaded away (composite FK); the next `GET /auth/me`/guarded request for that session falls back to the account's default role. | 🟠 |
+| TC-ROLE-012 | Revoking an account's *default* role in a single statement is rejected, not silently left active (2nd code review round) | An account whose `profiles.role` equals a role it holds in `user_roles` | As a system admin, `delete from user_roles where profile_id = ... and role = <profiles.role>` as a single autocommitted statement | — | HTTP/SQL error `23503 foreign key violation`; the row is not deleted, and `profiles.role` still resolves for every session that never switched. | 🔴 |
+| TC-ROLE-013 | The correct two-step admin workflow for revoking a default role still succeeds (2nd code review round) | Same as TC-ROLE-012 | In one transaction: `update profiles set role = '<another held role>' where id = ...;` then `delete from user_roles where profile_id = ... and role = '<old default>';` then `commit;` | — | Both statements succeed; `profiles.role` is now the other held role, and the old role no longer appears in `user_roles` for that account. | 🟠 |
+| TC-ROLE-014 | A successful role switch updates the dropdown in place, without a visible revert-then-jump (2nd code review round) | Logged in as `coordinator@connectsphere.dev` | Select "Venue Staff" from the dropdown and watch it, rather than just checking the end state | — | The dropdown shows "Venue Staff" once, directly — it does not briefly flash back to "Event Coordinator" first. | 🟢 |
+| TC-ROLE-015 | The profile page shows an "All Roles" section listing every held role, only for a multi-role account (SCRUM-78) | Logged in as `coordinator@connectsphere.dev` (`event_coordinator` + `venue_staff`) | Navigate to `/profile/me` | — | An "All Roles" section is present, listing exactly "Event Coordinator" and "Venue Staff" (same source/labels as the nav dropdown); the existing role badge still shows only the session's active role. | 🟠 |
+| TC-ROLE-016 | The profile page shows no "All Roles" section for a single-role account (SCRUM-78) | Logged in as `attendee@connectsphere.dev` (one role) | Navigate to `/profile/me` | — | No "All Roles" section is rendered; the profile page is otherwise unchanged. | 🟠 |
 
 ## 6. Data integrity and Row Level Security (Supabase)
 
@@ -176,6 +199,22 @@ Environment as in §0 plus the SCRUM-39 migration and the venue rows from `supab
 | Accounts: only Organisers and Attendees self-register; staff are system defaults (QA-3, QA-4) | TC-DATA-010, TC-DATA-012 |
 | Defect regressions (docs/PROJECT_REVIEW.md) | D1: TC-AUTH-029 · D2: TC-DATA-010 · D3: TC-DATA-001–003, TC-DATA-011 · D4: TC-AUTH-030–033 · D6: TC-DATA-012 |
 
+| SCRUM-74/75 acceptance criterion (ACC-R4) | Covered by |
+|---|---|
+| "Dropdown appears only if the user has 2 or more assigned roles, single-role users see no dropdown" | TC-ROLE-001, TC-ROLE-002 |
+| "Dropdown lists exactly the roles assigned to that user (from user_roles), nothing else" | TC-ROLE-002, TC-ROLE-008 |
+| "Dropdown shows a human-readable label for each role" | TC-ROLE-002 |
+| "Selecting a role updates my active role for this session... which validates I actually hold that role" | TC-ROLE-003, TC-ROLE-006, TC-ROLE-009 |
+| "After selecting, I am taken to that role's dashboard/homepage" | TC-ROLE-003 |
+| "My active role persists across page reloads within the session, until I log out or select a different role" | TC-ROLE-004, TC-ROLE-005 |
+| "Attempting to set an active role I do not hold is rejected" | TC-ROLE-006 |
+
+| SCRUM-78 acceptance criterion | Covered by |
+|---|---|
+| "Profile page shows an 'All Roles' section only when the account holds 2 or more roles; single-role users see no such section" | TC-ROLE-015, TC-ROLE-016 |
+| "The section lists exactly the roles assigned to that user (from user_roles), each with a human-readable label — same source and labelling as the nav dropdown" | TC-ROLE-015 |
+| "The existing role badge continues to show the session's currently active role, unchanged" | TC-ROLE-015 |
+
 | SCRUM-39 acceptance criterion / rule | Covered by |
 |---|---|
 | "Venues with matching criterias are returned" | TC-VENUE-001, TC-VENUE-002, TC-VENUE-022 |
@@ -187,7 +226,7 @@ Environment as in §0 plus the SCRUM-39 migration and the venue rows from `supab
 | DB-1 / BR-R1 / CAL-R1 | TC-VENUE-030–034 |
 | Access matrix §2 (coordinators read/search, venue staff manage, others none) | TC-VENUE-010, TC-VENUE-035 |
 
-Cases with no seeded-data shortcut (forged/expired/wrong-audience JWTs, rate limiting, unconfirmed/banned accounts) require a small script/`curl` command or direct Supabase SQL access. The automated `pytest` suite (`backend/tests/test_auth.py`) covers the equivalents of TC-AUTH-001, TC-AUTH-006, TC-AUTH-020, TC-AUTH-021, TC-AUTH-025, TC-AUTH-026 (server-side revoke), TC-AUTH-028, TC-AUTH-029 (fresh auth client per sign-in), TC-AUTH-030–032, the backend half of TC-AUTH-034 and TC-AUTH-035 (503 on outage), and TC-RBAC-006. The Vitest suite (`frontend/src/**/__tests__/`) covers the frontend half of TC-AUTH-031 and TC-AUTH-034 (which errors end a session) and TC-RBAC-009. The §6 data-layer cases are automated by `supabase/verification/auth_security_checks.sql`. For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cover TC-VENUE-002–007 (rules), TC-VENUE-010–011, TC-VENUE-020–022; the Vitest specs `stores/__tests__/venues.spec.js` and `views/__tests__/venueSearch.spec.js` cover TC-VENUE-004 (toggle), TC-VENUE-008, TC-VENUE-009 (rendering), TC-VENUE-012; `supabase/verification/venue_schema_checks.sql` automates TC-VENUE-030–035.
+Cases with no seeded-data shortcut (forged/expired/wrong-audience JWTs, rate limiting, unconfirmed/banned accounts) require a small script/`curl` command or direct Supabase SQL access. The automated `pytest` suite (`backend/tests/test_auth.py`) covers the equivalents of TC-AUTH-001, TC-AUTH-006, TC-AUTH-020, TC-AUTH-021, TC-AUTH-025, TC-AUTH-026 (server-side revoke), TC-AUTH-028, TC-AUTH-029 (fresh auth client per sign-in), TC-AUTH-030–032, the backend half of TC-AUTH-034 and TC-AUTH-035 (503 on outage), and TC-RBAC-006. The Vitest suite (`frontend/src/**/__tests__/`) covers the frontend half of TC-AUTH-031 and TC-AUTH-034 (which errors end a session) and TC-RBAC-009. The §6 data-layer cases are automated by `supabase/verification/auth_security_checks.sql`. For SCRUM-74/75, `backend/tests/test_auth.py` covers the backend equivalents of TC-ROLE-002 (`roles` on the profile), TC-ROLE-003/006/009 (`POST /auth/active-role` success/reject, session-scoped `require_roles`), and TC-ROLE-007; the Vitest specs `stores/__tests__/auth.spec.js` and `components/common/__tests__/Nav.spec.js` cover the frontend equivalents of TC-ROLE-001–003 and TC-ROLE-010. TC-ROLE-004, TC-ROLE-005, and TC-ROLE-008's login/`/auth/me` parity were verified manually against the real Supabase project and a real browser (`docs/SCENARIO.md` §4.6) rather than by an automated test, since they depend on genuine cross-request/cross-session persistence that a mocked Supabase client can't demonstrate. For SCRUM-78, `views/__tests__/ProfileView.spec.js` covers the frontend equivalents of TC-ROLE-015 and TC-ROLE-016. For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cover TC-VENUE-002–007 (rules), TC-VENUE-010–011, TC-VENUE-020–022; the Vitest specs `stores/__tests__/venues.spec.js` and `views/__tests__/venueSearch.spec.js` cover TC-VENUE-004 (toggle), TC-VENUE-008, TC-VENUE-009 (rendering), TC-VENUE-012; `supabase/verification/venue_schema_checks.sql` automates TC-VENUE-030–035.
 
 ---
 

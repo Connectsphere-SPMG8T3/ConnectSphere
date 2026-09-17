@@ -2,13 +2,47 @@
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import { useSidebarState } from "@/composables/useSidebarState";
-import { useAuthStore } from "@/stores/auth";
+import { ROLE_LABELS, useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 const { isCollapsed } = useSidebarState();
+
+const roleOptions = computed(() =>
+  authStore.roles.map((role) => ({ value: role, label: ROLE_LABELS[role] ?? role })),
+);
+
+// BauhausSelect binds its native <select> with a plain :value/@change pair
+// (not v-model), so the browser sets the visible selection imperatively the
+// instant the user picks an option, before this handler even runs. When the
+// switch is a no-op or fails, authStore.role never changes — nothing
+// reactive fires — so nothing corrects that DOM value on its own; bumping
+// this key forces BauhausSelect to remount and re-apply the current role.
+// Only bumped on those two paths: a successful switch already changes
+// authStore.role for real, so Vue's normal reactivity updates the select
+// correctly without a remount — bumping unconditionally would remount (and
+// flicker) on every switch, not just the ones that need correcting.
+const roleSwitcherKey = ref(0);
+
+async function handleRoleChange(role) {
+  // BauhausSelect always renders an empty placeholder option, and re-selecting
+  // the already-active role should be a no-op rather than a round-trip.
+  if (!role || role === authStore.role) {
+    roleSwitcherKey.value += 1;
+    return;
+  }
+  try {
+    await authStore.setActiveRole(role);
+    await router.push(authStore.dashboardPath);
+  } catch {
+    // Switch rejected (e.g. role no longer held): authStore.role is
+    // unchanged, so force the remount to redisplay it correctly.
+    roleSwitcherKey.value += 1;
+  }
+}
 
 const isOpen = ref(false);
 
@@ -164,6 +198,22 @@ async function handleLogout() {
         <span :class="labelClass">Venues</span>
       </RouterLink>
     </nav>
+
+    <div
+      v-if="authStore.hasMultipleRoles"
+      data-testid="role-switcher"
+      class="border-t-2 border-ink px-4 py-4 sm:border-t-4"
+      :class="[sectionPadClass, isCollapsed ? 'sm:hidden' : '']"
+    >
+      <BauhausSelect
+        :key="roleSwitcherKey"
+        label="Acting as"
+        :model-value="authStore.role"
+        :options="roleOptions"
+        placeholder="Select a role"
+        @update:model-value="handleRoleChange"
+      />
+    </div>
 
     <div
       class="mt-auto flex flex-col gap-2 border-t-2 border-ink px-4 py-4 sm:border-t-4"

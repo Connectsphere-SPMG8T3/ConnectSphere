@@ -63,13 +63,13 @@ The seed also loads 8 venues with a few blocks and bookings around 10 Oct 2026, 
 
 All seeded accounts share the password `Cs1234`. Emails intentionally use the `@connectsphere.dev` domain, **not** `.test` — `pydantic.EmailStr` (via `email-validator`) rejects RFC 2606 reserved TLDs (`.test`, `.example`, `.invalid`, `.localhost`) as invalid addresses, which would make the seeded accounts unable to log in through the backend's `UserLoginRequest` validation.
 
-| Role | Email |
-|------|-------|
-| Event Organiser | organiser@connectsphere.dev |
-| Event Coordinator | coordinator@connectsphere.dev |
-| Venue Staff | venue.staff@connectsphere.dev |
-| Technical Support | tech.support@connectsphere.dev |
-| Attendee | attendee@connectsphere.dev |
+| Role | Email | Notes |
+|------|-------|-------|
+| Event Organiser | organiser@connectsphere.dev | Single role |
+| Event Coordinator | coordinator@connectsphere.dev | Dual-role account (double hat): also holds **Venue Staff** in `user_roles` to test SCRUM-74/75 role switcher |
+| Venue Staff | venue.staff@connectsphere.dev | Single role |
+| Technical Support | tech.support@connectsphere.dev | Single role |
+| Attendee | attendee@connectsphere.dev | Single role |
 
 ## 4. Backend
 

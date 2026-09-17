@@ -144,7 +144,29 @@ begin
         set role = (v_user ->> 'role')::public.user_role
         where id = (v_user ->> 'id')::uuid
           and role is distinct from (v_user ->> 'role')::public.user_role;
+
+        -- handle_new_user() only accepts 'event_organiser'/'attendee' from sign-up
+        -- metadata (D2), so it grants every staff account 'attendee' in user_roles
+        -- on insert. Correct that stray grant to match the role actually seeded,
+        -- so a fresh `supabase db reset` doesn't leave staff accounts unable to
+        -- switch back to their own role (they'd hold only 'attendee').
+        if (v_user ->> 'role') <> 'attendee' then
+            delete from public.user_roles
+            where profile_id = (v_user ->> 'id')::uuid
+              and role = 'attendee';
+        end if;
+
+        insert into public.user_roles (profile_id, role)
+        values ((v_user ->> 'id')::uuid, (v_user ->> 'role')::public.user_role)
+        on conflict do nothing;
     end loop;
+
+    -- SCRUM-74/75: give the coordinator test account a second role, the same
+    -- Coordinator + Venue Staff pairing ACC-R4 itself uses as its example, so
+    -- the role switcher is exercisable immediately after seeding.
+    insert into public.user_roles (profile_id, role)
+    values (v_coordinator_id, 'venue_staff')
+    on conflict do nothing;
 end $$;
 
 -- =============================================================================

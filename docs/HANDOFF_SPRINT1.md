@@ -24,7 +24,7 @@ cd frontend && npm install && npm run dev
 
 Or `docker compose up` from the repo root (needs the root `.env` filled in — ask whoever has it, it holds live Supabase keys and is gitignored).
 
-Seeded test accounts (password `Cs1234` for all): `organiser@connectsphere.dev`, `coordinator@connectsphere.dev`, `venue.staff@connectsphere.dev`, `tech.support@connectsphere.dev`, `attendee@connectsphere.dev`.
+Seeded test accounts (password `Cs1234` for all): `organiser@connectsphere.dev`, `coordinator@connectsphere.dev` (holds dual roles: Event Coordinator + Venue Staff), `venue.staff@connectsphere.dev`, `tech.support@connectsphere.dev`, `attendee@connectsphere.dev`.
 
 ## 3. What already exists — don't recreate it
 

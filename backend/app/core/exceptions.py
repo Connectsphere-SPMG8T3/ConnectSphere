@@ -49,3 +49,11 @@ class InsufficientRoleError(HTTPException):
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"This action requires one of the following roles: {', '.join(allowed_roles)}.",
         )
+
+
+class RoleNotAssignedError(HTTPException):
+    def __init__(self, role: str) -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You do not hold the '{role}' role.",
+        )
