@@ -18,8 +18,9 @@ _Last updated: 2026-09-17. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 | Story | Status | Backend | Frontend | Database |
 |---|---|---|---|---|
 | SCRUM-48 Basic user authentication | Done | `modules/auth` | `LoginView`, `stores/auth.js`, router guards | `profiles` |
-| SCRUM-50 See my own profile | Done in Jira; see open defect D7 in §5 | `GET /auth/me` | `ProfileView` (also lists every held role for a multi-role account, SCRUM-74/75) | `profiles` |
+| SCRUM-50 See my own profile | Done in Jira; see open defect D7 in §5 | `GET /auth/me` | `ProfileView` (also lists every held role for a multi-role account — see SCRUM-78 below) | `profiles` |
 | SCRUM-74 View assigned roles in nav dropdown, SCRUM-75 Select active role from nav dropdown | On `feature/scrum-74-75-role-switcher` (ACC-R4) | `POST /auth/active-role`, `roles` on `ProfileResponse`, session-scoped active role in `get_current_user` | Role switcher in `Nav.vue`, `roles`/`hasMultipleRoles`/`setActiveRole` in `stores/auth.js` | `user_roles`, `session_active_roles` |
+| SCRUM-78 View all assigned roles on profile page | On `feature/scrum-74-75-role-switcher` (ACC-R4); implemented ahead of ticket creation during SCRUM-74/75's code review, ticket opened retroactively for traceability | none (reuses `roles` on `ProfileResponse`) | "All Roles" section in `ProfileView.vue`, shown only via `authStore.hasMultipleRoles` | none (reuses `user_roles`) |
 | SCRUM-39 View venue catalogue | Done | `modules/venues` | `views/venues/`, `stores/venues.js`, `components/venues/` | venue tables |
 | SCRUM-72 Event Coordinator dashboard | Frontend done. **No backend endpoint yet**, so widgets show empty states | none | `CoordinatorDashboard`, `features/events/` | none |
 | SCRUM-70, 71, 73 and the attendee dashboard | Placeholder shells only (~40 lines each) | none | `views/dashboards/*Dashboard.vue` | none |
@@ -107,7 +108,7 @@ Vitest specs live in `__tests__/` folders next to the code: router, `stores/auth
 | `20260918000000_session_active_roles_fk_user_roles.sql` | composite FK `session_active_roles (profile_id, role) references user_roles (profile_id, role) on delete cascade`, so revoking a role via direct SQL immediately invalidates any session acting as it, instead of leaving it valid until logout/expiry; replaces the single-column `profile_id` index with a covering `(profile_id, role)` one |
 | `20260919000000_profiles_role_requires_user_roles_membership.sql` | deferred composite FK `profiles (id, role) references user_roles (profile_id, role)`, closing the same revocation gap for the common case the previous migration didn't cover — a session that never switched, whose `profiles.role` default was revoked; a covering `(id, role)` index |
 
-Verification scripts are in `supabase/verification/` (`auth_security_checks.sql`, `venue_schema_checks.sql`). Seeded test accounts, one per role with password `Cs1234`, are in `supabase/seed.sql`; `coordinator@connectsphere.dev` additionally holds `venue_staff` in `user_roles` (SCRUM-74/75), so it's the account to use for exercising the role switcher. Granting a role beyond signup has no in-app path yet — it's a direct SQL insert into `user_roles`, done by a system admin.
+Verification scripts are in `supabase/verification/` (`auth_security_checks.sql`, `venue_schema_checks.sql`). Seeded test accounts, one per role with password `Cs1234`, are in `supabase/seed.sql`; `coordinator@connectsphere.dev` additionally holds `venue_staff` in `user_roles` (SCRUM-74/75), so it's the account to use for exercising the role switcher and the profile page's "All Roles" section (SCRUM-78). Granting a role beyond signup has no in-app path yet — it's a direct SQL insert into `user_roles`, done by a system admin.
 
 ## 5. Know before you build
 
