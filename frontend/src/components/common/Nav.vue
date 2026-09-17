@@ -15,9 +15,26 @@ const roleOptions = computed(() =>
   authStore.roles.map((role) => ({ value: role, label: ROLE_LABELS[role] ?? role })),
 );
 
+// The native <select>'s displayed value is set imperatively by the browser
+// the instant the user picks an option, before this handler runs. If the
+// switch is a no-op or fails, authStore.role never changes, so Vue's :value
+// binding (unlike v-model) has nothing to diff and won't reset the visible
+// selection back on its own — bumping this key forces BauhausSelect to
+// remount and re-apply the current role.
+const roleSwitcherKey = ref(0);
+
 async function handleRoleChange(role) {
-  await authStore.setActiveRole(role);
-  await router.push(authStore.dashboardPath);
+  roleSwitcherKey.value += 1;
+  // BauhausSelect always renders an empty placeholder option, and re-selecting
+  // the already-active role should be a no-op rather than a round-trip.
+  if (!role || role === authStore.role) return;
+  try {
+    await authStore.setActiveRole(role);
+    await router.push(authStore.dashboardPath);
+  } catch {
+    // Switch rejected (e.g. role no longer held): authStore.role is
+    // unchanged, and the remount above already redisplays it correctly.
+  }
 }
 
 const isOpen = ref(false);
@@ -182,6 +199,7 @@ async function handleLogout() {
       :class="[sectionPadClass, isCollapsed ? 'sm:hidden' : '']"
     >
       <BauhausSelect
+        :key="roleSwitcherKey"
         label="Acting as"
         :model-value="authStore.role"
         :options="roleOptions"

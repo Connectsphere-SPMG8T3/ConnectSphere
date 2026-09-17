@@ -10,6 +10,7 @@ from supabase_auth.errors import AuthApiError, AuthInvalidJwtError, AuthRetryabl
 
 from app.main import app
 from app.modules.auth import service as auth_service_module
+from tests.conftest import make_table_mock as _make_table_mock
 
 SUPABASE_GATEWAY_UNAVAILABLE = AuthRetryableError("upstream unavailable", 503)
 
@@ -28,58 +29,6 @@ PROFILE_ROW = {
     "department": "Operations",
     "phone_number": None,
 }
-
-
-def _make_table_mock(
-    profile_row: dict | None,
-    *,
-    delay_seconds: float = 0.0,
-    session_active_role: dict | None = None,
-    user_roles: list[dict] | None = None,
-) -> MagicMock:
-    """Build a mock replicating `.table(name)...execute()`, routed by table name.
-
-    `profiles` and `session_active_roles` each return one row (or none) via
-    `.maybe_single()`; `user_roles` returns a list. `delay_seconds` only delays
-    the `profiles` lookup, matching the one query every pre-existing test timed.
-    """
-
-    def _build_query(name: str) -> MagicMock:
-        query = MagicMock()
-        query.select.return_value = query
-        query.eq.return_value = query
-        query.maybe_single.return_value = query
-        query.upsert.return_value = query
-
-        if name == "profiles":
-
-            def _execute():
-                if delay_seconds:
-                    time.sleep(delay_seconds)
-                return SimpleNamespace(data=profile_row)
-
-            query.execute.side_effect = _execute
-        elif name == "session_active_roles":
-            query.execute.side_effect = lambda: SimpleNamespace(data=session_active_role)
-        elif name == "user_roles":
-            query.execute.side_effect = lambda: SimpleNamespace(data=user_roles or [])
-        else:
-            query.execute.side_effect = lambda: SimpleNamespace(data=None)
-
-        return query
-
-    # One query mock per table name, reused across calls, so a test can assert
-    # on `admin_client.table("...")` after the request already ran.
-    queries_by_table: dict[str, MagicMock] = {}
-
-    def _query_for(name: str) -> MagicMock:
-        if name not in queries_by_table:
-            queries_by_table[name] = _build_query(name)
-        return queries_by_table[name]
-
-    table_client = MagicMock()
-    table_client.table.side_effect = _query_for
-    return table_client
 
 
 def _make_anon_client_with_claims(claims: dict | None = None, *, raises: Exception | None = None) -> MagicMock:
@@ -119,9 +68,18 @@ def _valid_claims() -> dict:
     return {"sub": TEST_USER_ID, "aud": "authenticated", "email": TEST_EMAIL, "session_id": TEST_SESSION_ID}
 
 
-def _stub_get_claims_for_session(auth_client: MagicMock, session_id: str = TEST_SESSION_ID) -> None:
-    """auth.service decodes the just-issued access token to learn its session_id."""
-    auth_client.auth.get_claims.return_value = {"claims": {"session_id": session_id}}
+def _patch_token_decoding(
+    monkeypatch, *, session_id: str = TEST_SESSION_ID, raises: Exception | None = None
+) -> MagicMock:
+    """_token_response decodes the just-issued access token via
+    `core.security.decode_access_token`, which calls that module's own
+    `get_supabase_anon_client()` — a different bound name than
+    `auth_service_module.get_supabase_anon_client`, so it needs its own patch.
+    """
+    claims = None if raises else {"aud": "authenticated", "session_id": session_id}
+    anon_client = _make_anon_client_with_claims(claims, raises=raises)
+    monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
+    return anon_client
 
 
 def _authenticate_requests_as_test_user(
@@ -142,7 +100,7 @@ class TestLogin:
     def test_successful_login_returns_token_and_profile(self, client, monkeypatch):
         auth_client = MagicMock()
         auth_client.auth.sign_in_with_password.return_value = _auth_response()
-        _stub_get_claims_for_session(auth_client)
+        _patch_token_decoding(monkeypatch)
         monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client, raising=False)
         monkeypatch.setattr(
             auth_service_module, "get_supabase_anon_client", _shared_client_that_must_not_hold_sessions
@@ -187,10 +145,10 @@ class TestLogin:
         def _create_auth_client():
             auth_client = MagicMock()
             auth_client.auth.sign_in_with_password.return_value = _auth_response()
-            _stub_get_claims_for_session(auth_client)
             created_clients.append(auth_client)
             return auth_client
 
+        _patch_token_decoding(monkeypatch)
         monkeypatch.setattr(auth_service_module, "create_auth_client", _create_auth_client, raising=False)
         monkeypatch.setattr(
             auth_service_module, "get_supabase_anon_client", _shared_client_that_must_not_hold_sessions
@@ -212,6 +170,18 @@ class TestLogin:
         auth_client = MagicMock()
         auth_client.auth.sign_in_with_password.side_effect = SUPABASE_GATEWAY_UNAVAILABLE
         monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client)
+
+        response = client.post("/api/v1/auth/login", json={"email": TEST_EMAIL, "password": "Cs1234"})
+
+        assert response.status_code == 503
+
+    def test_login_when_token_verification_is_unavailable_returns_503(self, client, monkeypatch):
+        """Login succeeded, but decoding the fresh token to learn its session_id hits a
+        JWKS-fetch outage — this must not surface as a 500."""
+        auth_client = MagicMock()
+        auth_client.auth.sign_in_with_password.return_value = _auth_response()
+        monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client, raising=False)
+        _patch_token_decoding(monkeypatch, raises=SUPABASE_GATEWAY_UNAVAILABLE)
 
         response = client.post("/api/v1/auth/login", json={"email": TEST_EMAIL, "password": "Cs1234"})
 
@@ -270,7 +240,7 @@ class TestRefresh:
         auth_client.auth.refresh_session.return_value = _auth_response(
             access_token="rotated-access-token", refresh_token="rotated-refresh-token"
         )
-        _stub_get_claims_for_session(auth_client)
+        _patch_token_decoding(monkeypatch)
         monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client, raising=False)
         monkeypatch.setattr(
             auth_service_module, "get_supabase_anon_client", _shared_client_that_must_not_hold_sessions
@@ -304,6 +274,16 @@ class TestRefresh:
         auth_client = MagicMock()
         auth_client.auth.refresh_session.side_effect = SUPABASE_GATEWAY_UNAVAILABLE
         monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client)
+
+        response = client.post("/api/v1/auth/refresh", json={"refresh_token": FAKE_REFRESH_TOKEN})
+
+        assert response.status_code == 503
+
+    def test_refresh_when_token_verification_is_unavailable_returns_503(self, client, monkeypatch):
+        auth_client = MagicMock()
+        auth_client.auth.refresh_session.return_value = _auth_response()
+        monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client, raising=False)
+        _patch_token_decoding(monkeypatch, raises=SUPABASE_GATEWAY_UNAVAILABLE)
 
         response = client.post("/api/v1/auth/refresh", json={"refresh_token": FAKE_REFRESH_TOKEN})
 

@@ -9,6 +9,7 @@ const authStore = useAuthStore();
 const profile = computed(() => authStore.profile);
 
 const roleLabel = computed(() => ROLE_LABELS[profile.value?.role] ?? profile.value?.role);
+const allRoleLabels = computed(() => authStore.roles.map((role) => ROLE_LABELS[role] ?? role));
 </script>
 
 <template>
@@ -40,6 +41,18 @@ const roleLabel = computed(() => ROLE_LABELS[profile.value?.role] ?? profile.val
           <div v-if="profile.phone_number">
             <dt class="text-xs font-bold uppercase tracking-widest text-ink/60">Phone</dt>
             <dd class="text-base font-medium">{{ profile.phone_number }}</dd>
+          </div>
+          <div v-if="authStore.hasMultipleRoles">
+            <dt class="text-xs font-bold uppercase tracking-widest text-ink/60">All Roles</dt>
+            <dd class="mt-1 flex flex-wrap gap-2">
+              <span
+                v-for="label in allRoleLabels"
+                :key="label"
+                class="border-2 border-ink bg-canvas px-2 py-0.5 text-xs font-bold uppercase tracking-widest"
+              >
+                {{ label }}
+              </span>
+            </dd>
           </div>
         </dl>
 

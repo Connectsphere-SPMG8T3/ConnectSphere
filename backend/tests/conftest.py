@@ -4,6 +4,7 @@ os.environ.setdefault("SUPABASE_URL", "https://vuiryrzzyfecjqftwicj.supabase.co"
 os.environ.setdefault("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test-key")
 os.environ.setdefault("SUPABASE_SECRET_KEY", "sb_secret_test-key")
 
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -25,15 +26,62 @@ def auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"}
 
 
-def _profile_table_mock(row: dict) -> MagicMock:
-    """Replicates `.table("profiles").select(...).eq(...).maybe_single().execute()`."""
-    query = MagicMock()
-    query.select.return_value = query
-    query.eq.return_value = query
-    query.maybe_single.return_value = query
-    query.execute.return_value = SimpleNamespace(data=row)
+def make_table_mock(
+    profile_row: dict | None,
+    *,
+    delay_seconds: float = 0.0,
+    session_active_role: dict | None = None,
+    user_roles: list[dict] | None = None,
+) -> MagicMock:
+    """Build a mock replicating `.table(name)...execute()`, routed by table name.
+
+    `profiles` and `session_active_roles` each return one row (or none) via
+    `.maybe_single()`; `user_roles` returns a list. Routing by table name (as
+    opposed to one canned response for every `.table()` call) matters once a
+    request touches more than one table — `get_current_user` alone queries
+    both `profiles` and `session_active_roles` — since a single-shape mock
+    would otherwise hand `session_active_roles` a `profiles` row and read
+    whatever meaning out of its `role` key was left over. `delay_seconds` only
+    delays the `profiles` lookup, matching the one query call sites that time
+    it expect.
+    """
+
+    def _build_query(name: str) -> MagicMock:
+        query = MagicMock()
+        query.select.return_value = query
+        query.eq.return_value = query
+        query.maybe_single.return_value = query
+        query.upsert.return_value = query
+        query.order.return_value = query
+
+        if name == "profiles":
+
+            def _execute():
+                if delay_seconds:
+                    time.sleep(delay_seconds)
+                return SimpleNamespace(data=profile_row)
+
+            query.execute.side_effect = _execute
+        elif name == "session_active_roles":
+            query.execute.side_effect = lambda: SimpleNamespace(data=session_active_role)
+        elif name == "user_roles":
+            query.execute.side_effect = lambda: SimpleNamespace(data=user_roles or [])
+        else:
+            query.execute.side_effect = lambda: SimpleNamespace(data=None)
+
+        return query
+
+    # One query mock per table name, reused across calls, so a test can assert
+    # on `admin_client.table("...")` after the request already ran.
+    queries_by_table: dict[str, MagicMock] = {}
+
+    def _query_for(name: str) -> MagicMock:
+        if name not in queries_by_table:
+            queries_by_table[name] = _build_query(name)
+        return queries_by_table[name]
+
     table_client = MagicMock()
-    table_client.table.return_value = query
+    table_client.table.side_effect = _query_for
     return table_client
 
 
@@ -67,7 +115,7 @@ def authenticate_as(monkeypatch):
             }
         }
         monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
-        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: _profile_table_mock(profile))
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: make_table_mock(profile))
         return profile
 
     return _authenticate

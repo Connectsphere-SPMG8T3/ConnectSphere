@@ -100,4 +100,55 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
       { timeout: 2000 },
     );
   });
+
+  it("ignores selecting the empty placeholder option, without calling the API", async () => {
+    const { el, router } = await mountNav({
+      id: "u1",
+      role: "event_coordinator",
+      roles: ["event_coordinator", "venue_staff"],
+    });
+
+    const select = el.querySelector('[data-testid="role-switcher"] select');
+    select.value = "";
+    select.dispatchEvent(new Event("change"));
+    await settle();
+
+    expect(authApi.setActiveRole).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe("/dashboard/coordinator");
+  });
+
+  it("ignores re-selecting the already-active role, without calling the API", async () => {
+    const { el } = await mountNav({
+      id: "u1",
+      role: "event_coordinator",
+      roles: ["event_coordinator", "venue_staff"],
+    });
+
+    const select = el.querySelector('[data-testid="role-switcher"] select');
+    select.value = "event_coordinator";
+    select.dispatchEvent(new Event("change"));
+    await settle();
+
+    expect(authApi.setActiveRole).not.toHaveBeenCalled();
+  });
+
+  it("does not crash and leaves the role unchanged when the switch is rejected", async () => {
+    authApi.setActiveRole.mockRejectedValue(new Error("You do not hold the 'venue_staff' role."));
+    const { el } = await mountNav({
+      id: "u1",
+      role: "event_coordinator",
+      roles: ["event_coordinator", "venue_staff"],
+    });
+
+    const select = el.querySelector('[data-testid="role-switcher"] select');
+    select.value = "venue_staff";
+    select.dispatchEvent(new Event("change"));
+    await settle();
+
+    // A rejected switch forces BauhausSelect to remount (see Nav.vue), so the
+    // element to check is whichever <select> is in the DOM now, not the one
+    // captured before the interaction.
+    const currentSelect = el.querySelector('[data-testid="role-switcher"] select');
+    expect(currentSelect.value).toBe("event_coordinator");
+  });
 });
