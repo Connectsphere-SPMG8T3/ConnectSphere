@@ -5,12 +5,21 @@ from app.core.exceptions import (
     InvalidCredentialsError,
     InvalidOrExpiredTokenError,
     ProfileNotFoundError,
+    RoleNotAssignedError,
 )
+from app.core.security import CurrentUser, resolve_active_role
 from app.db.supabase import create_auth_client, get_supabase_admin_client, get_supabase_anon_client
 from app.modules.auth.schemas import ProfileResponse, TokenResponse, UserLoginRequest, UserResponse
 
 
-def _fetch_profile(user_id: str) -> ProfileResponse:
+def get_roles(profile_id: str) -> list[str]:
+    """The roles `profile_id` is allowed to act as (ACC-R4), for the nav dropdown (SCRUM-74)."""
+    admin_client = get_supabase_admin_client()
+    response = admin_client.table("user_roles").select("role").eq("profile_id", profile_id).execute()
+    return [row["role"] for row in (response.data or [])]
+
+
+def _fetch_profile(user_id: str, session_id: str) -> ProfileResponse:
     admin_client = get_supabase_admin_client()
     response = (
         admin_client.table("profiles")
@@ -21,11 +30,17 @@ def _fetch_profile(user_id: str) -> ProfileResponse:
     )
     if not response or not response.data:
         raise ProfileNotFoundError()
-    return ProfileResponse(**response.data)
+    profile = response.data
+    active_role = resolve_active_role(admin_client, session_id, default_role=profile["role"])
+    return ProfileResponse(**{**profile, "role": active_role}, roles=get_roles(user_id))
 
 
-def _token_response(session, user) -> TokenResponse:
-    profile = _fetch_profile(user.id)
+def _token_response(session, user, auth_client) -> TokenResponse:
+    # The session_id claim is only known once Supabase has minted the token,
+    # so it's read back off the token we were just issued, not decoded ahead of time.
+    claims_response = auth_client.auth.get_claims(session.access_token)
+    session_id = claims_response["claims"]["session_id"]
+    profile = _fetch_profile(user.id, session_id)
     return TokenResponse(
         access_token=session.access_token,
         refresh_token=session.refresh_token,
@@ -50,7 +65,7 @@ def login(credentials: UserLoginRequest) -> TokenResponse:
     if auth_response.session is None or auth_response.user is None:
         raise InvalidCredentialsError()
 
-    return _token_response(auth_response.session, auth_response.user)
+    return _token_response(auth_response.session, auth_response.user, auth_client)
 
 
 def refresh(refresh_token: str) -> TokenResponse:
@@ -68,11 +83,20 @@ def refresh(refresh_token: str) -> TokenResponse:
     if auth_response.session is None or auth_response.user is None:
         raise InvalidOrExpiredTokenError()
 
-    return _token_response(auth_response.session, auth_response.user)
+    return _token_response(auth_response.session, auth_response.user, auth_client)
 
 
-def get_profile(user_id: str) -> ProfileResponse:
-    return _fetch_profile(user_id)
+def set_active_role(current_user: CurrentUser, role: str) -> ProfileResponse:
+    """Switch the caller's session to `role` (SCRUM-75), after checking they hold it."""
+    if role not in get_roles(current_user.id):
+        raise RoleNotAssignedError(role)
+
+    admin_client = get_supabase_admin_client()
+    admin_client.table("session_active_roles").upsert(
+        {"session_id": current_user.session_id, "profile_id": current_user.id, "role": role}
+    ).execute()
+
+    return _fetch_profile(current_user.id, current_user.session_id)
 
 
 def logout(access_token: str) -> None:

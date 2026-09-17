@@ -19,7 +19,11 @@ _EXPECTED_AUDIENCE = "authenticated"
 
 class CurrentUser(BaseModel):
     """The authenticated principal, combining the verified JWT claims
-    with the corresponding `public.profiles` row."""
+    with the corresponding `public.profiles` row.
+
+    `role` is the role this *session* is currently acting as (SCRUM-75), not
+    necessarily the account's default `profiles.role` — see `resolve_active_role`.
+    """
 
     id: str
     email: str
@@ -28,6 +32,7 @@ class CurrentUser(BaseModel):
     organisation_name: str | None = None
     department: str | None = None
     phone_number: str | None = None
+    session_id: str
     access_token: str
 
 
@@ -62,6 +67,23 @@ def decode_access_token(token: str) -> dict:
     return claims
 
 
+def resolve_active_role(admin_client, session_id: str, default_role: str) -> str:
+    """The role `session_id` is currently acting as (SCRUM-75).
+
+    Falls back to `default_role` (the account's `profiles.role`) when this
+    session has never switched — most sessions, most of the time.
+    """
+    response = (
+        admin_client.table("session_active_roles")
+        .select("role")
+        .eq("session_id", session_id)
+        .maybe_single()
+        .execute()
+    )
+    row = response.data if response else None
+    return row["role"] if row else default_role
+
+
 def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
 ) -> CurrentUser:
@@ -78,7 +100,8 @@ def get_current_user(
     token = credentials.credentials
     payload = decode_access_token(token)
     user_id = payload.get("sub")
-    if not user_id:
+    session_id = payload.get("session_id")
+    if not user_id or not session_id:
         raise InvalidOrExpiredTokenError()
 
     admin_client = get_supabase_admin_client()
@@ -93,7 +116,8 @@ def get_current_user(
     if not profile:
         raise ProfileNotFoundError()
 
-    return CurrentUser(**profile, access_token=token)
+    active_role = resolve_active_role(admin_client, session_id, default_role=profile["role"])
+    return CurrentUser(**{**profile, "role": active_role}, session_id=session_id, access_token=token)
 
 
 def require_roles(allowed_roles: list[str]):

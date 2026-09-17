@@ -10,6 +10,10 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str = Field(min_length=1)
 
 
+class SetActiveRoleRequest(BaseModel):
+    role: str = Field(min_length=1)
+
+
 class ProfileResponse(BaseModel):
     id: str
     email: str
@@ -18,6 +22,7 @@ class ProfileResponse(BaseModel):
     organisation_name: str | None = None
     department: str | None = None
     phone_number: str | None = None
+    roles: list[str] = Field(default_factory=list)
 
 
 class UserResponse(BaseModel):

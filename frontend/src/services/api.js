@@ -43,6 +43,9 @@ export const authApi = {
   me(token) {
     return request("/auth/me", { token });
   },
+  setActiveRole(token, role) {
+    return request("/auth/active-role", { method: "POST", body: { role }, token });
+  },
   logout(token) {
     return request("/auth/logout", { method: "POST", token });
   },

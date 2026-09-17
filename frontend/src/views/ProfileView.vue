@@ -3,20 +3,12 @@ import { computed } from "vue";
 import { RouterLink } from "vue-router";
 
 import BauhausCard from "@/components/common/BauhausCard.vue";
-import { useAuthStore } from "@/stores/auth";
+import { ROLE_LABELS, useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
 const profile = computed(() => authStore.profile);
 
-const roleLabels = {
-  event_organiser: "Event Organiser",
-  event_coordinator: "Event Coordinator",
-  venue_staff: "Venue Staff",
-  tech_support: "Technical Support",
-  attendee: "Attendee",
-};
-
-const roleLabel = computed(() => roleLabels[profile.value?.role] ?? profile.value?.role);
+const roleLabel = computed(() => ROLE_LABELS[profile.value?.role] ?? profile.value?.role);
 </script>
 
 <template>

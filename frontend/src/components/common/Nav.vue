@@ -2,13 +2,23 @@
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import { useSidebarState } from "@/composables/useSidebarState";
-import { useAuthStore } from "@/stores/auth";
+import { ROLE_LABELS, useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 const { isCollapsed } = useSidebarState();
+
+const roleOptions = computed(() =>
+  authStore.roles.map((role) => ({ value: role, label: ROLE_LABELS[role] ?? role })),
+);
+
+async function handleRoleChange(role) {
+  await authStore.setActiveRole(role);
+  await router.push(authStore.dashboardPath);
+}
 
 const isOpen = ref(false);
 
@@ -164,6 +174,21 @@ async function handleLogout() {
         <span :class="labelClass">Venues</span>
       </RouterLink>
     </nav>
+
+    <div
+      v-if="authStore.hasMultipleRoles"
+      data-testid="role-switcher"
+      class="border-t-2 border-ink px-4 py-4 sm:border-t-4"
+      :class="[sectionPadClass, isCollapsed ? 'sm:hidden' : '']"
+    >
+      <BauhausSelect
+        label="Acting as"
+        :model-value="authStore.role"
+        :options="roleOptions"
+        placeholder="Select a role"
+        @update:model-value="handleRoleChange"
+      />
+    </div>
 
     <div
       class="mt-auto flex flex-col gap-2 border-t-2 border-ink px-4 py-4 sm:border-t-4"

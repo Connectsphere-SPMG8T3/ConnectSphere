@@ -14,6 +14,7 @@ from app.modules.auth import service as auth_service_module
 SUPABASE_GATEWAY_UNAVAILABLE = AuthRetryableError("upstream unavailable", 503)
 
 TEST_USER_ID = "11111111-1111-1111-1111-111111111111"
+TEST_SESSION_ID = "22222222-2222-2222-2222-222222222222"
 TEST_EMAIL = "coordinator@connectsphere.dev"
 FAKE_ACCESS_TOKEN = "fake-access-token"  # nosec: opaque in tests; verification is mocked, not decoded
 FAKE_REFRESH_TOKEN = "fake-refresh-token"  # nosec: opaque in tests
@@ -29,22 +30,55 @@ PROFILE_ROW = {
 }
 
 
-def _make_table_mock(row: dict | None, *, delay_seconds: float = 0.0) -> MagicMock:
-    """Build a mock replicating `.table("profiles").select(...).eq(...).maybe_single().execute()`."""
+def _make_table_mock(
+    profile_row: dict | None,
+    *,
+    delay_seconds: float = 0.0,
+    session_active_role: dict | None = None,
+    user_roles: list[dict] | None = None,
+) -> MagicMock:
+    """Build a mock replicating `.table(name)...execute()`, routed by table name.
 
-    def _execute():
-        if delay_seconds:
-            time.sleep(delay_seconds)
-        return SimpleNamespace(data=row)
+    `profiles` and `session_active_roles` each return one row (or none) via
+    `.maybe_single()`; `user_roles` returns a list. `delay_seconds` only delays
+    the `profiles` lookup, matching the one query every pre-existing test timed.
+    """
 
-    query = MagicMock()
-    query.select.return_value = query
-    query.eq.return_value = query
-    query.maybe_single.return_value = query
-    query.execute.side_effect = _execute
+    def _build_query(name: str) -> MagicMock:
+        query = MagicMock()
+        query.select.return_value = query
+        query.eq.return_value = query
+        query.maybe_single.return_value = query
+        query.upsert.return_value = query
+
+        if name == "profiles":
+
+            def _execute():
+                if delay_seconds:
+                    time.sleep(delay_seconds)
+                return SimpleNamespace(data=profile_row)
+
+            query.execute.side_effect = _execute
+        elif name == "session_active_roles":
+            query.execute.side_effect = lambda: SimpleNamespace(data=session_active_role)
+        elif name == "user_roles":
+            query.execute.side_effect = lambda: SimpleNamespace(data=user_roles or [])
+        else:
+            query.execute.side_effect = lambda: SimpleNamespace(data=None)
+
+        return query
+
+    # One query mock per table name, reused across calls, so a test can assert
+    # on `admin_client.table("...")` after the request already ran.
+    queries_by_table: dict[str, MagicMock] = {}
+
+    def _query_for(name: str) -> MagicMock:
+        if name not in queries_by_table:
+            queries_by_table[name] = _build_query(name)
+        return queries_by_table[name]
 
     table_client = MagicMock()
-    table_client.table.return_value = query
+    table_client.table.side_effect = _query_for
     return table_client
 
 
@@ -82,13 +116,25 @@ def _auth_response(access_token: str = FAKE_ACCESS_TOKEN, refresh_token: str = F
 
 
 def _valid_claims() -> dict:
-    return {"sub": TEST_USER_ID, "aud": "authenticated", "email": TEST_EMAIL}
+    return {"sub": TEST_USER_ID, "aud": "authenticated", "email": TEST_EMAIL, "session_id": TEST_SESSION_ID}
 
 
-def _authenticate_requests_as_test_user(monkeypatch) -> MagicMock:
+def _stub_get_claims_for_session(auth_client: MagicMock, session_id: str = TEST_SESSION_ID) -> None:
+    """auth.service decodes the just-issued access token to learn its session_id."""
+    auth_client.auth.get_claims.return_value = {"claims": {"session_id": session_id}}
+
+
+def _authenticate_requests_as_test_user(
+    monkeypatch,
+    *,
+    session_active_role: dict | None = None,
+    user_roles: list[dict] | None = None,
+) -> MagicMock:
     anon_client = _make_anon_client_with_claims(_valid_claims())
+    admin_client = _make_table_mock(PROFILE_ROW, session_active_role=session_active_role, user_roles=user_roles)
     monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
-    monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: _make_table_mock(PROFILE_ROW))
+    monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
+    monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
     return anon_client
 
 
@@ -96,12 +142,17 @@ class TestLogin:
     def test_successful_login_returns_token_and_profile(self, client, monkeypatch):
         auth_client = MagicMock()
         auth_client.auth.sign_in_with_password.return_value = _auth_response()
+        _stub_get_claims_for_session(auth_client)
         monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client, raising=False)
         monkeypatch.setattr(
             auth_service_module, "get_supabase_anon_client", _shared_client_that_must_not_hold_sessions
         )
         monkeypatch.setattr(
-            auth_service_module, "get_supabase_admin_client", lambda: _make_table_mock(PROFILE_ROW)
+            auth_service_module,
+            "get_supabase_admin_client",
+            lambda: _make_table_mock(
+                PROFILE_ROW, user_roles=[{"role": "event_coordinator"}, {"role": "venue_staff"}]
+            ),
         )
 
         response = client.post("/api/v1/auth/login", json={"email": TEST_EMAIL, "password": "Cs1234"})
@@ -111,6 +162,7 @@ class TestLogin:
         assert body["access_token"] == FAKE_ACCESS_TOKEN
         assert body["refresh_token"] == FAKE_REFRESH_TOKEN
         assert body["profile"]["role"] == "event_coordinator"
+        assert body["profile"]["roles"] == ["event_coordinator", "venue_staff"]
         assert body["user"]["email"] == TEST_EMAIL
 
     def test_invalid_login_returns_401(self, client, monkeypatch):
@@ -135,6 +187,7 @@ class TestLogin:
         def _create_auth_client():
             auth_client = MagicMock()
             auth_client.auth.sign_in_with_password.return_value = _auth_response()
+            _stub_get_claims_for_session(auth_client)
             created_clients.append(auth_client)
             return auth_client
 
@@ -217,6 +270,7 @@ class TestRefresh:
         auth_client.auth.refresh_session.return_value = _auth_response(
             access_token="rotated-access-token", refresh_token="rotated-refresh-token"
         )
+        _stub_get_claims_for_session(auth_client)
         monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client, raising=False)
         monkeypatch.setattr(
             auth_service_module, "get_supabase_anon_client", _shared_client_that_must_not_hold_sessions
@@ -311,6 +365,34 @@ class TestMe:
 
         assert response.status_code == 503
 
+    def test_me_returns_roles_held_by_the_account(self, client, monkeypatch):
+        """SCRUM-74: the dropdown needs exactly the roles in user_roles, not a hardcoded set."""
+        _authenticate_requests_as_test_user(
+            monkeypatch, user_roles=[{"role": "event_coordinator"}, {"role": "venue_staff"}]
+        )
+
+        response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"})
+
+        assert response.status_code == 200
+        assert response.json()["roles"] == ["event_coordinator", "venue_staff"]
+
+    def test_me_returns_the_sessions_active_role_not_the_profile_default(self, client, monkeypatch):
+        """SCRUM-75: role reflects what this session switched to, not profiles.role."""
+        _authenticate_requests_as_test_user(monkeypatch, session_active_role={"role": "venue_staff"})
+
+        response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"})
+
+        assert response.status_code == 200
+        assert response.json()["role"] == "venue_staff"
+
+    def test_me_falls_back_to_profile_role_when_session_never_switched(self, client, monkeypatch):
+        _authenticate_requests_as_test_user(monkeypatch)
+
+        response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"})
+
+        assert response.status_code == 200
+        assert response.json()["role"] == "event_coordinator"
+
     def test_me_when_profile_row_is_missing_returns_404(self, client, monkeypatch):
         monkeypatch.setattr(
             "app.core.security.get_supabase_anon_client",
@@ -333,10 +415,9 @@ class TestEventLoopIsNotBlocked:
             "app.core.security.get_supabase_anon_client",
             lambda: _make_anon_client_with_claims(_valid_claims()),
         )
-        monkeypatch.setattr(
-            "app.core.security.get_supabase_admin_client",
-            lambda: _make_table_mock(PROFILE_ROW, delay_seconds=per_request_delay),
-        )
+        admin_client = _make_table_mock(PROFILE_ROW, delay_seconds=per_request_delay)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
+        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
         statuses: list[int] = []
 
         with TestClient(app) as shared_loop_client:
@@ -382,3 +463,94 @@ class TestRoleGuard:
         )
 
         assert response.status_code == 403
+
+    def test_require_roles_allows_a_role_the_session_switched_into(self, monkeypatch):
+        """SCRUM-75: require_roles checks the session's active role, not the account's default."""
+        from app.core.security import CurrentUser, require_roles
+
+        _authenticate_requests_as_test_user(monkeypatch, session_active_role={"role": "venue_staff"})
+        probe_router = APIRouter()
+
+        @probe_router.get("/probe/venue-only")
+        def _probe(
+            current_user: Annotated[CurrentUser, Depends(require_roles(["venue_staff"]))],
+        ) -> dict:
+            return {"ok": True}
+
+        probe_app = FastAPI()
+        probe_app.include_router(probe_router)
+
+        response = TestClient(probe_app).get(
+            "/probe/venue-only", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"}
+        )
+
+        assert response.status_code == 200
+
+
+class TestResolveActiveRole:
+    """Direct unit tests for the session-scoping helper (SCRUM-75)."""
+
+    def test_returns_the_stored_role_when_the_session_has_switched(self):
+        from app.core.security import resolve_active_role
+
+        admin_client = _make_table_mock(PROFILE_ROW, session_active_role={"role": "venue_staff"})
+
+        result = resolve_active_role(admin_client, TEST_SESSION_ID, default_role="event_coordinator")
+
+        assert result == "venue_staff"
+
+    def test_falls_back_to_the_default_role_when_the_session_never_switched(self):
+        from app.core.security import resolve_active_role
+
+        admin_client = _make_table_mock(PROFILE_ROW)
+
+        result = resolve_active_role(admin_client, TEST_SESSION_ID, default_role="event_coordinator")
+
+        assert result == "event_coordinator"
+
+
+class TestActiveRole:
+    """SCRUM-75: POST /auth/active-role."""
+
+    def test_switching_to_a_held_role_succeeds_and_upserts_the_session_row(self, client, monkeypatch):
+        admin_client = _make_table_mock(
+            PROFILE_ROW, user_roles=[{"role": "event_coordinator"}, {"role": "venue_staff"}]
+        )
+        anon_client = _make_anon_client_with_claims(_valid_claims())
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
+        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
+
+        response = client.post(
+            "/api/v1/auth/active-role",
+            json={"role": "venue_staff"},
+            headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["roles"] == ["event_coordinator", "venue_staff"]
+        session_active_roles_query = admin_client.table("session_active_roles")
+        session_active_roles_query.upsert.assert_called_once_with(
+            {"session_id": TEST_SESSION_ID, "profile_id": TEST_USER_ID, "role": "venue_staff"}
+        )
+
+    def test_switching_to_a_role_not_held_is_rejected(self, client, monkeypatch):
+        admin_client = _make_table_mock(PROFILE_ROW, user_roles=[{"role": "event_coordinator"}])
+        anon_client = _make_anon_client_with_claims(_valid_claims())
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
+        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
+
+        response = client.post(
+            "/api/v1/auth/active-role",
+            json={"role": "venue_staff"},
+            headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"},
+        )
+
+        assert response.status_code == 403
+        admin_client.table("session_active_roles").upsert.assert_not_called()
+
+    def test_switching_without_a_token_returns_401(self, client):
+        response = client.post("/api/v1/auth/active-role", json={"role": "venue_staff"})
+
+        assert response.status_code == 401

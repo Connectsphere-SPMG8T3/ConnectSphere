@@ -56,9 +56,15 @@ def authenticate_as(monkeypatch):
             "department": None,
             "phone_number": None,
         }
+        session_id = "22222222-2222-2222-2222-222222222222"
         anon_client = MagicMock()
         anon_client.auth.get_claims.return_value = {
-            "claims": {"sub": user_id, "aud": "authenticated", "email": profile["email"]}
+            "claims": {
+                "sub": user_id,
+                "aud": "authenticated",
+                "email": profile["email"],
+                "session_id": session_id,
+            }
         }
         monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
         monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: _profile_table_mock(profile))

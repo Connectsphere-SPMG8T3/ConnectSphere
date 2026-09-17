@@ -145,6 +145,13 @@ begin
         where id = (v_user ->> 'id')::uuid
           and role is distinct from (v_user ->> 'role')::public.user_role;
     end loop;
+
+    -- SCRUM-74/75: give the coordinator test account a second role, the same
+    -- Coordinator + Venue Staff pairing ACC-R4 itself uses as its example, so
+    -- the role switcher is exercisable immediately after seeding.
+    insert into public.user_roles (profile_id, role)
+    values (v_coordinator_id, 'venue_staff')
+    on conflict do nothing;
 end $$;
 
 -- =============================================================================

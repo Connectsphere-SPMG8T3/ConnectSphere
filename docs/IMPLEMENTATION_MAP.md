@@ -9,7 +9,7 @@ This file describes the **current state** of the codebase, so a developer (or AI
 
 **Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current").
 
-_Last updated: 2026-09-15. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72), plus unmerged branches listed in §6._
+_Last updated: 2026-09-17. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72), plus unmerged branches listed in §6, plus the in-progress `feature/scrum-74-75-role-switcher` branch described below._
 
 ---
 
@@ -19,6 +19,7 @@ _Last updated: 2026-09-15. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 |---|---|---|---|---|
 | SCRUM-48 Basic user authentication | Done | `modules/auth` | `LoginView`, `stores/auth.js`, router guards | `profiles` |
 | SCRUM-50 See my own profile | Done in Jira; see open defect D7 in §5 | `GET /auth/me` | `ProfileView` | `profiles` |
+| SCRUM-74 View assigned roles in nav dropdown, SCRUM-75 Select active role from nav dropdown | On `feature/scrum-74-75-role-switcher` (ACC-R4) | `POST /auth/active-role`, `roles` on `ProfileResponse`, session-scoped active role in `get_current_user` | Role switcher in `Nav.vue`, `roles`/`hasMultipleRoles`/`setActiveRole` in `stores/auth.js` | `user_roles`, `session_active_roles` |
 | SCRUM-39 View venue catalogue | Done | `modules/venues` | `views/venues/`, `stores/venues.js`, `components/venues/` | venue tables |
 | SCRUM-72 Event Coordinator dashboard | Frontend done. **No backend endpoint yet**, so widgets show empty states | none | `CoordinatorDashboard`, `features/events/` | none |
 | SCRUM-70, 71, 73 and the attendee dashboard | Placeholder shells only (~40 lines each) | none | `views/dashboards/*Dashboard.vue` | none |
@@ -31,9 +32,10 @@ _Last updated: 2026-09-15. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 
 | Method and path | Guard | What it does |
 |---|---|---|
-| `POST /auth/login` | public | Signs in and returns tokens and profile |
+| `POST /auth/login` | public | Signs in and returns tokens and profile (`role` = this session's active role, `roles` = every role the account holds) |
 | `POST /auth/refresh` | public (refresh token) | Rotates the session |
-| `GET /auth/me` | authenticated | Returns the current user's profile |
+| `GET /auth/me` | authenticated | Returns the current user's profile, including `roles` |
+| `POST /auth/active-role` | authenticated | Switches the caller's session to a role it holds (SCRUM-75); 403 if the role isn't in `user_roles` |
 | `POST /auth/logout` | authenticated | Revokes only the caller's session |
 | `GET /venues` | `event_coordinator`, `venue_staff` | Searches the catalogue. Each criterion is strict. `starts_at`/`ends_at` adds an availability check, and `include_excluded=true` also returns ruled-out venues with reasons |
 | `GET /venues/{venue_id}` | `event_coordinator`, `venue_staff` | Returns one venue with its upcoming blocks and occupying bookings |
@@ -44,9 +46,11 @@ _Last updated: 2026-09-15. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 
 | Need | Use | Location |
 |---|---|---|
-| Current user (verified JWT plus profile row) | `get_current_user`, `CurrentUser` | defined in `app/core/security.py`; **import from `app.modules.auth.dependencies`** |
-| Role gate | `require_roles([...])`, wrapped in a named alias per access level (e.g. `VenueReader`) | same as above; pattern in `venues/router.py` |
-| Typed HTTP errors | `InvalidCredentialsError` (401), `InvalidOrExpiredTokenError` (401), `InsufficientRoleError` (403), `ProfileNotFoundError` (404), `VenueNotFoundError` (404), `AuthServiceUnavailableError` (503) | `app/core/exceptions.py` |
+| Current user (verified JWT plus profile row) | `get_current_user`, `CurrentUser` (`role` is this session's active role, not necessarily `profiles.role`) | defined in `app/core/security.py`; **import from `app.modules.auth.dependencies`** |
+| Role gate | `require_roles([...])`, wrapped in a named alias per access level (e.g. `VenueReader`) | same as above; pattern in `venues/router.py` — checks the session's active role |
+| Session-scoped active role (SCRUM-75) | `resolve_active_role(admin_client, session_id, default_role)` | `app/core/security.py` |
+| Role membership and switching (ACC-R4, SCRUM-74/75) | `get_roles(profile_id)`, `set_active_role(current_user, role)` | `modules/auth/service.py` |
+| Typed HTTP errors | `InvalidCredentialsError` (401), `InvalidOrExpiredTokenError` (401), `InsufficientRoleError` (403), `RoleNotAssignedError` (403), `ProfileNotFoundError` (404), `VenueNotFoundError` (404), `AuthServiceUnavailableError` (503) | `app/core/exceptions.py` |
 | Supabase clients | `get_supabase_admin_client()` (secret key, bypasses RLS), `get_supabase_anon_client()` (stateless calls), `create_auth_client()` (fresh client for sign-in/refresh) | `app/db/supabase.py` |
 | Settings | `get_settings()`: `supabase_url`, `supabase_publishable_key`, `supabase_secret_key`, `api_v1_prefix`, `backend_cors_origins` | `app/core/config.py` |
 | Venue period and occupancy types | `Period`, `Occupant`, `BlockSummary`, `BookingSummary`, `VenueSummary` | `venues/schemas.py` |
@@ -77,7 +81,7 @@ _Last updated: 2026-09-15. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 | `BauhausSelect` | `v-model`, `label` (required), `options: [{ value, label }]`, `placeholder` (defaults to "Any") |
 | `BauhausCheckboxGroup` | `v-model` (array), `label` (required), `options: [{ value, label }]` |
 | `BauhausEmptyState` | `title` (required), `detail` |
-| `BauhausNavbar` | no props; shows the brand, the role badge, and logout |
+| `Nav.vue` (docs previously called this `BauhausNavbar`, which doesn't exist as a file — corrected here) | no props; the left sidebar nav. Shows the brand, Dashboard/Venues links, a role switcher (`BauhausSelect`, only when the profile holds 2+ roles — SCRUM-74/75), Profile, and logout |
 
 ### Other reusable pieces
 
@@ -85,7 +89,7 @@ _Last updated: 2026-09-15. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 |---|---|---|
 | Venue search form and result card | `VenueCriteriaForm` (`criteria`, `errors`; emits `submit`, `reset`), `VenueResultCard` (`result`) | `components/venues/` |
 | API calls | `authApi`, `venuesApi`, `eventsApi`, `ApiError` | `services/api.js` |
-| Session, current user, role → dashboard route | `useAuthStore`, `ROLE_DASHBOARD_ROUTES` | `stores/auth.js` |
+| Session, current user, role → dashboard route, role labels, role switching | `useAuthStore` (`roles`, `hasMultipleRoles`, `setActiveRole(role)`), `ROLE_DASHBOARD_ROUTES`, `ROLE_LABELS` | `stores/auth.js` |
 | Venue option lists and query helpers | `LAYOUTS`, `FACILITIES`, `ACCESSIBILITY_FEATURES`, `toSingaporeIso(date, time)`, `emptyCriteria()`, `criteriaToParams(criteria)`, `useVenuesStore` | `stores/venues.js` |
 | Event status labels and dashboard logic (pure functions) | `STATUS_LABELS`, `STATUS_DESCRIPTIONS`, `ACTIVE_COORDINATOR_STATUSES`, `ACTION_KINDS`, `actionKindMeta`, `prioritiseActionItems`, `summariseActionItems`, `groupActiveEventsByStatus`, `countByStatus`, `outstandingReadiness`, `readinessGaps` | `features/events/dashboard.js` |
 | Coordinator dashboard state | `useCoordinatorDashboardStore`; the header comment documents the response shape the future events endpoint must return | `features/events/store.js` |
@@ -99,8 +103,9 @@ Vitest specs live in `__tests__/` folders next to the code: router, `stores/auth
 | `20260912000001_init_auth_and_profiles.sql` | `user_role` enum; `profiles`; functions `set_updated_at()`, `handle_new_user()`, `prevent_self_role_change()` |
 | `20260913120749_fix_auth_security_defects.sql` | `private.current_user_role()` (use it in RLS policies instead of querying `profiles`); hardened `handle_new_user()` |
 | `20260915090000_venues_catalogue_and_availability.sql` | enums `venue_layout`, `facility`, `accessibility_feature`, `venue_booking_status`, `venue_block_reason`; tables `venues`, `venue_layouts`, `venue_facilities`, `venue_blocks`, `venue_bookings` (with the `venue_bookings_no_overlap` exclusion constraint) |
+| `20260917000000_role_switching.sql` | tables `user_roles` (roles an account holds, ACC-R4) and `session_active_roles` (the role a login session is currently acting as, keyed by the JWT `session_id` claim, SCRUM-75); updates `handle_new_user()` to seed `user_roles` |
 
-Verification scripts are in `supabase/verification/` (`auth_security_checks.sql`, `venue_schema_checks.sql`). Seeded test accounts, one per role with password `Cs1234`, are in `supabase/seed.sql`.
+Verification scripts are in `supabase/verification/` (`auth_security_checks.sql`, `venue_schema_checks.sql`). Seeded test accounts, one per role with password `Cs1234`, are in `supabase/seed.sql`; `coordinator@connectsphere.dev` additionally holds `venue_staff` in `user_roles` (SCRUM-74/75), so it's the account to use for exercising the role switcher. Granting a role beyond signup has no in-app path yet — it's a direct SQL insert into `user_roles`, done by a system admin.
 
 ## 5. Know before you build
 

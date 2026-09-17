@@ -376,6 +376,71 @@ This follows the target SPA structure in `REQUIREMENTS.md` §3.4 (`features/<dom
 
 **Not verified:** anything requiring event rows — no live data exists to verify against. The priority ordering, status grouping and readiness logic are verified by unit tests and by a stubbed browser render, not against the database. The proposed schema has **not** been applied or run anywhere, so it is unproven SQL: it has not been parsed by Postgres, and no advisor run has been done against it.
 
+### 4.6. SCRUM-74 & SCRUM-75 — Role dropdown and active-role switching (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-74` (View assigned roles in nav dropdown), `SCRUM-75` (Select active role from nav dropdown, depends on SCRUM-74) |
+| Issue type | Story (both) |
+| Status | Implemented on branch `feature/scrum-74-75-role-switcher` |
+| Parent epic | `SCRUM-7` — User authorisation and authentication |
+| Sprint | *not recorded in the ticket text supplied* |
+| Story point estimate | *not recorded in the ticket text supplied* |
+| Priority | Medium (both) |
+
+**User story (verbatim, SCRUM-74):**
+
+> As a user with more than one assigned role, I want to see all roles assigned to me in a dropdown on the nav bar, so that I know which roles I can act as.
+
+**Acceptance criteria (verbatim from Jira, SCRUM-74):**
+
+> * Dropdown appears only if the user has 2 or more assigned roles, single-role users see no dropdown
+> * Dropdown lists exactly the roles assigned to that user (from user_roles), nothing else
+> * Dropdown shows a human-readable label for each role (e.g. "Venue Staff", not the raw enum value)
+>
+> Depends on: user_roles schema migration
+
+**User story (verbatim, SCRUM-75):**
+
+> As a user with more than one assigned role, I want to select one role from the dropdown, so that the system treats that role as my current context.
+
+**Acceptance criteria (verbatim from Jira, SCRUM-75):**
+
+> * Selecting a role updates my active role for this session (calls set_active_role RPC, which validates I actually hold that role)
+> * After selecting, I am taken to that role's dashboard/homepage
+> * My active role persists across page reloads within the session, until I log out or select a different role
+> * Attempting to set an active role I do not hold is rejected
+>
+> Depends on: SCRUM-74, user_roles + active_role schema migration (see SCRUM RBAC implementation plan)
+
+#### How the implementation maps to the ticket
+
+**First concrete implementation of ACC-R4.** `REQUIREMENTS.md` had carried ACC-R4 (an account may hold two roles, QA2-24) as **[Team decision, pending]** since Session 2, sketching a `profile_roles` table and "union-of-permissions" as one possible direction, and explicitly deferring the actual design to "when a story needs it" (§9 Q10). These two tickets are that story; ACC-R4 and §9 Q10 are updated in this branch to record what was actually built, which differs from that sketch in two ways worth calling out for anyone tracing requirement → code:
+
+1. **Table name.** The ticket text and REQUIREMENTS.md's sketch each independently guessed a name (`user_roles` per the ticket, `profile_roles` per the sketch) for a table that didn't exist yet. Built as `user_roles`, matching the ticket's literal wording since that's the concrete spec being implemented.
+2. **Active-role model.** Neither the ticket's "RPC" wording nor REQUIREMENTS.md's "union-of-permissions" sketch is what got built. Brainstormed with the developer: the chosen model is **session-scoped active-role switching** — closer to Postgres's own `SET ROLE` or AWS assume-role than either prior sketch — because the ticket explicitly asks for a *current context* the user picks, not a permanent blend of both roles' permissions. `profiles.role` is untouched in meaning (an account's default role for a brand-new session); a new `session_active_roles` table, keyed by the JWT's `session_id` claim (a standard claim on every Supabase access token), holds whichever role a given login session switched into. This makes switching roles on one device provably not affect another concurrent session for the same account — verified below by logging in twice and switching only one session.
+3. **"RPC" implemented as a FastAPI endpoint, not a Postgres function.** `POST /auth/active-role` does the membership check and the write in `modules/auth/service.py`, via the existing service-role Supabase client — consistent with this codebase's baseline that the API, not the database, is the policy-enforcement point (root `AGENTS.md`, "Security baseline"). A literal Postgres RPC function was considered and rejected: it would be the only piece of business logic in the whole backend living in SQL rather than Python, for no behavioural benefit here.
+
+**Granting a second role is out of scope**, confirmed with the developer: no grant endpoint or admin UI exists. A system admin inserts directly into `user_roles` via SQL, the same way internal staff roles are already provisioned outside sign-up (ACC-R3). One seeded test account, `coordinator@connectsphere.dev`, is given `venue_staff` in addition to its default `event_coordinator` in `supabase/seed.sql`, so the feature is exercisable immediately after seeding without a manual grant step.
+
+What was actually built:
+
+1. **Schema** — `supabase/migrations/20260917000000_role_switching.sql`: `user_roles` (roles an account holds, backfilled from every existing `profiles.role`), `session_active_roles` (the active role per session, FK'd to `auth.sessions`), and an updated `handle_new_user()` that seeds `user_roles` for new signups. RLS on both tables mirrors `profiles`' select-own-or-internal-staff pattern; neither has a write policy for `authenticated`, since only the backend's service-role client writes them.
+2. **Backend** — `core/security.py` gains `resolve_active_role()` and now derives `CurrentUser.role`/`session_id` from the session's active role, not the raw profile column, so `require_roles()` and every existing guard automatically check the *session's* role. `modules/auth/service.py` gains `get_roles()` and `set_active_role()`; `modules/auth/schemas.py`'s `ProfileResponse` gains `roles`; a new `POST /auth/active-role` endpoint and `RoleNotAssignedError` (403) round it out.
+3. **Frontend** — `stores/auth.js` gains `roles`, `hasMultipleRoles`, `setActiveRole()`, and the `ROLE_LABELS` map (moved out of `ProfileView.vue`, which now imports it instead of duplicating it). `Nav.vue` renders a `BauhausSelect`-based switcher, shown only when `hasMultipleRoles`, that calls `setActiveRole` then routes to the new `dashboardPath` — mirroring the existing `handleLogout` pattern.
+4. **Documentation correction, not a code rename.** `IMPLEMENTATION_MAP.md` and (in an earlier, unedited entry above) this file both described a `BauhausNavbar` component with a role badge that was never actually built — the real file is `Nav.vue`, with no role badge, before this branch. Since the rename wasn't needed by either ticket's acceptance criteria and isn't a prerequisite for the feature, per this project's scope-discipline rule it's corrected in `IMPLEMENTATION_MAP.md`'s current-state description rather than by renaming working code.
+
+#### Verification
+
+- **Automated:** `pytest` 84/84 (backend, including new coverage for `resolve_active_role`, session-scoped `require_roles`, and `POST /auth/active-role`'s success/reject/unauthenticated paths); `npm test` 58/58 (frontend, including the new `Nav.vue` and `stores/auth.js` role-switching specs). Both suites mock the Supabase client seam per `backend/AGENTS.md` and `frontend/AGENTS.md` — the items below are what actually exercised the real system.
+- **Real database:** migration applied to the live project (`vuiryrzzyfecjqftwicj`) via the Supabase MCP; `get_advisors` shows no new security findings (the one pre-existing WARN, leaked-password protection, predates this branch) and only the expected "new table, no traffic yet" INFO-level unused-index notices.
+- **Real backend, real Supabase session:** logged in as `coordinator@connectsphere.dev` against the running API (not mocked) — login returns `role: event_coordinator`, `roles: [event_coordinator, venue_staff]`; `POST /auth/active-role {"role":"venue_staff"}` returns 200 and `GET /auth/me` immediately reflects `role: venue_staff`; `POST /auth/active-role {"role":"attendee"}` (a role the account doesn't hold) returns 403.
+- **Real session isolation:** logged in as the same account a second time (a second, independent Supabase session) — the second session's `role` came back `event_coordinator` (the default), unaffected by the first session's switch to `venue_staff`, which a follow-up `/auth/me` on the first session's token confirmed was still `venue_staff`. This is the concrete proof that the design is session-scoped, not account-wide.
+- **Real browser:** Chrome via Playwright against the Vite dev server and the real backend, logged in as `coordinator@connectsphere.dev` — the "Acting as" dropdown appears with both roles correctly labelled, selecting "Venue Staff" redirects to `/dashboard/venue-staff` and updates the dropdown, a full page reload keeps `venue_staff` active (DB-backed persistence, not just local state), and no console errors. Logged in separately as `attendee@connectsphere.dev` (single role) — no dropdown renders, and no console errors.
+- **A test-infrastructure bug this caught, not a product bug:** the first browser attempt hit a stale, Dockerized copy of the frontend that happened to be listening on the same port (`localhost:5173`) as the dev server this repo's backend CORS config expects, serving code from before this branch's changes. Verification was redone against a freshly started dev server on a different port with the backend's CORS origins extended to match, which is what the results above reflect.
+
+**Not verified:** the manual-grant workflow itself (a system admin running SQL directly against `user_roles`) wasn't exercised through any tooling, since none exists yet by design — the seed script's insert was used as the equivalent for setting up the verification account. Multi-tab isolation *within the same browser* (as opposed to two separate `TestClient`/browser-context sessions, which was tested) was not separately checked, though it follows from the same `session_id`-keyed mechanism.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.
