@@ -19,13 +19,13 @@ Every test case traces back to either the SCRUM-48 acceptance criteria, a custom
 - **Environment:** a Supabase project with every migration in `supabase/migrations/` applied and `supabase/seed.sql` run, backend on `http://localhost:8000`, frontend on `http://localhost:5173`. The live project (`vuiryrzzyfecjqftwicj`) has both migrations and the seed applied. The data-layer cases in §6 are automated by `supabase/verification/auth_security_checks.sql` (runs inside a rolled-back transaction and raises on any failure).
 - **Seeded accounts** (all share the password `Cs1234`, per `supabase/seed.sql`):
 
-  | Role | Email |
-  |------|-------|
-  | Event Organiser | `organiser@connectsphere.dev` |
-  | Event Coordinator | `coordinator@connectsphere.dev` |
-  | Venue Staff | `venue.staff@connectsphere.dev` |
-  | Technical Support | `tech.support@connectsphere.dev` |
-  | Attendee | `attendee@connectsphere.dev` |
+  | Role | Email | Notes |
+  |------|-------|-------|
+  | Event Organiser | `organiser@connectsphere.dev` | Single role |
+  | Event Coordinator | `coordinator@connectsphere.dev` | Dual-role account (double hat): `event_coordinator` (default) + `venue_staff` in `user_roles` |
+  | Venue Staff | `venue.staff@connectsphere.dev` | Single role |
+  | Technical Support | `tech.support@connectsphere.dev` | Single role |
+  | Attendee | `attendee@connectsphere.dev` | Single role |
 
 - **Dashboard route map** (`frontend/src/stores/auth.js::ROLE_DASHBOARD_ROUTES`): `event_organiser → /dashboard/organiser`, `event_coordinator → /dashboard/coordinator`, `venue_staff → /dashboard/venue-staff`, `tech_support → /dashboard/tech-support`, `attendee → /dashboard/attendee`.
 - **Priority key:** 🔴 High (blocks core AC) · 🟠 Medium (important edge case) · 🟢 Low (nice-to-have / defensive).

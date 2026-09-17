@@ -87,13 +87,13 @@ pytest
 
 ### Seeded test accounts
 
-| Role | Email | Password |
-|------|-------|----------|
-| Event Organiser | organiser@connectsphere.dev | Cs1234 |
-| Event Coordinator | coordinator@connectsphere.dev | Cs1234 |
-| Venue Staff | venue.staff@connectsphere.dev | Cs1234 |
-| Technical Support | tech.support@connectsphere.dev | Cs1234 |
-| Attendee | attendee@connectsphere.dev | Cs1234 |
+| Role | Email | Password | Notes |
+|------|-------|----------|-------|
+| Event Organiser | organiser@connectsphere.dev | Cs1234 | Single role |
+| Event Coordinator | coordinator@connectsphere.dev | Cs1234 | Dual-role account (double hat): also holds **Venue Staff** in `user_roles` for SCRUM-74/75 role switcher testing |
+| Venue Staff | venue.staff@connectsphere.dev | Cs1234 | Single role |
+| Technical Support | tech.support@connectsphere.dev | Cs1234 | Single role |
+| Attendee | attendee@connectsphere.dev | Cs1234 | Single role |
 
 ## Architecture notes
 
