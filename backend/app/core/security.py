@@ -84,6 +84,27 @@ def resolve_active_role(admin_client, session_id: str, default_role: str) -> str
     return row["role"] if row else default_role
 
 
+def load_profile_with_active_role(admin_client, user_id: str, session_id: str) -> dict:
+    """Fetch `user_id`'s profile row, with `role` overridden to whatever
+    `session_id` is currently acting as (SCRUM-75). Shared by `get_current_user`
+    (the per-request auth dependency) and `auth.service._fetch_profile` (login/
+    refresh/active-role responses), so active-role resolution only lives once.
+    """
+    response = (
+        admin_client.table("profiles")
+        .select("id, email, full_name, role, organisation_name, department, phone_number")
+        .eq("id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    profile = response.data if response else None
+    if not profile:
+        raise ProfileNotFoundError()
+
+    active_role = resolve_active_role(admin_client, session_id, default_role=profile["role"])
+    return {**profile, "role": active_role}
+
+
 def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
 ) -> CurrentUser:
@@ -105,19 +126,8 @@ def get_current_user(
         raise InvalidOrExpiredTokenError()
 
     admin_client = get_supabase_admin_client()
-    response = (
-        admin_client.table("profiles")
-        .select("id, email, full_name, role, organisation_name, department, phone_number")
-        .eq("id", user_id)
-        .maybe_single()
-        .execute()
-    )
-    profile = response.data if response else None
-    if not profile:
-        raise ProfileNotFoundError()
-
-    active_role = resolve_active_role(admin_client, session_id, default_role=profile["role"])
-    return CurrentUser(**{**profile, "role": active_role}, session_id=session_id, access_token=token)
+    profile = load_profile_with_active_role(admin_client, user_id, session_id)
+    return CurrentUser(**profile, session_id=session_id, access_token=token)
 
 
 def require_roles(allowed_roles: list[str]):

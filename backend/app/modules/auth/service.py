@@ -1,13 +1,20 @@
+from postgrest.exceptions import APIError
 from supabase_auth.errors import AuthApiError, AuthError, AuthRetryableError
 
 from app.core.exceptions import (
     AuthServiceUnavailableError,
     InvalidCredentialsError,
     InvalidOrExpiredTokenError,
-    ProfileNotFoundError,
     RoleNotAssignedError,
 )
-from app.core.security import CurrentUser, decode_access_token, resolve_active_role
+from app.core.security import (
+    CurrentUser,
+    decode_access_token,
+    load_profile_with_active_role,
+    resolve_active_role,
+)
+
+_FOREIGN_KEY_VIOLATION = "23503"
 from app.db.supabase import create_auth_client, get_supabase_admin_client, get_supabase_anon_client
 from app.modules.auth.schemas import ProfileResponse, TokenResponse, UserLoginRequest, UserResponse
 
@@ -27,18 +34,8 @@ def get_roles(profile_id: str) -> list[str]:
 
 def _fetch_profile(user_id: str, session_id: str) -> ProfileResponse:
     admin_client = get_supabase_admin_client()
-    response = (
-        admin_client.table("profiles")
-        .select("id, email, full_name, role, organisation_name, department, phone_number")
-        .eq("id", user_id)
-        .maybe_single()
-        .execute()
-    )
-    if not response or not response.data:
-        raise ProfileNotFoundError()
-    profile = response.data
-    active_role = resolve_active_role(admin_client, session_id, default_role=profile["role"])
-    return ProfileResponse(**{**profile, "role": active_role}, roles=get_roles(user_id))
+    profile = load_profile_with_active_role(admin_client, user_id, session_id)
+    return ProfileResponse(**profile, roles=get_roles(user_id))
 
 
 def _token_response(session, user) -> TokenResponse:
@@ -46,7 +43,10 @@ def _token_response(session, user) -> TokenResponse:
     # it's read back off the token we were just issued. Reuses core.security's
     # decode_access_token (shared anon client, warm JWKS cache, and outage
     # handling) rather than decoding on the per-login auth_client directly.
-    session_id = decode_access_token(session.access_token)["session_id"]
+    claims = decode_access_token(session.access_token)
+    session_id = claims.get("session_id")
+    if not session_id:
+        raise InvalidOrExpiredTokenError()
     profile = _fetch_profile(user.id, session_id)
     return TokenResponse(
         access_token=session.access_token,
@@ -100,18 +100,30 @@ def set_active_role(current_user: CurrentUser, role: str) -> ProfileResponse:
         raise RoleNotAssignedError(role)
 
     admin_client = get_supabase_admin_client()
-    admin_client.table("session_active_roles").upsert(
-        {"session_id": current_user.session_id, "profile_id": current_user.id, "role": role}
-    ).execute()
+    try:
+        admin_client.table("session_active_roles").upsert(
+            {"session_id": current_user.session_id, "profile_id": current_user.id, "role": role}
+        ).execute()
+    except APIError as exc:
+        if exc.code == _FOREIGN_KEY_VIOLATION:
+            # TOCTOU: the role was revoked (a system admin deleting it from
+            # user_roles) between the membership check above and this write.
+            # The composite FK added in 20260918000000 rejects the upsert
+            # rather than letting a revoked role stay active.
+            raise RoleNotAssignedError(role) from exc
+        raise
 
-    # current_user already carries every other profile field; re-fetching the
-    # profile and re-resolving the active role we just wrote would just repeat
-    # queries we already have the answer to.
+    # current_user already carries every other profile field, so only the
+    # active role needs reading back — but it's read back rather than assumed
+    # to be `role`, since a concurrent switch for the same session (e.g. two
+    # tabs) can race this upsert, and the response should report whichever
+    # write actually won, not just what this request asked for.
+    active_role = resolve_active_role(admin_client, current_user.session_id, default_role=role)
     return ProfileResponse(
         id=current_user.id,
         email=current_user.email,
         full_name=current_user.full_name,
-        role=role,
+        role=active_role,
         organisation_name=current_user.organisation_name,
         department=current_user.department,
         phone_number=current_user.phone_number,

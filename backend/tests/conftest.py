@@ -4,6 +4,7 @@ os.environ.setdefault("SUPABASE_URL", "https://vuiryrzzyfecjqftwicj.supabase.co"
 os.environ.setdefault("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test-key")
 os.environ.setdefault("SUPABASE_SECRET_KEY", "sb_secret_test-key")
 
+import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -72,13 +73,20 @@ def make_table_mock(
         return query
 
     # One query mock per table name, reused across calls, so a test can assert
-    # on `admin_client.table("...")` after the request already ran.
+    # on `admin_client.table("...")` after the request already ran. Guarded by
+    # a lock because TestEventLoopIsNotBlocked drives this same mock from
+    # several real threads at once, and the check-then-act on the dict would
+    # otherwise be a race (currently benign — every build for the same name is
+    # equivalent — but a future test asserting identity on the first-built
+    # mock under concurrency could get a different, if equivalent, instance).
     queries_by_table: dict[str, MagicMock] = {}
+    lock = threading.Lock()
 
     def _query_for(name: str) -> MagicMock:
-        if name not in queries_by_table:
-            queries_by_table[name] = _build_query(name)
-        return queries_by_table[name]
+        with lock:
+            if name not in queries_by_table:
+                queries_by_table[name] = _build_query(name)
+            return queries_by_table[name]
 
     table_client = MagicMock()
     table_client.table.side_effect = _query_for

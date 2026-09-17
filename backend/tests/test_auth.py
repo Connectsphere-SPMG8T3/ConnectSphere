@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.testclient import TestClient
+from postgrest.exceptions import APIError
 from supabase_auth.errors import AuthApiError, AuthInvalidJwtError, AuthRetryableError
 
 from app.main import app
@@ -174,6 +175,19 @@ class TestLogin:
         response = client.post("/api/v1/auth/login", json={"email": TEST_EMAIL, "password": "Cs1234"})
 
         assert response.status_code == 503
+
+    def test_login_when_the_issued_token_is_missing_session_id_returns_401(self, client, monkeypatch):
+        """Defensive: decode_access_token returning claims without session_id must not
+        surface as an unhandled KeyError (500)."""
+        auth_client = MagicMock()
+        auth_client.auth.sign_in_with_password.return_value = _auth_response()
+        monkeypatch.setattr(auth_service_module, "create_auth_client", lambda: auth_client, raising=False)
+        anon_client = _make_anon_client_with_claims({"aud": "authenticated"})
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
+
+        response = client.post("/api/v1/auth/login", json={"email": TEST_EMAIL, "password": "Cs1234"})
+
+        assert response.status_code == 401
 
     def test_login_when_token_verification_is_unavailable_returns_503(self, client, monkeypatch):
         """Login succeeded, but decoding the fresh token to learn its session_id hits a
@@ -534,3 +548,54 @@ class TestActiveRole:
         response = client.post("/api/v1/auth/active-role", json={"role": "venue_staff"})
 
         assert response.status_code == 401
+
+    def test_switching_reports_what_actually_won_a_concurrent_write(self, client, monkeypatch):
+        """Two tabs racing a switch for the same session: the response must reflect the
+        row that's actually in session_active_roles after the write, not just assume
+        this request's upsert was the one that stuck."""
+        admin_client = _make_table_mock(
+            PROFILE_ROW,
+            user_roles=[{"role": "event_coordinator"}, {"role": "venue_staff"}],
+            # Simulates a concurrent request's upsert having landed last.
+            session_active_role={"role": "event_coordinator"},
+        )
+        anon_client = _make_anon_client_with_claims(_valid_claims())
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
+        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
+
+        response = client.post(
+            "/api/v1/auth/active-role",
+            json={"role": "venue_staff"},
+            headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["role"] == "event_coordinator"
+
+    def test_switching_to_a_role_revoked_between_check_and_write_is_rejected(self, client, monkeypatch):
+        """TOCTOU: the role passes the membership check, but a concurrent admin revoke
+        deletes it from user_roles before the upsert runs, which the new composite FK
+        (20260918000000) then rejects. That must surface as 403, not an unhandled 500."""
+        admin_client = _make_table_mock(
+            PROFILE_ROW, user_roles=[{"role": "event_coordinator"}, {"role": "venue_staff"}]
+        )
+        # Only the upsert (the write) should fail — get_current_user's own read
+        # of session_active_roles (via resolve_active_role) must still succeed,
+        # so this replaces just what .upsert(...) returns, not the shared
+        # query object's .execute used by the .select(...) chain.
+        admin_client.table("session_active_roles").upsert.return_value = MagicMock(
+            execute=MagicMock(side_effect=APIError({"code": "23503", "message": "foreign key violation"}))
+        )
+        anon_client = _make_anon_client_with_claims(_valid_claims())
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
+        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
+
+        response = client.post(
+            "/api/v1/auth/active-role",
+            json={"role": "venue_staff"},
+            headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"},
+        )
+
+        assert response.status_code == 403

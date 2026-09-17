@@ -101,6 +101,37 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
     );
   });
 
+  it("does not remount the select on a successful switch (no revert-then-jump flicker)", async () => {
+    const updatedProfile = {
+      id: "u1",
+      role: "venue_staff",
+      roles: ["event_coordinator", "venue_staff"],
+    };
+    authApi.setActiveRole.mockResolvedValue(updatedProfile);
+    const { el, router } = await mountNav({
+      id: "u1",
+      role: "event_coordinator",
+      roles: ["event_coordinator", "venue_staff"],
+    });
+
+    const selectBefore = el.querySelector('[data-testid="role-switcher"] select');
+    selectBefore.value = "venue_staff";
+    selectBefore.dispatchEvent(new Event("change"));
+    await settle();
+    await vi.waitFor(
+      () => {
+        expect(router.currentRoute.value.path).toBe("/dashboard/venue-staff");
+      },
+      { timeout: 2000 },
+    );
+
+    // A remount (the fix for the rejected/no-op case) would replace this
+    // element; a successful switch should update it in place via Vue's
+    // normal reactivity instead, since authStore.role actually changed.
+    const selectAfter = el.querySelector('[data-testid="role-switcher"] select');
+    expect(selectAfter).toBe(selectBefore);
+  });
+
   it("ignores selecting the empty placeholder option, without calling the API", async () => {
     const { el, router } = await mountNav({
       id: "u1",
@@ -145,10 +176,13 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
     select.dispatchEvent(new Event("change"));
     await settle();
 
-    // A rejected switch forces BauhausSelect to remount (see Nav.vue), so the
-    // element to check is whichever <select> is in the DOM now, not the one
-    // captured before the interaction.
-    const currentSelect = el.querySelector('[data-testid="role-switcher"] select');
-    expect(currentSelect.value).toBe("event_coordinator");
+    // The remount (see Nav.vue) only happens once the rejected promise is
+    // caught, which needs more ticks than a fixed settle() budgets for — so
+    // the element to check is whichever <select> is in the DOM now, not the
+    // one captured before the interaction.
+    await vi.waitFor(() => {
+      const currentSelect = el.querySelector('[data-testid="role-switcher"] select');
+      expect(currentSelect.value).toBe("event_coordinator");
+    });
   });
 });
