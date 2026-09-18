@@ -274,7 +274,7 @@ Automated equivalents live in `frontend/src/features/events/__tests__/` (Vitest)
 
 ## 10. Venue Staff dashboard (SCRUM-70)
 
-**Preconditions for every case:** logged in as `venue_staff@connectsphere.dev` / `Cs1234`, on `/dashboard/venue-staff`, with every migration and `supabase/seed.sql` applied.
+**Preconditions for every case:** logged in as `venue.staff@connectsphere.dev` / `Cs1234`, on `/dashboard/venue-staff`, with every migration and `supabase/seed.sql` applied.
 
 **Read this before running any of these.** `coordinator@connectsphere.dev` also holds `venue_staff`, but `require_roles` checks the **session's active role**, not the roles the account holds. That account signs in as `event_coordinator`, so the endpoint answers **403** until the role is switched in the nav dropdown. This is correct behaviour and TC-VSD-005 pins it — do not file it as a bug.
 
