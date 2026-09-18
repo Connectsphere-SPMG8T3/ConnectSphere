@@ -298,13 +298,29 @@ function exportCalendar() {
         </button>
         <button
           type="button"
-          class="border-2 border-ink px-3 py-2 text-xs font-bold uppercase tracking-widest"
+          class="border-2 border-ink px-3 py-2"
           :class="items.length ? 'bg-canvas active-press' : 'cursor-not-allowed opacity-40'"
           :disabled="!items.length"
           aria-label="Export every block and pending request as a calendar file"
+          title="Export as calendar file (.ics)"
           @click="exportCalendar"
         >
-          Export
+          <!-- Arrow into a tray: the conventional download mark, drawn to the
+               same 24-box, 2-weight spec as the top bar's icons. -->
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-4 w-4"
+            aria-hidden="true"
+          >
+            <path d="M12 3v11" />
+            <path d="m7 10 5 5 5-5" />
+            <path d="M4 20h16" />
+          </svg>
         </button>
       </div>
     </div>

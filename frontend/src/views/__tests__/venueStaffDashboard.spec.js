@@ -356,7 +356,7 @@ describe("VenueStaffDashboard", () => {
 
     try {
       const el = await mountDashboard();
-      const exportButton = [...el.querySelectorAll("button")].find((b) => b.textContent.trim() === "Export");
+      const exportButton = el.querySelector('button[aria-label^="Export every block"]');
       expect(exportButton.disabled).toBe(false);
       exportButton.click();
 
@@ -385,7 +385,7 @@ describe("VenueStaffDashboard", () => {
 
     const el = await mountDashboard();
 
-    expect([...el.querySelectorAll("button")].find((b) => b.textContent.trim() === "Export").disabled).toBe(true);
+    expect(el.querySelector('button[aria-label^="Export every block"]').disabled).toBe(true);
   });
 
   it("withholds every count until the first load settles", async () => {
