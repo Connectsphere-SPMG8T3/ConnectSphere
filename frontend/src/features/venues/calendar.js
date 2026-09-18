@@ -341,3 +341,100 @@ export function defaultMonth(items = [], { today = new Date() } = {}) {
 export function canGoPrev(shown, { today = new Date() } = {}) {
   return monthOrdinal(shown) > monthOrdinal(singaporeMonthOf(today));
 }
+
+/**
+ * The first and last Singapore day an item occupies.
+ *
+ * Same `endsAt − 1ms` rule as `singaporeDayKeysCovered`, without walking the
+ * days in between — a block running for a year only needs its two ends.
+ */
+export function itemDayRange(item) {
+  const start = toInstant(item.startsAt);
+  const end = toInstant(item.endsAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return null;
+  return { firstKey: singaporeDayKey(start), lastKey: singaporeDayKey(new Date(end.getTime() - 1)) };
+}
+
+/**
+ * Lay one week's items out as horizontal bars.
+ *
+ * A booking or block occupies a continuous run of days, so it is drawn as one
+ * bar spanning those columns rather than repeated in each cell — a fortnight's
+ * renovation should read as one thing, not as fourteen identical chips.
+ *
+ * Bars are packed into lanes: each takes the first lane where nothing already
+ * overlaps its columns, which is the standard greedy interval-graph colouring
+ * and uses the fewest lanes possible for the row. Items are placed in the
+ * cells' existing order (kind severity, then start time), so the most serious
+ * thing in a week sits on the top lane.
+ *
+ * `maxLanes` caps how many are drawn. Anything beyond it is reported per day
+ * in `overflow`, so a cell can say "+2" rather than silently dropping items.
+ */
+export function layoutWeekSegments(cells, { maxLanes = Infinity } = {}) {
+  const firstIndexOf = new Map();
+  const lastIndexOf = new Map();
+  const itemOf = new Map();
+  const order = [];
+
+  cells.forEach((cell, index) => {
+    for (const item of cell.items) {
+      const id = `${item.kind}-${item.id}`;
+      if (!firstIndexOf.has(id)) {
+        firstIndexOf.set(id, index);
+        itemOf.set(id, item);
+        order.push(id);
+      }
+      lastIndexOf.set(id, index);
+    }
+  });
+
+  // `lanes[n]` is the last column lane n is occupied up to, so a candidate
+  // fits when its start clears that.
+  const lanes = [];
+  const segments = order.map((id) => {
+    const startIndex = firstIndexOf.get(id);
+    const endIndex = lastIndexOf.get(id);
+    let lane = lanes.findIndex((until) => until < startIndex);
+    if (lane === -1) lane = lanes.push(-1) - 1;
+    lanes[lane] = endIndex;
+
+    const item = itemOf.get(id);
+    const range = itemDayRange(item);
+    return {
+      id,
+      item,
+      startIndex,
+      span: endIndex - startIndex + 1,
+      lane,
+      // Drawn as a flat edge rather than a bar end, so a run that carries on
+      // into the next week does not look like it stops on Sunday.
+      continuesBefore: range ? range.firstKey < cells[0].key : false,
+      continuesAfter: range ? range.lastKey > cells[cells.length - 1].key : false,
+    };
+  });
+
+  const visible = segments.filter((segment) => segment.lane < maxLanes);
+  const hidden = segments.filter((segment) => segment.lane >= maxLanes);
+
+  const overflow = cells.map((_, index) =>
+    hidden.filter((segment) => index >= segment.startIndex && index < segment.startIndex + segment.span).length,
+  );
+
+  return {
+    segments: visible,
+    laneCount: Math.min(lanes.length, maxLanes),
+    overflow,
+    hiddenCount: hidden.length,
+  };
+}
+
+/** Split a grid's cells into weeks, each laid out as bars. */
+export function toWeekRows(grid, { maxLanes = Infinity } = {}) {
+  const rows = [];
+  for (let i = 0; i < grid.cells.length; i += 7) {
+    const cells = grid.cells.slice(i, i + 7);
+    rows.push({ key: cells[0].key, cells, ...layoutWeekSegments(cells, { maxLanes }) });
+  }
+  return rows;
+}

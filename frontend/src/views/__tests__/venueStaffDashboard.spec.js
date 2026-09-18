@@ -246,6 +246,32 @@ describe("VenueStaffDashboard", () => {
     expect(el.textContent).toContain("Select a marked day to see what is on it.");
   });
 
+  it("names each item in the month grid rather than dotting it", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+
+    // Opens on October, where all three bookings and the block sit.
+    expect(el.textContent).toContain("October 2026");
+    const calendar = el.querySelector('section[aria-labelledby="venue-calendar-heading"]');
+    expect(calendar.textContent).toContain("Grand Ballroom");
+    expect(calendar.textContent).toContain("Rooftop Terrace");
+  });
+
+  it("draws a multi-day block as one bar spanning its days", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+
+    // The seeded block runs 20-22 Oct, so it covers two days as a single bar
+    // rather than appearing once per day.
+    const bars = [...el.querySelectorAll("span[style*='grid-column']")].filter((b) =>
+      b.textContent.includes("Rooftop Terrace"),
+    );
+    const spanning = bars.filter((b) => b.getAttribute("style").includes("span 2"));
+    expect(spanning).toHaveLength(1);
+  });
+
   it("switches to a week view that names the items instead of dotting them", async () => {
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
 
@@ -256,8 +282,11 @@ describe("VenueStaffDashboard", () => {
 
     // Opens on the first week carrying something: 5-11 Oct holds the 10 Oct hold.
     expect(el.textContent).toContain("5 Oct – 11 Oct 2026");
-    // The venue is named in the grid itself, not hidden behind a dot.
-    expect(el.querySelector('div[class*="grid-cols-7"]').textContent).toContain("Grand Ballroom");
+    // The venue is named in the day columns themselves, not hidden behind a dot.
+    const dayColumn = [...el.querySelectorAll("button[aria-label]")].find((b) =>
+      b.getAttribute("aria-label").includes("10 October 2026"),
+    );
+    expect(dayColumn.textContent).toContain("Grand Ballroom");
   });
 
   it("steps by a week in the week view and by a month in the month view", async () => {

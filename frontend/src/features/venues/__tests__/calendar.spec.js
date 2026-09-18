@@ -9,9 +9,11 @@ import {
   defaultWeekKey,
   shiftMonth,
   shiftWeekKey,
+  layoutWeekSegments,
   singaporeDayKeysCovered,
   startOfWeekKey,
   toCalendarItems,
+  toWeekRows,
 } from "@/features/venues/calendar";
 import { singaporeDayKey } from "@/features/venues/singaporeTime";
 
@@ -374,5 +376,116 @@ describe("week view", () => {
 
   it("falls back to the current week when there is nothing at all", () => {
     expect(defaultWeekKey([], { today: TODAY })).toBe("2026-09-14");
+  });
+});
+
+describe("laying a week out as bars", () => {
+  // Monday 5 Oct to Sunday 11 Oct 2026.
+  const week = (items) => buildWeekGrid("2026-10-05", items, { today: TODAY }).cells;
+
+  it("draws a multi-day item as one bar spanning its days", () => {
+    // A fortnight's renovation should read as one thing, not fourteen chips.
+    const { segments } = layoutWeekSegments(week([block("c-1", "2026-10-06T00:00:00+08:00", "2026-10-09T00:00:00+08:00")]));
+
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({ startIndex: 1, span: 3, lane: 0 });
+  });
+
+  it("clips a bar to the week and flags that it carries on", () => {
+    const { segments } = layoutWeekSegments(week([block("c-1", "2026-10-01T00:00:00+08:00", "2026-10-15T00:00:00+08:00")]));
+
+    expect(segments[0]).toMatchObject({
+      startIndex: 0,
+      span: 7,
+      continuesBefore: true,
+      continuesAfter: true,
+    });
+  });
+
+  it("does not flag continuation for an item that starts and ends inside the week", () => {
+    const { segments } = layoutWeekSegments(week([block("c-1", "2026-10-06T09:00:00+08:00", "2026-10-06T12:00:00+08:00")]));
+    expect(segments[0]).toMatchObject({ continuesBefore: false, continuesAfter: false, span: 1 });
+  });
+
+  it("stacks overlapping items into separate lanes", () => {
+    const { segments, laneCount } = layoutWeekSegments(
+      week([
+        block("c-1", "2026-10-05T00:00:00+08:00", "2026-10-08T00:00:00+08:00"),
+        block("c-2", "2026-10-06T00:00:00+08:00", "2026-10-10T00:00:00+08:00"),
+      ]),
+    );
+
+    expect(segments.map((s) => s.lane)).toEqual([0, 1]);
+    expect(laneCount).toBe(2);
+  });
+
+  it("reuses a lane once it is free again", () => {
+    // Mon-Tue then Fri-Sat: no overlap, so both sit on the top lane.
+    const { segments, laneCount } = layoutWeekSegments(
+      week([
+        block("c-1", "2026-10-05T00:00:00+08:00", "2026-10-07T00:00:00+08:00"),
+        block("c-2", "2026-10-09T00:00:00+08:00", "2026-10-11T00:00:00+08:00"),
+      ]),
+    );
+
+    expect(segments.map((s) => s.lane)).toEqual([0, 0]);
+    expect(laneCount).toBe(1);
+  });
+
+  it("puts the more serious kind on the top lane", () => {
+    // A block outranks a hold, whichever order they arrive in.
+    const cells = week([
+      { kind: "held", id: "d-1", startsAt: "2026-10-06T09:00:00+08:00", endsAt: "2026-10-06T12:00:00+08:00" },
+      block("c-1", "2026-10-06T00:00:00+08:00", "2026-10-07T00:00:00+08:00"),
+    ]);
+    const { segments } = layoutWeekSegments(cells);
+
+    expect(segments.find((s) => s.lane === 0).item.kind).toBe("block");
+  });
+
+  it("counts what it had to hide, per day, rather than dropping it", () => {
+    const { segments, overflow, hiddenCount } = layoutWeekSegments(
+      week([
+        block("c-1", "2026-10-06T00:00:00+08:00", "2026-10-07T00:00:00+08:00"),
+        block("c-2", "2026-10-06T00:00:00+08:00", "2026-10-07T00:00:00+08:00"),
+        block("c-3", "2026-10-06T00:00:00+08:00", "2026-10-07T00:00:00+08:00"),
+      ]),
+      { maxLanes: 2 },
+    );
+
+    expect(segments).toHaveLength(2);
+    expect(hiddenCount).toBe(1);
+    // Tuesday the 6th only; all three end before Wednesday.
+    expect(overflow).toEqual([0, 1, 0, 0, 0, 0, 0]);
+  });
+
+  it("splits a month grid into one laid-out row per week", () => {
+    const grid = buildMonthGrid(2026, 9, [block("c-1", "2026-10-20T00:00:00+08:00", "2026-10-22T00:00:00+08:00")], {
+      today: TODAY,
+      weeks: 6,
+    });
+    const rows = toWeekRows(grid, { maxLanes: 2 });
+
+    expect(rows).toHaveLength(6);
+    expect(rows.every((row) => row.cells.length === 7)).toBe(true);
+    // 20 Oct is a Tuesday; the bar covers Tuesday and Wednesday.
+    const withBar = rows.filter((row) => row.segments.length);
+    expect(withBar).toHaveLength(1);
+    expect(withBar[0].segments[0]).toMatchObject({ startIndex: 1, span: 2 });
+  });
+
+  it("carries one item across two week rows as two bars", () => {
+    const grid = buildMonthGrid(2026, 9, [block("c-1", "2026-10-01T00:00:00+08:00", "2026-10-15T00:00:00+08:00")], {
+      today: TODAY,
+      weeks: 6,
+    });
+    const rows = toWeekRows(grid, { maxLanes: 3 });
+    const bars = rows.flatMap((row) => row.segments);
+
+    // 1-14 Oct spans parts of three calendar weeks.
+    expect(bars).toHaveLength(3);
+    expect(bars[0].continuesAfter).toBe(true);
+    expect(bars.at(-1).continuesBefore).toBe(true);
+    expect(bars.at(-1).continuesAfter).toBe(false);
   });
 });

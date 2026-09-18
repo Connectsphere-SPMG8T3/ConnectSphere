@@ -23,6 +23,7 @@ import {
   shiftWeekKey,
   singaporeMonthOf,
   startOfWeekKey,
+  toWeekRows,
 } from "@/features/venues/calendar";
 import { blockReasonLabel } from "@/features/venues/dashboard";
 import { singaporeDayKey } from "@/features/venues/singaporeTime";
@@ -70,6 +71,14 @@ const grid = computed(() =>
         weeks: 6,
       }),
 );
+
+/**
+ * How many bars a month cell shows before it starts counting instead. Two,
+ * plus a "+n" line, is what fits in a sixth of the panel's fixed height.
+ */
+const MAX_LANES = 2;
+
+const monthRows = computed(() => (isWeekView.value ? [] : toWeekRows(grid.value, { maxLanes: MAX_LANES })));
 
 const canGoPrev = computed(() =>
   isWeekView.value
@@ -169,17 +178,20 @@ const selectedCell = computed(() =>
 
 // Tailwind's scanner only sees complete class names, so every variant is
 // spelled out (frontend/AGENTS.md, BauhausCard.vue is the reference).
-// One tall row in the week view, six in the month view. Spelled out because
-// Tailwind's scanner cannot see an interpolated class name.
-const gridRowClasses = {
-  month: "grid-rows-[auto_repeat(6,minmax(0,1fr))]",
-  week: "grid-rows-[auto_minmax(0,1fr)]",
-};
 
+// Still used by the legend.
 const dotClasses = {
   red: "bg-bauhaus-red",
   yellow: "bg-bauhaus-yellow",
   blue: "bg-bauhaus-blue",
+};
+
+// Month-view bars: a tinted body behind a solid leading edge, so a run of days
+// reads as one object and its kind stays legible at a glance.
+const barClasses = {
+  red: "border-bauhaus-red bg-bauhaus-red/15 text-ink",
+  yellow: "border-bauhaus-yellow bg-bauhaus-yellow/25 text-ink",
+  blue: "border-bauhaus-blue bg-bauhaus-blue/15 text-ink",
 };
 
 const badgeClasses = {
@@ -196,11 +208,8 @@ const itemStripeClasses = {
   blue: "border-l-bauhaus-blue bg-bauhaus-blue/10",
 };
 
-// One day can carry items from all eight venues, so the cell shows a few and
-// defers the rest to the detail column.
-const MAX_DOTS = 3;
-const visibleDots = (cell) => cell.tones.slice(0, MAX_DOTS);
-const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
+/** Just the start time, for a bar too narrow to carry a full span. */
+const formatStart = (item) => timeFormatter.format(new Date(item.startsAt));
 </script>
 
 <template>
@@ -278,66 +287,125 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
          share whatever height is left rather than sitting at a fixed size and
          leaving dead space under the calendar. Stacks on narrow screens. -->
     <div class="flex min-h-0 flex-1 flex-col gap-5 lg:flex-row lg:gap-6">
-      <div
-        class="grid min-h-0 flex-1 grid-cols-7 gap-px border-2 border-ink bg-ink"
-        :class="gridRowClasses[view]"
-      >
-        <div
-          v-for="weekday in grid.weekdays"
-          :key="weekday"
-          class="bg-canvas py-2 text-center text-[10px] font-bold uppercase tracking-widest text-ink/60"
-        >
-          {{ weekday }}
-        </div>
-        <button
-          v-for="cell in grid.cells"
-          :key="cell.key"
-          type="button"
-          class="flex min-h-0 flex-col items-center gap-1 overflow-hidden bg-canvas px-1 py-1 text-center"
-          :class="[
-            isWeekView ? 'justify-start pt-2' : 'justify-center',
-            cell.inCurrentMonth ? 'text-ink' : 'text-ink/35',
-            selectedDayKey === cell.key ? 'bg-bauhaus-yellow' : '',
-            cell.hasItems ? 'cursor-pointer active-press' : 'cursor-default',
-          ]"
-          :aria-pressed="selectedDayKey === cell.key"
-          :aria-label="`${formatSelectedDay(cell.key)}, ${cell.items.length} item${cell.items.length === 1 ? '' : 's'}`"
-          @click="selectDay(cell)"
-        >
-          <span class="text-sm font-bold leading-none" :class="cell.isToday ? 'border-b-2 border-ink pb-0.5' : ''">
-            {{ cell.day }}
-          </span>
-
-          <!-- A month cell has room for a few dots; a week column is tall
-               enough to name the items outright, which is the point of it. -->
-          <span v-if="!isWeekView && cell.hasItems" class="flex items-center gap-0.5">
-            <span
-              v-for="(tone, index) in visibleDots(cell)"
-              :key="`${cell.key}-${tone}-${index}`"
-              class="h-1.5 w-1.5 rounded-full"
-              :class="dotClasses[tone]"
-              aria-hidden="true"
-            />
-            <span v-if="overflowCount(cell)" class="text-[9px] font-bold leading-none text-ink/60">
-              +{{ overflowCount(cell) }}
-            </span>
-          </span>
-
-          <span
-            v-else-if="isWeekView && cell.hasItems"
-            class="mt-1 flex w-full min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
+      <div class="flex min-h-0 flex-1 flex-col border-2 border-ink">
+        <div class="grid shrink-0 grid-cols-7 border-b-2 border-ink">
+          <div
+            v-for="weekday in grid.weekdays"
+            :key="weekday"
+            class="py-2 text-center text-[10px] font-bold uppercase tracking-widest text-ink/60"
           >
-            <span
-              v-for="item in cell.items"
-              :key="`${item.kind}-${item.id}`"
-              class="flex shrink-0 flex-col gap-0.5 border-l-4 px-1 py-1 text-left"
-              :class="itemStripeClasses[calendarKindMeta(item.kind).tone]"
+            {{ weekday }}
+          </div>
+        </div>
+
+        <!-- MONTH: one row per week. A booking or block runs over a continuous
+             stretch of days, so it is drawn as a single bar spanning those
+             columns — a fortnight's renovation should read as one thing, not
+             as fourteen identical chips. That means the day cells cannot use a
+             grid gap (a bar has to cross it), so the click targets sit in a
+             layer behind and the bars are drawn over them. -->
+        <div v-if="!isWeekView" class="grid min-h-0 flex-1" :style="{ gridTemplateRows: `repeat(${monthRows.length}, minmax(0, 1fr))` }">
+          <div
+            v-for="(row, rowIndex) in monthRows"
+            :key="row.key"
+            class="relative min-h-0"
+            :class="rowIndex ? 'border-t border-ink/15' : ''"
+          >
+            <div class="absolute inset-0 grid grid-cols-7">
+              <button
+                v-for="(cell, index) in row.cells"
+                :key="cell.key"
+                type="button"
+                class="min-w-0"
+                :class="[
+                  index ? 'border-l border-ink/15' : '',
+                  selectedDayKey === cell.key ? 'bg-bauhaus-yellow/40' : '',
+                  cell.hasItems ? 'cursor-pointer' : 'cursor-default',
+                ]"
+                :aria-pressed="selectedDayKey === cell.key"
+                :aria-label="`${formatSelectedDay(cell.key)}, ${cell.items.length} item${cell.items.length === 1 ? '' : 's'}`"
+                @click="selectDay(cell)"
+              />
+            </div>
+
+            <!-- Drawn over the click layer, and transparent to the pointer so
+                 clicking a bar still selects the day underneath it. -->
+            <div
+              class="pointer-events-none relative grid h-full grid-cols-7 content-start gap-y-0.5 overflow-hidden px-0.5 py-1"
+              :style="{ gridTemplateRows: `auto repeat(${MAX_LANES}, auto) auto` }"
             >
-              <span class="text-[10px] font-bold uppercase leading-tight tracking-tight">{{ item.venueName }}</span>
-              <span class="text-[9px] font-medium leading-tight text-ink/65">{{ formatSpan(item) }}</span>
+              <span
+                v-for="(cell, index) in row.cells"
+                :key="`${cell.key}-num`"
+                class="px-1 text-left text-[11px] font-bold leading-none"
+                :class="cell.inCurrentMonth ? 'text-ink' : 'text-ink/35'"
+                :style="{ gridColumn: index + 1, gridRow: 1 }"
+              >
+                <span :class="cell.isToday ? 'border-b-2 border-ink pb-0.5' : ''">{{ cell.day }}</span>
+              </span>
+
+              <span
+                v-for="segment in row.segments"
+                :key="segment.id"
+                class="mx-0.5 flex items-center gap-1 overflow-hidden px-1 py-0.5 text-[10px] font-bold leading-tight"
+                :class="[
+                  barClasses[calendarKindMeta(segment.item.kind).tone],
+                  segment.continuesBefore ? 'rounded-l-none border-l-0 pl-0.5' : 'border-l-4',
+                ]"
+                :style="{ gridColumn: `${segment.startIndex + 1} / span ${segment.span}`, gridRow: segment.lane + 2 }"
+              >
+                <span class="truncate">{{ segment.item.venueName }}</span>
+                <span v-if="segment.span === 1" class="ml-auto shrink-0 font-medium opacity-70">
+                  {{ formatStart(segment.item) }}
+                </span>
+                <span v-else-if="segment.continuesAfter" class="ml-auto shrink-0 opacity-60" aria-hidden="true">›</span>
+              </span>
+
+              <span
+                v-for="(count, index) in row.overflow"
+                :key="`${row.key}-more-${index}`"
+                v-show="count"
+                class="px-1 text-left text-[9px] font-bold uppercase tracking-widest text-ink/55"
+                :style="{ gridColumn: index + 1, gridRow: MAX_LANES + 2 }"
+              >
+                +{{ count }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- WEEK: a column per day, tall enough to name every item on it. -->
+        <div v-else class="grid min-h-0 flex-1 grid-cols-7">
+          <button
+            v-for="(cell, index) in grid.cells"
+            :key="cell.key"
+            type="button"
+            class="flex min-h-0 min-w-0 flex-col items-stretch gap-1 overflow-hidden px-1 py-2 text-center"
+            :class="[
+              index ? 'border-l border-ink/15' : '',
+              selectedDayKey === cell.key ? 'bg-bauhaus-yellow/40' : '',
+              cell.hasItems ? 'cursor-pointer' : 'cursor-default',
+            ]"
+            :aria-pressed="selectedDayKey === cell.key"
+            :aria-label="`${formatSelectedDay(cell.key)}, ${cell.items.length} item${cell.items.length === 1 ? '' : 's'}`"
+            @click="selectDay(cell)"
+          >
+            <span class="shrink-0 text-sm font-bold leading-none" :class="cell.isToday ? 'underline decoration-2 underline-offset-4' : ''">
+              {{ cell.day }}
             </span>
-          </span>
-        </button>
+            <span v-if="cell.hasItems" class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+              <span
+                v-for="item in cell.items"
+                :key="`${item.kind}-${item.id}`"
+                class="flex shrink-0 flex-col gap-0.5 border-l-4 px-1 py-1 text-left"
+                :class="itemStripeClasses[calendarKindMeta(item.kind).tone]"
+              >
+                <span class="text-[10px] font-bold uppercase leading-tight tracking-tight">{{ item.venueName }}</span>
+                <span class="text-[9px] font-medium leading-tight text-ink/65">{{ formatSpan(item) }}</span>
+              </span>
+            </span>
+          </button>
+        </div>
       </div>
 
       <!-- Keeps its size whether or not a day is selected, so picking one never
