@@ -1092,7 +1092,9 @@ SCRUM-70 asks for "the venues I'm in charge of", but staff allocation to venues 
 
 **[Team decision] The calendar cannot page backwards past the current month.** The dashboard payload is upcoming-only, so every earlier month is empty by construction rather than in fact, and rendering one would be a lie by omission. Forward is unbounded.
 
-**[Team decision] The calendar opens on the first month that holds anything.** Opening on an empty month would misrepresent the workload. The month is named in the panel header, and a **Today** control beside the month arrows returns to the current month in one click; it is disabled while already there, so the header and that control together make the current position unambiguous without a separate banner.
+**[Team decision] The calendar offers a month view and a week view.** The month view marks each day with a coloured dot per kind, which answers "when is it busy"; the week view gives each day a column tall enough to name the venue and time of every item on it, which answers "what exactly is on". Switching views keeps the period in view rather than snapping back to now, and the month arrows become week arrows.
+
+**[Team decision] Each view opens on the first period that holds anything.** Opening on an empty month would misrepresent the workload. The month is named in the panel header, and a **Today** control beside the month arrows returns to the current month in one click; it is disabled while already there, so the header and that control together make the current position unambiguous without a separate banner.
 
 **Waiting age is shown, never enforced.** Holds do not expire (BR-R4), so age is the only nudge the system offers and the queue is sorted by it. It is rendered in neutral ink and never as an overdue or countdown state, because the customer ruled out SLA timers and review deadlines on every status (LC-R4, QA-55, QA-68).
 

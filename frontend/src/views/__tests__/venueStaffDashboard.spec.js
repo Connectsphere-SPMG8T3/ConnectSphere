@@ -246,6 +246,59 @@ describe("VenueStaffDashboard", () => {
     expect(el.textContent).toContain("Select a marked day to see what is on it.");
   });
 
+  it("switches to a week view that names the items instead of dotting them", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const weekButton = [...el.querySelectorAll("button")].find((b) => b.textContent.trim() === "Week");
+    weekButton.click();
+    await nextTick();
+
+    // Opens on the first week carrying something: 5-11 Oct holds the 10 Oct hold.
+    expect(el.textContent).toContain("5 Oct – 11 Oct 2026");
+    // The venue is named in the grid itself, not hidden behind a dot.
+    expect(el.querySelector('div[class*="grid-cols-7"]').textContent).toContain("Grand Ballroom");
+  });
+
+  it("steps by a week in the week view and by a month in the month view", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const next = () => el.querySelector('button[aria-label="Next month"]');
+    const nextWeek = () => el.querySelector('button[aria-label="Next week"]');
+
+    next().click();
+    await nextTick();
+    expect(el.textContent).toContain("November 2026");
+
+    [...el.querySelectorAll("button")].find((b) => b.textContent.trim() === "Week").click();
+    await nextTick();
+    nextWeek().click();
+    await nextTick();
+
+    // Switching carried November over rather than snapping back to today.
+    expect(el.textContent).toContain("Nov");
+    expect(el.querySelector('button[aria-label="Next month"]')).toBeNull();
+  });
+
+  it("keeps Today and the back-stop working per view", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    [...el.querySelectorAll("button")].find((b) => b.textContent.trim() === "Week").click();
+    await nextTick();
+
+    const today = () => el.querySelector('button[aria-label="Jump to the current week"]');
+    expect(today().disabled).toBe(false);
+    today().click();
+    await nextTick();
+
+    // Back on the week containing 19 Sep 2026, which starts Monday the 14th.
+    expect(el.textContent).toContain("14 Sept – 20 Sept 2026");
+    expect(today().disabled).toBe(true);
+    expect(el.querySelector('button[aria-label="Previous week"]').disabled).toBe(true);
+  });
+
   it("withholds every count until the first load settles", async () => {
     venuesApi.venueStaffDashboard.mockReturnValue(new Promise(() => {}));
 

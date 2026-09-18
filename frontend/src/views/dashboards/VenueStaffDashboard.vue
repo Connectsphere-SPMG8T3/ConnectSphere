@@ -17,7 +17,7 @@ import { RouterLink } from "vue-router";
 
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
-import VenueMonthCalendar from "@/components/venues/VenueMonthCalendar.vue";
+import VenueCalendar from "@/components/venues/VenueCalendar.vue";
 import {
   blockReasonLabel,
   formatEventReference,
@@ -179,7 +179,7 @@ function emptyDetail(clearText) {
     </div>
 
     <div class="mb-6">
-      <VenueMonthCalendar :items="dashboard.calendarItems" :has-settled="dashboard.hasSettled" />
+      <VenueCalendar :items="dashboard.calendarItems" :has-settled="dashboard.hasSettled" />
     </div>
 
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">

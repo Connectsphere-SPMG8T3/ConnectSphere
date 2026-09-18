@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildMonthGrid,
+  buildWeekGrid,
   canGoPrev,
+  canGoPrevWeek,
   defaultMonth,
+  defaultWeekKey,
   shiftMonth,
+  shiftWeekKey,
   singaporeDayKeysCovered,
+  startOfWeekKey,
   toCalendarItems,
 } from "@/features/venues/calendar";
 import { singaporeDayKey } from "@/features/venues/singaporeTime";
@@ -283,5 +288,91 @@ describe("defaultMonth", () => {
 
   it("falls back to the current month when there is nothing at all", () => {
     expect(defaultMonth([], { today: TODAY })).toEqual({ year: 2026, month: 8 });
+  });
+});
+
+describe("week view", () => {
+  it("anchors a week on its Monday, whichever day it is given", () => {
+    // 10 Oct 2026 is a Saturday; its week starts Monday the 5th.
+    expect(startOfWeekKey("2026-10-10")).toBe("2026-10-05");
+    expect(startOfWeekKey("2026-10-05")).toBe("2026-10-05");
+    expect(startOfWeekKey("2026-10-11")).toBe("2026-10-05");
+    // Sunday belongs to the week that began the previous Monday.
+    expect(startOfWeekKey("2026-10-04")).toBe("2026-09-28");
+  });
+
+  it("accepts an instant as well as a day key, reading it in Singapore time", () => {
+    expect(startOfWeekKey(new Date("2026-10-09T16:00:00Z"))).toBe("2026-10-05");
+  });
+
+  it("builds seven Monday-first cells", () => {
+    const grid = buildWeekGrid("2026-10-08", [], { today: TODAY });
+    expect(grid.startKey).toBe("2026-10-05");
+    expect(grid.endKey).toBe("2026-10-11");
+    expect(grid.cells.map((c) => c.key)).toEqual([
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07",
+      "2026-10-08",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-11",
+    ]);
+  });
+
+  it("places items on the right days, with the same half-open rule as the month grid", () => {
+    // 20-22 Oct covers the 20th and 21st, not the 22nd.
+    const grid = buildWeekGrid("2026-10-20", [block("c-3", "2026-10-20T00:00:00+08:00", "2026-10-22T00:00:00+08:00")], {
+      today: TODAY,
+    });
+    const marked = grid.cells.filter((c) => c.hasItems).map((c) => c.key);
+    expect(marked).toEqual(["2026-10-20", "2026-10-21"]);
+  });
+
+  it("crosses a month boundary within one week", () => {
+    const grid = buildWeekGrid("2026-10-01", [], { today: TODAY });
+    expect(grid.cells.map((c) => c.key)).toContain("2026-09-28");
+    expect(grid.cells.map((c) => c.key)).toContain("2026-10-04");
+    // Nothing is greyed out in a week view: every day shown is in view.
+    expect(grid.cells.every((c) => c.inCurrentMonth)).toBe(true);
+  });
+
+  it("flags today", () => {
+    const grid = buildWeekGrid("2026-09-19", [], { today: TODAY });
+    expect(grid.cells.filter((c) => c.isToday).map((c) => c.key)).toEqual(["2026-09-19"]);
+  });
+
+  it("steps by whole weeks and rolls across months and years", () => {
+    expect(shiftWeekKey("2026-10-05", 1)).toBe("2026-10-12");
+    expect(shiftWeekKey("2026-10-05", -1)).toBe("2026-09-28");
+    expect(shiftWeekKey("2026-12-28", 1)).toBe("2027-01-04");
+  });
+
+  it("will not page back before the current week", () => {
+    expect(canGoPrevWeek("2026-09-14", { today: TODAY })).toBe(false);
+    expect(canGoPrevWeek("2026-09-21", { today: TODAY })).toBe(true);
+  });
+
+  it("opens on the current week when it carries something", () => {
+    const items = [block("c-1", "2026-09-17T00:00:00+08:00", "2026-09-18T00:00:00+08:00")];
+    expect(defaultWeekKey(items, { today: TODAY })).toBe("2026-09-14");
+  });
+
+  it("opens on the earliest later week when the current one is empty", () => {
+    const items = [
+      block("c-1", "2026-11-02T00:00:00+08:00", "2026-11-03T00:00:00+08:00"),
+      block("c-2", "2026-10-20T00:00:00+08:00", "2026-10-22T00:00:00+08:00"),
+    ];
+    expect(defaultWeekKey(items, { today: TODAY })).toBe("2026-10-19");
+  });
+
+  it("counts a long item that merely spans the current week", () => {
+    // Starts before and ends after, so neither end lands in this week.
+    const items = [block("c-1", "2026-09-01T00:00:00+08:00", "2026-10-15T00:00:00+08:00")];
+    expect(defaultWeekKey(items, { today: TODAY })).toBe("2026-09-14");
+  });
+
+  it("falls back to the current week when there is nothing at all", () => {
+    expect(defaultWeekKey([], { today: TODAY })).toBe("2026-09-14");
   });
 });

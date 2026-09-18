@@ -1,23 +1,31 @@
 <script setup>
 /**
- * Month calendar over every venue's blocks and pending decisions (SCRUM-70).
+ * Calendar over every venue's blocks and pending decisions (SCRUM-70).
  *
- * All the date reasoning lives in `features/venues/calendar.js`; this file
- * renders what that returns and owns nothing but the selected day.
+ * Offers a month view (a day per cell, marked with dots) and a week view (a
+ * column per day, listing the items themselves). All the date reasoning lives
+ * in `features/venues/calendar.js`; this file renders what that returns and
+ * owns nothing but the view mode and the selected day.
  */
 import { computed, ref, watch } from "vue";
 
 import {
   CALENDAR_KINDS,
   buildMonthGrid,
+  buildWeekGrid,
   calendarKindMeta,
   canGoPrev as canPageBack,
+  canGoPrevWeek,
   defaultMonth,
+  defaultWeekKey,
   sameMonth,
   shiftMonth,
+  shiftWeekKey,
   singaporeMonthOf,
+  startOfWeekKey,
 } from "@/features/venues/calendar";
 import { blockReasonLabel } from "@/features/venues/dashboard";
+import { singaporeDayKey } from "@/features/venues/singaporeTime";
 
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -27,29 +35,64 @@ const props = defineProps({
   today: { type: Date, default: () => new Date() },
 });
 
+const VIEWS = [
+  { key: "month", label: "Month" },
+  { key: "week", label: "Week" },
+];
+
+const view = ref("month");
 const currentMonth = computed(() => singaporeMonthOf(props.today));
-const shown = ref(currentMonth.value);
+const currentWeek = computed(() => startOfWeekKey(props.today));
+const shownMonth = ref(currentMonth.value);
+const shownWeek = ref(currentWeek.value);
 const selectedDayKey = ref(null);
 
-// Pick the opening month once the payload arrives, not before — on an empty
-// list `defaultMonth` answers "this month", which would then stick.
+// Pick the opening period once the payload arrives, not before — on an empty
+// list the defaults answer "now", which would then stick.
 watch(
   () => props.hasSettled,
   (settled) => {
-    if (settled) shown.value = defaultMonth(props.items, { today: props.today });
+    if (!settled) return;
+    shownMonth.value = defaultMonth(props.items, { today: props.today });
+    shownWeek.value = defaultWeekKey(props.items, { today: props.today });
   },
   { immediate: true },
 );
 
-// Six rows always, so the panel is the same height in every month.
+const isWeekView = computed(() => view.value === "week");
+
+// Month: six rows always, so the panel is the same height in every month.
 const grid = computed(() =>
-  buildMonthGrid(shown.value.year, shown.value.month, props.items, { today: props.today, weeks: 6 }),
+  isWeekView.value
+    ? buildWeekGrid(shownWeek.value, props.items, { today: props.today })
+    : buildMonthGrid(shownMonth.value.year, shownMonth.value.month, props.items, {
+        today: props.today,
+        weeks: 6,
+      }),
 );
-const canGoPrev = computed(() => canPageBack(shown.value, { today: props.today }));
-const isCurrentMonth = computed(() => sameMonth(shown.value, currentMonth.value));
+
+const canGoPrev = computed(() =>
+  isWeekView.value
+    ? canGoPrevWeek(shownWeek.value, { today: props.today })
+    : canPageBack(shownMonth.value, { today: props.today }),
+);
+
+const isCurrentPeriod = computed(() =>
+  isWeekView.value ? shownWeek.value === currentWeek.value : sameMonth(shownMonth.value, currentMonth.value),
+);
 
 const monthFormatter = new Intl.DateTimeFormat("en-SG", { month: "long", year: "numeric", timeZone: "UTC" });
 const monthLabel = (month) => monthFormatter.format(new Date(Date.UTC(month.year, month.month, 1)));
+
+const rangeFormatter = new Intl.DateTimeFormat("en-SG", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/** What the header names: a month, or the week's date range. */
+const periodLabel = computed(() => {
+  if (!isWeekView.value) return monthLabel(shownMonth.value);
+  const from = rangeFormatter.format(new Date(`${grid.value.startKey}T00:00:00Z`));
+  const to = rangeFormatter.format(new Date(`${grid.value.endKey}T00:00:00Z`));
+  return `${from} – ${to} ${grid.value.endKey.slice(0, 4)}`;
+});
 
 // Times are stored in UTC and shown in Asia/Singapore (REQUIREMENTS §4).
 const dayFormatter = new Intl.DateTimeFormat("en-SG", { dateStyle: "full", timeZone: "Asia/Singapore" });
@@ -72,10 +115,48 @@ function itemLabel(item) {
   return item.kind === "block" ? blockReasonLabel(item.detail) : calendarKindMeta(item.kind).label;
 }
 
-function goTo(month) {
-  shown.value = month;
-  // The selection belonged to the month being left.
+function step(delta) {
+  if (isWeekView.value) shownWeek.value = shiftWeekKey(shownWeek.value, delta);
+  else shownMonth.value = shiftMonth(shownMonth.value, delta);
+  // The selection belonged to the period being left.
   selectedDayKey.value = null;
+}
+
+function goToToday() {
+  shownMonth.value = currentMonth.value;
+  shownWeek.value = currentWeek.value;
+  selectedDayKey.value = null;
+}
+
+/**
+ * Switching view keeps the user where they were rather than snapping back to
+ * now: month to week anchors on the selected day, or the shown month's first
+ * day; week to month opens the month the shown week sits in.
+ */
+function setView(next) {
+  if (next === view.value) return;
+  if (next === "week") {
+    shownWeek.value = startOfWeekKey(selectedDayKey.value ?? anchorDayKeyForShownMonth());
+  } else {
+    shownMonth.value = singaporeMonthOf(new Date(`${selectedDayKey.value ?? shownWeek.value}T00:00:00+08:00`));
+  }
+  view.value = next;
+}
+
+/**
+ * Which day the week view should open on, coming from the month view.
+ *
+ * Today if the shown month is the current one; otherwise the month's first
+ * day that carries something, so switching lands on work rather than on an
+ * empty first week — the same reasoning that picks the opening month. Falls
+ * back to the 1st when the month is empty.
+ */
+function anchorDayKeyForShownMonth() {
+  if (sameMonth(shownMonth.value, currentMonth.value)) return singaporeDayKey(props.today);
+  const firstMarked = grid.value.cells.find((cell) => cell.hasItems && cell.inCurrentMonth);
+  if (firstMarked) return firstMarked.key;
+  const { year, month } = shownMonth.value;
+  return `${year}-${String(month + 1).padStart(2, "0")}-01`;
 }
 
 function selectDay(cell) {
@@ -88,6 +169,13 @@ const selectedCell = computed(() =>
 
 // Tailwind's scanner only sees complete class names, so every variant is
 // spelled out (frontend/AGENTS.md, BauhausCard.vue is the reference).
+// One tall row in the week view, six in the month view. Spelled out because
+// Tailwind's scanner cannot see an interpolated class name.
+const gridRowClasses = {
+  month: "grid-rows-[auto_repeat(6,minmax(0,1fr))]",
+  week: "grid-rows-[auto_minmax(0,1fr)]",
+};
+
 const dotClasses = {
   red: "bg-bauhaus-red",
   yellow: "bg-bauhaus-yellow",
@@ -98,6 +186,14 @@ const badgeClasses = {
   red: "bg-bauhaus-red text-canvas",
   yellow: "bg-bauhaus-yellow text-ink",
   blue: "bg-bauhaus-blue text-canvas",
+};
+
+// Week-view entries are small, so the kind is carried by a coloured edge
+// rather than a badge that would crowd out the venue name.
+const itemStripeClasses = {
+  red: "border-l-bauhaus-red bg-bauhaus-red/10",
+  yellow: "border-l-bauhaus-yellow bg-bauhaus-yellow/15",
+  blue: "border-l-bauhaus-blue bg-bauhaus-blue/10",
 };
 
 // One day can carry items from all eight venues, so the cell shows a few and
@@ -122,17 +218,30 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
           Calendar
         </h2>
         <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/60">
-          {{ monthLabel(shown) }} · Singapore time
+          {{ periodLabel }} · Singapore time
         </p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="flex border-2 border-ink" role="group" aria-label="Calendar view">
+          <button
+            v-for="option in VIEWS"
+            :key="option.key"
+            type="button"
+            class="px-3 py-2 text-xs font-bold uppercase tracking-widest active-press"
+            :class="view === option.key ? 'bg-ink text-canvas' : 'bg-canvas text-ink'"
+            :aria-pressed="view === option.key"
+            @click="setView(option.key)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
         <button
           type="button"
           class="border-2 border-ink px-3 py-2 text-xs font-bold uppercase tracking-widest"
-          :class="isCurrentMonth ? 'cursor-not-allowed opacity-40' : 'bg-canvas active-press'"
-          :disabled="isCurrentMonth"
-          aria-label="Jump to the current month"
-          @click="goTo(currentMonth)"
+          :class="isCurrentPeriod ? 'cursor-not-allowed opacity-40' : 'bg-canvas active-press'"
+          :disabled="isCurrentPeriod"
+          :aria-label="isWeekView ? 'Jump to the current week' : 'Jump to the current month'"
+          @click="goToToday"
         >
           Today
         </button>
@@ -141,16 +250,16 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
           class="border-2 border-ink px-3 py-2 text-xs font-bold uppercase tracking-widest"
           :class="canGoPrev ? 'bg-canvas active-press' : 'cursor-not-allowed opacity-40'"
           :disabled="!canGoPrev"
-          aria-label="Previous month"
-          @click="goTo(shiftMonth(shown, -1))"
+          :aria-label="isWeekView ? 'Previous week' : 'Previous month'"
+          @click="step(-1)"
         >
           ←
         </button>
         <button
           type="button"
           class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold uppercase tracking-widest active-press"
-          aria-label="Next month"
-          @click="goTo(shiftMonth(shown, 1))"
+          :aria-label="isWeekView ? 'Next week' : 'Next month'"
+          @click="step(1)"
         >
           →
         </button>
@@ -170,7 +279,8 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
          leaving dead space under the calendar. Stacks on narrow screens. -->
     <div class="flex min-h-0 flex-1 flex-col gap-5 lg:flex-row lg:gap-6">
       <div
-        class="grid min-h-0 flex-1 grid-cols-7 grid-rows-[auto_repeat(6,minmax(0,1fr))] gap-px border-2 border-ink bg-ink"
+        class="grid min-h-0 flex-1 grid-cols-7 gap-px border-2 border-ink bg-ink"
+        :class="gridRowClasses[view]"
       >
         <div
           v-for="weekday in grid.weekdays"
@@ -183,8 +293,9 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
           v-for="cell in grid.cells"
           :key="cell.key"
           type="button"
-          class="flex min-h-0 flex-col items-center justify-center gap-1 overflow-hidden bg-canvas px-1 py-1 text-center"
+          class="flex min-h-0 flex-col items-center gap-1 overflow-hidden bg-canvas px-1 py-1 text-center"
           :class="[
+            isWeekView ? 'justify-start pt-2' : 'justify-center',
             cell.inCurrentMonth ? 'text-ink' : 'text-ink/35',
             selectedDayKey === cell.key ? 'bg-bauhaus-yellow' : '',
             cell.hasItems ? 'cursor-pointer active-press' : 'cursor-default',
@@ -196,7 +307,10 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
           <span class="text-sm font-bold leading-none" :class="cell.isToday ? 'border-b-2 border-ink pb-0.5' : ''">
             {{ cell.day }}
           </span>
-          <span v-if="cell.hasItems" class="flex items-center gap-0.5">
+
+          <!-- A month cell has room for a few dots; a week column is tall
+               enough to name the items outright, which is the point of it. -->
+          <span v-if="!isWeekView && cell.hasItems" class="flex items-center gap-0.5">
             <span
               v-for="(tone, index) in visibleDots(cell)"
               :key="`${cell.key}-${tone}-${index}`"
@@ -206,6 +320,21 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
             />
             <span v-if="overflowCount(cell)" class="text-[9px] font-bold leading-none text-ink/60">
               +{{ overflowCount(cell) }}
+            </span>
+          </span>
+
+          <span
+            v-else-if="isWeekView && cell.hasItems"
+            class="mt-1 flex w-full min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
+          >
+            <span
+              v-for="item in cell.items"
+              :key="`${item.kind}-${item.id}`"
+              class="flex shrink-0 flex-col gap-0.5 border-l-4 px-1 py-1 text-left"
+              :class="itemStripeClasses[calendarKindMeta(item.kind).tone]"
+            >
+              <span class="text-[10px] font-bold uppercase leading-tight tracking-tight">{{ item.venueName }}</span>
+              <span class="text-[9px] font-medium leading-tight text-ink/65">{{ formatSpan(item) }}</span>
             </span>
           </span>
         </button>

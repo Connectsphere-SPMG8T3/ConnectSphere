@@ -124,6 +124,56 @@ function sortItems(a, b) {
 }
 
 /**
+ * Place `items` onto a list of day cells and finish them off.
+ *
+ * Shared by the month and week grids so both agree on what a cell means:
+ * which items fall on it, how many of each kind, which tones to draw, and
+ * whether it is today.
+ */
+function decorateCells(cells, items, today) {
+  const byKey = new Map(cells.map((cell) => [cell.key, cell]));
+  const fromKey = cells[0].key;
+  const toKey = cells[cells.length - 1].key;
+
+  for (const item of items) {
+    for (const key of singaporeDayKeysCovered(item.startsAt, item.endsAt, { fromKey, toKey })) {
+      const cell = byKey.get(key);
+      if (!cell) continue;
+      cell.items.push(item);
+      cell.markers[item.kind] = (cell.markers[item.kind] ?? 0) + 1;
+    }
+  }
+
+  const todayKey = singaporeDayKey(today);
+  for (const cell of cells) {
+    cell.isToday = cell.key === todayKey;
+    cell.items.sort(sortItems);
+    cell.hasItems = cell.items.length > 0;
+    cell.tones = KIND_ORDER.filter((kind) => cell.markers[kind]).map((kind) => calendarKindMeta(kind).tone);
+  }
+
+  return cells;
+}
+
+function blankCell(date, inCurrentMonth) {
+  return {
+    key: date.toISOString().slice(0, 10),
+    day: date.getUTCDate(),
+    inCurrentMonth,
+    isToday: false,
+    markers: {},
+    tones: [],
+    items: [],
+    hasItems: false,
+  };
+}
+
+/** A `"YYYY-MM-DD"` key as a UTC-midnight Date, for pure calendar arithmetic. */
+function dateOfKey(key) {
+  return new Date(`${key}T00:00:00Z`);
+}
+
+/**
  * Build one month's grid.
  *
  * `monthIndex` is 0-based, matching JS `Date`. The grid is a *calendar*
@@ -148,46 +198,89 @@ export function buildMonthGrid(year, monthIndex, items = [], { today = new Date(
   // real days off the end.
   const cellCount = Math.max(weeks ?? needed, needed) * 7;
 
+  const month = ((monthIndex % 12) + 12) % 12;
   const cells = [];
   for (let i = 0; i < cellCount; i += 1) {
     const date = new Date(Date.UTC(year, monthIndex, 1 - leading + i));
-    cells.push({
-      key: date.toISOString().slice(0, 10),
-      day: date.getUTCDate(),
-      inCurrentMonth: date.getUTCMonth() === ((monthIndex % 12) + 12) % 12,
-      isToday: false,
-      markers: {},
-      tones: [],
-      items: [],
-      hasItems: false,
-    });
+    cells.push(blankCell(date, date.getUTCMonth() === month));
   }
 
-  const byKey = new Map(cells.map((cell) => [cell.key, cell]));
-  const fromKey = cells[0].key;
-  const toKey = cells[cells.length - 1].key;
-
-  for (const item of items) {
-    for (const key of singaporeDayKeysCovered(item.startsAt, item.endsAt, { fromKey, toKey })) {
-      const cell = byKey.get(key);
-      if (!cell) continue;
-      cell.items.push(item);
-      cell.markers[item.kind] = (cell.markers[item.kind] ?? 0) + 1;
-    }
-  }
-
-  const todayKey = singaporeDayKey(today);
-  for (const cell of cells) {
-    cell.isToday = cell.key === todayKey;
-    cell.items.sort(sortItems);
-    cell.hasItems = cell.items.length > 0;
-    cell.tones = KIND_ORDER.filter((kind) => cell.markers[kind]).map((kind) => calendarKindMeta(kind).tone);
-  }
-
+  decorateCells(cells, items, today);
   return { year, month: monthIndex, cells, weekdays: WEEKDAY_LABELS };
 }
 
-/** `{ year, month }` of an instant, in Singapore terms. */
+/** The Monday of the week containing `value` (a day key or an instant). */
+export function startOfWeekKey(value) {
+  const key = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : singaporeDayKey(value);
+  const date = dateOfKey(key);
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  return date.toISOString().slice(0, 10);
+}
+
+/** Move a week anchor by `delta` weeks. Always returns a Monday. */
+export function shiftWeekKey(anchorKey, delta) {
+  const date = dateOfKey(startOfWeekKey(anchorKey));
+  date.setUTCDate(date.getUTCDate() + delta * 7);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Build one week's grid: seven cells, Monday first.
+ *
+ * Same cell shape as the month grid, so the component renders either from one
+ * set of rules. `inCurrentMonth` is always true here — every day in a week
+ * view is in view, so there is nothing to grey out.
+ */
+export function buildWeekGrid(anchorKey, items = [], { today = new Date() } = {}) {
+  const startKey = startOfWeekKey(anchorKey);
+  const start = dateOfKey(startKey);
+
+  const cells = [];
+  for (let i = 0; i < 7; i += 1) {
+    const date = new Date(start.getTime());
+    date.setUTCDate(date.getUTCDate() + i);
+    cells.push(blankCell(date, true));
+  }
+
+  decorateCells(cells, items, today);
+  return { startKey, endKey: cells[6].key, cells, weekdays: WEEKDAY_LABELS };
+}
+
+/**
+ * Which week to open on — the week-view twin of `defaultMonth`.
+ *
+ * The current week if it carries anything, otherwise the earliest later week
+ * that does, otherwise the current week.
+ */
+export function defaultWeekKey(items = [], { today = new Date() } = {}) {
+  const currentKey = startOfWeekKey(today);
+
+  let earliest = null;
+  for (const item of items) {
+    const keys = singaporeDayKeysCovered(item.startsAt, item.endsAt);
+    if (!keys.length) continue;
+    for (const key of [keys[0], keys[keys.length - 1]]) {
+      const weekKey = startOfWeekKey(key);
+      if (weekKey === currentKey) return currentKey;
+      if (weekKey > currentKey && (earliest === null || weekKey < earliest)) earliest = weekKey;
+    }
+  }
+
+  // An item spanning the current week without starting or ending in it still
+  // belongs to it.
+  for (const item of items) {
+    const keys = singaporeDayKeysCovered(item.startsAt, item.endsAt);
+    if (keys.some((key) => startOfWeekKey(key) === currentKey)) return currentKey;
+  }
+
+  return earliest ?? currentKey;
+}
+
+/** As `canGoPrev`, for the week view: the payload holds nothing earlier. */
+export function canGoPrevWeek(anchorKey, { today = new Date() } = {}) {
+  return startOfWeekKey(anchorKey) > startOfWeekKey(today);
+}
+
 export function singaporeMonthOf(value) {
   const [year, month] = singaporeDayKey(value).split("-");
   return { year: Number(year), month: Number(month) - 1 };
