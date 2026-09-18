@@ -26,9 +26,7 @@ import {
   waitingDays,
 } from "@/features/venues/dashboard";
 import { useVenueStaffDashboardStore } from "@/features/venues/venueStaffDashboardStore";
-import { useAuthStore } from "@/stores/auth";
 
-const authStore = useAuthStore();
 const dashboard = useVenueStaffDashboardStore();
 
 onMounted(() => dashboard.load());
@@ -159,16 +157,6 @@ function emptyDetail(clearText) {
 
 <template>
   <main class="py-12">
-    <BauhausCard background="red" accent="none" class="mb-8">
-      <p class="text-xs font-bold uppercase tracking-widest opacity-80">Venue Staff Dashboard</p>
-      <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">
-        Welcome, {{ authStore.profile?.full_name }}
-      </h1>
-      <p class="mt-3 max-w-xl text-sm font-medium">
-        Requests waiting on your decision, the blocks you have set, and the state of every venue.
-      </p>
-    </BauhausCard>
-
     <p
       v-if="dashboard.error"
       class="mb-8 border-2 border-ink bg-bauhaus-red px-5 py-4 text-sm font-bold text-canvas shadow-hard sm:border-4"
