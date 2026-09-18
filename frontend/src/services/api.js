@@ -70,6 +70,10 @@ export const venuesApi = {
   get(venueId, token) {
     return request(`/venues/${encodeURIComponent(venueId)}`, { token });
   },
+  // The venue-staff work queue across every venue (SCRUM-70).
+  venueStaffDashboard(token) {
+    return request("/venues/dashboard/venue-staff", { token });
+  },
 };
 
 export const eventsApi = {

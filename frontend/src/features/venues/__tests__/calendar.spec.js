@@ -1,0 +1,261 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildMonthGrid,
+  canGoPrev,
+  defaultMonth,
+  shiftMonth,
+  singaporeDayKeysCovered,
+  toCalendarItems,
+} from "@/features/venues/calendar";
+import { singaporeDayKey } from "@/features/venues/singaporeTime";
+
+// 2026-09-19 12:00 SGT. The seeded blocks and bookings all sit in October, so
+// "today" is deliberately in a month with nothing in it.
+const TODAY = new Date("2026-09-19T12:00:00+08:00");
+
+const block = (id, startsAt, endsAt, overrides = {}) => ({
+  kind: "block",
+  id,
+  venueId: "b-1",
+  venueName: "Heritage Hall",
+  startsAt,
+  endsAt,
+  detail: "renovation",
+  ...overrides,
+});
+
+describe("singaporeDayKey", () => {
+  it("reads the Singapore date, not the UTC one", () => {
+    // 16:00Z is already the next day in Singapore.
+    expect(singaporeDayKey(new Date("2026-10-09T16:00:00Z"))).toBe("2026-10-10");
+  });
+
+  it("gives the same answer however the instant was serialised", () => {
+    const asUtc = singaporeDayKey(new Date("2026-10-10T16:00:00Z"));
+    const asSgt = singaporeDayKey(new Date("2026-10-11T00:00:00+08:00"));
+    expect(asUtc).toBe(asSgt);
+  });
+});
+
+describe("singaporeDayKeysCovered", () => {
+  it("stops before a day the range ends on at midnight", () => {
+    // Seeded block: 20–22 Oct. The 22nd is not blocked — the range is
+    // half-open, so nothing inside it falls on that day (§6.14, CAL-R2).
+    expect(
+      singaporeDayKeysCovered("2026-10-20T00:00:00+08:00", "2026-10-22T00:00:00+08:00"),
+    ).toEqual(["2026-10-20", "2026-10-21"]);
+  });
+
+  it("applies the same rule across a fortnight", () => {
+    // Seeded block: 1–15 Oct, so Heritage Hall is free again on the 15th.
+    const keys = singaporeDayKeysCovered("2026-10-01T00:00:00+08:00", "2026-10-15T00:00:00+08:00");
+    expect(keys).toHaveLength(14);
+    expect(keys[0]).toBe("2026-10-01");
+    expect(keys.at(-1)).toBe("2026-10-14");
+    expect(keys).not.toContain("2026-10-15");
+  });
+
+  it("does include the end day when the range reaches even one millisecond into it", () => {
+    // Guards the -1ms rule against over-trimming: only an exact midnight end
+    // should drop the day.
+    expect(
+      singaporeDayKeysCovered("2026-10-20T00:00:00+08:00", "2026-10-22T00:00:00.001+08:00"),
+    ).toContain("2026-10-22");
+  });
+
+  it("keeps a few hours inside one day to one day", () => {
+    // Seeded block: air-con servicing, 08:00–12:00 on 10 Oct.
+    expect(
+      singaporeDayKeysCovered("2026-10-10T08:00:00+08:00", "2026-10-10T12:00:00+08:00"),
+    ).toEqual(["2026-10-10"]);
+  });
+
+  it("does not split a range that crosses UTC midnight but not Singapore midnight", () => {
+    // 20:00–23:00 SGT is 12:00–15:00Z, but a naive UTC reading of the evening
+    // hours either side of it would land on two different days.
+    expect(
+      singaporeDayKeysCovered("2026-10-10T20:00:00+08:00", "2026-10-10T23:00:00+08:00"),
+    ).toEqual(["2026-10-10"]);
+  });
+
+  it("splits a range that crosses Singapore midnight", () => {
+    expect(
+      singaporeDayKeysCovered("2026-10-10T23:00:00+08:00", "2026-10-11T01:00:00+08:00"),
+    ).toEqual(["2026-10-10", "2026-10-11"]);
+  });
+
+  it("clips to the window it is given", () => {
+    const keys = singaporeDayKeysCovered("2026-09-29T00:00:00+08:00", "2026-10-03T00:00:00+08:00", {
+      fromKey: "2026-10-01",
+      toKey: "2026-10-31",
+    });
+    expect(keys).toEqual(["2026-10-01", "2026-10-02"]);
+  });
+
+  it("stays cheap for a range far longer than the window", () => {
+    const keys = singaporeDayKeysCovered("2020-01-01T00:00:00+08:00", "2030-01-01T00:00:00+08:00", {
+      fromKey: "2026-10-01",
+      toKey: "2026-10-31",
+    });
+    expect(keys).toHaveLength(31);
+  });
+
+  it("returns nothing for a range that cannot be ordered", () => {
+    expect(singaporeDayKeysCovered("2026-10-10T12:00:00+08:00", "2026-10-10T12:00:00+08:00")).toEqual([]);
+    expect(singaporeDayKeysCovered("not a date", "2026-10-10T12:00:00+08:00")).toEqual([]);
+  });
+});
+
+describe("buildMonthGrid", () => {
+  it("lays October 2026 out as five Monday-first weeks", () => {
+    // 1 Oct 2026 is a Thursday, so three leading cells and one trailing.
+    const grid = buildMonthGrid(2026, 9, [], { today: TODAY });
+    expect(grid.cells).toHaveLength(35);
+    expect(grid.cells[0].key).toBe("2026-09-28");
+    expect(grid.cells[0].inCurrentMonth).toBe(false);
+    expect(grid.cells[3].key).toBe("2026-10-01");
+    expect(grid.cells[3].inCurrentMonth).toBe(true);
+    expect(grid.cells.at(-1).key).toBe("2026-11-01");
+    expect(grid.cells.at(-1).inCurrentMonth).toBe(false);
+  });
+
+  it("has no leading cells when the month starts on a Monday", () => {
+    // 1 Jun 2026 is a Monday.
+    const grid = buildMonthGrid(2026, 5, [], { today: TODAY });
+    expect(grid.cells[0].key).toBe("2026-06-01");
+  });
+
+  it("handles a leap February", () => {
+    const grid = buildMonthGrid(2028, 1, [], { today: TODAY });
+    const inMonth = grid.cells.filter((cell) => cell.inCurrentMonth);
+    expect(inMonth).toHaveLength(29);
+    expect(inMonth.at(-1).key).toBe("2028-02-29");
+  });
+
+  it("marks the days an item covers and no others", () => {
+    const grid = buildMonthGrid(2026, 9, [block("c-3", "2026-10-20T00:00:00+08:00", "2026-10-22T00:00:00+08:00")], {
+      today: TODAY,
+    });
+    const marked = grid.cells.filter((cell) => cell.hasItems).map((cell) => cell.key);
+    expect(marked).toEqual(["2026-10-20", "2026-10-21"]);
+  });
+
+  it("marks an item that straddles a month boundary in both months", () => {
+    const straddling = block("c-9", "2026-09-29T00:00:00+08:00", "2026-10-03T00:00:00+08:00");
+
+    const september = buildMonthGrid(2026, 8, [straddling], { today: TODAY });
+    const october = buildMonthGrid(2026, 9, [straddling], { today: TODAY });
+
+    expect(september.cells.find((c) => c.key === "2026-09-30").hasItems).toBe(true);
+    // Also visible in October's leading cells, so the block reads continuously
+    // rather than appearing to stop at the edge of the grid.
+    expect(october.cells.find((c) => c.key === "2026-09-30").hasItems).toBe(true);
+    expect(october.cells.find((c) => c.key === "2026-10-02").hasItems).toBe(true);
+  });
+
+  it("counts each kind on a day and orders the tones by severity", () => {
+    const grid = buildMonthGrid(
+      2026,
+      9,
+      [
+        { kind: "held", id: "d-1", startsAt: "2026-10-10T13:00:00+08:00", endsAt: "2026-10-10T16:00:00+08:00" },
+        block("c-2", "2026-10-10T08:00:00+08:00", "2026-10-10T12:00:00+08:00"),
+      ],
+      { today: TODAY },
+    );
+
+    const cell = grid.cells.find((c) => c.key === "2026-10-10");
+    expect(cell.markers).toEqual({ block: 1, held: 1 });
+    expect(cell.tones).toEqual(["red", "yellow"]);
+    expect(cell.items[0].kind).toBe("block");
+  });
+
+  it("flags today", () => {
+    const grid = buildMonthGrid(2026, 8, [], { today: TODAY });
+    expect(grid.cells.filter((cell) => cell.isToday).map((cell) => cell.key)).toEqual(["2026-09-19"]);
+  });
+});
+
+describe("toCalendarItems", () => {
+  it("flattens the payload and tags each item with its kind", () => {
+    const items = toCalendarItems({
+      blocks: [
+        {
+          id: "c-1",
+          venue_id: "b-7",
+          venue_name: "Heritage Hall",
+          period: { starts_at: "2026-10-01T00:00:00+08:00", ends_at: "2026-10-15T00:00:00+08:00" },
+          reason: "renovation",
+          notes: "Floor restoration.",
+        },
+      ],
+      pendingHolds: [
+        {
+          id: "d-2",
+          venue_id: "b-3",
+          venue_name: "Seminar Room 1",
+          period: { starts_at: "2026-10-10T13:00:00+08:00", ends_at: "2026-10-10T16:00:00+08:00" },
+          event_id: "e-102",
+          event_name: null,
+        },
+      ],
+      reReviewBookings: [
+        {
+          id: "d-5",
+          venue_id: "b-4",
+          venue_name: "Boardroom Orchid",
+          period: { starts_at: "2026-10-12T09:00:00+08:00", ends_at: "2026-10-12T12:00:00+08:00" },
+          event_id: "e-105",
+          event_name: null,
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.kind)).toEqual(["block", "held", "re_review"]);
+    expect(items[0].notes).toBe("Floor restoration.");
+    expect(items[1].venueName).toBe("Seminar Room 1");
+    expect(items[2].startsAt).toBe("2026-10-12T09:00:00+08:00");
+  });
+
+  it("copes with an empty payload", () => {
+    expect(toCalendarItems()).toEqual([]);
+  });
+});
+
+describe("month navigation", () => {
+  it("rolls the year in both directions", () => {
+    expect(shiftMonth({ year: 2026, month: 11 }, 1)).toEqual({ year: 2027, month: 0 });
+    expect(shiftMonth({ year: 2026, month: 0 }, -1)).toEqual({ year: 2025, month: 11 });
+  });
+
+  it("will not page back past the current month, because the payload is upcoming-only", () => {
+    expect(canGoPrev({ year: 2026, month: 8 }, { today: TODAY })).toBe(false);
+    expect(canGoPrev({ year: 2026, month: 9 }, { today: TODAY })).toBe(true);
+  });
+});
+
+describe("defaultMonth", () => {
+  it("opens on the current month when it carries something", () => {
+    const items = [block("c-1", "2026-09-20T00:00:00+08:00", "2026-09-21T00:00:00+08:00")];
+    expect(defaultMonth(items, { today: TODAY })).toEqual({ year: 2026, month: 8 });
+  });
+
+  it("opens on the earliest later month when the current one is empty", () => {
+    // The seeded state: nothing in September, everything in October.
+    const items = [
+      block("c-1", "2026-11-02T00:00:00+08:00", "2026-11-03T00:00:00+08:00"),
+      block("c-2", "2026-10-20T00:00:00+08:00", "2026-10-22T00:00:00+08:00"),
+    ];
+    expect(defaultMonth(items, { today: TODAY })).toEqual({ year: 2026, month: 9 });
+  });
+
+  it("counts an item already in progress towards the current month", () => {
+    const items = [block("c-1", "2026-09-01T00:00:00+08:00", "2026-10-15T00:00:00+08:00")];
+    expect(defaultMonth(items, { today: TODAY })).toEqual({ year: 2026, month: 8 });
+  });
+
+  it("falls back to the current month when there is nothing at all", () => {
+    expect(defaultMonth([], { today: TODAY })).toEqual({ year: 2026, month: 8 });
+  });
+});

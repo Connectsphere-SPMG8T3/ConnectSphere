@@ -215,7 +215,12 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_id, venue_id, occupied_period, status, created_at, venues(name)")
+        # The embed must name the constraint. `venue_bookings` has two foreign
+        # keys to `venues` — `venue_id` and the `suggested_venue_id` a rejection
+        # may carry (§6.13) — so a bare `venues(name)` is ambiguous and
+        # PostgREST refuses the whole request with PGRST201 rather than
+        # guessing. `venue_blocks` has only one, which is why it can stay bare.
+        .select("id, event_id, venue_id, occupied_period, status, created_at, venues!venue_bookings_venue_id_fkey(name)")
         .in_("status", sorted(statuses))
         .overlaps("occupied_period", _open_ended_literal(since))
         .execute()

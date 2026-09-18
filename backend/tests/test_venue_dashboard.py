@@ -152,6 +152,10 @@ def make_client_mock(table_rows: dict[str, list[dict]]) -> tuple[MagicMock, dict
         query = MagicMock()
         calls = recorded.setdefault(name, {})
 
+        def _select(columns):
+            calls["select"] = columns
+            return query
+
         def _overlaps(column, literal):
             calls["overlaps"] = (column, literal)
             return query
@@ -160,7 +164,7 @@ def make_client_mock(table_rows: dict[str, list[dict]]) -> tuple[MagicMock, dict
             calls["in_"] = (column, list(values))
             return query
 
-        query.select.return_value = query
+        query.select.side_effect = _select
         query.overlaps.side_effect = _overlaps
         query.in_.side_effect = _in
         query.execute.side_effect = lambda: SimpleNamespace(data=table_rows.get(name, []))
@@ -256,3 +260,19 @@ class TestCrossVenueReads:
     def test_event_name_is_left_unset(self, bookings_client):
         bookings = repository.list_all_upcoming_bookings(NOW, {"held"})
         assert all(b.event_name is None for b in bookings)
+
+    def test_the_venue_embed_names_its_foreign_key(self, bookings_client):
+        """Regression: PostgREST rejected the whole query without this.
+
+        `venue_bookings` has two foreign keys to `venues` — `venue_id` and the
+        `suggested_venue_id` a rejection may carry — so a bare `venues(name)`
+        is ambiguous and answers PGRST201 rather than picking one. Caught only
+        by running against a real database, hence this guard.
+        """
+        repository.list_all_upcoming_bookings(NOW, {"held"})
+        assert "venues!venue_bookings_venue_id_fkey(name)" in bookings_client["venue_bookings"]["select"]
+
+    def test_the_block_embed_stays_unqualified(self, blocks_client):
+        """`venue_blocks` has a single FK to `venues`, so it needs no hint."""
+        repository.list_all_upcoming_blocks(NOW)
+        assert "venues(name)" in blocks_client["venue_blocks"]["select"]

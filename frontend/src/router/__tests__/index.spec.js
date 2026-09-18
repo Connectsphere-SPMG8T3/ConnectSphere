@@ -50,3 +50,40 @@ describe("router guard with a signed-in role that has no dashboard", () => {
     expect(authStore.isAuthenticated).toBe(false);
   });
 });
+
+describe("booking request route (SCRUM-70)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    authApi.me.mockRejectedValue(new TypeError("Failed to fetch"));
+  });
+
+  it("opens for venue staff", async () => {
+    const { router } = await loadAppWithStoredRole("venue_staff");
+
+    await router.push("/bookings/d0000000-0000-4000-8000-000000000002");
+
+    expect(router.currentRoute.value.name).toBe("booking-request");
+    expect(router.currentRoute.value.params.id).toBe("d0000000-0000-4000-8000-000000000002");
+  });
+
+  it("is not reachable by a coordinator, whose side of it ships with SCRUM-19/20", async () => {
+    const { router } = await loadAppWithStoredRole("event_coordinator");
+
+    await router.push("/bookings/d0000000-0000-4000-8000-000000000002");
+
+    expect(router.currentRoute.value.path).toBe("/dashboard/coordinator");
+  });
+
+  it("sends an anonymous visitor to login rather than to the catch-all", async () => {
+    // It must sit above `/:pathMatch(.*)*`, or it would silently redirect.
+    vi.resetModules();
+    setActivePinia(createPinia());
+    const { default: router } = await import("@/router");
+
+    await router.push("/bookings/d-2");
+
+    expect(router.currentRoute.value.name).toBe("login");
+    expect(router.currentRoute.value.query.redirect).toBe("/bookings/d-2");
+  });
+});

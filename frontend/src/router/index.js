@@ -64,6 +64,16 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["event_coordinator", "venue_staff"] },
   },
   {
+    // A placeholder until SCRUM-19/20 build the request view and the
+    // approve/reject decision. Venue staff only for now: the coordinator side
+    // of this page arrives with those stories, and granting access to an empty
+    // state early buys nothing.
+    path: "/bookings/:id",
+    name: "booking-request",
+    component: () => import("@/views/bookings/BookingRequestView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["venue_staff"] },
+  },
+  {
     path: "/:pathMatch(.*)*",
     redirect: "/login",
   },
