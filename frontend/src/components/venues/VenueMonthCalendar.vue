@@ -41,7 +41,10 @@ watch(
   { immediate: true },
 );
 
-const grid = computed(() => buildMonthGrid(shown.value.year, shown.value.month, props.items, { today: props.today }));
+// Six rows always, so the panel is the same height in every month.
+const grid = computed(() =>
+  buildMonthGrid(shown.value.year, shown.value.month, props.items, { today: props.today, weeks: 6 }),
+);
 const canGoPrev = computed(() => canPageBack(shown.value, { today: props.today }));
 const isCurrentMonth = computed(() => sameMonth(shown.value, currentMonth.value));
 
@@ -106,7 +109,7 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
 
 <template>
   <section
-    class="flex h-full flex-col border-2 border-ink bg-canvas p-5 shadow-hard sm:border-4 sm:p-6"
+    class="flex h-full min-h-[34rem] flex-col border-2 border-ink bg-canvas p-5 shadow-hard sm:min-h-[36rem] sm:border-4 sm:p-6"
     aria-labelledby="venue-calendar-heading"
   >
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -163,7 +166,7 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
       </li>
     </ul>
 
-    <div class="grid grid-cols-7 gap-px border-2 border-ink bg-ink">
+    <div class="grid shrink-0 grid-cols-7 gap-px border-2 border-ink bg-ink">
       <div
         v-for="weekday in grid.weekdays"
         :key="weekday"
@@ -175,7 +178,7 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
         v-for="cell in grid.cells"
         :key="cell.key"
         type="button"
-        class="flex min-h-[3.25rem] flex-col items-center justify-start gap-1 bg-canvas py-2 text-center sm:min-h-[4rem]"
+        class="flex h-12 flex-col items-center justify-start gap-1 overflow-hidden bg-canvas py-2 text-center sm:h-14"
         :class="[
           cell.inCurrentMonth ? 'text-ink' : 'text-ink/35',
           selectedDayKey === cell.key ? 'bg-bauhaus-yellow' : '',
@@ -206,7 +209,10 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
       </button>
     </div>
 
-    <div class="mt-4 flex-1">
+    <!-- Absorbs all the slack in the panel, so selecting a day, clearing it, or
+         the month banner appearing redistributes space inside a fixed total
+         instead of resizing the panel and shifting the page beside it. -->
+    <div class="mt-4 min-h-0 flex-1 overflow-y-auto">
       <template v-if="selectedCell">
         <p class="text-xs font-bold uppercase tracking-widest text-ink/70">
           {{ formatSelectedDay(selectedCell.key) }}

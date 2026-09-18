@@ -130,16 +130,23 @@ function sortItems(a, b) {
  * construction rather than a set of instants, so its weekday and length are
  * computed from UTC fields: no timezone enters until an item is placed, and
  * placement goes through `singaporeDayKeysCovered`.
+ *
+ * `weeks` forces a row count. Left unset, the grid is only as tall as the
+ * month needs (4, 5 or 6 rows). The dashboard passes 6, because a panel that
+ * changed height as you stepped through months would shift everything beside
+ * it; a consistently present trailing row reads as a calendar, whereas one
+ * that appears and disappears reads as a bug.
  */
-export function buildMonthGrid(year, monthIndex, items = [], { today = new Date() } = {}) {
+export function buildMonthGrid(year, monthIndex, items = [], { today = new Date(), weeks } = {}) {
   const firstOfMonth = new Date(Date.UTC(year, monthIndex, 1));
   // getUTCDay() is 0=Sunday; shift so Monday is 0.
   const leading = (firstOfMonth.getUTCDay() + 6) % 7;
   // Day 0 of the next month is the last day of this one.
   const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
-  // 28, 35 or 42 — a fixed six rows would leave most months with a permanently
-  // empty row, which reads as a bug rather than as a calendar.
-  const cellCount = Math.ceil((leading + daysInMonth) / 7) * 7;
+  const needed = Math.ceil((leading + daysInMonth) / 7);
+  // Never truncate: a forced row count below what the month needs would drop
+  // real days off the end.
+  const cellCount = Math.max(weeks ?? needed, needed) * 7;
 
   const cells = [];
   for (let i = 0; i < cellCount; i += 1) {

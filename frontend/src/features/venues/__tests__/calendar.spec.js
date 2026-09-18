@@ -120,6 +120,32 @@ describe("buildMonthGrid", () => {
     expect(grid.cells.at(-1).inCurrentMonth).toBe(false);
   });
 
+  it("pads to a fixed row count when asked, so the panel does not resize between months", () => {
+    // February 2027 needs 4 rows and October 2026 needs 5; both must render 6.
+    for (const [year, month] of [
+      [2027, 1],
+      [2026, 9],
+      [2026, 4],
+    ]) {
+      expect(buildMonthGrid(year, month, [], { today: TODAY, weeks: 6 }).cells).toHaveLength(42);
+    }
+  });
+
+  it("never truncates a month that needs more rows than it was asked for", () => {
+    const grid = buildMonthGrid(2026, 9, [], { today: TODAY, weeks: 1 });
+    const inMonth = grid.cells.filter((cell) => cell.inCurrentMonth);
+    expect(inMonth).toHaveLength(31);
+  });
+
+  it("keeps placing items correctly in the padded rows", () => {
+    // 1 Nov falls in October's sixth row once padded; a block there must show.
+    const grid = buildMonthGrid(2026, 9, [block("c-1", "2026-11-01T00:00:00+08:00", "2026-11-02T00:00:00+08:00")], {
+      today: TODAY,
+      weeks: 6,
+    });
+    expect(grid.cells.find((c) => c.key === "2026-11-01").hasItems).toBe(true);
+  });
+
   it("has no leading cells when the month starts on a Monday", () => {
     // 1 Jun 2026 is a Monday.
     const grid = buildMonthGrid(2026, 5, [], { today: TODAY });
