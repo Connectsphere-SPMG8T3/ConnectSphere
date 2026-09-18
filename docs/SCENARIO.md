@@ -304,7 +304,7 @@ What was actually built:
 1. **Schema** — `supabase/migrations/20260915090000_venues_catalogue_and_availability.sql`: enums `venue_layout`, `facility`, `accessibility_feature`, `venue_booking_status`, `venue_block_reason`; tables `venues`, `venue_layouts`, `venue_facilities`, `venue_blocks`, `venue_bookings`; **DB-1 exclusion constraint** (`btree_gist`, `venue_id WITH =, occupied_period WITH &&` over occupying statuses) and the **BR-R1 partial unique index** on `event_id`, both landed now while the table is empty; GiST index on blocks; RLS with staff-only `select` policies and no write policies (holds must go through the API). `venue_bookings.event_id` is a plain uuid until `public.events` exists (same choice as the SCRUM-23 branch). Verified by `supabase/verification/venue_schema_checks.sql` (overlap refused, back-to-back accepted, rejected bookings ignored, second active booking per event refused, blocks may overlap bookings, coordinator can read / organiser cannot / nobody inserts directly).
 2. **Seed** — `supabase/seed.sql` gains 8 venues, 3 blocks and 3 bookings around 10 Oct 2026 so a search for 10 Oct 14:00–17:00 demonstrates every exclusion reason (Auditorium A booked 11:00–14:00 stays listed; Seminar Room 1 held 13:00–16:00; Heritage Hall blocked for renovation; Grand Ballroom's maintenance block ends exactly at 12:00; Old Lecture Theatre inactive; Innovation Lab's *rejected* booking ignored).
 3. **Backend** — `backend/app/modules/venues/` is the **first module to adopt the REQUIREMENTS §3.3 shape**: `router.py` (`GET /api/v1/venues`, `GET /api/v1/venues/{id}`, both `require_roles(["event_coordinator", "venue_staff"])`), `schemas.py` (`VenueSearchCriteria` as a FastAPI query-parameter model; period must be given as a pair, timezone-aware, `ends_at > starts_at`), `service.py`, `repository.py` (the only file touching Supabase; overlap evaluated in Postgres with the range `&&` operator) and `search.py` (pure `evaluate(venue, criteria, occupants)` — the shape §6.11 wants for SCRUM-18's rules). The team has not otherwise adopted §3.3; this is the proposal, stated rather than slipped in.
-4. **Frontend** — routes `/venues` and `/venues/:id` (coordinator + venue staff); `views/venues/VenueSearchView.vue`, `VenueDetailView.vue`; `components/venues/VenueCriteriaForm.vue`, `VenueResultCard.vue`; new common `BauhausSelect.vue` and `BauhausCheckboxGroup.vue`; `venuesApi` in `services/api.js` (all calls via `authStore.withSession`); `stores/venues.js` keeps criteria and results so returning from a detail page keeps the search, and always requests `include_excluded=true` so the toggle is instant. A "Search venues" button on the coordinator and venue-staff dashboards.
+4. **Frontend** — routes `/venues` and `/venues/:id` (coordinator + venue staff); `views/venues/VenueSearchView.vue`, `VenueDetailView.vue`; `components/venues/VenueCriteriaForm.vue`, `VenueResultCard.vue`; new common `BauhausSelect.vue` and `BauhausCheckboxGroup.vue`; `venuesApi` in `services/api.js` (all calls via `authStore.withSession`); `stores/venues.js` (moved to `features/venues/venueSearchStore.js` by SCRUM-70) keeps criteria and results so returning from a detail page keeps the search, and always requests `include_excluded=true` so the toggle is instant. A "Search venues" button on the coordinator and venue-staff dashboards.
 5. **Domain vocabulary** — `CONTEXT.md` (repo root) now defines Venue, Block, Hold, Booking, Occupied period, Turnaround (zero), Availability vs Suitability, Search criteria, Excluded venue.
 
 #### Verification
@@ -477,6 +477,87 @@ Two findings from the same review round were investigated and not treated as bug
 - The new `profiles`→`user_roles` FK was verified directly against the live database: reproduced the single-statement revoke rejection, then the correct two-step transaction succeeding, then restored the seeded double-hat test account to its original state.
 - `get_advisors` re-run after the new migration: the new FK's "unindexed foreign key" finding is gone; no new security findings.
 
+### 4.9. SCRUM-70 — Venue Staff dashboard (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-70` |
+| Summary | Venue Staff dashboard |
+| Issue type | Story |
+| Status | In progress (branch `feature/scrum-70-venue-staff-dashboard`) |
+| Parent epic | `SCRUM-69` — Role dashboards |
+| Sprint | Sprint 1 |
+| Story point estimate | — |
+| Priority | P2 |
+
+**User story (verbatim):**
+
+> As a Venue Staff, I want to see a dashboard of the venues I'm in charge of when I log in, so that I can quickly see what needs my attention without navigating through multiple pages.
+
+**Acceptance criteria (verbatim from Jira):**
+
+> On successful login, Venue Staff are routed directly to their dashboard
+>
+> Dashboard lists all venues the Venue Staff member manages, with each venue's current status (active/blocked) shown at a glance
+>
+> Dashboard surfaces a count or list of pending booking requests awaiting my decision, across all my venues
+>
+> Dashboard surfaces any active or upcoming blocks I've set
+>
+> Selecting a venue or a pending request from the dashboard navigates directly to its full details
+
+#### How the implementation maps to the ticket
+
+**"the venues I'm in charge of" resolves to every venue.** The ticket is written as though staff own a subset, but staff-to-venue allocation is not tracked anywhere in the system and the customer described venue staff as a pool (AUTH-R5, QA-44). `REQUIREMENTS.md` §6.21 and `PROJECT_REVIEW.md` §B4 had already settled this reading; SCRUM-70 is where it becomes visible, so the panel is headed **"All venues"** rather than "My venues" and carries a line saying why. Confirmed with the customer-side decision-maker before building. The same applies to AC3's "across all my venues" and AC4's "blocks I've set" — there is no per-staff attribution on `venue_blocks` either, so the dashboard shows every block and says so.
+
+**AC1 needed no work.** `ROLE_DASHBOARD_ROUTES.venue_staff` in `stores/auth.js` already routes venue staff to `/dashboard/venue-staff`, used by both `LoginView.vue` and the router guard.
+
+**AC2, AC3 and AC4 are backed by real data** — unlike SCRUM-72, which had to ship empty states because the `events` module does not exist. `venues`, `venue_blocks` and `venue_bookings` all exist and are seeded, so this dashboard invents nothing. It is the first of the four remaining shells to clear **defect D8**.
+
+**AC5 is honest about what exists.** A venue row opens `/venues/:id`, which is real. A pending request opens `/bookings/:id`, which is a deliberate placeholder: the request detail view and the approve/reject decision are SCRUM-19/20 and have neither an endpoint nor a design. The route and link are real so those stories fill the page in without touching the dashboard, and the placeholder names them rather than implying the data is missing.
+
+**Layout.** The customer supplied a reference screenshot — a 2×2 grid of stat tiles beside a tall panel, two list panels underneath. The information architecture is kept; the visual treatment is not. The reference's rounded corners and soft shadows contradict the Bauhaus system (`frontend/AGENTS.md`), and its sparklines and "+12% vs last month" trend figures are precisely the fabricated-metric problem D8 exists to fix, so they are absent. The chart panel became the calendar the customer asked for instead.
+
+#### What was actually built
+
+1. **`GET /venues/dashboard/venue-staff`** (`modules/venues/{router,service,repository,schemas}.py`) — `venue_staff` only. Returns `generated_at`, `venues`, `pending_holds` (oldest first), `re_review_bookings` and `blocks`. `event_coordinator` is excluded although it can read the rest of the venues module: this is a staff work queue.
+2. **No server-side counts.** Each list is complete, so a count beside it would be a second source of truth that could disagree with the list rendered from it. The SPA derives its tiles from the lists.
+3. **Cross-venue repository reads** (`list_all_upcoming_blocks`, `list_all_upcoming_bookings`). The existing per-venue helpers fetch every row and drop past ones in Python; across eight venues that becomes a full-table scan per page load, so the cut-off moved into Postgres as an open-ended `[since,)` range against the existing GiST index. `Period` requires both ends and cannot express that literal, hence a separate `_open_ended_literal`.
+4. **`event_name` is declared and always `null`.** There is no `events` table, so `venue_bookings.event_id` has nothing to join to. The field exists now so SCRUM-8/19 fill it without an SPA change; the SPA falls back to a short id and never invents a name.
+5. **Only `held` and `re_review` are fetched.** An approved booking is settled work and belongs on the per-venue availability calendar of §6.9 (SCRUM-16). The calendar legend says so, so the omission does not read as a gap.
+6. **A hand-rolled month calendar** (`features/venues/calendar.js`, `components/venues/VenueMonthCalendar.vue`). No dependency was added; the repo has no chart or date library and `frontend/AGENTS.md` forbids introducing one casually.
+7. **`stores/venues.js` moved to `features/venues/venueSearchStore.js`**, with `toSingaporeIso` and the fixed +08:00 offset extracted to `features/venues/singaporeTime.js`. `frontend/AGENTS.md` has said since SCRUM-39 that this should happen the next time a story changes the store; adding a second venues store is that moment. Committed separately so the rename stays reviewable.
+8. **The seed gains a second hold and a re-review row**, both clear of the 10 Oct window the search cases depend on, plus explicit `created_at` values — oldest-first ordering cannot be demonstrated by rows sharing one insert timestamp.
+
+#### Two rules worth knowing before touching this code
+
+**Half-open ranges map onto day cells via `endsAt − 1ms`.** The last instant inside `[start, end)` is `end − ε`, so the last day a range marks is the day of `end - 1ms`. A block ending exactly at midnight therefore stops on the previous day with no special case and no branch — which is what §6.14 and CAL-R2 ask for. The seeded blocks prove it both ways: 1–15 Oct marks through the 14th, 20–22 Oct through the 21st.
+
+**Never slice a raw ISO string to get a day.** `"2026-10-10T16:00:00Z"` and `"2026-10-11T00:00:00+08:00"` are the same instant; slicing them yields different days, so which day you got would depend on how the backend happened to serialise the value. `singaporeDayKey` works from the instant and a fixed +08:00 offset, exact because Singapore has never observed daylight saving.
+
+#### Two decisions the calendar makes on the user's behalf
+
+**It opens on the first month that has something in it, and says so.** Today is September and every seeded item is in October; opening on an empty September would look like a dashboard with nothing on it, but jumping the user forward silently would be just as misleading. The panel states which month it chose and offers one click back.
+
+**It cannot page backwards past the current month.** The payload is upcoming-only, so every earlier month is guaranteed empty — offering them would render a gap in the data as though it were an answer.
+
+#### One bug only a real database could surface
+
+`venue_bookings` has **two** foreign keys to `venues`: `venue_id`, and the `suggested_venue_id` a rejection may carry (§6.13). A bare `venues(name)` embed is therefore ambiguous, and PostgREST rejects the entire query with `PGRST201` rather than picking one. Every mocked test passed; the first real call 500'd. The embed now names its constraint (`venues!venue_bookings_venue_id_fkey(name)`), with a regression test asserting on the `select` string. `venue_blocks` has a single FK and stays unqualified.
+
+#### Verification
+
+- `pytest` 127/127 (+41), `npm test` 146/146 (+75). The frontend additions are concentrated in `features/venues/__tests__/calendar.spec.js`, where the half-open boundary, the two ISO serialisations of one instant, and the Monday-first grid arithmetic are each pinned separately.
+- **Exercised against the live Supabase project**, which is how the PGRST201 bug was found: `coordinator@connectsphere.dev` gets **403**, the same account gets **200** after switching active role to Venue Staff, and the payload returns 8 venues, 1 pending hold and 3 blocks with `venue_name` populated and `event_name` null.
+- `npm run build` clean; the new route registers ahead of `/venues/{venue_id}` as intended.
+
+#### Not verified
+
+- **No browser screenshot was taken.** The logic, the HTTP contract and the production build are verified, but nobody has yet looked at the rendered page in a browser at desktop or mobile width, or opened it as a disallowed role. `frontend/AGENTS.md` requires that check; it remains outstanding.
+- **The new seed rows are not in the live database.** The hosted project still carries the old seed, so the re-review tile reads 0 there rather than 1. `supabase db push`/`db reset` has not been run — no Supabase CLI was available in the environment where this was built.
+- The re-review path itself is untested end to end, because nothing can yet *put* a booking into `re_review` — that arrives with SCRUM-19/20.
+- `waitingDays` was checked against fixed clocks in tests, not across a real day boundary.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.
@@ -531,7 +612,7 @@ This design system is a project-specific/team choice (matching the customer brie
 | "How is a role protected on the backend?" | `backend/app/core/security.py` (`require_roles`) |
 | "What does a user's profile contain?" | `supabase/migrations/20260912000001_init_auth_and_profiles.sql`, mirrored in `backend/app/modules/auth/schemas.py::ProfileResponse` |
 | "What test accounts exist?" | `supabase/seed.sql`, table in `docs/SETUP.md` |
-| "How does venue search decide what to show?" | `backend/app/modules/venues/search.py` (pure rules) → `repository.py` (Supabase reads) → `router.py`; SPA in `frontend/src/stores/venues.js` and `views/venues/` |
+| "How does venue search decide what to show?" | `backend/app/modules/venues/search.py` (pure rules) → `repository.py` (Supabase reads) → `router.py`; SPA in `frontend/src/features/venues/` and `views/venues/` |
 | "Why can't two events book the same venue?" | `venue_bookings_no_overlap` in `supabase/migrations/20260915090000_venues_catalogue_and_availability.sql` (DB-1), checked by `supabase/verification/venue_schema_checks.sql` |
 | "What do Block, Hold, Availability, Suitability mean here?" | `CONTEXT.md` at the repo root |
 | "What exactly does story SCRUM-XX require, verbatim?" | §4's entry for that story (each entry is self-contained and quotes Jira verbatim) |

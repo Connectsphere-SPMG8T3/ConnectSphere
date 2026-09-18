@@ -9,7 +9,7 @@ This file describes the **current state** of the codebase, so a developer (or AI
 
 **Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current").
 
-_Last updated: 2026-09-17. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72), plus unmerged branches listed in §6, plus the in-progress `feature/scrum-74-75-role-switcher` branch described below._
+_Last updated: 2026-09-19. Reflects `main` at `eb6bf55` (after PR #13), plus unmerged branches listed in §6, plus the in-progress `feature/scrum-70-venue-staff-dashboard` branch described below._
 
 ---
 
@@ -21,9 +21,10 @@ _Last updated: 2026-09-17. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 | SCRUM-50 See my own profile | Done in Jira; see open defect D7 in §5 | `GET /auth/me` | `ProfileView` (also lists every held role for a multi-role account — see SCRUM-78 below) | `profiles` |
 | SCRUM-74 View assigned roles in nav dropdown, SCRUM-75 Select active role from nav dropdown | On `feature/scrum-74-75-role-switcher` (ACC-R4) | `POST /auth/active-role`, `roles` on `ProfileResponse`, session-scoped active role in `get_current_user` | Role switcher in `Nav.vue`, `roles`/`hasMultipleRoles`/`setActiveRole` in `stores/auth.js` | `user_roles`, `session_active_roles` |
 | SCRUM-78 View all assigned roles on profile page | On `feature/scrum-74-75-role-switcher` (ACC-R4); implemented ahead of ticket creation during SCRUM-74/75's code review, ticket opened retroactively for traceability | none (reuses `roles` on `ProfileResponse`) | "All Roles" section in `ProfileView.vue`, shown only via `authStore.hasMultipleRoles` | none (reuses `user_roles`) |
-| SCRUM-39 View venue catalogue | Done | `modules/venues` | `views/venues/`, `stores/venues.js`, `components/venues/` | venue tables |
+| SCRUM-39 View venue catalogue | Done | `modules/venues` | `views/venues/`, `features/venues/venueSearchStore.js`, `components/venues/` | venue tables |
 | SCRUM-72 Event Coordinator dashboard | Frontend done. **No backend endpoint yet**, so widgets show empty states | none | `CoordinatorDashboard`, `features/events/` | none |
-| SCRUM-70, 71, 73 and the attendee dashboard | Placeholder shells only (~40 lines each) | none | `views/dashboards/*Dashboard.vue` | none |
+| SCRUM-70 Venue Staff dashboard | On `feature/scrum-70-venue-staff-dashboard`. **Fully data-driven** — the first dashboard that is | `GET /venues/dashboard/venue-staff` | `VenueStaffDashboard`, `features/venues/`, `components/venues/VenueMonthCalendar.vue`, `/bookings/:id` stub | `venues`, `venue_blocks`, `venue_bookings` |
+| SCRUM-71, 73 and the attendee dashboard | Placeholder shells only (~40 lines each), still showing hardcoded metrics (D8) | none | `views/dashboards/*Dashboard.vue` | none |
 | SCRUM-8 Event request creation | On an unmerged branch (§6) | — | — | — |
 | SCRUM-23 Equipment availability | On an unmerged branch (§6); PRs #4 and #5/#6 closed | — | — | — |
 
@@ -40,6 +41,7 @@ _Last updated: 2026-09-17. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 | `POST /auth/logout` | authenticated | Revokes only the caller's session |
 | `GET /venues` | `event_coordinator`, `venue_staff` | Searches the catalogue. Each criterion is strict. `starts_at`/`ends_at` adds an availability check, and `include_excluded=true` also returns ruled-out venues with reasons |
 | `GET /venues/{venue_id}` | `event_coordinator`, `venue_staff` | Returns one venue with its upcoming blocks and occupying bookings |
+| `GET /venues/dashboard/venue-staff` | `venue_staff` only | The venue-staff work queue across **every** venue (AUTH-R5): pending holds oldest-first, bookings in re-review, active and upcoming blocks, and the venue catalogue. Declared **above** `/{venue_id}`, which is typed `UUID` and would answer 422 rather than fall through |
 
 `modules/events/` and `modules/equipment/` are empty packages (`__init__.py` only). Build inside them rather than creating new top-level modules.
 
@@ -95,11 +97,16 @@ _Last updated: 2026-09-17. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 | Venue search form and result card | `VenueCriteriaForm` (`criteria`, `errors`; emits `submit`, `reset`), `VenueResultCard` (`result`) | `components/venues/` |
 | API calls | `authApi`, `venuesApi`, `eventsApi`, `ApiError` | `services/api.js` |
 | Session, current user, role → dashboard route, role labels, role switching | `useAuthStore` (`roles`, `hasMultipleRoles`, `setActiveRole(role)`), `ROLE_DASHBOARD_ROUTES`, `ROLE_LABELS` | `stores/auth.js` |
-| Venue option lists and query helpers | `LAYOUTS`, `FACILITIES`, `ACCESSIBILITY_FEATURES`, `toSingaporeIso(date, time)`, `emptyCriteria()`, `criteriaToParams(criteria)`, `useVenuesStore` | `stores/venues.js` |
+| Venue option lists and search state | `LAYOUTS`, `FACILITIES`, `ACCESSIBILITY_FEATURES`, `emptyCriteria()`, `criteriaToParams(criteria)`, `useVenuesStore` | `features/venues/venueSearchStore.js` |
+| Singapore-time arithmetic (deciding *which day* an instant falls on) | `singaporeDayKey(instant)`, `startOfSingaporeDayUtc(key)`, `toSingaporeIso(date, time)`, `SINGAPORE_OFFSET_MS` | `features/venues/singaporeTime.js` |
+| Month-grid construction and placing periods on days | `buildMonthGrid`, `singaporeDayKeysCovered`, `toCalendarItems`, `defaultMonth`, `shiftMonth`, `canGoPrev`, `CALENDAR_KINDS` | `features/venues/calendar.js` |
+| Venue-staff dashboard logic (pure functions) | `summariseVenueStaffDashboard`, `sortPendingHoldsOldestFirst`, `waitingDays`, `formatEventReference`, `venueStatuses`, `BLOCK_REASON_LABELS`, `BOOKING_STATUS_LABELS` | `features/venues/dashboard.js` |
+| Venue-staff dashboard state | `useVenueStaffDashboardStore` | `features/venues/venueStaffDashboardStore.js` |
+| Month calendar over blocks and bookings | `VenueMonthCalendar` (`items`, `hasSettled`, `today`) — built for SCRUM-70, intended for SCRUM-16's per-venue calendar too | `components/venues/VenueMonthCalendar.vue` |
 | Event status labels and dashboard logic (pure functions) | `STATUS_LABELS`, `STATUS_DESCRIPTIONS`, `ACTIVE_COORDINATOR_STATUSES`, `ACTION_KINDS`, `actionKindMeta`, `prioritiseActionItems`, `summariseActionItems`, `groupActiveEventsByStatus`, `countByStatus`, `outstandingReadiness`, `readinessGaps` | `features/events/dashboard.js` |
 | Coordinator dashboard state | `useCoordinatorDashboardStore`; the header comment documents the response shape the future events endpoint must return | `features/events/store.js` |
 
-Vitest specs live in `__tests__/` folders next to the code: router, `stores/auth`, `stores/venues`, `features/events`, and venue search.
+Vitest specs live in `__tests__/` folders next to the code: router, `stores/auth`, `features/venues` (search store, calendar, dashboard logic, dashboard store), `features/events`, venue search and the venue-staff dashboard view.
 
 ## 4. Database (`supabase/migrations/`)
 
@@ -121,13 +128,18 @@ Verification scripts are in `supabase/verification/` (`auth_security_checks.sql`
 - **Data access is through the Supabase client only.** `app/db/session.py` is a placeholder seam for a future direct-SQL session. Adopting SQLAlchemy or a direct Postgres connection is a project-wide change, so confirm with the team first (see §6 for a branch that does this).
 - **Occupied periods are half-open `[starts_at, ends_at)`.** A booking ending at 12:00 doesn't conflict with one starting at 12:00. Double-booking is prevented in the database by `venue_bookings_no_overlap`, not by application checks. Terms like Hold, Block, Availability, and Suitability are defined in `CONTEXT.md`.
 - **Reuse the venue enums** (`venue_layout`, `facility`, `accessibility_feature`) in any new table that describes event requirements. Don't define parallel ones.
-- **Only the coordinator dashboard is data-driven.** The other four dashboards are shells. Follow SCRUM-72's pattern (a store plus honest empty states) and never hardcode metrics (PROJECT_REVIEW D8).
-- **Frontend domain stores go in `features/<domain>/`** (team decision, `frontend/AGENTS.md` "Where stores go"). `stores/venues.js` is legacy and moves to `features/venues/` the next time a story changes it. `stores/` keeps only `auth.js`.
+- **Two dashboards are data-driven: coordinator (SCRUM-72) and venue staff (SCRUM-70).** Organiser, tech support and attendee are still shells with hardcoded metrics (PROJECT_REVIEW D8). Follow the same pattern — a store plus honest empty states — and never hardcode a metric. SCRUM-70 is the better model of the two, because its data actually exists.
+- **Frontend domain stores go in `features/<domain>/`** (team decision, `frontend/AGENTS.md` "Where stores go"). This is now done everywhere: SCRUM-70 moved the last legacy store, and `stores/` holds only `auth.js`. A domain with more than one store names each file after the store (`venueSearchStore.js`, `venueStaffDashboardStore.js`).
 
 **Traps already hit**
 
 - **Supabase SDK:** use `create_auth_client()` for sign-in and refresh, and import exceptions from `supabase_auth.errors`, not `gotrue.errors` (`docs/SCENARIO.md` §5).
 - **Endpoints that call Supabase are plain `def`.** supabase-py is synchronous, and `async def` blocks the event loop (PROJECT_REVIEW D5).
+- **A PostgREST embed must name its constraint when the table has two FKs to the same target.** `venue_bookings` points at `venues` twice — `venue_id` and `suggested_venue_id` — so a bare `venues(name)` fails the *whole query* with `PGRST201`. Use `venues!venue_bookings_venue_id_fkey(name)`. Mocked tests cannot catch this; it only appears against a real database (SCRUM-70).
+- **Mapping a half-open period onto calendar days uses `endsAt − 1ms`.** The last instant inside `[start, end)` is `end − ε`, so a block ending at midnight must not mark that day (§6.14, CAL-R2). `features/venues/calendar.js` does this once — don't re-derive it.
+- **Never slice a raw ISO string to get a day key.** The same instant serialises as both `...T16:00:00Z` and `...T00:00:00+08:00`, which slice to different days. Use `singaporeDayKey`, which works from the instant.
+- **The venue-staff dashboard payload is upcoming-only**, so its calendar cannot page back before the current month — every earlier month would be empty by construction rather than in fact.
+- **`event_name` on the venue-staff dashboard is a declared-but-null contract field** waiting on SCRUM-8's `events` table. Fill it there; the SPA already falls back to a short id.
 - **RLS policies must not query their own table.** It recurses (`42P17`), so use `private.current_user_role()`.
 - **The live migration history has drifted from the files before.** Run `supabase migration list --linked` before every `supabase db push` (PROJECT_REVIEW D8, migration drift).
 - **Never commit `supabase/.temp/` or `supabase/.branches/`.** They're gitignored now. `.temp/` holds generated local secrets, which is how PRs #4 and #6 failed the GitGuardian check.

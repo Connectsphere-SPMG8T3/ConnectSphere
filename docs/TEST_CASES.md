@@ -1,10 +1,11 @@
-# ConnectSphere — Manual Test Cases (SCRUM-48: Basic User Authentication · SCRUM-39: Venue Catalogue & Search · SCRUM-72: Coordinator Dashboard)
+# ConnectSphere — Manual Test Cases (SCRUM-48: Basic User Authentication · SCRUM-39: Venue Catalogue & Search · SCRUM-72: Coordinator Dashboard · SCRUM-70: Venue Staff Dashboard)
 
 Manual test-case suite for the features implemented so far:
 
 - **§1–§7 — SCRUM-48: Basic user authentication** (epic SCRUM-7): login, session/profile retrieval, logout, and role-based dashboard routing.
 - **§8 — SCRUM-39: Venue catalogue, search and availability**.
 - **§9 — SCRUM-72: Event Coordinator dashboard**: the prioritised action list, the active-event status overview, and their empty states.
+- **§10 — SCRUM-70: Venue Staff dashboard**: the four work-queue tiles, the month calendar, the pending-request list and the venue list — all against real seeded data.
 
 See [docs/SCENARIO.md](SCENARIO.md) for the full requirement context and [docs/SETUP.md](SETUP.md) for environment setup.
 
@@ -15,6 +16,7 @@ Every test case traces back to either the SCRUM-48 acceptance criteria, a custom
 - **In scope:** `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`, the `LoginView`/`ProfileView` pages, the five role dashboards as RBAC targets, and the Vue Router guards that protect them.
 - **Also in scope (§8):** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, the `/venues` search page and `/venues/:id` detail page (SCRUM-39).
 - **Also in scope (§9):** the Event Coordinator dashboard's presentation logic (SCRUM-72) — rendering, ordering, and empty states, not event data.
+- **Also in scope (§10):** `GET /api/v1/venues/dashboard/venue-staff`, the `/dashboard/venue-staff` page and the `/bookings/:id` placeholder (SCRUM-70). Unlike §9 this runs against real data, since the venue tables exist and are seeded.
 - **Out of scope:** everything under the `events` and `equipment` **backend** modules — empty stub packages with no logic to test yet. §9 therefore tests the coordinator dashboard's rendering and empty states only.
 - **Environment:** a Supabase project with every migration in `supabase/migrations/` applied and `supabase/seed.sql` run, backend on `http://localhost:8000`, frontend on `http://localhost:5173`. The live project (`vuiryrzzyfecjqftwicj`) has both migrations and the seed applied. The data-layer cases in §6 are automated by `supabase/verification/auth_security_checks.sql` (runs inside a rolled-back transaction and raises on any failure).
 - **Seeded accounts** (all share the password `Cs1234`, per `supabase/seed.sql`):
@@ -269,3 +271,57 @@ Cases with no seeded-data shortcut (forged/expired/wrong-audience JWTs, rate lim
 | Reliability (an outage is not rendered as "nothing to do") | TC-DASH-004 |
 
 Automated equivalents live in `frontend/src/features/events/__tests__/` (Vitest): `dashboard.spec.js` covers TC-DASH-006, 008, 009, 010, 011 and 012's readiness logic as pure unit tests; `store.spec.js` covers TC-DASH-001, 003 and 004. TC-DASH-002 and TC-DASH-005 are visual and remain manual.
+
+## 10. Venue Staff dashboard (SCRUM-70)
+
+**Preconditions for every case:** logged in as `venue_staff@connectsphere.dev` / `Cs1234`, on `/dashboard/venue-staff`, with every migration and `supabase/seed.sql` applied.
+
+**Read this before running any of these.** `coordinator@connectsphere.dev` also holds `venue_staff`, but `require_roles` checks the **session's active role**, not the roles the account holds. That account signs in as `event_coordinator`, so the endpoint answers **403** until the role is switched in the nav dropdown. This is correct behaviour and TC-VSD-005 pins it — do not file it as a bug.
+
+Unlike §9, no stubbing is needed: `venues`, `venue_blocks` and `venue_bookings` all exist and are seeded, so every case below runs against real data.
+
+**Expected seeded figures:** 1 pending hold · 1 in re-review · 3 blocks · 8 venues (7 active, 1 inactive). If the re-review tile reads `0`, the live database predates the seed row added by this story — re-run the seed.
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-VSD-001 | The four tiles show real figures from the endpoint | Seed applied | Open `/dashboard/venue-staff` and read the four tiles | — | Pending requests `1`, In re-review `1`, Active & upcoming blocks `3`, Venues `8` with the sub-line "7 active · 1 inactive". Every figure matches `GET /api/v1/venues/dashboard/venue-staff`. | 🔴 |
+| TC-VSD-002 | No fabricated metrics remain (regression, PROJECT_REVIEW D8) | As above | Read every label and number on the page | — | The strings "Venues Managed", "Booking Requests" and "Availability Updates Due" do **not** appear, and no tile reads `12`, `6` or `2` unless that is the true count. Those were the hardcoded placeholders this story removed. | 🔴 |
+| TC-VSD-003 | Counts are withheld until the first load settles | Throttle the network (DevTools → Slow 3G) | Reload and watch the tiles while the request is in flight | — | All four tiles show "—", not `0`, and the lists read "Checking for updates…". A `0` must never appear before the answer is known. | 🟠 |
+| TC-VSD-004 | A server failure is surfaced, not rendered as an empty queue | Stop the backend, or point it at a stub answering 503 | Reload the dashboard | — | A red error banner shows the failure. The page does **not** say "Nothing is waiting on your decision". | 🔴 |
+| TC-VSD-005 | The endpoint is gated on the session's active role, not roles held | Signed in as `coordinator@connectsphere.dev` | `curl` the endpoint with the coordinator's token; then switch the nav dropdown to Venue Staff and retry | coordinator token | First call **403**. After the switch, **200** and the dashboard renders. Confirms the guard reads the active role (SCRUM-74/75). | 🔴 |
+| TC-VSD-006 | A coordinator cannot reach the page by URL | Signed in as `coordinator@connectsphere.dev`, active role Event Coordinator | Navigate to `/dashboard/venue-staff` | — | Redirected to `/dashboard/coordinator`. Same for `/bookings/<any-id>`. | 🔴 |
+| TC-VSD-007 | The calendar opens on the month that has something in it, and says so | Seed applied; system date before October 2026 | Read the calendar header and the line beneath it | — | The header reads **October 2026**. A line states "Showing October 2026 — September 2026 has nothing scheduled" with a "Back to this month" control. The user is never moved silently. | 🟠 |
+| TC-VSD-008 | A block's end is exclusive (§6.14, CAL-R2) | Seed applied | In October 2026, inspect the cells for 20, 21 and 22 Oct; then 14 and 15 Oct | — | 20 and 21 Oct are marked (Rooftop Terrace, safety); **22 Oct is not**. 14 Oct is marked (Heritage Hall, renovation); **15 Oct is not**. The seeded blocks run 20–22 and 1–15 Oct. | 🔴 |
+| TC-VSD-009 | Selecting a day lists what is on it | Seed applied | Click 10 Oct 2026 | — | Below the grid: "Saturday, 10 October 2026", then the day's items, each with a colour-coded badge, its venue name and its Singapore-time span. Clicking again deselects. | 🟠 |
+| TC-VSD-010 | The calendar will not page back before the current month | Seed applied | Press ← repeatedly | — | It steps back to the current month and the ← control is then disabled. The payload is upcoming-only, so earlier months would be empty by construction, not by fact. | 🟠 |
+| TC-VSD-011 | Pending requests are ordered longest-waiting first, without SLA framing (BR-R4, LC-R4) | Seed applied (two holds after re-seeding) | Read the "Pending requests" list | — | The oldest request is first. Each row shows "Waiting N days" in **neutral ink** — never red, never "overdue", never a countdown. Holds do not expire. | 🔴 |
+| TC-VSD-012 | A request row opens its own page (AC5) | Seed applied | Click a pending request | — | Navigates to `/bookings/<booking id>`, which states that the full request view and the approve/reject decision arrive with SCRUM-19/20 and echoes the booking id back. It does not 404 or dead-end. | 🟠 |
+| TC-VSD-013 | Venue rows show status at a glance and open the venue (AC2, AC5) | Seed applied | Read the "All venues" panel, then click a venue | — | All 8 venues listed, needing-attention first: `BLOCKED NOW` (red) / `BLOCK SCHEDULED` (yellow) / `ACTIVE` / `INACTIVE`. Old Lecture Theatre reads INACTIVE. Clicking opens `/venues/:id`. The panel is headed "All venues" with the pool note (AUTH-R5). | 🔴 |
+| TC-VSD-014 | An inactive venue reads inactive even while blocked | Seed applied; add a block on Old Lecture Theatre | Read its row | — | Status is `INACTIVE`, not `BLOCKED NOW`. Out of service entirely outranks a block on it. | 🟠 |
+| TC-VSD-015 | Usable on a phone-width viewport (NFR-U1) | Seed applied | Set the viewport to 390 × 844 | — | Tiles stack to one column, the calendar sits below them, both list panels stack, no horizontal scrolling, all 7 calendar columns legible. | 🟠 |
+| TC-VSD-016 | Times display in Asia/Singapore (REQUIREMENTS §4) | Set the OS timezone to something other than SGT | Reload and read any period | — | Times are unchanged — rendered in Asia/Singapore regardless of the browser's zone, matching the venue detail page. | 🟠 |
+
+### 10.1 Traceability — SCRUM-70
+
+| Acceptance criterion / rule | Covered by |
+|---|---|
+| AC1 "On successful login, Venue Staff are routed directly to their dashboard" | TC-RBAC-003 (existing), TC-VSD-005 |
+| AC2 "lists all venues … current status (active/blocked) shown at a glance" | TC-VSD-001, TC-VSD-013, TC-VSD-014 |
+| AC3 "a count or list of pending booking requests awaiting my decision" | TC-VSD-001, TC-VSD-011 |
+| AC4 "any active or upcoming blocks I've set" | TC-VSD-001, TC-VSD-008, TC-VSD-009 |
+| AC5 "Selecting a venue or a pending request … navigates directly to its full details" | TC-VSD-012, TC-VSD-013 |
+| REQUIREMENTS §6.21 widget priority order (holds → re-review → blocks → venues) | TC-VSD-001 |
+| REQUIREMENTS §6.21 "build a widget only when its data exists" | TC-VSD-003, TC-VSD-012 |
+| AUTH-R5 / QA-44 (staff are a pool; scope is all venues) | TC-VSD-013 |
+| BR-R4 (holds never expire; oldest first) | TC-VSD-011 |
+| LC-R4, QA-55, QA-68 (no SLA or deadline framing) | TC-VSD-011 |
+| §6.14, CAL-R2 (half-open periods; a block's end is exclusive) | TC-VSD-008 |
+| §6.19 (re-review after an approved change) | TC-VSD-001 |
+| SCRUM-74/75 (guards read the session's active role) | TC-VSD-005 |
+| RBAC (venue staff only) | TC-VSD-006 |
+| REQUIREMENTS §4 (stored UTC, displayed Asia/Singapore) | TC-VSD-016 |
+| NFR-U1 (desktop and mobile friendly) | TC-VSD-015 |
+| PROJECT_REVIEW D8 (fabricated metrics) | TC-VSD-002 |
+| Reliability (an outage is not rendered as "nothing to do") | TC-VSD-004 |
+
+Automated equivalents live in `frontend/src/features/venues/__tests__/` and `backend/tests/`. `calendar.spec.js` covers TC-VSD-007, 008 and 010 as pure unit tests, including boundaries a manual pass cannot easily reach (a range ending one millisecond after midnight, and the same instant written two ways). `dashboard.spec.js` covers TC-VSD-011's ordering and TC-VSD-013/014's status precedence. `venueStaffDashboardStore.spec.js` covers TC-VSD-003 and 004. `views/__tests__/venueStaffDashboard.spec.js` covers TC-VSD-001, 002, 009, 012 and 013. `backend/tests/test_venues_api.py` covers TC-VSD-005 and 006's server side. TC-VSD-015 and TC-VSD-016 are visual and remain manual.

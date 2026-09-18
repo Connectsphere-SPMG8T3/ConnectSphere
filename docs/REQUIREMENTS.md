@@ -738,7 +738,7 @@ See §5 for the state machine.
 - Venue staff create, edit, deactivate, and reactivate venues (QA-101). Coordinators can browse and search them (W4).
 - Attributes: name, location (Singapore), capacity, capacity per layout, supported layouts, facilities, accessibility features, operating hours, and active flag (QA-43, W4).
 - **One venue hosts one event at a time** (QA-116). There are no separately bookable sub-rooms or shared spaces (QA-130).
-- **Controlled lists [Team decision, SCRUM-39].** The customer requires layouts and facilities to come from a controlled list (QA-24, W4) and accessibility to be boolean/tag features (QA2-14), but never enumerated the values. They are Postgres enums (adding a value is a one-line migration) mirrored in `backend/app/modules/venues/schemas.py` and `frontend/src/stores/venues.js`:
+- **Controlled lists [Team decision, SCRUM-39].** The customer requires layouts and facilities to come from a controlled list (QA-24, W4) and accessibility to be boolean/tag features (QA2-14), but never enumerated the values. They are Postgres enums (adding a value is a one-line migration) mirrored in `backend/app/modules/venues/schemas.py` and `frontend/src/features/venues/venueSearchStore.js`:
   - `venue_layout`: theatre, classroom, boardroom, banquet, u_shape, reception
   - `facility`: projector, sound_system, microphone, video_conferencing, whiteboard, stage, wifi, catering_space
   - `accessibility_feature`: wheelchair_access, step_free_entry, accessible_toilet, hearing_loop, lift_access — stored on the venue as an enum array (the ERD's free-text field could not be filtered exactly)
@@ -1070,6 +1070,33 @@ SCRUM-72 asks for a **prioritised** list but does not define priority, and the c
 Ties break by **soonest event date**, then by longest wait, then by ID for stable ordering. An action kind the SPA does not recognise ranks last but is never dropped — losing a coordinator's action item silently is worse than rendering it unstyled.
 
 **Mapping to SCRUM-72's acceptance criteria.** AC1 names three categories: *immediate action* (ranks 1–4), *awaiting initial approval/rejection* (rank 6), and *newly received client clarification responses* (rank 5). The third is the **return-for-amendment** cycle the customer confirmed (QA-22, QA-77, §6.4) — a resubmission *is* the clarification response. This supersedes the older "clarification thread" reading in SCRUM-33 (PROJECT_REVIEW §B2a). AC2 is the active-status overview, covering `under_review`, `returned`, `planning` and `confirmed`; `draft` is excluded by DR-R2 and terminal statuses are out of scope for an "active" view.
+
+---
+
+#### 6.21.2 Venue staff dashboard *(SCRUM-70)*
+
+SCRUM-70 asks for "the venues I'm in charge of", but staff allocation to venues is not tracked and the customer described venue staff as a pool (AUTH-R5, QA-44). The scope is therefore **every venue**, and the dashboard says so rather than leaving a grader to wonder whether a filter is missing. The same applies to "pending requests across all my venues" and "blocks I've set": `venue_blocks` carries no per-staff attribution either.
+
+**[Team decision]** The four widgets follow §6.21's priority order and are the only things on the page that carry a figure:
+
+| Order | Widget | Source |
+|---|---|---|
+| 1 | Pending holds, oldest first | `venue_bookings` where `status = 'held'` |
+| 2 | Bookings in re-review | `venue_bookings` where `status = 're_review'` |
+| 3 | Active and upcoming blocks | `venue_blocks` ending after now |
+| 4 | Venues, split active / inactive | `venues` |
+
+**[Team decision] The calendar carries blocks, holds and re-reviews only.** An `approved` booking is settled work, not a decision waiting on staff; it belongs on the per-venue availability calendar of §6.9 (SCRUM-16). The legend states this, so the omission does not read as missing data.
+
+**[Team decision] The week starts on Monday** (ISO and Singapore convention; it also keeps the weekend adjacent).
+
+**[Team decision] The calendar cannot page backwards past the current month.** The dashboard payload is upcoming-only, so every earlier month is empty by construction rather than in fact, and rendering one would be a lie by omission. Forward is unbounded.
+
+**[Team decision] The calendar opens on the first month that holds anything**, and states which month it chose when that is not the current one. Opening on an empty month would misrepresent the workload; moving the user silently would be equally misleading.
+
+**Waiting age is shown, never enforced.** Holds do not expire (BR-R4), so age is the only nudge the system offers and the queue is sorted by it. It is rendered in neutral ink and never as an overdue or countdown state, because the customer ruled out SLA timers and review deadlines on every status (LC-R4, QA-55, QA-68).
+
+**`/bookings/:id` is a deliberate placeholder.** AC5 requires a pending request to open its full details, but the request view and the approve/reject decision are §6.12–6.13 (SCRUM-19/20) and unbuilt. The route and link are real so those stories fill the page in without touching the dashboard; until then the page names the stories rather than implying data is being withheld.
 
 ---
 
