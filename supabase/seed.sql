@@ -267,15 +267,34 @@ values
      tstzrange('2026-10-20 00:00+08', '2026-10-22 00:00+08', '[)'), 'safety', 'Railing inspection.')
 on conflict (id) do nothing;
 
-insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status)
+-- `created_at` is given explicitly rather than left to its default: the
+-- venue-staff dashboard sorts pending holds oldest-first (BR-R4), and a seed
+-- whose rows all share one insert timestamp cannot demonstrate that ordering.
+insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status, created_at)
 values
     -- Back-to-back with a 14:00–17:00 search: Auditorium A stays listed.
     ('d0000000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-000000000101',
-     'b0000000-0000-4000-8000-000000000002', tstzrange('2026-10-10 11:00+08', '2026-10-10 14:00+08', '[)'), 'approved'),
+     'b0000000-0000-4000-8000-000000000002', tstzrange('2026-10-10 11:00+08', '2026-10-10 14:00+08', '[)'),
+     'approved', '2026-09-01 09:00+08'),
     -- Overlaps a 14:00–17:00 search: Seminar Room 1 is "held by another event".
     ('d0000000-0000-4000-8000-000000000002', 'e0000000-0000-4000-8000-000000000102',
-     'b0000000-0000-4000-8000-000000000003', tstzrange('2026-10-10 13:00+08', '2026-10-10 16:00+08', '[)'), 'held'),
+     'b0000000-0000-4000-8000-000000000003', tstzrange('2026-10-10 13:00+08', '2026-10-10 16:00+08', '[)'),
+     'held', '2026-09-03 10:30+08'),
     -- Rejected bookings no longer occupy the venue: Innovation Lab stays listed.
     ('d0000000-0000-4000-8000-000000000003', 'e0000000-0000-4000-8000-000000000103',
-     'b0000000-0000-4000-8000-000000000006', tstzrange('2026-10-10 14:00+08', '2026-10-10 17:00+08', '[)'), 'rejected')
+     'b0000000-0000-4000-8000-000000000006', tstzrange('2026-10-10 14:00+08', '2026-10-10 17:00+08', '[)'),
+     'rejected', '2026-09-04 14:00+08'),
+    -- The two rows below exist for the venue-staff dashboard (SCRUM-70) and are
+    -- clear of the 10 Oct window the search cases above depend on.
+    --
+    -- A second hold, requested *before* the Seminar Room 1 one, so the
+    -- dashboard's oldest-first ordering is visible rather than merely asserted.
+    ('d0000000-0000-4000-8000-000000000004', 'e0000000-0000-4000-8000-000000000104',
+     'b0000000-0000-4000-8000-000000000005', tstzrange('2026-10-13 09:00+08', '2026-10-13 12:00+08', '[)'),
+     'held', '2026-08-28 16:15+08'),
+    -- A booking sent back for re-review after an approved change (§6.19), so
+    -- that dashboard tile has something to show.
+    ('d0000000-0000-4000-8000-000000000005', 'e0000000-0000-4000-8000-000000000105',
+     'b0000000-0000-4000-8000-000000000004', tstzrange('2026-10-12 09:00+08', '2026-10-12 12:00+08', '[)'),
+     're_review', '2026-09-10 11:45+08')
 on conflict (id) do nothing;

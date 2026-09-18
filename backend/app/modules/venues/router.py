@@ -5,7 +5,12 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.venues import service
-from app.modules.venues.schemas import VenueDetail, VenueSearchCriteria, VenueSearchResponse
+from app.modules.venues.schemas import (
+    VenueDetail,
+    VenueSearchCriteria,
+    VenueSearchResponse,
+    VenueStaffDashboard,
+)
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 
@@ -15,6 +20,17 @@ router = APIRouter(prefix="/venues", tags=["venues"])
 # event. When an `event_id` criterion is added, the "this event's coordinator"
 # check comes with it.
 VenueReader = Annotated[CurrentUser, Depends(require_roles(["event_coordinator", "venue_staff"]))]
+
+# The dashboard is a venue-staff work queue, so a coordinator is excluded even
+# though it may read and search the catalogue above.
+#
+# There is deliberately no per-resource ownership filter behind this guard.
+# The security baseline asks for "the caller's relationship to the resource",
+# and here that relationship is *every venue*, by rule: venue staff work as a
+# pool and staff-to-venue allocation is not tracked (AUTH-R5, QA-44,
+# REQUIREMENTS §6.21). Stated so the absence reads as a decision, not an
+# oversight.
+VenueStaffOnly = Annotated[CurrentUser, Depends(require_roles(["venue_staff"]))]
 
 # Endpoints are plain `def`: supabase-py is synchronous, so FastAPI runs them
 # in its threadpool instead of blocking the event loop.
@@ -34,6 +50,22 @@ def search_venues(
     each with its reasons.
     """
     return service.search_venues(criteria)
+
+
+# Declared before `/{venue_id}`. This particular path is safe either way, since
+# a two-segment path can't match a one-segment route, but `/{venue_id}` is typed
+# `UUID` and FastAPI does not fall through on a validation failure: a future
+# single-segment literal like `/venues/export` placed below it would answer 422
+# rather than reach its own handler. Keep new literal paths above.
+@router.get("/dashboard/venue-staff", response_model=VenueStaffDashboard, status_code=status.HTTP_200_OK)
+def read_venue_staff_dashboard(current_user: VenueStaffOnly) -> VenueStaffDashboard:
+    """The venue-staff work queue, across every venue.
+
+    Returns pending holds (oldest first), bookings awaiting re-review, active
+    and upcoming blocks, and the venue catalogue with each venue's active flag
+    (REQUIREMENTS §6.21).
+    """
+    return service.venue_staff_dashboard()
 
 
 @router.get("/{venue_id}", response_model=VenueDetail, status_code=status.HTTP_200_OK)

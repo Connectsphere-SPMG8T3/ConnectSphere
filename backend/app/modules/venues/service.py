@@ -4,7 +4,19 @@ from datetime import datetime, timezone
 
 from app.core.exceptions import VenueNotFoundError
 from app.modules.venues import repository, search
-from app.modules.venues.schemas import VenueDetail, VenueSearchCriteria, VenueSearchResponse
+from app.modules.venues.schemas import (
+    VenueDetail,
+    VenueSearchCriteria,
+    VenueSearchResponse,
+    VenueStaffDashboard,
+)
+
+# What the venue-staff dashboard tracks. `approved` is deliberately absent:
+# a settled booking is not work, and it belongs on the per-venue availability
+# calendar of §6.9 (SCRUM-16) rather than in a queue of things to decide.
+# The remaining occupying status, `held`, plus `re_review`, are exactly the two
+# that are waiting on a venue-staff decision (§6.12, §6.19).
+DASHBOARD_BOOKING_STATUSES = frozenset({"held", "re_review"})
 
 
 def search_venues(criteria: VenueSearchCriteria) -> VenueSearchResponse:
@@ -34,4 +46,34 @@ def get_venue(venue_id: str) -> VenueDetail:
         **venue.model_dump(),
         upcoming_blocks=repository.list_upcoming_blocks(venue_id, now),
         upcoming_bookings=repository.list_upcoming_bookings(venue_id, now),
+    )
+
+
+def venue_staff_dashboard(now: datetime | None = None) -> VenueStaffDashboard:
+    """Everything the venue-staff work queue needs, across ALL venues (§6.21).
+
+    The scope is every venue, not a subset. Venue staff operate as a pool and
+    the allocation of staff to venues is not tracked anywhere in the system
+    (AUTH-R5, QA-44), so "the venues I'm in charge of" resolves to all of them.
+
+    `now` is injectable so the ordering and the "still relevant" cut-off can be
+    tested without freezing the clock.
+    """
+    now = now or datetime.now(timezone.utc)
+
+    # One query for both statuses, partitioned here: they come from the same
+    # table with the same filter, so two round trips would buy nothing.
+    bookings = repository.list_all_upcoming_bookings(now, DASHBOARD_BOOKING_STATUSES)
+
+    return VenueStaffDashboard(
+        generated_at=now,
+        venues=repository.list_venues(),
+        # Oldest first (BR-R4): a hold never expires, so its age is the only
+        # nudge the system gives. Tie-broken on id for a stable order.
+        pending_holds=sorted(
+            (b for b in bookings if b.status == "held"),
+            key=lambda b: (b.requested_at, b.id),
+        ),
+        re_review_bookings=[b for b in bookings if b.status == "re_review"],
+        blocks=repository.list_all_upcoming_blocks(now),
     )

@@ -129,6 +129,47 @@ class VenueDetail(VenueSummary):
     upcoming_bookings: list[BookingSummary] = []
 
 
+class VenueStaffBlock(BlockSummary):
+    """A block seen from the venue-staff queue, which spans every venue.
+
+    `BlockSummary` is always read in the context of one venue, so it has no
+    need to name it; here the venue is the first thing staff read off the row.
+    """
+
+    venue_id: str
+    venue_name: str
+
+
+class VenueStaffBooking(BookingSummary):
+    venue_id: str
+    venue_name: str
+    # venue_bookings.created_at. Holds never expire (BR-R4), so how long one has
+    # been waiting is the only nudge the system gives, and the dashboard sorts
+    # on it (§6.21). That makes it part of the contract, not a display detail.
+    requested_at: datetime
+    # There is no `events` table yet, so `event_id` is a bare uuid with nothing
+    # to join to. The field is declared now and left None so SCRUM-8/19 can fill
+    # it in without an SPA change — the same contract-first move the coordinator
+    # dashboard made. The SPA falls back to a short id and never invents a name.
+    event_name: str | None = None
+
+
+class VenueStaffDashboard(BaseModel):
+    """Everything the venue-staff work queue needs, in one round trip (§6.21).
+
+    There is deliberately no `counts` field. Each list below is complete —
+    nothing paginates — so a server-side count would be a second source of
+    truth that could disagree with the list rendered beside it. The SPA derives
+    its tiles from the lists.
+    """
+
+    generated_at: datetime
+    venues: list[VenueSummary] = []
+    pending_holds: list[VenueStaffBooking] = []
+    re_review_bookings: list[VenueStaffBooking] = []
+    blocks: list[VenueStaffBlock] = []
+
+
 class VenueSearchCriteria(BaseModel):
     """What the coordinator is searching for. Every criterion set is strict:
     a venue that misses it is excluded, with the reason recorded (§6.10)."""

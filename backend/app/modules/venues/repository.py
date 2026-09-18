@@ -7,6 +7,7 @@ already have passed the role check in the router.
 """
 
 import re
+from collections.abc import Iterable
 from datetime import datetime
 
 from app.db.supabase import get_supabase_admin_client
@@ -15,6 +16,8 @@ from app.modules.venues.schemas import (
     BookingSummary,
     Occupant,
     Period,
+    VenueStaffBlock,
+    VenueStaffBooking,
     VenueSummary,
 )
 from app.modules.venues.search import OCCUPYING_STATUSES
@@ -37,6 +40,32 @@ def _parse_range(value: str) -> Period:
 
 def _range_literal(period: Period) -> str:
     return f"[{period.starts_at.isoformat()},{period.ends_at.isoformat()})"
+
+
+def _open_ended_literal(since: datetime) -> str:
+    """`[since,)` — everything from `since` onwards, with no upper bound.
+
+    Overlapping this range is exactly "ends after `since`" for the bounded
+    half-open ranges this schema stores, and it is answered by the same GiST
+    index, so the filter runs in Postgres instead of in Python. Built by hand
+    rather than through `_range_literal` because `Period` requires both ends
+    and so cannot express an unbounded one.
+    """
+    return f"[{since.isoformat()},)"
+
+
+def _embedded_venue_name(row: dict) -> str:
+    """The `venues(name)` embed, which PostgREST may return either way.
+
+    A to-one embed normally arrives as a dict, but PostgREST falls back to a
+    one-element list when it cannot prove the relationship is to-one. Accept
+    both rather than guessing, and degrade to "" rather than raising — a
+    missing name should cost one label, not the whole dashboard.
+    """
+    embedded = row.get("venues")
+    if isinstance(embedded, list):
+        embedded = embedded[0] if embedded else None
+    return (embedded or {}).get("name", "")
 
 
 def _to_venue(row: dict) -> VenueSummary:
@@ -141,3 +170,66 @@ def list_upcoming_bookings(venue_id: str, since: datetime) -> list[BookingSummar
         for row in response.data or []
     ]
     return sorted((b for b in bookings if b.period.ends_at > since), key=lambda b: b.period.starts_at)
+
+
+# The two functions above scope to one venue and drop past rows in Python,
+# which is fine for the handful of rows one venue carries. The venue-staff
+# dashboard spans every venue (AUTH-R5), where that would become a full-table
+# scan on every page load, so the pair below pushes the time filter into
+# Postgres. Ordering by `lower(range)` cannot be expressed through PostgREST,
+# so the sort stays in Python — but now on an already-filtered handful.
+
+
+def list_all_upcoming_blocks(since: datetime) -> list[VenueStaffBlock]:
+    """Blocks on every venue that are still relevant at `since`, soonest first.
+
+    "Still relevant" means the block ends after `since`, which keeps one that
+    is currently in progress. There is no owner filter: venue staff work as a
+    pool and staff-to-venue allocation is not tracked (AUTH-R5, QA-44).
+    """
+    response = (
+        get_supabase_admin_client()
+        .table("venue_blocks")
+        .select("id, venue_id, blocked_period, reason, notes, venues(name)")
+        .overlaps("blocked_period", _open_ended_literal(since))
+        .execute()
+    )
+    blocks = [
+        VenueStaffBlock(
+            id=row["id"],
+            venue_id=row["venue_id"],
+            venue_name=_embedded_venue_name(row),
+            period=_parse_range(row["blocked_period"]),
+            reason=row["reason"],
+            notes=row.get("notes"),
+        )
+        for row in response.data or []
+    ]
+    # Tie-break on id so two blocks starting at the same instant keep a stable
+    # order between requests, rather than shuffling on each load.
+    return sorted(blocks, key=lambda b: (b.period.starts_at, b.id))
+
+
+def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list[VenueStaffBooking]:
+    """Bookings on every venue in `statuses` whose period ends after `since`."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_bookings")
+        .select("id, event_id, venue_id, occupied_period, status, created_at, venues(name)")
+        .in_("status", sorted(statuses))
+        .overlaps("occupied_period", _open_ended_literal(since))
+        .execute()
+    )
+    bookings = [
+        VenueStaffBooking(
+            id=row["id"],
+            event_id=row["event_id"],
+            venue_id=row["venue_id"],
+            venue_name=_embedded_venue_name(row),
+            period=_parse_range(row["occupied_period"]),
+            status=row["status"],
+            requested_at=datetime.fromisoformat(row["created_at"]),
+        )
+        for row in response.data or []
+    ]
+    return sorted(bookings, key=lambda b: (b.period.starts_at, b.id))
