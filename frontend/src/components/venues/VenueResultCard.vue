@@ -3,7 +3,7 @@ import { computed } from "vue";
 import { RouterLink } from "vue-router";
 
 import BauhausCard from "@/components/common/BauhausCard.vue";
-import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS } from "@/stores/venues";
+import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS } from "@/features/venues/venueSearchStore";
 
 const props = defineProps({
   result: {

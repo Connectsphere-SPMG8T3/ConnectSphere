@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { venuesApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
-import { useVenuesStore } from "@/stores/venues";
+import { useVenuesStore } from "@/features/venues/venueSearchStore";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),

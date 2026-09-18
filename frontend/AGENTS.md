@@ -26,7 +26,7 @@ frontend/src/
   components/<domain>/    domain components, e.g. venues/VenueCriteriaForm.vue
   features/<domain>/      everything for one domain except components/views: Pinia stores and pure logic,
                           e.g. events/dashboard.js, events/store.js
-  stores/                 app-wide stores only (auth.js). venues.js is legacy, see "Where stores go"
+  stores/                 app-wide stores only (auth.js)
   services/api.js         the only place HTTP calls are made (authApi, venuesApi, eventsApi)
   router/index.js         routes and guards (meta.requiresAuth, meta.allowedRoles)
   views/                  route-level pages; views/dashboards/ has one dashboard per role
@@ -40,8 +40,7 @@ This is a team decision, following `docs/PROJECT_REVIEW.md` A3 #8 ("restructure 
 - **Domain stores go in `features/<domain>/`** (events, venues, equipment, registrations, notifications), next to that domain's pure logic. A store that belongs to one domain never goes in `stores/`.
 - **When a domain has more than one store**, give each file the store's name (e.g. `features/events/coordinatorDashboardStore.js`, `features/events/eventRequestStore.js`) instead of adding a second `store.js`.
 - **Before creating a store, check the domain's folder** for one you can extend. Two stores must not fetch or cache the same data.
-- **`stores/` is only for app-wide state** used across domains, which today means `auth.js`.
-- **`stores/venues.js` is legacy.** Move it to `features/venues/` the next time a story changes it, updating its imports and moving its spec into `features/venues/__tests__/` in the same branch. Don't move it as a drive-by in unrelated work.
+- **`stores/` is only for app-wide state** used across domains, which today means `auth.js` — and only `auth.js`. Every domain store now lives under `features/`; SCRUM-70 moved the last straggler (`stores/venues.js` → `features/venues/venueSearchStore.js`).
 
 ## Design system: keep every screen aligned
 
@@ -87,7 +86,7 @@ Colours carry meaning through the components. Use a component's variant (e.g. `v
 ## Reuse
 
 - **UI used by two or more screens, or likely needed by another role's dashboard,** becomes a component: in `components/common/` if it's a design-system piece, or `components/<domain>/` if it's domain-specific.
-- **Pure logic** (formatting, grouping, sorting, status mapping, date/time conversion) goes in plain exported functions under `features/<domain>/`, with Vitest specs. `features/events/dashboard.js` is the model. The helpers in `stores/venues.js` (`toSingaporeIso`, `criteriaToParams`) are reusable too, but will move with that store.
+- **Pure logic** (formatting, grouping, sorting, status mapping, date/time conversion) goes in plain exported functions under `features/<domain>/`, with Vitest specs. `features/events/dashboard.js` is the model. Also reusable: `features/venues/singaporeTime.js` (`singaporeDayKey`, `toSingaporeIso`, `startOfSingaporeDayUtc` — the fixed +08:00 arithmetic every screen needs to decide *which day* something falls on), `features/venues/calendar.js` (month-grid construction) and `features/venues/venueSearchStore.js` (`criteriaToParams`).
 - **Stateful logic shared across components** becomes a composable (`use<Thing>`) or a Pinia store, not copy-pasted `ref`s.
 - **Keep views thin.** A view wires a store, components, and routing, and shouldn't hold logic another screen would need.
 - Before adding anything, check the frontend section of `docs/IMPLEMENTATION_MAP.md`.

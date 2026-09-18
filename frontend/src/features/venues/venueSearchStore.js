@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 
+import { toSingaporeIso } from "@/features/venues/singaporeTime";
 import { venuesApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
@@ -32,15 +33,6 @@ export const ACCESSIBILITY_FEATURES = [
   { value: "hearing_loop", label: "Hearing loop" },
   { value: "lift_access", label: "Lift access" },
 ];
-
-// All venues are in Singapore, which has no daylight saving, so the offset is
-// fixed rather than derived from the browser's zone (§4: stored UTC,
-// displayed Asia/Singapore).
-const SINGAPORE_OFFSET = "+08:00";
-
-export function toSingaporeIso(date, time) {
-  return `${date}T${time}:00${SINGAPORE_OFFSET}`;
-}
 
 export function emptyCriteria() {
   return {

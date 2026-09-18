@@ -6,7 +6,7 @@ import BrandMark from "@/components/common/BrandMark.vue";
 import { formatFriendlyDate } from "@/components/common/dateFormat";
 import { useSidebarState } from "@/composables/useSidebarState";
 import { useAuthStore } from "@/stores/auth";
-import { useVenuesStore } from "@/stores/venues";
+import { useVenuesStore } from "@/features/venues/venueSearchStore";
 
 const authStore = useAuthStore();
 const venuesStore = useVenuesStore();

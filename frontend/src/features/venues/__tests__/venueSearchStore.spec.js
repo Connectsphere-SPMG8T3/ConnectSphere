@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, venuesApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
-import { criteriaToParams, emptyCriteria, toSingaporeIso, useVenuesStore } from "@/stores/venues";
+import { toSingaporeIso } from "@/features/venues/singaporeTime";
+import { criteriaToParams, emptyCriteria, useVenuesStore } from "@/features/venues/venueSearchStore";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),

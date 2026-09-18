@@ -3,7 +3,7 @@ import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCheckboxGroup from "@/components/common/BauhausCheckboxGroup.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
-import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS } from "@/stores/venues";
+import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS } from "@/features/venues/venueSearchStore";
 
 const props = defineProps({
   criteria: {

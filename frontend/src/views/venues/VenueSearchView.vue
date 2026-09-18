@@ -5,7 +5,7 @@ import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import VenueCriteriaForm from "@/components/venues/VenueCriteriaForm.vue";
 import VenueResultCard from "@/components/venues/VenueResultCard.vue";
-import { useVenuesStore } from "@/stores/venues";
+import { useVenuesStore } from "@/features/venues/venueSearchStore";
 
 const venuesStore = useVenuesStore();
 

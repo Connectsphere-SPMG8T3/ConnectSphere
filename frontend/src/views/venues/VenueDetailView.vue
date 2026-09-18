@@ -3,7 +3,7 @@ import { computed, onMounted, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 
 import BauhausCard from "@/components/common/BauhausCard.vue";
-import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS, useVenuesStore } from "@/stores/venues";
+import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS, useVenuesStore } from "@/features/venues/venueSearchStore";
 
 const route = useRoute();
 const venuesStore = useVenuesStore();
