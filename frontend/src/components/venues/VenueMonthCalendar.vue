@@ -129,6 +129,16 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
         <button
           type="button"
           class="border-2 border-ink px-3 py-2 text-xs font-bold uppercase tracking-widest"
+          :class="isCurrentMonth ? 'cursor-not-allowed opacity-40' : 'bg-canvas active-press'"
+          :disabled="isCurrentMonth"
+          aria-label="Jump to the current month"
+          @click="goTo(currentMonth)"
+        >
+          Today
+        </button>
+        <button
+          type="button"
+          class="border-2 border-ink px-3 py-2 text-xs font-bold uppercase tracking-widest"
           :class="canGoPrev ? 'bg-canvas active-press' : 'cursor-not-allowed opacity-40'"
           :disabled="!canGoPrev"
           aria-label="Previous month"
@@ -146,22 +156,6 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
         </button>
       </div>
     </div>
-
-    <!-- Every block and request is upcoming, so the calendar opens where the
-         work actually is. Saying so beats silently moving the user. -->
-    <p
-      v-if="hasSettled && !isCurrentMonth"
-      class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-2 border-dashed border-ink/30 px-3 py-2 text-xs font-medium text-ink/70"
-    >
-      <span>Showing {{ monthLabel(shown) }} — {{ monthLabel(currentMonth) }} has nothing scheduled.</span>
-      <button
-        type="button"
-        class="font-bold uppercase tracking-widest underline decoration-2 underline-offset-2"
-        @click="goTo(currentMonth)"
-      >
-        Back to this month
-      </button>
-    </p>
 
     <ul class="mb-4 flex flex-wrap gap-x-4 gap-y-1">
       <li v-for="kind in CALENDAR_KINDS" :key="kind.key" class="flex items-center gap-2">

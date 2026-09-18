@@ -171,7 +171,21 @@ describe("VenueStaffDashboard", () => {
     const el = await mountDashboard();
 
     expect(el.textContent).toContain("October 2026");
-    expect(el.textContent).toContain("September 2026 has nothing scheduled");
+  });
+
+  it("offers Today as the way back, enabled only when the month has been left", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const today = () => el.querySelector('button[aria-label="Jump to the current month"]');
+
+    // Opened on October, so Today is live.
+    expect(today().disabled).toBe(false);
+    today().click();
+    await nextTick();
+
+    expect(el.textContent).toContain("September 2026");
+    expect(today().disabled).toBe(true);
   });
 
   it("will not page back before the current month", async () => {

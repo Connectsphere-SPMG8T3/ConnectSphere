@@ -537,7 +537,7 @@ Two findings from the same review round were investigated and not treated as bug
 
 #### Two decisions the calendar makes on the user's behalf
 
-**It opens on the first month that has something in it, and says so.** Today is September and every seeded item is in October; opening on an empty September would look like a dashboard with nothing on it, but jumping the user forward silently would be just as misleading. The panel states which month it chose and offers one click back.
+**It opens on the first month that has something in it.** Today is September and every seeded item is in October; opening on an empty September would look like a dashboard with nothing on it. The month is named in the panel header, and a **Today** control beside the month arrows returns to the current month, disabled while already there. An earlier revision explained this in a banner above the grid; the customer found it noise, and the header plus the Today control carry the same information in less space.
 
 **It cannot page backwards past the current month.** The payload is upcoming-only, so every earlier month is guaranteed empty — offering them would render a gap in the data as though it were an answer.
 
