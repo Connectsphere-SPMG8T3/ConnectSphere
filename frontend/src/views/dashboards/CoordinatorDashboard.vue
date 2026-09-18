@@ -120,7 +120,7 @@ function emptyDetail(clearText) {
 
     <p
       v-else-if="dashboard.hasSettled && !dashboard.isAvailable"
-      class="mb-8 border-2 border-dashed border-ink/40 bg-muted px-5 py-4 text-sm font-medium text-ink/75"
+      class="mb-8 border-2 border-dashed border-ink/40 bg-surface px-5 py-4 text-sm font-medium text-ink/75"
     >
       <span class="font-bold uppercase tracking-widest">Awaiting data —</span>
       the events module has not been built yet, so there is nothing to show. Every widget below is
@@ -225,7 +225,7 @@ function emptyDetail(clearText) {
             <li
               v-for="event in group.events"
               :key="event.event_id"
-              class="border-l-4 border-ink bg-muted/50 py-2 pl-3"
+              class="border-l-4 border-ink bg-surface py-2 pl-3"
             >
               <p class="text-sm font-bold uppercase tracking-tight">{{ event.event_name }}</p>
               <p class="text-xs font-medium text-ink/60">{{ formatDate(event.starts_at) }}</p>

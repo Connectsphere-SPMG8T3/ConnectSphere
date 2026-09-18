@@ -4,10 +4,12 @@ export default {
   theme: {
     extend: {
       // The primaries are held a step below full saturation so they can be read
-      // for hours at a time, and `surface` gives cards a ground of their own so
-      // they no longer need a colour fill just to separate from the canvas.
+      // for hours at a time. `canvas` and `surface` are both white — cards are
+      // separated from the page by their ink borders and hard shadows, not by a
+      // change of tone — and they stay separate tokens so a future ground
+      // colour only has to be set in one of them.
       colors: {
-        canvas: "#EFEEEA",
+        canvas: "#FFFFFF",
         surface: "#FFFFFF",
         ink: "#141414",
         "bauhaus-red": "#C22B22",

@@ -28,7 +28,7 @@ const availabilityBadge = computed(() => {
     case "unavailable":
       return { text: "Unavailable", classes: "bg-bauhaus-red text-canvas" };
     default:
-      return { text: "Availability not checked", classes: "bg-muted text-ink" };
+      return { text: "Availability not checked", classes: "bg-surface text-ink" };
   }
 });
 
