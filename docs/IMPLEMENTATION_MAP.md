@@ -82,12 +82,16 @@ _Last updated: 2026-09-17. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 | `BauhausSelect` | `v-model`, `label` (required), `options: [{ value, label }]`, `placeholder` (defaults to "Any") |
 | `BauhausCheckboxGroup` | `v-model` (array), `label` (required), `options: [{ value, label }]` |
 | `BauhausEmptyState` | `title` (required), `detail` |
-| `Nav.vue` (docs previously called this `BauhausNavbar`, which doesn't exist as a file — corrected here) | no props; the left sidebar nav. Shows the brand, Dashboard/Venues links, a role switcher (`BauhausSelect`, only when the profile holds 2+ roles — SCRUM-74/75), Profile, and logout |
+| `BrandMark` | no props; the ConnectSphere logo mark (36px square). Used by `Nav` and, on small screens, `TopBar` |
+| `Nav.vue` (docs previously called this `BauhausNavbar`, which doesn't exist as a file — corrected here) | no props; the left sidebar nav (its mobile open/close button lives in `TopBar`). Shows the brand, Dashboard/Venues links, a role switcher (`BauhausSelect`, only when the profile holds 2+ roles — SCRUM-74/75), Profile, and logout |
+| `TopBar.vue` | no props; the sticky header above every signed-in page (rendered by `App.vue` alongside `Nav`). Shows the `BrandMark` (small screens only, where the sidebar is a drawer), "Hello <first name>" above today's date, the sidebar toggle on mobile, a notifications bell (empty-state panel — no notifications backend yet), and a search box that runs a venue search by location, offered only to the roles allowed on `/venues` |
 
 ### Other reusable pieces
 
 | Need | Use | Location |
 |---|---|---|
+| Sidebar collapse (desktop, persisted) and drawer open/close (mobile) | `useSidebarState()` → `isCollapsed`, `isMobileOpen` | `composables/useSidebarState.js` |
+| Friendly date for headers ("8th May 2025") | `formatFriendlyDate(date)`, `ordinalSuffix(day)` | `components/common/dateFormat.js` |
 | Venue search form and result card | `VenueCriteriaForm` (`criteria`, `errors`; emits `submit`, `reset`), `VenueResultCard` (`result`) | `components/venues/` |
 | API calls | `authApi`, `venuesApi`, `eventsApi`, `ApiError` | `services/api.js` |
 | Session, current user, role → dashboard route, role labels, role switching | `useAuthStore` (`roles`, `hasMultipleRoles`, `setActiveRole(role)`), `ROLE_DASHBOARD_ROUTES`, `ROLE_LABELS` | `stores/auth.js` |
