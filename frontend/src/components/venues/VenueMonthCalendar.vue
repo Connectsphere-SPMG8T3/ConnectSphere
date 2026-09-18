@@ -108,8 +108,12 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
 </script>
 
 <template>
+  <!-- A definite height, not a minimum. `overflow-y-auto` on the day list at
+       the bottom only engages when its container's height is fixed; under a
+       min-height the panel would still grow to fit a busy day, stretching the
+       stat tiles beside it and pushing the lists below it down. -->
   <section
-    class="flex h-full min-h-[34rem] flex-col border-2 border-ink bg-canvas p-5 shadow-hard sm:min-h-[36rem] sm:border-4 sm:p-6"
+    class="flex h-[36rem] flex-col border-2 border-ink bg-canvas p-5 shadow-hard sm:h-[40rem] sm:border-4 sm:p-6"
     aria-labelledby="venue-calendar-heading"
   >
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">

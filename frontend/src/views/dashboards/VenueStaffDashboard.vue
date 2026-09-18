@@ -165,7 +165,10 @@ function emptyDetail(clearText) {
       {{ dashboard.error }}
     </p>
 
-    <div class="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <!-- `items-start` keeps the two columns independent: without it a grid row
+         stretches to its tallest child, so anything that changed the calendar's
+         height would also stretch the tiles beside it. -->
+    <div class="mb-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
       <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <BauhausCard
           v-for="tile in tiles"
