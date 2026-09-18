@@ -101,17 +101,17 @@ const badgeClasses = {
 };
 
 // One day can carry items from all eight venues, so the cell shows a few and
-// defers the rest to the day panel below.
+// defers the rest to the detail column.
 const MAX_DOTS = 3;
 const visibleDots = (cell) => cell.tones.slice(0, MAX_DOTS);
 const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
 </script>
 
 <template>
-  <!-- A definite height, not a minimum. `overflow-y-auto` on the day list at
-       the bottom only engages when its container's height is fixed; under a
-       min-height the panel would still grow to fit a busy day, stretching the
-       stat tiles beside it and pushing the lists below it down. -->
+  <!-- A definite height, not a minimum. `overflow-y-auto` on the day list only
+       engages when its container's height is fixed; under a min-height the
+       panel would still grow to fit a busy day, stretching the stat tiles
+       beside it and pushing the lists below it down. -->
   <section
     class="flex h-[36rem] flex-col border-2 border-ink bg-canvas p-5 shadow-hard sm:h-[40rem] sm:border-4 sm:p-6"
     aria-labelledby="venue-calendar-heading"
@@ -164,11 +164,14 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
       </li>
     </ul>
 
-    <!-- Grid on the left, the selected day's detail on the right. `min-h-0`
-         lets the detail column scroll inside the panel's fixed height instead
-         of pushing past it. Stacks below the grid on narrow screens. -->
+    <!-- Grid on the left, the selected day's detail on the right, both filling
+         the panel's fixed height. The grid's six week rows are `1fr`, so they
+         share whatever height is left rather than sitting at a fixed size and
+         leaving dead space under the calendar. Stacks on narrow screens. -->
     <div class="flex min-h-0 flex-1 flex-col gap-5 lg:flex-row lg:gap-6">
-      <div class="grid shrink-0 grid-cols-7 gap-px self-start border-2 border-ink bg-ink lg:flex-1">
+      <div
+        class="grid min-h-0 flex-1 grid-cols-7 grid-rows-[auto_repeat(6,minmax(0,1fr))] gap-px border-2 border-ink bg-ink"
+      >
         <div
           v-for="weekday in grid.weekdays"
           :key="weekday"
@@ -180,7 +183,7 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
           v-for="cell in grid.cells"
           :key="cell.key"
           type="button"
-          class="flex h-12 flex-col items-center justify-start gap-1 overflow-hidden bg-canvas py-2 text-center sm:h-14"
+          class="flex min-h-0 flex-col items-center justify-center gap-1 overflow-hidden bg-canvas px-1 py-1 text-center"
           :class="[
             cell.inCurrentMonth ? 'text-ink' : 'text-ink/35',
             selectedDayKey === cell.key ? 'bg-bauhaus-yellow' : '',
@@ -208,10 +211,11 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
         </button>
       </div>
 
-      <!-- The detail column keeps its width whether or not a day is selected,
-           so picking one never reflows the grid beside it. -->
+      <!-- Keeps its size whether or not a day is selected, so picking one never
+           reflows the grid beside it. Scrolls internally on a busy day rather
+           than growing the panel. -->
       <div
-        class="flex min-h-0 flex-1 flex-col border-t-2 border-ink/15 pt-4 lg:w-72 lg:flex-none lg:border-l-2 lg:border-t-0 lg:pl-6 lg:pt-0"
+        class="flex h-40 min-h-0 shrink-0 flex-col border-t-2 border-ink/15 pt-4 lg:h-auto lg:w-72 lg:self-stretch lg:border-l-2 lg:border-t-0 lg:pl-6 lg:pt-0"
       >
         <template v-if="selectedCell">
           <div class="flex shrink-0 items-start justify-between gap-2">
@@ -231,7 +235,7 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
             <li
               v-for="item in selectedCell.items"
               :key="`${item.kind}-${item.id}`"
-              class="flex flex-col gap-1 border-l-4 border-ink bg-surface py-2 pl-3 pr-2"
+              class="flex shrink-0 flex-col gap-1 border-l-4 border-ink bg-surface py-2 pl-3 pr-2"
             >
               <span
                 class="self-start border-2 border-ink px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest"
@@ -250,6 +254,5 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
         </p>
       </div>
     </div>
-
   </section>
 </template>
