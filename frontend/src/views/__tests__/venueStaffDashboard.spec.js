@@ -216,6 +216,22 @@ describe("VenueStaffDashboard", () => {
     expect(el.textContent).toContain("Pending hold");
   });
 
+  it("clears the selected day from the detail column", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const cell = [...el.querySelectorAll("button[aria-label]")].find((b) =>
+      b.getAttribute("aria-label").includes("10 October 2026"),
+    );
+    cell.click();
+    await nextTick();
+    el.querySelector('button[aria-label="Clear the selected day"]').click();
+    await nextTick();
+
+    expect(el.textContent).not.toContain("Saturday, 10 October 2026");
+    expect(el.textContent).toContain("Select a marked day to see what is on it.");
+  });
+
   it("withholds every count until the first load settles", async () => {
     venuesApi.venueStaffDashboard.mockReturnValue(new Promise(() => {}));
 

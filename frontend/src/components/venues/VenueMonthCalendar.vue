@@ -170,78 +170,92 @@ const overflowCount = (cell) => Math.max(cell.items.length - MAX_DOTS, 0);
       </li>
     </ul>
 
-    <div class="grid shrink-0 grid-cols-7 gap-px border-2 border-ink bg-ink">
-      <div
-        v-for="weekday in grid.weekdays"
-        :key="weekday"
-        class="bg-canvas py-2 text-center text-[10px] font-bold uppercase tracking-widest text-ink/60"
-      >
-        {{ weekday }}
-      </div>
-      <button
-        v-for="cell in grid.cells"
-        :key="cell.key"
-        type="button"
-        class="flex h-12 flex-col items-center justify-start gap-1 overflow-hidden bg-canvas py-2 text-center sm:h-14"
-        :class="[
-          cell.inCurrentMonth ? 'text-ink' : 'text-ink/35',
-          selectedDayKey === cell.key ? 'bg-bauhaus-yellow' : '',
-          cell.hasItems ? 'cursor-pointer active-press' : 'cursor-default',
-        ]"
-        :aria-pressed="selectedDayKey === cell.key"
-        :aria-label="`${formatSelectedDay(cell.key)}, ${cell.items.length} item${cell.items.length === 1 ? '' : 's'}`"
-        @click="selectDay(cell)"
-      >
-        <span
-          class="text-sm font-bold leading-none"
-          :class="cell.isToday ? 'border-b-2 border-ink pb-0.5' : ''"
+    <!-- Grid on the left, the selected day's detail on the right. `min-h-0`
+         lets the detail column scroll inside the panel's fixed height instead
+         of pushing past it. Stacks below the grid on narrow screens. -->
+    <div class="flex min-h-0 flex-1 flex-col gap-5 lg:flex-row lg:gap-6">
+      <div class="grid shrink-0 grid-cols-7 gap-px self-start border-2 border-ink bg-ink lg:flex-1">
+        <div
+          v-for="weekday in grid.weekdays"
+          :key="weekday"
+          class="bg-canvas py-2 text-center text-[10px] font-bold uppercase tracking-widest text-ink/60"
         >
-          {{ cell.day }}
-        </span>
-        <span v-if="cell.hasItems" class="flex items-center gap-0.5">
-          <span
-            v-for="(tone, index) in visibleDots(cell)"
-            :key="`${cell.key}-${tone}-${index}`"
-            class="h-1.5 w-1.5 rounded-full"
-            :class="dotClasses[tone]"
-            aria-hidden="true"
-          />
-          <span v-if="overflowCount(cell)" class="text-[9px] font-bold leading-none text-ink/60">
-            +{{ overflowCount(cell) }}
+          {{ weekday }}
+        </div>
+        <button
+          v-for="cell in grid.cells"
+          :key="cell.key"
+          type="button"
+          class="flex h-12 flex-col items-center justify-start gap-1 overflow-hidden bg-canvas py-2 text-center sm:h-14"
+          :class="[
+            cell.inCurrentMonth ? 'text-ink' : 'text-ink/35',
+            selectedDayKey === cell.key ? 'bg-bauhaus-yellow' : '',
+            cell.hasItems ? 'cursor-pointer active-press' : 'cursor-default',
+          ]"
+          :aria-pressed="selectedDayKey === cell.key"
+          :aria-label="`${formatSelectedDay(cell.key)}, ${cell.items.length} item${cell.items.length === 1 ? '' : 's'}`"
+          @click="selectDay(cell)"
+        >
+          <span class="text-sm font-bold leading-none" :class="cell.isToday ? 'border-b-2 border-ink pb-0.5' : ''">
+            {{ cell.day }}
           </span>
-        </span>
-      </button>
+          <span v-if="cell.hasItems" class="flex items-center gap-0.5">
+            <span
+              v-for="(tone, index) in visibleDots(cell)"
+              :key="`${cell.key}-${tone}-${index}`"
+              class="h-1.5 w-1.5 rounded-full"
+              :class="dotClasses[tone]"
+              aria-hidden="true"
+            />
+            <span v-if="overflowCount(cell)" class="text-[9px] font-bold leading-none text-ink/60">
+              +{{ overflowCount(cell) }}
+            </span>
+          </span>
+        </button>
+      </div>
+
+      <!-- The detail column keeps its width whether or not a day is selected,
+           so picking one never reflows the grid beside it. -->
+      <div
+        class="flex min-h-0 flex-1 flex-col border-t-2 border-ink/15 pt-4 lg:w-72 lg:flex-none lg:border-l-2 lg:border-t-0 lg:pl-6 lg:pt-0"
+      >
+        <template v-if="selectedCell">
+          <div class="flex shrink-0 items-start justify-between gap-2">
+            <p class="text-xs font-bold uppercase tracking-widest text-ink/70">
+              {{ formatSelectedDay(selectedCell.key) }}
+            </p>
+            <button
+              type="button"
+              class="shrink-0 text-xs font-bold uppercase leading-none tracking-widest text-ink/50"
+              aria-label="Clear the selected day"
+              @click="selectedDayKey = null"
+            >
+              ✕
+            </button>
+          </div>
+          <ul v-if="selectedCell.hasItems" class="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+            <li
+              v-for="item in selectedCell.items"
+              :key="`${item.kind}-${item.id}`"
+              class="flex flex-col gap-1 border-l-4 border-ink bg-surface py-2 pl-3 pr-2"
+            >
+              <span
+                class="self-start border-2 border-ink px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest"
+                :class="badgeClasses[calendarKindMeta(item.kind).tone]"
+              >
+                {{ itemLabel(item) }}
+              </span>
+              <span class="text-sm font-bold uppercase leading-tight tracking-tight">{{ item.venueName }}</span>
+              <span class="text-xs font-medium text-ink/70">{{ formatSpan(item) }}</span>
+            </li>
+          </ul>
+          <p v-else class="mt-2 text-sm font-medium text-ink/60">Nothing scheduled.</p>
+        </template>
+        <p v-else class="text-xs font-medium text-ink/55">
+          {{ hasSettled ? "Select a marked day to see what is on it." : "Checking the schedule…" }}
+        </p>
+      </div>
     </div>
 
-    <!-- Absorbs all the slack in the panel, so selecting a day, clearing it, or
-         the month banner appearing redistributes space inside a fixed total
-         instead of resizing the panel and shifting the page beside it. -->
-    <div class="mt-4 min-h-0 flex-1 overflow-y-auto">
-      <template v-if="selectedCell">
-        <p class="text-xs font-bold uppercase tracking-widest text-ink/70">
-          {{ formatSelectedDay(selectedCell.key) }}
-        </p>
-        <ul v-if="selectedCell.hasItems" class="mt-3 flex flex-col gap-2">
-          <li
-            v-for="item in selectedCell.items"
-            :key="`${item.kind}-${item.id}`"
-            class="flex flex-wrap items-center gap-2 border-l-4 border-ink bg-surface py-2 pl-3 pr-2"
-          >
-            <span
-              class="border-2 border-ink px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest"
-              :class="badgeClasses[calendarKindMeta(item.kind).tone]"
-            >
-              {{ itemLabel(item) }}
-            </span>
-            <span class="text-sm font-bold uppercase tracking-tight">{{ item.venueName }}</span>
-            <span class="text-xs font-medium text-ink/70">{{ formatSpan(item) }}</span>
-          </li>
-        </ul>
-        <p v-else class="mt-2 text-sm font-medium text-ink/60">Nothing scheduled.</p>
-      </template>
-      <p v-else class="text-xs font-medium text-ink/55">
-        {{ hasSettled ? "Select a marked day to see what is on it." : "Checking the schedule…" }}
-      </p>
-    </div>
   </section>
 </template>
