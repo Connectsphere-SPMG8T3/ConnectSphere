@@ -3,13 +3,14 @@ import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
+import BrandMark from "@/components/common/BrandMark.vue";
 import { useSidebarState } from "@/composables/useSidebarState";
 import { ROLE_LABELS, useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
-const { isCollapsed } = useSidebarState();
+const { isCollapsed, isMobileOpen } = useSidebarState();
 
 const roleOptions = computed(() =>
   authStore.roles.map((role) => ({ value: role, label: ROLE_LABELS[role] ?? role })),
@@ -44,12 +45,10 @@ async function handleRoleChange(role) {
   }
 }
 
-const isOpen = ref(false);
-
 watch(
   () => route.fullPath,
   () => {
-    isOpen.value = false;
+    isMobileOpen.value = false;
   },
 );
 
@@ -84,27 +83,15 @@ async function handleLogout() {
 </script>
 
 <template>
-  <button
-    type="button"
-    class="fixed right-4 top-4 z-50 flex flex-col gap-1.5 border-2 border-ink bg-canvas p-2 shadow-hard active-press sm:hidden"
-    aria-label="Toggle navigation menu"
-    :aria-expanded="isOpen"
-    @click="isOpen = !isOpen"
-  >
-    <span class="h-0.5 w-6 bg-ink"></span>
-    <span class="h-0.5 w-6 bg-ink"></span>
-    <span class="h-0.5 w-6 bg-ink"></span>
-  </button>
-
   <div
-    v-if="isOpen"
+    v-if="isMobileOpen"
     class="fixed inset-0 z-30 bg-ink/50 sm:hidden"
-    @click="isOpen = false"
+    @click="isMobileOpen = false"
   ></div>
 
   <aside
     class="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col border-r-2 border-ink bg-canvas shadow-hard transition-all duration-200 ease-out sm:translate-x-0 sm:border-r-4"
-    :class="[isOpen ? 'translate-x-0' : '-translate-x-full', isCollapsed ? 'sm:w-20' : 'sm:w-64']"
+    :class="[isMobileOpen ? 'translate-x-0' : '-translate-x-full', isCollapsed ? 'sm:w-20' : 'sm:w-64']"
   >
     <button
       type="button"
@@ -128,19 +115,18 @@ async function handleLogout() {
       </svg>
     </button>
 
-    <div class="border-b-2 border-ink px-4 py-4 sm:border-b-4 sm:py-6" :class="sectionPadClass">
+    <!-- Same height as TopBar (h-20, borders included), so the two bottom
+         rules read as one line across the sidebar and the page. -->
+    <div
+      class="flex items-center border-b-2 border-ink px-4 py-4 sm:h-20 sm:border-b-4 sm:py-0"
+      :class="sectionPadClass"
+    >
       <RouterLink
         :to="authStore.dashboardPath"
         class="flex w-full items-center gap-3"
         :class="isCollapsed ? 'sm:justify-center' : ''"
       >
-        <span class="relative block h-9 w-9 shrink-0" aria-hidden="true">
-          <span class="absolute left-0 top-0 h-5 w-5 rounded-full bg-bauhaus-red"></span>
-          <span class="absolute right-0 top-0 h-5 w-5 bg-bauhaus-blue"></span>
-          <span
-            class="absolute bottom-0 left-1/2 h-0 w-0 -translate-x-1/2 border-b-[18px] border-l-[10px] border-r-[10px] border-b-bauhaus-yellow border-l-transparent border-r-transparent"
-          ></span>
-        </span>
+        <BrandMark />
         <span
           class="text-lg font-black uppercase leading-tight tracking-tighter"
           :class="labelClass"

@@ -47,18 +47,18 @@ This is a team decision, following `docs/PROJECT_REVIEW.md` A3 #8 ("restructure 
 
 Treat this as the design brief for **any** UI work, whether a new view, a dashboard widget, or a form:
 
-> Build this in ConnectSphere's **Bauhaus constructivist** style. Use an off-white canvas and black ink, with primary red, blue, and yellow reserved for meaning and emphasis. Use thick black borders, hard offset shadows with no blur, and only square or perfectly round shapes. Typography is bold, geometric, and uppercase. Compose the screen from the existing `Bauhaus*` components, and don't introduce new colours, fonts, radii, or shadows. It must work on mobile and desktop, and should look like it belongs next to the venue search and coordinator dashboard screens.
+> Build this in ConnectSphere's **Bauhaus constructivist** style. Use a white canvas and black ink, with primary red, blue, and yellow reserved for meaning and emphasis. Use thick black borders, hard offset shadows with no blur, and only square or perfectly round shapes. Typography is bold, geometric, and uppercase. Compose the screen from the existing `Bauhaus*` components, and don't introduce new colours, fonts, radii, or shadows. It must work on mobile and desktop, and should look like it belongs next to the venue search and coordinator dashboard screens.
 
 **Tokens.** Use the Tailwind names, never raw hex values.
 
 | Token | Value | Where it's used today |
 |---|---|---|
-| `canvas` | `#F0F0F0` | page background; text on red/blue buttons |
+| `canvas` | `#FFFFFF` | page background; text on red/blue buttons |
 | `ink` | `#121212` | text, borders, hard shadows |
 | `bauhaus-red` | `#D02020` | `BauhausButton variant="primary"` |
 | `bauhaus-blue` | `#1040C0` | `BauhausButton variant="secondary"` |
 | `bauhaus-yellow` | `#F0C020` | `BauhausButton variant="yellow"`, text selection |
-| `muted` | `#E0E0E0` | secondary surfaces |
+| `muted` | `#E0E0E0` | nav link hover (every at-rest surface is white — don't fill panels with it) |
 | `font-sans` | Outfit 400/500/700/900 | all text |
 | `shadow-hard` / `shadow-hard-lg` | 4px / 8px offset, no blur | cards and raised elements |
 
