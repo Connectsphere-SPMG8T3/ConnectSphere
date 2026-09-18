@@ -165,24 +165,21 @@ function emptyDetail(clearText) {
       {{ dashboard.error }}
     </p>
 
-    <!-- `items-start` keeps the two columns independent: without it a grid row
-         stretches to its tallest child, so anything that changed the calendar's
-         height would also stretch the tiles beside it. -->
-    <div class="mb-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
-      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <BauhausCard
-          v-for="tile in tiles"
-          :key="tile.key"
-          :background="tile.background"
-          :accent="tile.accent"
-          :accent-color="tile.accentColor"
-        >
-          <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ tile.label }}</p>
-          <p class="mt-2 text-5xl font-black tracking-tighter">{{ tile.value }}</p>
-          <p class="mt-2 text-xs font-medium text-ink/60">{{ tile.detail }}</p>
-        </BauhausCard>
-      </div>
+    <div class="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <BauhausCard
+        v-for="tile in tiles"
+        :key="tile.key"
+        :background="tile.background"
+        :accent="tile.accent"
+        :accent-color="tile.accentColor"
+      >
+        <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ tile.label }}</p>
+        <p class="mt-2 text-5xl font-black tracking-tighter">{{ tile.value }}</p>
+        <p class="mt-2 text-xs font-medium text-ink/60">{{ tile.detail }}</p>
+      </BauhausCard>
+    </div>
 
+    <div class="mb-6">
       <VenueMonthCalendar :items="dashboard.calendarItems" :has-settled="dashboard.hasSettled" />
     </div>
 
