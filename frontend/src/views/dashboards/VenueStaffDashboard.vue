@@ -15,7 +15,6 @@
 import { computed, onMounted } from "vue";
 import { RouterLink } from "vue-router";
 
-import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import VenueMonthCalendar from "@/components/venues/VenueMonthCalendar.vue";
@@ -262,12 +261,6 @@ function emptyDetail(clearText) {
           :detail="emptyDetail('No venues have been added yet.')"
         />
       </section>
-    </div>
-
-    <div class="mt-10 flex flex-wrap gap-4">
-      <RouterLink to="/venues">
-        <BauhausButton variant="secondary">Search venues</BauhausButton>
-      </RouterLink>
     </div>
   </main>
 </template>
