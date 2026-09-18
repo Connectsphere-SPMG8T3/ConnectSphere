@@ -328,6 +328,66 @@ describe("VenueStaffDashboard", () => {
     expect(el.querySelector('button[aria-label="Previous week"]').disabled).toBe(true);
   });
 
+  it("exports every item as a calendar file, not just the month on screen", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    // jsdom's Blob has no .text(), so capture the content as it is built.
+    const OriginalBlob = globalThis.Blob;
+    let captured = null;
+    let capturedType = null;
+    globalThis.Blob = class extends OriginalBlob {
+      constructor(parts, options) {
+        super(parts, options);
+        captured = parts.join("");
+        capturedType = options?.type;
+      }
+    };
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = () => "blob:stub";
+    URL.revokeObjectURL = () => {};
+
+    // jsdom does not implement navigation, so stub the anchor's click.
+    const clicked = [];
+    const originalClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function stub() {
+      clicked.push({ download: this.download });
+    };
+
+    try {
+      const el = await mountDashboard();
+      const exportButton = [...el.querySelectorAll("button")].find((b) => b.textContent.trim() === "Export");
+      expect(exportButton.disabled).toBe(false);
+      exportButton.click();
+
+      expect(clicked).toEqual([{ download: "connectsphere-venues-2026-09-19.ics" }]);
+      expect(capturedType).toContain("text/calendar");
+      expect(captured).toContain("BEGIN:VCALENDAR");
+      // All four items, though the calendar is showing October only.
+      expect(captured.match(/BEGIN:VEVENT/g)).toHaveLength(4);
+      expect(captured).toContain("SUMMARY:Blocked: Rooftop Terrace (safety)");
+    } finally {
+      globalThis.Blob = OriginalBlob;
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      HTMLAnchorElement.prototype.click = originalClick;
+    }
+  });
+
+  it("offers nothing to export when there is nothing to export", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue({
+      generated_at: "2026-09-19T04:00:00Z",
+      venues: [],
+      pending_holds: [],
+      re_review_bookings: [],
+      blocks: [],
+    });
+
+    const el = await mountDashboard();
+
+    expect([...el.querySelectorAll("button")].find((b) => b.textContent.trim() === "Export").disabled).toBe(true);
+  });
+
   it("withholds every count until the first load settles", async () => {
     venuesApi.venueStaffDashboard.mockReturnValue(new Promise(() => {}));
 

@@ -2,9 +2,10 @@
 /**
  * Calendar over every venue's blocks and pending decisions (SCRUM-70).
  *
- * Offers a month view (a day per cell, marked with dots) and a week view (a
- * column per day, listing the items themselves). All the date reasoning lives
- * in `features/venues/calendar.js`; this file renders what that returns and
+ * Offers a month view (items as labelled bars spanning the days they cover)
+ * and a week view (a column per day, listing each item with its time), plus
+ * an .ics export. All the date reasoning lives in `features/venues/calendar.js`
+ * and the file building in `ics.js`; this file renders what they return and
  * owns nothing but the view mode and the selected day.
  */
 import { computed, ref, watch } from "vue";
@@ -26,6 +27,7 @@ import {
   toWeekRows,
 } from "@/features/venues/calendar";
 import { blockReasonLabel } from "@/features/venues/dashboard";
+import { icsFilename, toIcsCalendar } from "@/features/venues/ics";
 import { singaporeDayKey } from "@/features/venues/singaporeTime";
 
 const props = defineProps({
@@ -210,6 +212,28 @@ const itemStripeClasses = {
 
 /** Just the start time, for a bar too narrow to carry a full span. */
 const formatStart = (item) => timeFormatter.format(new Date(item.startsAt));
+
+/**
+ * Download everything the dashboard holds as an .ics file.
+ *
+ * The whole payload, not the month on screen: the point of exporting is to
+ * carry your schedule into the calendar app you already use, and a staff
+ * member who exported "just October" would be missing November's blocks
+ * without being told.
+ */
+function exportCalendar() {
+  const ics = toIcsCalendar(props.items, { now: new Date() });
+  const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = icsFilename(new Date());
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Releasing it immediately can cancel the download in some browsers, so let
+  // the click be handled first.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 </script>
 
 <template>
@@ -271,6 +295,16 @@ const formatStart = (item) => timeFormatter.format(new Date(item.startsAt));
           @click="step(1)"
         >
           →
+        </button>
+        <button
+          type="button"
+          class="border-2 border-ink px-3 py-2 text-xs font-bold uppercase tracking-widest"
+          :class="items.length ? 'bg-canvas active-press' : 'cursor-not-allowed opacity-40'"
+          :disabled="!items.length"
+          aria-label="Export every block and pending request as a calendar file"
+          @click="exportCalendar"
+        >
+          Export
         </button>
       </div>
     </div>
