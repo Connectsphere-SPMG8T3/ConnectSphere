@@ -57,6 +57,7 @@ onMounted(() => eventsStore.load());
             <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/70">{{ event.status.replace('_', ' ') }}</p>
           </div>
           <BauhausButton v-if="event.status === 'draft'" variant="outline" @click="router.push({ name: 'event-new', query: { id: event.id } })">Continue draft</BauhausButton>
+          <BauhausButton v-else variant="outline" @click="router.push({ name: 'event-detail', params: { id: event.id } })">View request</BauhausButton>
         </BauhausCard>
       </div>
       <p v-else class="border-2 border-ink bg-canvas px-4 py-6 text-sm font-medium shadow-hard sm:border-4">No event requests yet. Start with a draft when you are ready.</p>

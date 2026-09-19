@@ -57,17 +57,37 @@ export function eventToPayload(event) {
   return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
 }
 
+function fromSingaporeDateTime(value) {
+  if (!value) return { date: "", time: "" };
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map(({ type, value: partValue }) => [type, partValue]));
+  return { date: `${values.year}-${values.month}-${values.day}`, time: `${values.hour}:${values.minute}` };
+}
+
 function fromResponse(event) {
   const defaults = emptyEvent();
+  const startsAt = fromSingaporeDateTime(event.starts_at);
+  const endsAt = fromSingaporeDateTime(event.ends_at);
+  const registrationOpensAt = fromSingaporeDateTime(event.registration_opens_at);
+  const registrationClosesAt = fromSingaporeDateTime(event.registration_closes_at);
   return {
     ...defaults,
     ...event,
     name: event.name ?? defaults.name,
     purpose: event.purpose ?? defaults.purpose,
     description: event.description ?? defaults.description,
-    date: event.starts_at?.slice(0, 10) ?? "",
-    startTime: event.starts_at?.slice(11, 16) ?? "",
-    endTime: event.ends_at?.slice(11, 16) ?? "",
+    coordinatorId: event.coordinator_id ?? null,
+    date: startsAt.date,
+    startTime: startsAt.time,
+    endTime: endsAt.time,
     expectedAttendance: event.expected_attendance ?? "",
     layoutPreference: event.layout_preference ?? "",
     facilitiesRequired: event.facilities_required ?? [],
@@ -75,8 +95,8 @@ function fromResponse(event) {
     preliminaryEquipmentNeeds: event.preliminary_equipment_needs ?? defaults.preliminaryEquipmentNeeds,
     registrationEnabled: event.registration_enabled ?? defaults.registrationEnabled,
     registrationCapacity: event.registration_capacity ?? "",
-    registrationOpensAt: event.registration_opens_at?.slice(0, 16) ?? "",
-    registrationClosesAt: event.registration_closes_at?.slice(0, 16) ?? "",
+    registrationOpensAt: registrationOpensAt.date && registrationOpensAt.time ? `${registrationOpensAt.date}T${registrationOpensAt.time}` : "",
+    registrationClosesAt: registrationClosesAt.date && registrationClosesAt.time ? `${registrationClosesAt.date}T${registrationClosesAt.time}` : "",
   };
 }
 
@@ -95,6 +115,24 @@ export const useEventsStore = defineStore("events", {
       this.error = null;
       try {
         this.events = (await authStore.withSession((token) => eventsApi.list(token))).map(fromResponse);
+      } catch (error) {
+        this.error = error.message;
+        throw error;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    async get(eventId) {
+      const authStore = useAuthStore();
+      this.isLoading = true;
+      this.error = null;
+      try {
+        const event = fromResponse(await authStore.withSession((token) => eventsApi.get(eventId, token)));
+        const index = this.events.findIndex((storedEvent) => storedEvent.id === event.id);
+        if (index === -1) this.events.push(event);
+        else this.events[index] = event;
+        return event;
       } catch (error) {
         this.error = error.message;
         throw error;

@@ -34,6 +34,12 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["event_organiser"] },
   },
   {
+    path: "/events/:id",
+    name: "event-detail",
+    component: () => import("@/views/events/EventDetailView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["event_organiser"] },
+  },
+  {
     path: "/dashboard/coordinator",
     name: "dashboard-coordinator",
     component: () => import("@/views/dashboards/CoordinatorDashboard.vue"),

@@ -79,6 +79,9 @@ export const eventsApi = {
   list(token) {
     return request("/events", { token });
   },
+  get(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}`, { token });
+  },
   create(payload, token) {
     return request("/events", { method: "POST", body: payload, token });
   },

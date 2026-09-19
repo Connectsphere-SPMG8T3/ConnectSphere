@@ -8,7 +8,7 @@ import { emptyEvent, eventToPayload, useEventsStore } from "@/stores/events";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn() },
+  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn() },
 }));
 
 function signedInStore() {
@@ -62,6 +62,24 @@ describe("event store", () => {
     expect(eventsApi.create).toHaveBeenCalledWith({ name: event.name, facilities_required: [], registration_enabled: false }, "access");
     expect(result.id).toBe("e1");
     expect(store.events).toEqual([result]);
+  });
+
+  it("loads one event request through the authenticated session", async () => {
+    const store = signedInStore();
+    eventsApi.get.mockResolvedValue({
+      id: "e1",
+      status: "under_review",
+      name: "Planning workshop",
+      starts_at: "2026-10-10T06:00:00Z",
+      ends_at: "2026-10-10T09:00:00Z",
+      facilities_required: [],
+      registration_enabled: false,
+    });
+
+    const result = await store.get("e1");
+
+    expect(eventsApi.get).toHaveBeenCalledWith("e1", "access");
+    expect(result).toMatchObject({ id: "e1", status: "under_review", date: "2026-10-10", startTime: "14:00", endTime: "17:00" });
   });
 
   it("creates and submits a new event request", async () => {
