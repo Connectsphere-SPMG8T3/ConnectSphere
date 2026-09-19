@@ -1,11 +1,12 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from "vue";
-import { useRoute } from "vue-router";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { onBeforeRouteLeave, useRoute } from "vue-router";
 import { useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausCheckboxGroup from "@/components/common/BauhausCheckboxGroup.vue";
+import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import { showToast } from "@/composables/useToast";
@@ -20,6 +21,43 @@ const fieldErrors = ref({});
 const intent = ref("draft");
 const isNew = computed(() => !form.id);
 const earliestEventDate = getEarliestEventDate();
+const isLeaveModalOpen = ref(false);
+const pendingRoute = ref(null);
+const allowNavigation = ref(false);
+const pristineSnapshot = ref(serializeForm(form));
+const isDirty = computed(() => serializeForm(form) !== pristineSnapshot.value);
+
+function serializeForm(event) {
+  return JSON.stringify(event);
+}
+
+function requestLeave(target) {
+  if (!isDirty.value) {
+    router.push(target);
+    return;
+  }
+  pendingRoute.value = target;
+  isLeaveModalOpen.value = true;
+}
+
+async function confirmLeave() {
+  const target = pendingRoute.value;
+  isLeaveModalOpen.value = false;
+  pendingRoute.value = null;
+  allowNavigation.value = true;
+  if (target) await router.push(target);
+}
+
+function stayOnPage() {
+  isLeaveModalOpen.value = false;
+  pendingRoute.value = null;
+}
+
+function handleBeforeUnload(event) {
+  if (!isDirty.value) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
 
 function validateSubmission() {
   const errors = {};
@@ -57,14 +95,14 @@ async function save() {
         ? await eventsStore.submit(form.id, form)
         : await eventsStore.updateDraft(form.id, form);
     if (intent.value === "submit") {
+      pristineSnapshot.value = serializeForm(form);
       showToast("Request submitted");
       await router.push({ name: "dashboard-organiser" });
     } else {
       showToast("Draft saved");
-      if (isNew.value) {
-        Object.assign(form, event);
-        fieldErrors.value = {};
-      }
+      Object.assign(form, event);
+      pristineSnapshot.value = serializeForm(form);
+      fieldErrors.value = {};
     }
   } catch {
     // The store exposes the API message in the form alert.
@@ -76,6 +114,13 @@ function chooseIntent(nextIntent) {
   save();
 }
 
+onBeforeRouteLeave((to) => {
+  if (!isDirty.value || allowNavigation.value) return true;
+  pendingRoute.value = to;
+  isLeaveModalOpen.value = true;
+  return false;
+});
+
 onMounted(async () => {
   try {
     if (!eventsStore.events.length) await eventsStore.load();
@@ -84,7 +129,11 @@ onMounted(async () => {
   }
   const draft = eventsStore.events.find((event) => event.id === route.query.id && event.status === "draft");
   if (draft) Object.assign(form, draft);
+  pristineSnapshot.value = serializeForm(form);
 });
+
+onMounted(() => window.addEventListener("beforeunload", handleBeforeUnload));
+onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnload));
 </script>
 
 <template>
@@ -162,10 +211,11 @@ onMounted(async () => {
               {{ eventsStore.isSaving ? "Saving..." : "Save draft" }}
             </BauhausButton>
             <BauhausButton type="submit" variant="primary" :disabled="eventsStore.isSaving">Submit request</BauhausButton>
-            <BauhausButton type="button" variant="outline" :disabled="eventsStore.isSaving" @click="router.push({ name: 'dashboard-organiser' })">Cancel</BauhausButton>
+            <BauhausButton type="button" variant="outline" :disabled="eventsStore.isSaving" @click="requestLeave({ name: 'dashboard-organiser' })">Cancel</BauhausButton>
           </div>
         </BauhausCard>
       </aside>
     </form>
+    <ConfirmModal :open="isLeaveModalOpen" @confirm="confirmLeave" @stay="stayOnPage" />
   </main>
 </template>

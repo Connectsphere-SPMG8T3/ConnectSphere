@@ -230,6 +230,7 @@ These cases cover the organiser's draft and submission workflow. They should be 
 | TC-EVENT-032 | Submitted records are not hard-deleted | Submit an event, then attempt to delete it through the API/database test path | Deletion is rejected; the submitted record remains available for history and later processing. | 🔴 |
 | TC-EVENT-033 | Saving a draft shows a reusable success toast | Logged in as Event Organiser; event request form is open | Enter a valid draft name and click **Save draft** | `name: Regional Planning Workshop` | After the save succeeds, a standard toast says **Draft saved**. It is visible on mobile and desktop, can be dismissed, and auto-dismisses without blocking the page. | 🟠 |
 | TC-EVENT-034 | Submitting an event shows a reusable success toast | Logged in as Event Organiser; draft contains all required fields | Click **Submit request** | Valid event request | After submission succeeds, a standard toast says **Request submitted** before navigation to the organiser dashboard. The toast remains readable on mobile. | 🟠 |
+| TC-EVENT-035 | Leaving a dirty event request requires confirmation | Event request form is open with unsaved changes | Change any field, then click **Cancel** or navigate to another page | Unsaved event request details | A reusable modal says **Do you confirm you want to leave the page?** and **Your changes will not be saved.** Choosing **Stay on page** keeps the form; choosing **Leave page** completes navigation. Browser tab/page exit also triggers the native unsaved-changes warning. | 🟠 |
 
 ## 7. Traceability matrix
 
@@ -283,6 +284,7 @@ These cases cover the organiser's draft and submission workflow. They should be 
 | Invalid date/time values are rejected; no lead-time rule beyond tomorrow applies | TC-EVENT-012, TC-EVENT-013, TC-EVENT-014 |
 | Valid submission creates an under-review request visible in the organiser's list | TC-EVENT-020, TC-EVENT-022 |
 | Successful draft saves and submissions provide reusable success feedback | TC-EVENT-033, TC-EVENT-034 |
+| Unsaved event-request navigation requires reusable confirmation | TC-EVENT-035 |
 | Duplicate submission returns `409` (ER-R4) | TC-EVENT-021 |
 | Only Event Organisers can create requests; ownership is enforced server-side (AUTH-R1, S-R1) | TC-EVENT-005, TC-EVENT-030 |
 
