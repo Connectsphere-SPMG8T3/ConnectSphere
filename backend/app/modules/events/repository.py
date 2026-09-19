@@ -56,10 +56,11 @@ def update_event(event_id: str, values: dict, version: int) -> dict:
         .eq("id", event_id)
         .eq("version", version)
         .select(_EVENT_COLUMNS)
-        .maybe_single()
         .execute()
     )
-    return response.data if response else None
+    if not response or not response.data:
+        return None
+    return response.data[0] if isinstance(response.data, list) else response.data
 
 
 def delete_event(event_id: str) -> None:
@@ -74,7 +75,8 @@ def submit_event(event_id: str, version: int, submitted_at: datetime) -> dict | 
         .eq("id", event_id)
         .eq("version", version)
         .select(_EVENT_COLUMNS)
-        .maybe_single()
         .execute()
     )
-    return response.data if response else None
+    if not response or not response.data:
+        return None
+    return response.data[0] if isinstance(response.data, list) else response.data

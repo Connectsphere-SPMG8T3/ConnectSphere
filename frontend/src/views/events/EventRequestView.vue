@@ -67,7 +67,11 @@ function chooseIntent(nextIntent) {
 }
 
 onMounted(async () => {
-  if (!eventsStore.events.length) await eventsStore.load();
+  try {
+    if (!eventsStore.events.length) await eventsStore.load();
+  } catch {
+    return;
+  }
   const draft = eventsStore.events.find((event) => event.id === route.query.id && event.status === "draft");
   if (draft) Object.assign(form, draft);
 });

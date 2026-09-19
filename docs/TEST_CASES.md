@@ -197,6 +197,9 @@ These cases cover the organiser's draft and submission workflow. They should be 
 | TC-EVENT-004 | Organiser sees only their own events | At least two organisers exist; each has an event | Log in as organiser A and open the event list; repeat as organiser B | Events owned by A and B | Each organiser sees only their own events. A cannot open B's event by direct URL or API request; the response is `404`. | 🔴 |
 | TC-EVENT-005 | Only organisers can create event requests | Logged in separately as Coordinator, Venue Staff, Tech Support, and Attendee | Visit the create route and call `POST /api/v1/events` directly | Any event payload | The UI redirects or hides the create action, and the API returns `403`. No event is created. | 🔴 |
 | TC-EVENT-006 | Submitted events cannot be discarded or directly edited | A submitted event exists | Open the event and try **Discard** and direct edits | Any changed event field | Discard is unavailable or rejected with `409`; direct editing is unavailable or rejected with `409`. The submitted values and status remain unchanged. | 🔴 |
+| TC-EVENT-007 | Drafts with empty optional fields reload safely | A draft exists with only its name saved; optional fields are empty in the API response | Open the draft, inspect the form, change the name, and click **Save draft** | `purpose: null`, `description: null`, no date/time, attendance, or layout | Empty optional fields render as blank values, no console `null.trim()` error occurs, and the update succeeds. Reopening the draft shows the changed name and status **Draft**. | 🔴 |
+| TC-EVENT-008 | Draft loading failure is shown without breaking the page | Logged in as Event Organiser; make `GET /api/v1/events` return `500` or stop the backend before opening a draft | Open the event-request page or a draft URL | API failure response | The page remains rendered, the failure is shown in the standard error area, and no uncaught promise or blank/broken form is produced. | 🟠 |
+| TC-EVENT-009 | A draft update conflict is reported without false success | A draft exists; cause its version to become stale or make the PATCH response contain no updated row | Edit the draft and click **Save draft** | `PATCH /api/v1/events/{id}` returns `409` or an empty update result | A clear error is shown, the saving state ends, the draft is not reported as successfully updated, and the user can retry after reloading. | 🟠 |
 
 ### 9.2 Submission validation
 
@@ -272,7 +275,8 @@ These cases cover the organiser's draft and submission workflow. They should be 
 | SCRUM-8 acceptance criterion / rule | Covered by |
 |---|---|
 | Draft requires only an event name and remains private to its owner (DR-R1, DR-R2) | TC-EVENT-001, TC-EVENT-003, TC-EVENT-004, TC-EVENT-030 |
-| Drafts can be edited and submitted events cannot be discarded (DR-R3, ER-R3) | TC-EVENT-003, TC-EVENT-006, TC-EVENT-031, TC-EVENT-032 |
+| Drafts can be edited and submitted events cannot be discarded (DR-R3, ER-R3) | TC-EVENT-003, TC-EVENT-006, TC-EVENT-007, TC-EVENT-009, TC-EVENT-031, TC-EVENT-032 |
+| Draft reload and update failures are handled without a broken form or false success | TC-EVENT-007, TC-EVENT-008, TC-EVENT-009 |
 | Required event fields and controlled venue requirements are validated | TC-EVENT-010, TC-EVENT-011, TC-EVENT-015, TC-EVENT-016 |
 | Invalid date/time values are rejected; no lead-time rule applies | TC-EVENT-012, TC-EVENT-013, TC-EVENT-014 |
 | Valid submission creates an under-review request visible in the organiser's list | TC-EVENT-020, TC-EVENT-022 |

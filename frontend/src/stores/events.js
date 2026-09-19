@@ -29,14 +29,14 @@ export function emptyEvent() {
 
 export function eventToPayload(event) {
   const payload = {
-    name: event.name.trim(),
-    purpose: event.purpose.trim() || undefined,
-    description: event.description.trim() || undefined,
+    name: (event.name ?? "").trim(),
+    purpose: (event.purpose ?? "").trim() || undefined,
+    description: (event.description ?? "").trim() || undefined,
     expected_attendance: event.expectedAttendance === "" ? undefined : Number(event.expectedAttendance),
     layout_preference: event.layoutPreference || undefined,
     facilities_required: [...event.facilitiesRequired],
-    accessibility_needs: event.accessibilityNeeds.trim() || undefined,
-    preliminary_equipment_needs: event.preliminaryEquipmentNeeds.trim() || undefined,
+    accessibility_needs: (event.accessibilityNeeds ?? "").trim() || undefined,
+    preliminary_equipment_needs: (event.preliminaryEquipmentNeeds ?? "").trim() || undefined,
     registration_enabled: event.registrationEnabled,
   };
   if (event.date && event.startTime) payload.starts_at = toSingaporeIso(event.date, event.startTime);
@@ -48,15 +48,22 @@ export function eventToPayload(event) {
 }
 
 function fromResponse(event) {
+  const defaults = emptyEvent();
   return {
-    ...emptyEvent(),
+    ...defaults,
     ...event,
+    name: event.name ?? defaults.name,
+    purpose: event.purpose ?? defaults.purpose,
+    description: event.description ?? defaults.description,
     date: event.starts_at?.slice(0, 10) ?? "",
     startTime: event.starts_at?.slice(11, 16) ?? "",
     endTime: event.ends_at?.slice(11, 16) ?? "",
     expectedAttendance: event.expected_attendance ?? "",
     layoutPreference: event.layout_preference ?? "",
     facilitiesRequired: event.facilities_required ?? [],
+    accessibilityNeeds: event.accessibility_needs ?? defaults.accessibilityNeeds,
+    preliminaryEquipmentNeeds: event.preliminary_equipment_needs ?? defaults.preliminaryEquipmentNeeds,
+    registrationEnabled: event.registration_enabled ?? defaults.registrationEnabled,
     registrationCapacity: event.registration_capacity ?? "",
     registrationOpensAt: event.registration_opens_at?.slice(11, 16) ?? "",
     registrationClosesAt: event.registration_closes_at?.slice(11, 16) ?? "",

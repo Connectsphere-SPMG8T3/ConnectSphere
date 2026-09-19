@@ -69,4 +69,57 @@ describe("event store", () => {
     expect(store.error).toBe("Purpose is required.");
     expect(store.isSaving).toBe(false);
   });
+
+  it("normalizes nullable draft fields before updating the draft", async () => {
+    const store = signedInStore();
+    eventsApi.list.mockResolvedValue([
+      {
+        id: "e1",
+        status: "draft",
+        name: "Planning workshop",
+        purpose: null,
+        description: null,
+        starts_at: null,
+        ends_at: null,
+        expected_attendance: null,
+        layout_preference: null,
+        facilities_required: null,
+        accessibility_needs: null,
+        preliminary_equipment_needs: null,
+        registration_enabled: false,
+        registration_capacity: null,
+        registration_opens_at: null,
+        registration_closes_at: null,
+      },
+    ]);
+    eventsApi.update.mockResolvedValue({
+      id: "e1",
+      status: "draft",
+      name: "Updated workshop",
+      purpose: null,
+      description: null,
+        starts_at: null,
+      ends_at: null,
+      expected_attendance: null,
+      layout_preference: null,
+      facilities_required: [],
+      registration_enabled: false,
+    });
+
+    await store.load();
+    const draft = store.events[0];
+
+    await expect(store.updateDraft("e1", { ...draft, name: "Updated workshop" })).resolves.toMatchObject({
+      id: "e1",
+      name: "Updated workshop",
+      purpose: "",
+      description: "",
+      facilitiesRequired: [],
+    });
+    expect(eventsApi.update).toHaveBeenCalledWith(
+      "e1",
+      expect.objectContaining({ name: "Updated workshop", facilities_required: [] }),
+      "access",
+    );
+  });
 });
