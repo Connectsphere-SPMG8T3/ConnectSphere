@@ -9,7 +9,7 @@ This file describes the **current state** of the codebase, so a developer (or AI
 
 **Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current").
 
-_Last updated: 2026-09-19. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72), plus unmerged branches listed in §6, plus the in-progress `feature/scrum-74-75-role-switcher` branch described below._
+_Last updated: 2026-09-19. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72), plus the implemented but not yet merged `feature/scrum-8-event-request` branch and other unmerged branches listed below._
 
 ---
 
@@ -24,7 +24,7 @@ _Last updated: 2026-09-19. Reflects `main` at `a50f8b2` (after PR #9, SCRUM-72),
 | SCRUM-39 View venue catalogue | Done | `modules/venues` | `views/venues/`, `stores/venues.js`, `components/venues/` | venue tables |
 | SCRUM-72 Event Coordinator dashboard | Frontend done. **No backend endpoint yet**, so widgets show empty states | none | `CoordinatorDashboard`, `features/events/` | none |
 | SCRUM-70, 71, 73 and the attendee dashboard | Placeholder shells only (~40 lines each) | none | `views/dashboards/*Dashboard.vue` | none |
-| SCRUM-8 Event request creation | On an unmerged branch (§6) | — | — | — |
+| SCRUM-8 Event request creation | Implemented on `feature/scrum-8-event-request`; pending merge | `modules/events`: draft, read, update, discard, and submit endpoints with validation | `EventRequestView`, `EventDetailView`, organiser request navigation, timezone-aware event form | `events` table plus corrective registration-boundary and event-timezone migrations |
 | SCRUM-23 Equipment availability | On an unmerged branch (§6); PRs #4 and #5/#6 closed | — | — | — |
 
 ## 2. Backend (`backend/app/`)
@@ -144,5 +144,4 @@ These aren't on `main`, but whoever builds nearby will collide with them. Remove
 
 | Branch | Jira assignee | Adds | Watch out for |
 |---|---|---|---|
-| `feature/scrum-8-event-request` (no PR yet) | Yeo Wei Ting | Migrations `20260916090000_events.sql`, `20260919100000_fix_registration_closing_boundary.sql`, and `20260919110000_add_event_timezone.sql`: `event_status` and `technical_readiness` enums, an `events` table (`organiser_id`, `coordinator_id` → `profiles`) with an IANA `event_timezone`, a foreign key from `venue_bookings.event_id` to `events`, and registration closing constrained to `ends_at`. Endpoints: `POST/GET /events`, `GET/PATCH/DELETE /events/{id}`, `POST /events/{id}/submit`. Frontend: `stores/events.js` (`useEventsStore`), `features/events/timezones.js`, `views/events/EventRequestView.vue`, `views/events/EventDetailView.vue` and `/events/:id` for submitted request details, organiser dashboard changes, timezone-aware date validation, combined registration opening/closing date-time inputs, reusable `Toast.vue` / `useToast.js` success feedback, and reusable `ConfirmModal.vue` with dirty-form navigation protection. Submission validation compares local event and registration dates in the selected event timezone while PostgreSQL stores UTC instants | **Puts its events store in `stores/`, against the store rule.** It was written before the rule existed, so it merges as-is. **Follow-up after merge** (planned by Lim Jie Ching, as a separate `chore/` branch): move `stores/events.js` into `features/events/`, name the two events stores after their contents (e.g. `eventRequestStore.js`, and rename `store.js` to `coordinatorDashboardStore.js`), and check they don't fetch the same events data. Don't create further events stores in `stores/` in the meantime. Any work touching events should start from this branch's schema, not a new one. |
 | `feature/SCRUM-23-equipment-availability` and `feature/SCRUM-73-tech-support-dashboard` (PRs #4, #5, #6 closed) | Tan Qiao Wen Eileen | Migration `20260914100000_equipment_availability.sql`: `equipment`, `equipment_unavailability`, `equipment_reservations`. An `equipment` module, a `TechSupportDashboard` UI, and **SQLAlchemy** (`db/models.py`, `get_db()` in `db/session.py`, a `database_url` setting) | **Diverges from the Supabase-client-only data access** used everywhere else, so the team needs to agree before merging. Its migration timestamp (`20260914…`) is **earlier** than the venues migration already on `main` (`20260915…`), so `supabase db push` will reject it unless it's renamed to a later timestamp. Both branches still contain the committed `supabase/.temp` secrets file in their history. |

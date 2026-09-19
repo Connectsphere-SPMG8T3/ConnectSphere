@@ -615,16 +615,18 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 
 **Rules**
 - **ER-R1:** Submit validates everything and returns **all** field errors at once.
-- **ER-R2:** On submit, the system auto-assigns a coordinator in the same operation (§6.5).
+- **ER-R2:** SCRUM-8 submission changes the draft to `under_review`. Coordinator assignment and submission notifications are separate scope owned by SCRUM-12 / SCRUM-68; until those stories land, `coordinator_id` remains null and the organiser sees that assignment is pending.
 - **ER-R3:** After submission the organiser can't edit directly. They edit only when the request is **returned** (§6.4), or they raise a change request (§6.19). Organisers who "submit and request amendments later" follow this route (QA-94).
 - **ER-R4:** Submitting an already-submitted event returns `409`, so a double-click can't create a duplicate.
 
 **Acceptance criteria**
-- **Given** a valid draft with title, purpose, date and times, pax, and layout, **when** I submit, **then** its status becomes `under_review`, a coordinator is assigned, both the coordinator and I are notified, and I see my coordinator's name.
+- **Given** a valid draft with title, purpose, date and times, pax, and layout, **when** I submit, **then** its status becomes `under_review`, the request is stored, and I can see that coordinator assignment is pending.
 - **Given** a draft missing pax and layout, **when** I submit, **then** both field errors show and the status stays `draft`.
 - **Given** end time ≤ start time, **when** I submit, **then** I see "End time must be after start time."
 - **Given** an event date one day from now, **when** I submit, **then** it is accepted (no lead-time rule).
-- **Given** an event date equal to today's Singapore date, **when** I submit, **then** it is rejected even if the start time has not passed.
+- **Given** an event date equal to today's event-local date, **when** I submit, **then** it is rejected even if the start time has not passed.
+
+**SCRUM-8 scope boundary:** Coordinator assignment, reassignment, coordinator notifications, and organiser notifications are not part of event request creation. They are tracked under SCRUM-12 / SCRUM-68 and will consume the submitted `under_review` event produced here.
 
 ### 6.3 Draft event requests *(SCRUM-9, SCRUM-65)*
 
