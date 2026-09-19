@@ -8,6 +8,7 @@ import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausCheckboxGroup from "@/components/common/BauhausCheckboxGroup.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
+import { getEarliestEventDate, getSingaporeDateString, isEventDateAfterToday } from "@/features/events/dateValidation";
 import { FACILITIES, LAYOUTS, emptyEvent, useEventsStore } from "@/stores/events";
 
 const router = useRouter();
@@ -17,6 +18,7 @@ const form = reactive(emptyEvent());
 const fieldErrors = ref({});
 const intent = ref("draft");
 const isNew = computed(() => !form.id);
+const earliestEventDate = getEarliestEventDate();
 
 function validateSubmission() {
   const errors = {};
@@ -25,6 +27,9 @@ function validateSubmission() {
   if (intent.value === "submit") {
     if (!form.purpose.trim()) errors.purpose = "Enter the event purpose.";
     if (!form.date) errors.date = "Enter the event date.";
+    else if (!isEventDateAfterToday(form.date, getSingaporeDateString())) {
+      errors.date = "Event date must be after today.";
+    }
     if (!form.startTime) errors.startTime = "Enter the start time.";
     if (!form.endTime) errors.endTime = "Enter the end time.";
     if (form.startTime && form.endTime && form.endTime <= form.startTime) {
@@ -97,7 +102,7 @@ onMounted(async () => {
       {{ eventsStore.error }}
     </p>
 
-    <form class="grid gap-8 lg:grid-cols-[1.35fr_0.65fr]" @submit.prevent="chooseIntent('submit')">
+    <form novalidate class="grid gap-8 lg:grid-cols-[1.35fr_0.65fr]" @submit.prevent="chooseIntent('submit')">
       <BauhausCard background="white" accent="none">
         <div class="grid gap-6 sm:grid-cols-2">
           <div class="sm:col-span-2">
@@ -110,7 +115,7 @@ onMounted(async () => {
             <label for="event-description" class="text-xs font-bold uppercase tracking-widest">Description</label>
             <textarea id="event-description" v-model="form.description" rows="4" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" placeholder="Add useful context for the planning team."></textarea>
           </div>
-          <BauhausInput v-model="form.date" label="Event date" type="date" :error="fieldErrors.date" />
+          <BauhausInput v-model="form.date" label="Event date" type="date" :min="earliestEventDate" :error="fieldErrors.date" />
           <BauhausInput v-model="form.expectedAttendance" label="Expected attendance" type="number" :error="fieldErrors.expectedAttendance" />
           <BauhausInput v-model="form.startTime" label="Start time" type="time" :error="fieldErrors.startTime" />
           <BauhausInput v-model="form.endTime" label="End time" type="time" :error="fieldErrors.endTime" />

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from copy import deepcopy
 
 import pytest
@@ -258,6 +258,26 @@ class TestEventSubmission:
         response = client.post(
             f"/api/v1/events/{EVENT_ID}/submit",
             json={**COMPLETE_REQUEST, "starts_at": "2020-10-10T14:00:00+08:00"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+
+    def test_submission_rejects_a_future_time_on_today_date(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+        today = datetime.now(SGT).date()
+        starts_at = datetime.combine(today, time(23, 59), tzinfo=SGT)
+        ends_at = starts_at + timedelta(hours=1)
+
+        response = client.post(
+            f"/api/v1/events/{EVENT_ID}/submit",
+            json={
+                **COMPLETE_REQUEST,
+                "starts_at": starts_at.isoformat(),
+                "ends_at": ends_at.isoformat(),
+            },
             headers=auth_headers,
         )
 

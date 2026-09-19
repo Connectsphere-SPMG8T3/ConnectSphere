@@ -604,7 +604,7 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 | name (event title) | ✔ (QA-24) | 3–150 characters |
 | purpose | ✔ (QA-19) | 1–500 characters |
 | description | – | ≤ 5000 characters |
-| event date + start time + end time (**one date per request**, QA-135) | ✔ (QA-19, QA-24: "preferred dates/times", "duration") | `starts_at` not in the past; `ends_at` > `starts_at`. **No minimum or maximum lead time** (QA-80, QA-91). |
+| event date + start time + end time (**one date per request**, QA-135) | ✔ (QA-19, QA-24: "preferred dates/times", "duration") | Event date must be strictly after today's Singapore date; `ends_at` > `starts_at`. **No minimum or maximum lead time beyond this calendar-date rule** (QA-80, QA-91). |
 | expected_attendance (pax) | ✔ (QA-19, QA-24) | Integer ≥ 1 |
 | layout_preference and venue requirements (location preference, required facilities) | ✔ layout (QA-24: "primary venue/layout preferences") | Layout from a controlled list; facilities from a controlled list |
 | accessibility_needs | – (QA-53) | ≤ 1000 characters |
@@ -623,6 +623,7 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 - **Given** a draft missing pax and layout, **when** I submit, **then** both field errors show and the status stays `draft`.
 - **Given** end time ≤ start time, **when** I submit, **then** I see "End time must be after start time."
 - **Given** an event date one day from now, **when** I submit, **then** it is accepted (no lead-time rule).
+- **Given** an event date equal to today's Singapore date, **when** I submit, **then** it is rejected even if the start time has not passed.
 
 ### 6.3 Draft event requests *(SCRUM-9, SCRUM-65)*
 

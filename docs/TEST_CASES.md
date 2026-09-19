@@ -207,7 +207,7 @@ These cases cover the organiser's draft and submission workflow. They should be 
 |----|-------|----------------|------------|-------------|------------------|----------|
 | TC-EVENT-010 | Missing required fields are reported together | Logged in as Event Organiser; draft has only a name | Click **Submit request** | Missing purpose, date/time, attendance, and layout | Submission is prevented. The form shows actionable errors for every missing required field, not only the first error, and the event remains **Draft**. | 🔴 |
 | TC-EVENT-011 | Event name and purpose limits are enforced | Draft exists | Submit values at and outside the limits | Name shorter than 3 or longer than 150; purpose longer than 500 | Invalid values are rejected with field-specific messages. Boundary values within the limits are accepted. | 🟠 |
-| TC-EVENT-012 | Start time must not be in the past | Draft contains all other required fields | Submit with a past start time | `starts_at: 2020-10-10T14:00:00+08:00` | Submission is rejected with a clear date/time error and the event remains **Draft**. | 🔴 |
+| TC-EVENT-012 | Event date must be after today | Draft contains all other required fields | Submit with today's date and a future start time | Today's Singapore date, `23:59`-`00:59`, timezone `+08:00` | Submission is rejected with **Event date must be after today.** and the event remains **Draft**. | 🔴 |
 | TC-EVENT-013 | End time must be after start time | Draft contains all other required fields | Submit with equal and earlier end times | `14:00`-`14:00`; `17:00`-`14:00` | Submission is rejected with **End time must be after start time.** and the event remains **Draft**. | 🔴 |
 | TC-EVENT-014 | An event one day ahead is accepted | Draft contains all required fields; event starts tomorrow | Submit the request | Tomorrow, `14:00`-`17:00`, timezone `+08:00` | The request is accepted. No additional lead-time error is shown. | 🔴 |
 | TC-EVENT-015 | Registration settings are validated when enabled | Draft contains all other required fields | Enable registration and submit incomplete or invalid settings | Capacity `0`; opens after closes; closes after event start | Submission is rejected with errors naming the invalid registration settings. | 🟠 |
@@ -278,7 +278,7 @@ These cases cover the organiser's draft and submission workflow. They should be 
 | Drafts can be edited and submitted events cannot be discarded (DR-R3, ER-R3) | TC-EVENT-003, TC-EVENT-006, TC-EVENT-007, TC-EVENT-009, TC-EVENT-031, TC-EVENT-032 |
 | Draft reload and update failures are handled without a broken form or false success | TC-EVENT-007, TC-EVENT-008, TC-EVENT-009 |
 | Required event fields and controlled venue requirements are validated | TC-EVENT-010, TC-EVENT-011, TC-EVENT-015, TC-EVENT-016 |
-| Invalid date/time values are rejected; no lead-time rule applies | TC-EVENT-012, TC-EVENT-013, TC-EVENT-014 |
+| Invalid date/time values are rejected; no lead-time rule beyond tomorrow applies | TC-EVENT-012, TC-EVENT-013, TC-EVENT-014 |
 | Valid submission creates an under-review request visible in the organiser's list | TC-EVENT-020, TC-EVENT-022 |
 | Duplicate submission returns `409` (ER-R4) | TC-EVENT-021 |
 | Only Event Organisers can create requests; ownership is enforced server-side (AUTH-R1, S-R1) | TC-EVENT-005, TC-EVENT-030 |

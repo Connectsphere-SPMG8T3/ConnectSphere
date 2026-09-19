@@ -18,6 +18,10 @@ const props = defineProps({
     type: String,
     default: "",
   },
+  min: {
+    type: String,
+    default: undefined,
+  },
   error: {
     type: String,
     default: "",
@@ -44,6 +48,7 @@ const hasError = computed(() => Boolean(props.error));
       :type="type"
       :value="modelValue"
       :placeholder="placeholder"
+      :min="min"
       :autocomplete="autocomplete"
       :aria-invalid="hasError"
       :aria-describedby="hasError ? `${inputId}-error` : undefined"

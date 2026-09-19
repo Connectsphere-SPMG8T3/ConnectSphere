@@ -1,9 +1,11 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 
 from app.modules.events import repository
 from app.modules.events.schemas import EventCreateRequest, EventResponse, EventUpdateRequest
+
+SINGAPORE_TZ = timezone(timedelta(hours=8))
 
 
 class EventNotFoundError(HTTPException):
@@ -41,8 +43,8 @@ def _validate_submission(row: dict) -> None:
         ends_at = _parse_datetime(ends_at)
         if ends_at <= starts_at:
             errors.append({"loc": ["body", "ends_at"], "msg": "End time must be after start time.", "type": "value_error"})
-        if starts_at <= datetime.now(timezone.utc):
-            errors.append({"loc": ["body", "starts_at"], "msg": "Start time must be in the future.", "type": "value_error"})
+        if starts_at.astimezone(SINGAPORE_TZ).date() <= datetime.now(SINGAPORE_TZ).date():
+            errors.append({"loc": ["body", "starts_at"], "msg": "Event date must be after today.", "type": "value_error"})
 
     if row.get("registration_enabled"):
         if not row.get("registration_capacity"):
