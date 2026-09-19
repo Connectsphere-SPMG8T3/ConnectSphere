@@ -14,6 +14,14 @@ const props = defineProps({
     type: String,
     default: "Your changes will not be saved.",
   },
+  confirmLabel: {
+    type: String,
+    default: "Leave page",
+  },
+  cancelLabel: {
+    type: String,
+    default: "Stay on page",
+  },
 });
 
 const emit = defineEmits(["confirm", "stay"]);
@@ -36,8 +44,8 @@ const emit = defineEmits(["confirm", "stay"]);
         <h2 id="confirm-modal-title" class="text-2xl font-black uppercase leading-tight tracking-tight">{{ props.title }}</h2>
         <p class="mt-4 text-base font-medium">{{ props.message }}</p>
         <div class="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <BauhausButton type="button" variant="outline" aria-label="Stay on page" @click="emit('stay')">Stay on page</BauhausButton>
-          <BauhausButton type="button" variant="primary" aria-label="Confirm leave page" @click="emit('confirm')">Leave page</BauhausButton>
+          <BauhausButton type="button" variant="outline" :aria-label="props.cancelLabel" @click="emit('stay')">{{ props.cancelLabel }}</BauhausButton>
+          <BauhausButton type="button" variant="primary" :aria-label="props.confirmLabel" @click="emit('confirm')">{{ props.confirmLabel }}</BauhausButton>
         </div>
       </section>
     </div>

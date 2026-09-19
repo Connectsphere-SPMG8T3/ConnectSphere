@@ -23,6 +23,7 @@ const isNew = computed(() => !form.id);
 const earliestEventDate = getEarliestEventDate();
 const earliestRegistrationDateTime = `${earliestEventDate}T00:00`;
 const isLeaveModalOpen = ref(false);
+const isSubmitModalOpen = ref(false);
 const pendingRoute = ref(null);
 const allowNavigation = ref(false);
 const pristineSnapshot = ref(serializeForm(form));
@@ -52,6 +53,16 @@ async function confirmLeave() {
 function stayOnPage() {
   isLeaveModalOpen.value = false;
   pendingRoute.value = null;
+}
+
+function requestSubmit() {
+  intent.value = "submit";
+  if (validateSubmission()) isSubmitModalOpen.value = true;
+}
+
+function confirmSubmit() {
+  isSubmitModalOpen.value = false;
+  save();
 }
 
 function handleBeforeUnload(event) {
@@ -106,11 +117,13 @@ function validateSubmission() {
 async function save() {
   if (!validateSubmission()) return;
   try {
-    const event = isNew.value
-      ? await eventsStore.saveDraft(form)
-      : intent.value === "submit"
-        ? await eventsStore.submit(form.id, form)
-        : await eventsStore.updateDraft(form.id, form);
+    const event = isNew.value && intent.value === "submit"
+      ? await eventsStore.createAndSubmit(form)
+      : isNew.value
+        ? await eventsStore.saveDraft(form)
+        : intent.value === "submit"
+          ? await eventsStore.submit(form.id, form)
+          : await eventsStore.updateDraft(form.id, form);
     if (intent.value === "submit") {
       pristineSnapshot.value = serializeForm(form);
       showToast("Request submitted");
@@ -127,6 +140,10 @@ async function save() {
 }
 
 function chooseIntent(nextIntent) {
+  if (nextIntent === "submit") {
+    requestSubmit();
+    return;
+  }
   intent.value = nextIntent;
   save();
 }
@@ -234,5 +251,14 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
       </aside>
     </form>
     <ConfirmModal :open="isLeaveModalOpen" @confirm="confirmLeave" @stay="stayOnPage" />
+    <ConfirmModal
+      :open="isSubmitModalOpen"
+      title="Submit event request?"
+      message="After submission, the request will be sent for coordinator review. You will not be able to edit it directly unless it is returned for amendment."
+      confirm-label="Confirm and submit"
+      cancel-label="Review request"
+      @confirm="confirmSubmit"
+      @stay="isSubmitModalOpen = false"
+    />
   </main>
 </template>

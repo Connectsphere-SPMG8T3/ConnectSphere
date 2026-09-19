@@ -115,6 +115,11 @@ export const useEventsStore = defineStore("events", {
       return this.save((token) => eventsApi.submit(eventId, eventToPayload(event), token));
     },
 
+    async createAndSubmit(event) {
+      const draft = await this.saveDraft(event);
+      return this.submit(draft.id, event);
+    },
+
     async save(operation) {
       const authStore = useAuthStore();
       this.isSaving = true;

@@ -64,6 +64,26 @@ describe("event store", () => {
     expect(store.events).toEqual([result]);
   });
 
+  it("creates and submits a new event request", async () => {
+    const store = signedInStore();
+    const event = { ...emptyEvent(), name: "Planning workshop" };
+    eventsApi.create.mockResolvedValue({ id: "e1", status: "draft", name: event.name });
+    eventsApi.submit.mockResolvedValue({ id: "e1", status: "under_review", name: event.name });
+
+    const result = await store.createAndSubmit(event);
+
+    expect(eventsApi.create).toHaveBeenCalledWith(
+      { name: event.name, facilities_required: [], registration_enabled: false },
+      "access",
+    );
+    expect(eventsApi.submit).toHaveBeenCalledWith(
+      "e1",
+      { name: event.name, facilities_required: [], registration_enabled: false },
+      "access",
+    );
+    expect(result.status).toBe("under_review");
+  });
+
   it("keeps the form error when submission is rejected", async () => {
     const store = signedInStore();
     eventsApi.submit.mockRejectedValue(new ApiError("Purpose is required.", 422));
