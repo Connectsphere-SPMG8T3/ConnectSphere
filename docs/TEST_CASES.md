@@ -185,7 +185,7 @@ Environment as in §0 plus the SCRUM-39 migration and the venue rows from `supab
 
 ## 9. Event request creation (SCRUM-8)
 
-These cases cover the organiser's draft and submission workflow. They should be run with the backend and frontend from the current local setup (`http://localhost:8001` and `http://localhost:5174` respectively) once the events migration and API are available. Coordinator auto-assignment and its notifications are specified separately under SCRUM-12 / SCRUM-68; the final end-to-end release check should connect that story to successful submission.
+These cases cover the organiser's draft and submission workflow. They should be run with the backend and frontend from the current local setup (`http://localhost:8000` and `http://localhost:5173` respectively) once the events migration and API are available. Coordinator auto-assignment and its notifications are specified separately under SCRUM-12 / SCRUM-68; the final end-to-end release check should connect that story to successful submission.
 
 ### 9.1 Drafts and organiser access
 
