@@ -8,6 +8,7 @@ import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausCheckboxGroup from "@/components/common/BauhausCheckboxGroup.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
+import { showToast } from "@/composables/useToast";
 import { getEarliestEventDate, getSingaporeDateString, isEventDateAfterToday } from "@/features/events/dateValidation";
 import { FACILITIES, LAYOUTS, emptyEvent, useEventsStore } from "@/stores/events";
 
@@ -56,10 +57,14 @@ async function save() {
         ? await eventsStore.submit(form.id, form)
         : await eventsStore.updateDraft(form.id, form);
     if (intent.value === "submit") {
+      showToast("Request submitted");
       await router.push({ name: "dashboard-organiser" });
-    } else if (isNew.value) {
-      Object.assign(form, event);
-      fieldErrors.value = {};
+    } else {
+      showToast("Draft saved");
+      if (isNew.value) {
+        Object.assign(form, event);
+        fieldErrors.value = {};
+      }
     }
   } catch {
     // The store exposes the API message in the form alert.
