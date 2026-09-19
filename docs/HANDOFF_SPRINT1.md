@@ -58,12 +58,12 @@ These are gitignored (local workflow aids), so they won't show up as a project d
 | SCRUM-39 — View Venue Catalogue | **Done** — migration `20260915090000` (venues, layouts, facilities, blocks, bookings) | `venues/` (router / service / repository / search) | `/venues` and `/venues/:id` (`views/venues/`), linked from the coordinator and venue-staff dashboards |
 | SCRUM-70 — Venue Staff Dashboard | depends on venues/events | `venues/` (+ maybe `events/`) | `VenueStaffDashboard.vue` |
 | SCRUM-71 — Event Organiser Dashboard | depends on events | `events/` | `OrganiserDashboard.vue` |
-| SCRUM-8 — Event Request Creation | Yes — `events` table | `events/` | likely a form component, surfaced from `OrganiserDashboard.vue` |
+| SCRUM-8 — Event Request Creation | Done on `feature/scrum-8-event-request` — `events` table and timezone migration | `events/` | `EventRequestView.vue`, `EventDetailView.vue`, surfaced from `OrganiserDashboard.vue` |
 | SCRUM-72 — Event Coordinator Dashboard | depends on events | `events/` | `CoordinatorDashboard.vue` |
 | SCRUM-73 — Technical Support Staff Dashboard | depends on equipment | `equipment/` | `TechSupportDashboard.vue` |
 | SCRUM-23 — Equipment Availability Checking | Yes — `equipment` table | `equipment/` | likely surfaced in `TechSupportDashboard.vue` and/or the organiser's request flow |
 
-**Coordinate on migrations**: SCRUM-39's venue tables are live (`venue_bookings.event_id` is a plain uuid — add the FK when `events` lands); SCRUM-8 and SCRUM-23 still want their own tables, and SCRUM-8 should reuse the `venue_layout` / `facility` / `accessibility_feature` enums. Whoever picks these up first should decide table shape together (or at least check `supabase/migrations/` for what's already landed) rather than each writing a conflicting migration independently.
+**Migration handoff:** SCRUM-39's venue tables and the SCRUM-8 events table are live. SCRUM-8 reuses the `venue_layout` / `facility` / `accessibility_feature` enums and adds `event_timezone`; coordinator assignment and notifications are separate follow-up scope under SCRUM-12 / SCRUM-68. SCRUM-23 still needs its own equipment migration.
 
 ## 6. When a story is done
 
