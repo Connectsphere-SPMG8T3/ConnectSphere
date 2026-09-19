@@ -106,21 +106,21 @@ onMounted(async () => {
       <BauhausCard background="white" accent="none">
         <div class="grid gap-6 sm:grid-cols-2">
           <div class="sm:col-span-2">
-            <BauhausInput v-model="form.name" label="Event title" :error="fieldErrors.name" placeholder="Regional planning workshop" />
+            <BauhausInput v-model="form.name" label="Event title" required :error="fieldErrors.name" placeholder="Regional planning workshop" />
           </div>
           <div class="sm:col-span-2">
-            <BauhausInput v-model="form.purpose" label="Purpose" :error="fieldErrors.purpose" placeholder="What is this event for?" />
+            <BauhausInput v-model="form.purpose" label="Purpose" required :error="fieldErrors.purpose" placeholder="What is this event for?" />
           </div>
           <div class="sm:col-span-2 flex flex-col gap-2">
             <label for="event-description" class="text-xs font-bold uppercase tracking-widest">Description</label>
             <textarea id="event-description" v-model="form.description" rows="4" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" placeholder="Add useful context for the planning team."></textarea>
           </div>
-          <BauhausInput v-model="form.date" label="Event date" type="date" :min="earliestEventDate" :error="fieldErrors.date" />
-          <BauhausInput v-model="form.expectedAttendance" label="Expected attendance" type="number" :error="fieldErrors.expectedAttendance" />
-          <BauhausInput v-model="form.startTime" label="Start time" type="time" :error="fieldErrors.startTime" />
-          <BauhausInput v-model="form.endTime" label="End time" type="time" :error="fieldErrors.endTime" />
-          <div :class="fieldErrors.layoutPreference ? 'rounded-none border-2 border-bauhaus-red p-2' : ''">
-            <BauhausSelect v-model="form.layoutPreference" label="Preferred layout" :options="LAYOUTS" placeholder="Choose a layout" />
+          <BauhausInput v-model="form.date" label="Proposed event date" type="date" required :min="earliestEventDate" :error="fieldErrors.date" />
+          <BauhausInput v-model="form.expectedAttendance" label="Expected attendance" type="number" required :error="fieldErrors.expectedAttendance" />
+          <BauhausInput v-model="form.startTime" label="Proposed start time" type="time" required :error="fieldErrors.startTime" />
+          <BauhausInput v-model="form.endTime" label="Proposed end time" type="time" required :error="fieldErrors.endTime" />
+          <div>
+            <BauhausSelect v-model="form.layoutPreference" label="Preferred layout" required :options="LAYOUTS" placeholder="Choose a layout" />
             <p v-if="fieldErrors.layoutPreference" class="mt-2 text-xs font-bold uppercase tracking-wide text-bauhaus-red">{{ fieldErrors.layoutPreference }}</p>
           </div>
           <div class="sm:col-span-2">
@@ -143,9 +143,9 @@ onMounted(async () => {
             Enable attendee registration
           </label>
           <div v-if="form.registrationEnabled" class="mt-5 flex flex-col gap-5">
-            <BauhausInput v-model="form.registrationCapacity" label="Registration capacity" type="number" :error="fieldErrors.registrationCapacity" />
-            <BauhausInput v-model="form.registrationOpensAt" label="Registration opens" type="time" />
-            <BauhausInput v-model="form.registrationClosesAt" label="Registration closes" type="time" />
+            <BauhausInput v-model="form.registrationCapacity" label="Registration capacity" required type="number" :error="fieldErrors.registrationCapacity" />
+            <BauhausInput v-model="form.registrationOpensAt" label="Registration opens" required type="time" />
+            <BauhausInput v-model="form.registrationClosesAt" label="Registration closes" required type="time" />
           </div>
         </BauhausCard>
 

@@ -8,6 +8,10 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  required: {
+    type: Boolean,
+    default: false,
+  },
   options: {
     // [{ value, label }]
     type: Array,
@@ -27,11 +31,12 @@ const selectId = `bauhaus-select-${Math.random().toString(36).slice(2, 10)}`;
 <template>
   <div class="flex flex-col gap-2">
     <label :for="selectId" class="text-xs font-bold uppercase tracking-widest text-ink">
-      {{ label }}
+      {{ label }}<span v-if="required" aria-hidden="true"> *</span>
     </label>
     <select
       :id="selectId"
       :value="modelValue"
+      :aria-required="required"
       class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium text-ink shadow-hard outline-none transition-colors focus:bg-bauhaus-yellow/20 sm:border-4"
       @change="$emit('update:modelValue', $event.target.value)"
     >

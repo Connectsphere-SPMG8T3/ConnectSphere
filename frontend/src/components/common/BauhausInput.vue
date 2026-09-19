@@ -10,6 +10,10 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  required: {
+    type: Boolean,
+    default: false,
+  },
   type: {
     type: String,
     default: "text",
@@ -41,7 +45,7 @@ const hasError = computed(() => Boolean(props.error));
 <template>
   <div class="flex flex-col gap-2">
     <label :for="inputId" class="text-xs font-bold uppercase tracking-widest text-ink">
-      {{ label }}
+      {{ label }}<span v-if="required" aria-hidden="true"> *</span>
     </label>
     <input
       :id="inputId"
@@ -49,6 +53,7 @@ const hasError = computed(() => Boolean(props.error));
       :value="modelValue"
       :placeholder="placeholder"
       :min="min"
+      :aria-required="required"
       :autocomplete="autocomplete"
       :aria-invalid="hasError"
       :aria-describedby="hasError ? `${inputId}-error` : undefined"

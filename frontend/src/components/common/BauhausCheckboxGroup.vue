@@ -8,6 +8,10 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  required: {
+    type: Boolean,
+    default: false,
+  },
   options: {
     // [{ value, label }]
     type: Array,
@@ -28,7 +32,7 @@ function toggle(value, checked) {
 
 <template>
   <fieldset class="flex flex-col gap-2">
-    <legend class="mb-2 text-xs font-bold uppercase tracking-widest text-ink">{{ label }}</legend>
+    <legend class="mb-2 text-xs font-bold uppercase tracking-widest text-ink">{{ label }}<span v-if="required" aria-hidden="true"> *</span></legend>
     <div class="flex flex-wrap gap-2">
       <label
         v-for="option in props.options"
