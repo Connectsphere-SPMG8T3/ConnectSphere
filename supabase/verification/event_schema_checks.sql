@@ -42,6 +42,46 @@ begin
     exception when check_violation then null;
     end;
 
+    insert into public.events (
+        organiser_id,
+        name,
+        starts_at,
+        ends_at,
+        registration_enabled,
+        registration_opens_at,
+        registration_closes_at
+    ) values (
+        v_organiser,
+        'Registration closes during event',
+        '2026-10-10 14:00+08',
+        '2026-10-10 17:00+08',
+        true,
+        '2026-10-09 09:00+08',
+        '2026-10-10 16:00+08'
+    );
+
+    begin
+        insert into public.events (
+            organiser_id,
+            name,
+            starts_at,
+            ends_at,
+            registration_enabled,
+            registration_opens_at,
+            registration_closes_at
+        ) values (
+            v_organiser,
+            'Registration closes after event',
+            '2026-10-10 14:00+08',
+            '2026-10-10 17:00+08',
+            true,
+            '2026-10-09 09:00+08',
+            '2026-10-10 17:00:01+08'
+        );
+        raise exception 'EVENTS FAIL: registration closing after event end was accepted';
+    exception when check_violation then null;
+    end;
+
     if not exists (
         select 1
         from pg_constraint
