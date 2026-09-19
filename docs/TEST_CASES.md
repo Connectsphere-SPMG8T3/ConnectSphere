@@ -210,6 +210,7 @@ These cases cover the organiser's draft and submission workflow. They should be 
 | TC-EVENT-012 | Start time must not be in the past | Draft contains all other required fields | Submit with a past start time | `starts_at: 2020-10-10T14:00:00+08:00` | Submission is rejected with a clear date/time error and the event remains **Draft**. | 🔴 |
 | TC-EVENT-013 | End time must be after start time | Draft contains all other required fields | Submit with equal and earlier end times | `14:00`-`14:00`; `17:00`-`14:00` | Submission is rejected with **End time must be after start time.** and the event remains **Draft**. | 🔴 |
 | TC-EVENT-014 | An event one day ahead is accepted | Draft contains all required fields; event starts tomorrow | Submit the request | Tomorrow, `14:00`-`17:00`, timezone `+08:00` | The request is accepted. No additional lead-time error is shown. | 🔴 |
+| TC-EVENT-015 | Registration settings are validated when enabled | Draft contains all other required fields | Enable registration and submit incomplete or invalid settings | Capacity `0`; opens after closes; closes after event start | Submission is rejected with errors naming the invalid registration settings. | 🟠 |
 | TC-EVENT-016 | Controlled venue requirements are validated | Draft contains all other required fields | Submit an unknown layout or facility | `layout: cinema`; `facilities: [jacuzzi]` | Submission is rejected with a controlled-list validation error; the request is not created or submitted. | 🟠 |
 
 ### 9.3 Successful submission
@@ -218,7 +219,7 @@ These cases cover the organiser's draft and submission workflow. They should be 
 |----|-------|----------------|------------|-------------|------------------|----------|
 | TC-EVENT-020 | Valid event request is submitted | Logged in as Event Organiser; draft contains all required fields | Click **Submit request** and inspect the response/list | Name, purpose, future Singapore date/time, attendance, layout, and optional requirements | The request is stored, has a unique reference, appears in the organiser's event list with **Under Review** status, and the confirmation identifies the submitted event. | 🔴 |
 | TC-EVENT-021 | Duplicate submission is refused | A valid event is already submitted | Click **Submit request** again or repeat the API request | Same event ID | The second attempt returns `409 Conflict`; no duplicate event is created and the original status is unchanged. | 🔴 |
-| TC-EVENT-022 | Submitted details can be retrieved by authorised users | A valid event request exists | Reload the organiser's event list and open the event detail page | Submitted event ID | The stored name, purpose, date/time, attendance, venue requirements, accessibility needs, and equipment needs are returned and displayed. Registration settings are deferred to the future attendee-registration story. | 🔴 |
+| TC-EVENT-022 | Submitted details can be retrieved by authorised users | A valid event request exists | Reload the organiser's event list and open the event detail page | Submitted event ID | The stored name, purpose, date/time, attendance, venue requirements, accessibility needs, equipment needs, and registration settings are returned and displayed. | 🔴 |
 
 ### 9.4 Data integrity and security
 
@@ -276,7 +277,7 @@ These cases cover the organiser's draft and submission workflow. They should be 
 | Draft requires only an event name and remains private to its owner (DR-R1, DR-R2) | TC-EVENT-001, TC-EVENT-003, TC-EVENT-004, TC-EVENT-030 |
 | Drafts can be edited and submitted events cannot be discarded (DR-R3, ER-R3) | TC-EVENT-003, TC-EVENT-006, TC-EVENT-007, TC-EVENT-009, TC-EVENT-031, TC-EVENT-032 |
 | Draft reload and update failures are handled without a broken form or false success | TC-EVENT-007, TC-EVENT-008, TC-EVENT-009 |
-| Required event fields and controlled venue requirements are validated | TC-EVENT-010, TC-EVENT-011, TC-EVENT-016 |
+| Required event fields and controlled venue requirements are validated | TC-EVENT-010, TC-EVENT-011, TC-EVENT-015, TC-EVENT-016 |
 | Invalid date/time values are rejected; no lead-time rule applies | TC-EVENT-012, TC-EVENT-013, TC-EVENT-014 |
 | Valid submission creates an under-review request visible in the organiser's list | TC-EVENT-020, TC-EVENT-022 |
 | Duplicate submission returns `409` (ER-R4) | TC-EVENT-021 |
