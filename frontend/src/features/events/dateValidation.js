@@ -14,9 +14,25 @@ export function getSingaporeDateString(date = new Date()) {
 }
 
 export function getEarliestEventDate() {
-  return formatSingaporeDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  const [year, month, day] = getSingaporeDateString().split("-").map(Number);
+  return formatSingaporeDate(new Date(Date.UTC(year, month - 1, day + 1)));
 }
 
 export function isEventDateAfterToday(eventDate, today = getSingaporeDateString()) {
   return Boolean(eventDate) && eventDate > today;
+}
+
+export function getRegistrationOpeningError(opensAt, today = getSingaporeDateString()) {
+  if (opensAt && opensAt.slice(0, 10) <= today) return "Registration opening date must be after today.";
+  return "";
+}
+
+export function getRegistrationClosingError({ opensAt, closesAt, eventDate, eventEndTime }, today = getSingaporeDateString()) {
+  if (!opensAt || !closesAt) return "";
+  if (closesAt.slice(0, 10) <= today) return "Registration closing date must be after today.";
+  if (closesAt <= opensAt) return "Registration closing time must be after opening time.";
+  if (eventDate && eventEndTime && `${eventDate}T${eventEndTime}` < closesAt) {
+    return "Registration closing time cannot be after the event end time.";
+  }
+  return "";
 }

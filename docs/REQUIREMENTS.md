@@ -610,7 +610,7 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 | accessibility_needs | – (QA-53) | ≤ 1000 characters |
 | preliminary_equipment_needs | – (QA-134) | Free text, refined later by coordinator and tech support |
 | registration_enabled | – (QA-53) | Boolean, default false |
-| registration_capacity, registration_opens_at / closes_at | ✔ if registration is enabled (QA-89) | 1 ≤ capacity; opens < closes ≤ `starts_at` |
+| registration_capacity, registration_opens_at / closes_at | ✔ if registration is enabled (QA-89) | 1 ≤ capacity; closing date is after today's Singapore date; opens < closes ≤ `ends_at` |
 
 **Rules**
 - **ER-R1:** Submit validates everything and returns **all** field errors at once.

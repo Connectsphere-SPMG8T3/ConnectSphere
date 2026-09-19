@@ -304,6 +304,67 @@ class TestEventSubmission:
         assert response.status_code == 200
         assert response.json()["status"] == "under_review"
 
+    def test_registration_closing_datetime_must_follow_opening_datetime(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+
+        response = client.post(
+            f"/api/v1/events/{EVENT_ID}/submit",
+            json={
+                **COMPLETE_REQUEST,
+                "registration_enabled": True,
+                "registration_capacity": 50,
+                "registration_opens_at": "2026-09-20T09:00:00+08:00",
+                "registration_closes_at": "2026-09-20T08:00:00+08:00",
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+        assert "Registration closing time must be after opening time." in str(response.json())
+
+    def test_registration_closing_date_must_be_after_today(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+        today = datetime.now(SGT).date()
+
+        response = client.post(
+            f"/api/v1/events/{EVENT_ID}/submit",
+            json={
+                **COMPLETE_REQUEST,
+                "registration_enabled": True,
+                "registration_capacity": 50,
+                "registration_opens_at": f"{today + timedelta(days=1)}T09:00:00+08:00",
+                "registration_closes_at": f"{today}T18:00:00+08:00",
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+        assert "Registration closing date must be after today." in str(response.json())
+
+    def test_registration_closing_datetime_cannot_be_after_event_end(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+
+        response = client.post(
+            f"/api/v1/events/{EVENT_ID}/submit",
+            json={
+                **COMPLETE_REQUEST,
+                "registration_enabled": True,
+                "registration_capacity": 50,
+                "registration_opens_at": "2026-10-09T09:00:00+08:00",
+                "registration_closes_at": "2026-10-10T18:00:01+08:00",
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+        assert "Registration closing time cannot be after the event end time." in str(response.json())
+
     def test_submitting_an_already_submitted_event_returns_conflict(
         self, client, auth_headers, authenticate_as
     ):

@@ -10,7 +10,7 @@ import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import { showToast } from "@/composables/useToast";
-import { getEarliestEventDate, getSingaporeDateString, isEventDateAfterToday } from "@/features/events/dateValidation";
+import { getEarliestEventDate, getRegistrationClosingError, getRegistrationOpeningError, getSingaporeDateString, isEventDateAfterToday } from "@/features/events/dateValidation";
 import { FACILITIES, LAYOUTS, emptyEvent, useEventsStore } from "@/stores/events";
 
 const router = useRouter();
@@ -21,6 +21,7 @@ const fieldErrors = ref({});
 const intent = ref("draft");
 const isNew = computed(() => !form.id);
 const earliestEventDate = getEarliestEventDate();
+const earliestRegistrationDateTime = `${earliestEventDate}T00:00`;
 const isLeaveModalOpen = ref(false);
 const pendingRoute = ref(null);
 const allowNavigation = ref(false);
@@ -81,6 +82,22 @@ function validateSubmission() {
     if (form.registrationEnabled && !form.registrationCapacity) {
       errors.registrationCapacity = "Enter a registration capacity.";
     }
+    if (form.registrationEnabled && !form.registrationOpensAt) {
+      errors.registrationOpensAt = "Enter when registration should open.";
+    }
+    if (form.registrationEnabled && !form.registrationClosesAt) {
+      errors.registrationClosesAt = "Enter when registration should close.";
+    }
+    if (form.registrationEnabled && getRegistrationOpeningError(form.registrationOpensAt)) {
+      errors.registrationOpensAt = getRegistrationOpeningError(form.registrationOpensAt);
+    }
+    const registrationClosingError = getRegistrationClosingError({
+      opensAt: form.registrationOpensAt,
+      closesAt: form.registrationClosesAt,
+      eventDate: form.date,
+      eventEndTime: form.endTime,
+    });
+    if (form.registrationEnabled && registrationClosingError) errors.registrationClosesAt = registrationClosingError;
   }
   fieldErrors.value = errors;
   return Object.keys(errors).length === 0;
@@ -198,8 +215,8 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
           </label>
           <div v-if="form.registrationEnabled" class="mt-5 flex flex-col gap-5">
             <BauhausInput v-model="form.registrationCapacity" label="Registration capacity" required type="number" :error="fieldErrors.registrationCapacity" />
-            <BauhausInput v-model="form.registrationOpensAt" label="Registration opens" required type="time" />
-            <BauhausInput v-model="form.registrationClosesAt" label="Registration closes" required type="time" />
+            <BauhausInput v-model="form.registrationOpensAt" label="Registration opens" required type="datetime-local" :min="earliestRegistrationDateTime" :error="fieldErrors.registrationOpensAt" />
+            <BauhausInput v-model="form.registrationClosesAt" label="Registration closes" required type="datetime-local" :min="earliestRegistrationDateTime" :error="fieldErrors.registrationClosesAt" />
           </div>
         </BauhausCard>
 

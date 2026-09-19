@@ -34,6 +34,8 @@ describe("event store", () => {
       expectedAttendance: "150",
       layoutPreference: "theatre",
       facilitiesRequired: ["projector"],
+      registrationOpensAt: "2026-09-20T09:00",
+      registrationClosesAt: "2026-10-09T18:00",
     };
 
     expect(eventToPayload(event)).toEqual({
@@ -45,6 +47,8 @@ describe("event store", () => {
       layout_preference: "theatre",
       facilities_required: ["projector"],
       registration_enabled: false,
+      registration_opens_at: "2026-09-20T09:00:00+08:00",
+      registration_closes_at: "2026-10-09T18:00:00+08:00",
     });
   });
 

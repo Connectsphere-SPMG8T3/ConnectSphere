@@ -42,8 +42,18 @@ export function eventToPayload(event) {
   if (event.date && event.startTime) payload.starts_at = toSingaporeIso(event.date, event.startTime);
   if (event.date && event.endTime) payload.ends_at = toSingaporeIso(event.date, event.endTime);
   if (event.registrationCapacity !== "") payload.registration_capacity = Number(event.registrationCapacity);
-  if (event.registrationOpensAt) payload.registration_opens_at = toSingaporeIso(event.date, event.registrationOpensAt);
-  if (event.registrationClosesAt) payload.registration_closes_at = toSingaporeIso(event.date, event.registrationClosesAt);
+  if (event.registrationOpensAt) {
+    const [registrationOpensDate, registrationOpensTime] = event.registrationOpensAt.split("T");
+    if (registrationOpensDate && registrationOpensTime) {
+      payload.registration_opens_at = toSingaporeIso(registrationOpensDate, registrationOpensTime);
+    }
+  }
+  if (event.registrationClosesAt) {
+    const [registrationClosesDate, registrationClosesTime] = event.registrationClosesAt.split("T");
+    if (registrationClosesDate && registrationClosesTime) {
+      payload.registration_closes_at = toSingaporeIso(registrationClosesDate, registrationClosesTime);
+    }
+  }
   return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
 }
 
@@ -65,8 +75,8 @@ function fromResponse(event) {
     preliminaryEquipmentNeeds: event.preliminary_equipment_needs ?? defaults.preliminaryEquipmentNeeds,
     registrationEnabled: event.registration_enabled ?? defaults.registrationEnabled,
     registrationCapacity: event.registration_capacity ?? "",
-    registrationOpensAt: event.registration_opens_at?.slice(11, 16) ?? "",
-    registrationClosesAt: event.registration_closes_at?.slice(11, 16) ?? "",
+    registrationOpensAt: event.registration_opens_at?.slice(0, 16) ?? "",
+    registrationClosesAt: event.registration_closes_at?.slice(0, 16) ?? "",
   };
 }
 
