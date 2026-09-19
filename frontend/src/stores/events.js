@@ -3,13 +3,15 @@ import { defineStore } from "pinia";
 import { eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
-import { FACILITIES, LAYOUTS, toSingaporeIso } from "@/stores/venues";
+import { DEFAULT_EVENT_TIMEZONE, fromZonedDateTime, toZonedIso } from "@/features/events/timezones";
+import { FACILITIES, LAYOUTS } from "@/stores/venues";
 
 export { FACILITIES, LAYOUTS };
 
 export function emptyEvent() {
   return {
     name: "",
+    eventTimezone: DEFAULT_EVENT_TIMEZONE,
     purpose: "",
     description: "",
     date: "",
@@ -30,6 +32,7 @@ export function emptyEvent() {
 export function eventToPayload(event) {
   const payload = {
     name: (event.name ?? "").trim(),
+    event_timezone: event.eventTimezone || DEFAULT_EVENT_TIMEZONE,
     purpose: (event.purpose ?? "").trim() || undefined,
     description: (event.description ?? "").trim() || undefined,
     expected_attendance: event.expectedAttendance === "" ? undefined : Number(event.expectedAttendance),
@@ -39,49 +42,36 @@ export function eventToPayload(event) {
     preliminary_equipment_needs: (event.preliminaryEquipmentNeeds ?? "").trim() || undefined,
     registration_enabled: event.registrationEnabled,
   };
-  if (event.date && event.startTime) payload.starts_at = toSingaporeIso(event.date, event.startTime);
-  if (event.date && event.endTime) payload.ends_at = toSingaporeIso(event.date, event.endTime);
+  if (event.date && event.startTime) payload.starts_at = toZonedIso(event.date, event.startTime, payload.event_timezone);
+  if (event.date && event.endTime) payload.ends_at = toZonedIso(event.date, event.endTime, payload.event_timezone);
   if (event.registrationCapacity !== "") payload.registration_capacity = Number(event.registrationCapacity);
   if (event.registrationOpensAt) {
     const [registrationOpensDate, registrationOpensTime] = event.registrationOpensAt.split("T");
     if (registrationOpensDate && registrationOpensTime) {
-      payload.registration_opens_at = toSingaporeIso(registrationOpensDate, registrationOpensTime);
+      payload.registration_opens_at = toZonedIso(registrationOpensDate, registrationOpensTime, payload.event_timezone);
     }
   }
   if (event.registrationClosesAt) {
     const [registrationClosesDate, registrationClosesTime] = event.registrationClosesAt.split("T");
     if (registrationClosesDate && registrationClosesTime) {
-      payload.registration_closes_at = toSingaporeIso(registrationClosesDate, registrationClosesTime);
+      payload.registration_closes_at = toZonedIso(registrationClosesDate, registrationClosesTime, payload.event_timezone);
     }
   }
   return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
 }
 
-function fromSingaporeDateTime(value) {
-  if (!value) return { date: "", time: "" };
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Singapore",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(value));
-  const values = Object.fromEntries(parts.map(({ type, value: partValue }) => [type, partValue]));
-  return { date: `${values.year}-${values.month}-${values.day}`, time: `${values.hour}:${values.minute}` };
-}
-
 function fromResponse(event) {
   const defaults = emptyEvent();
-  const startsAt = fromSingaporeDateTime(event.starts_at);
-  const endsAt = fromSingaporeDateTime(event.ends_at);
-  const registrationOpensAt = fromSingaporeDateTime(event.registration_opens_at);
-  const registrationClosesAt = fromSingaporeDateTime(event.registration_closes_at);
+  const eventTimezone = event.event_timezone || DEFAULT_EVENT_TIMEZONE;
+  const startsAt = fromZonedDateTime(event.starts_at, eventTimezone);
+  const endsAt = fromZonedDateTime(event.ends_at, eventTimezone);
+  const registrationOpensAt = fromZonedDateTime(event.registration_opens_at, eventTimezone);
+  const registrationClosesAt = fromZonedDateTime(event.registration_closes_at, eventTimezone);
   return {
     ...defaults,
     ...event,
     name: event.name ?? defaults.name,
+    eventTimezone,
     purpose: event.purpose ?? defaults.purpose,
     description: event.description ?? defaults.description,
     coordinatorId: event.coordinator_id ?? null,

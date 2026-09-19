@@ -1,7 +1,8 @@
 from datetime import datetime
 from enum import Enum
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.modules.venues.schemas import Facility, VenueLayout
 
@@ -27,6 +28,7 @@ class TechnicalReadiness(str, Enum):
 
 class EventFields(BaseModel):
     name: str = Field(min_length=3, max_length=150)
+    event_timezone: str = "Asia/Singapore"
     purpose: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=5000)
     starts_at: datetime | None = None
@@ -41,6 +43,15 @@ class EventFields(BaseModel):
     registration_opens_at: datetime | None = None
     registration_closes_at: datetime | None = None
 
+    @field_validator("event_timezone")
+    @classmethod
+    def validate_event_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("event_timezone must be a valid IANA timezone.")
+        return value
+
 
 class EventCreateRequest(EventFields):
     pass
@@ -48,6 +59,7 @@ class EventCreateRequest(EventFields):
 
 class EventUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=3, max_length=150)
+    event_timezone: str | None = None
     purpose: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=5000)
     starts_at: datetime | None = None
@@ -61,6 +73,17 @@ class EventUpdateRequest(BaseModel):
     registration_capacity: int | None = Field(default=None, ge=1)
     registration_opens_at: datetime | None = None
     registration_closes_at: datetime | None = None
+
+    @field_validator("event_timezone")
+    @classmethod
+    def validate_event_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("event_timezone must be a valid IANA timezone.")
+        return value
 
 
 class EventResponse(EventFields):

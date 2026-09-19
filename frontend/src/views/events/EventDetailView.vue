@@ -11,17 +11,17 @@ const router = useRouter();
 const eventsStore = useEventsStore();
 const event = computed(() => eventsStore.events.find((storedEvent) => storedEvent.id === route.params.id));
 
-function displayDate(value) {
+function displayDate(value, timeZone) {
   if (!value) return "Not provided";
   return new Intl.DateTimeFormat("en-SG", {
     dateStyle: "full",
-    timeZone: "Asia/Singapore",
-  }).format(new Date(`${value}T00:00:00+08:00`));
+    timeZone,
+  }).format(new Date(`${value}T12:00:00Z`));
 }
 
-function displayDateTime(date, time) {
+function displayDateTime(date, time, timeZone) {
   if (!date || !time) return "Not provided";
-  return `${displayDate(date)} at ${time}`;
+  return `${displayDate(date, timeZone)} at ${time}`;
 }
 
 function displayValue(value) {
@@ -71,8 +71,8 @@ onMounted(async () => {
           <dl class="mt-6 grid gap-5 sm:grid-cols-2">
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Purpose</dt><dd class="mt-1 font-medium">{{ displayValue(event.purpose) }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Expected attendance</dt><dd class="mt-1 font-medium">{{ displayValue(event.expectedAttendance) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Proposed date</dt><dd class="mt-1 font-medium">{{ displayDate(event.date) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Time</dt><dd class="mt-1 font-medium">{{ displayValue(event.startTime) }}–{{ displayValue(event.endTime) }}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Proposed date</dt><dd class="mt-1 font-medium">{{ displayDate(event.date, event.eventTimezone) }}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Time</dt><dd class="mt-1 font-medium">{{ displayValue(event.startTime) }}–{{ displayValue(event.endTime) }} ({{ event.eventTimezone }})</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Preferred layout</dt><dd class="mt-1 font-medium">{{ displayValue(event.layoutPreference) }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Facilities</dt><dd class="mt-1 font-medium">{{ event.facilitiesRequired.length ? event.facilitiesRequired.join(", ") : "None specified" }}</dd></div>
             <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Description</dt><dd class="mt-1 whitespace-pre-wrap font-medium">{{ displayValue(event.description) }}</dd></div>
@@ -85,10 +85,11 @@ onMounted(async () => {
           <BauhausCard background="blue" accent="circle" accent-color="bauhaus-yellow">
             <h2 class="text-2xl font-black uppercase tracking-tight">Registration</h2>
             <p class="mt-4 text-sm font-bold uppercase tracking-wide">{{ event.registrationEnabled ? "Enabled" : "Not enabled" }}</p>
+            <p class="mt-2 text-xs font-bold uppercase tracking-widest text-canvas/70">{{ event.eventTimezone }}</p>
             <dl v-if="event.registrationEnabled" class="mt-5 grid gap-4 text-sm">
               <div><dt class="font-bold uppercase tracking-widest text-canvas/70">Capacity</dt><dd class="mt-1 font-medium">{{ displayValue(event.registrationCapacity) }}</dd></div>
-              <div><dt class="font-bold uppercase tracking-widest text-canvas/70">Opens</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.registrationOpensAt?.slice(0, 10), event.registrationOpensAt?.slice(11, 16)) }}</dd></div>
-              <div><dt class="font-bold uppercase tracking-widest text-canvas/70">Closes</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.registrationClosesAt?.slice(0, 10), event.registrationClosesAt?.slice(11, 16)) }}</dd></div>
+              <div><dt class="font-bold uppercase tracking-widest text-canvas/70">Opens</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.registrationOpensAt?.slice(0, 10), event.registrationOpensAt?.slice(11, 16), event.eventTimezone) }}</dd></div>
+              <div><dt class="font-bold uppercase tracking-widest text-canvas/70">Closes</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.registrationClosesAt?.slice(0, 10), event.registrationClosesAt?.slice(11, 16), event.eventTimezone) }}</dd></div>
             </dl>
           </BauhausCard>
           <BauhausCard background="white" accent="none">

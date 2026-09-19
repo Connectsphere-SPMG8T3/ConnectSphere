@@ -1,11 +1,12 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 
 from app.modules.events import repository
 from app.modules.events.schemas import EventCreateRequest, EventResponse, EventUpdateRequest
 
-SINGAPORE_TZ = timezone(timedelta(hours=8))
+DEFAULT_EVENT_TIMEZONE = "Asia/Singapore"
 
 
 class EventNotFoundError(HTTPException):
@@ -38,6 +39,7 @@ def _validate_submission(row: dict) -> None:
 
     starts_at = row.get("starts_at")
     ends_at = row.get("ends_at")
+    event_timezone = ZoneInfo(row.get("event_timezone") or DEFAULT_EVENT_TIMEZONE)
     event_ends_at = None
     if starts_at and ends_at:
         starts_at = _parse_datetime(starts_at)
@@ -45,7 +47,7 @@ def _validate_submission(row: dict) -> None:
         event_ends_at = ends_at
         if ends_at <= starts_at:
             errors.append({"loc": ["body", "ends_at"], "msg": "End time must be after start time.", "type": "value_error"})
-        if starts_at.astimezone(SINGAPORE_TZ).date() <= datetime.now(SINGAPORE_TZ).date():
+        if starts_at.astimezone(event_timezone).date() <= datetime.now(event_timezone).date():
             errors.append({"loc": ["body", "starts_at"], "msg": "Event date must be after today.", "type": "value_error"})
 
     if row.get("registration_enabled"):
@@ -60,11 +62,11 @@ def _validate_submission(row: dict) -> None:
         if registration_opens_at and registration_closes_at:
             registration_opens_at = _parse_datetime(registration_opens_at)
             registration_closes_at = _parse_datetime(registration_closes_at)
-            if registration_opens_at.astimezone(SINGAPORE_TZ).date() <= datetime.now(SINGAPORE_TZ).date():
+            if registration_opens_at.astimezone(event_timezone).date() <= datetime.now(event_timezone).date():
                 errors.append({"loc": ["body", "registration_opens_at"], "msg": "Registration opening date must be after today.", "type": "value_error"})
             if registration_closes_at <= registration_opens_at:
                 errors.append({"loc": ["body", "registration_closes_at"], "msg": "Registration closing time must be after opening time.", "type": "value_error"})
-            if registration_closes_at.astimezone(SINGAPORE_TZ).date() <= datetime.now(SINGAPORE_TZ).date():
+            if registration_closes_at.astimezone(event_timezone).date() <= datetime.now(event_timezone).date():
                 errors.append({"loc": ["body", "registration_closes_at"], "msg": "Registration closing date must be after today.", "type": "value_error"})
             if event_ends_at and registration_closes_at > event_ends_at:
                 errors.append({"loc": ["body", "registration_closes_at"], "msg": "Registration closing time cannot be after the event end time.", "type": "value_error"})

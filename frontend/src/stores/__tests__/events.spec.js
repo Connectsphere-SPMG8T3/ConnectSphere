@@ -23,10 +23,11 @@ function signedInStore() {
 describe("event store", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("builds a Singapore-time request payload and omits empty optional values", () => {
+  it("builds a request payload in the event timezone and omits empty optional values", () => {
     const event = {
       ...emptyEvent(),
       name: "Planning workshop",
+      eventTimezone: "Asia/Bangkok",
       purpose: "Coordinate teams",
       date: "2026-10-10",
       startTime: "14:00",
@@ -40,15 +41,16 @@ describe("event store", () => {
 
     expect(eventToPayload(event)).toEqual({
       name: "Planning workshop",
+      event_timezone: "Asia/Bangkok",
       purpose: "Coordinate teams",
-      starts_at: "2026-10-10T14:00:00+08:00",
-      ends_at: "2026-10-10T17:00:00+08:00",
+      starts_at: "2026-10-10T07:00:00.000Z",
+      ends_at: "2026-10-10T10:00:00.000Z",
       expected_attendance: 150,
       layout_preference: "theatre",
       facilities_required: ["projector"],
       registration_enabled: false,
-      registration_opens_at: "2026-09-20T09:00:00+08:00",
-      registration_closes_at: "2026-10-09T18:00:00+08:00",
+      registration_opens_at: "2026-09-20T02:00:00.000Z",
+      registration_closes_at: "2026-10-09T11:00:00.000Z",
     });
   });
 
@@ -59,7 +61,7 @@ describe("event store", () => {
 
     const result = await store.saveDraft(event);
 
-    expect(eventsApi.create).toHaveBeenCalledWith({ name: event.name, facilities_required: [], registration_enabled: false }, "access");
+    expect(eventsApi.create).toHaveBeenCalledWith({ name: event.name, event_timezone: "Asia/Singapore", facilities_required: [], registration_enabled: false }, "access");
     expect(result.id).toBe("e1");
     expect(store.events).toEqual([result]);
   });
@@ -70,8 +72,9 @@ describe("event store", () => {
       id: "e1",
       status: "under_review",
       name: "Planning workshop",
-      starts_at: "2026-10-10T06:00:00Z",
-      ends_at: "2026-10-10T09:00:00Z",
+      event_timezone: "Asia/Bangkok",
+      starts_at: "2026-10-10T07:00:00Z",
+      ends_at: "2026-10-10T10:00:00Z",
       facilities_required: [],
       registration_enabled: false,
     });
@@ -79,7 +82,7 @@ describe("event store", () => {
     const result = await store.get("e1");
 
     expect(eventsApi.get).toHaveBeenCalledWith("e1", "access");
-    expect(result).toMatchObject({ id: "e1", status: "under_review", date: "2026-10-10", startTime: "14:00", endTime: "17:00" });
+    expect(result).toMatchObject({ id: "e1", status: "under_review", eventTimezone: "Asia/Bangkok", date: "2026-10-10", startTime: "14:00", endTime: "17:00" });
   });
 
   it("creates and submits a new event request", async () => {
@@ -91,12 +94,12 @@ describe("event store", () => {
     const result = await store.createAndSubmit(event);
 
     expect(eventsApi.create).toHaveBeenCalledWith(
-      { name: event.name, facilities_required: [], registration_enabled: false },
+      { name: event.name, event_timezone: "Asia/Singapore", facilities_required: [], registration_enabled: false },
       "access",
     );
     expect(eventsApi.submit).toHaveBeenCalledWith(
       "e1",
-      { name: event.name, facilities_required: [], registration_enabled: false },
+      { name: event.name, event_timezone: "Asia/Singapore", facilities_required: [], registration_enabled: false },
       "access",
     );
     expect(result.status).toBe("under_review");

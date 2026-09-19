@@ -12,15 +12,19 @@ declare
     v_event uuid := 'e0000000-0000-4000-8000-000000000901';
 begin
     insert into public.events (
-        id, organiser_id, name, status
+        id, organiser_id, name, status, event_timezone
     ) values (
-        v_event, v_organiser, 'Schema verification draft', 'draft'
+        v_event, v_organiser, 'Schema verification draft', 'draft', 'Asia/Bangkok'
     );
 
     if not exists (
         select 1 from public.events where id = v_event and status = 'draft'
     ) then
         raise exception 'EVENTS FAIL: draft was not inserted';
+    end if;
+
+    if (select event_timezone from public.events where id = v_event) <> 'Asia/Bangkok' then
+        raise exception 'EVENTS FAIL: event timezone was not stored';
     end if;
 
     begin

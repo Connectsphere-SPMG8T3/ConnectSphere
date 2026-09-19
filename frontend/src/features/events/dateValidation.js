@@ -1,21 +1,12 @@
-function formatSingaporeDate(date) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    timeZone: "Asia/Singapore",
-    year: "numeric",
-  }).formatToParts(date);
-  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  return `${values.year}-${values.month}-${values.day}`;
+import { DEFAULT_EVENT_TIMEZONE, getDateString } from "@/features/events/timezones";
+
+export function getSingaporeDateString(date = new Date(), timeZone = DEFAULT_EVENT_TIMEZONE) {
+  return getDateString(date, timeZone);
 }
 
-export function getSingaporeDateString(date = new Date()) {
-  return formatSingaporeDate(date);
-}
-
-export function getEarliestEventDate() {
-  const [year, month, day] = getSingaporeDateString().split("-").map(Number);
-  return formatSingaporeDate(new Date(Date.UTC(year, month - 1, day + 1)));
+export function getEarliestEventDate(timeZone = DEFAULT_EVENT_TIMEZONE) {
+  const [year, month, day] = getSingaporeDateString(new Date(), timeZone).split("-").map(Number);
+  return getDateString(new Date(Date.UTC(year, month - 1, day + 1)), timeZone);
 }
 
 export function isEventDateAfterToday(eventDate, today = getSingaporeDateString()) {

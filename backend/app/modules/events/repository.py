@@ -3,7 +3,7 @@ from datetime import datetime
 from app.db.supabase import get_supabase_admin_client
 
 _EVENT_COLUMNS = (
-    "id, organiser_id, coordinator_id, status, name, purpose, description, starts_at, ends_at, "
+    "id, organiser_id, coordinator_id, status, name, event_timezone, purpose, description, starts_at, ends_at, "
     "expected_attendance, layout_preference, facilities_required, accessibility_needs, "
     "preliminary_equipment_needs, registration_enabled, registration_capacity, "
     "registration_opens_at, registration_closes_at, technical_readiness, submitted_at, "

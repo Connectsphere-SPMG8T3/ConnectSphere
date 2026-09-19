@@ -477,6 +477,20 @@ Two findings from the same review round were investigated and not treated as bug
 - The new `profiles`→`user_roles` FK was verified directly against the live database: reproduced the single-statement revoke rejection, then the correct two-step transaction succeeding, then restored the seeded double-hat test account to its original state.
 - `get_advisors` re-run after the new migration: the new FK's "unindexed foreign key" finding is gone; no new security findings.
 
+### 4.9. Event schedule timezone support — SCRUM-8 follow-up
+
+The event request workflow now treats the event's local timezone as explicit data rather than assuming Singapore for every request. Organisers choose an IANA timezone from the supported Southeast Asia list, the frontend converts local date/time input to timezone-aware UTC ISO instants, and the backend validates the event and registration calendar dates in that selected timezone. PostgreSQL stores the instants in `timestamptz` columns and stores the IANA identifier in `events.event_timezone`, defaulting existing events to `Asia/Singapore`.
+
+The submitted request detail view converts returned UTC instants back into the event timezone and labels the timezone beside the schedule. Venue catalogue records still have no timezone field and remain Singapore-specific; extending venue operating hours and venue display to multiple countries requires a separate venue-catalogue migration.
+
+#### Verification
+
+- TDD regression tests were red before implementation for Bangkok payload conversion, response normalization, and API timezone persistence.
+- `pytest`: 114 passing.
+- `npm test -- --run`: 85 passing across 13 files.
+- `npm run build`: passed.
+- Editor diagnostics and `git diff --check`: passed.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.

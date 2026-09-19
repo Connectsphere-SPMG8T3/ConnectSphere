@@ -41,6 +41,7 @@ def mock_event_repository(monkeypatch, request):
             "organiser_id": organiser_id,
             "coordinator_id": None,
             "status": "under_review" if submitted else status,
+            "event_timezone": "Asia/Singapore",
             "name": "Regional Planning Workshop",
             "purpose": None,
             "description": None,
@@ -147,6 +148,17 @@ class TestEventDrafts:
 
         assert response.status_code == 403
 
+    def test_event_timezone_must_be_a_valid_iana_timezone(self, client, auth_headers, authenticate_as):
+        authenticate_as("event_organiser")
+
+        response = client.post(
+            "/api/v1/events",
+            json={"name": "Planning workshop", "event_timezone": "Not/A_Timezone"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+
     def test_organiser_can_list_only_their_own_events(
         self, client, auth_headers, authenticate_as
     ):
@@ -209,6 +221,28 @@ class TestEventDrafts:
 
 
 class TestEventSubmission:
+    def test_submission_uses_the_event_timezone_for_local_date_validation(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+        tomorrow_in_bangkok = datetime.now(timezone(timedelta(hours=7))) + timedelta(days=1)
+        starts_at = tomorrow_in_bangkok.replace(hour=14, minute=0, second=0, microsecond=0)
+        ends_at = starts_at + timedelta(hours=3)
+
+        response = client.post(
+            f"/api/v1/events/{EVENT_ID}/submit",
+            json={
+                **COMPLETE_REQUEST,
+                "event_timezone": "Asia/Bangkok",
+                "starts_at": starts_at.isoformat(),
+                "ends_at": ends_at.isoformat(),
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        assert response.json()["event_timezone"] == "Asia/Bangkok"
+
     def test_valid_draft_can_be_submitted_without_coordinator_assignment(
         self, client, auth_headers, authenticate_as
     ):

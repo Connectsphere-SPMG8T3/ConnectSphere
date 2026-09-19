@@ -11,6 +11,7 @@ import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import { showToast } from "@/composables/useToast";
 import { getEarliestEventDate, getRegistrationClosingError, getRegistrationOpeningError, getSingaporeDateString, isEventDateAfterToday } from "@/features/events/dateValidation";
+import { EVENT_TIMEZONES } from "@/features/events/timezones";
 import { FACILITIES, LAYOUTS, emptyEvent, useEventsStore } from "@/stores/events";
 
 const router = useRouter();
@@ -20,8 +21,8 @@ const form = reactive(emptyEvent());
 const fieldErrors = ref({});
 const intent = ref("draft");
 const isNew = computed(() => !form.id);
-const earliestEventDate = getEarliestEventDate();
-const earliestRegistrationDateTime = `${earliestEventDate}T00:00`;
+const earliestEventDate = computed(() => getEarliestEventDate(form.eventTimezone));
+const earliestRegistrationDateTime = computed(() => `${earliestEventDate.value}T00:00`);
 const isLeaveModalOpen = ref(false);
 const isSubmitModalOpen = ref(false);
 const pendingRoute = ref(null);
@@ -78,7 +79,7 @@ function validateSubmission() {
   if (intent.value === "submit") {
     if (!form.purpose.trim()) errors.purpose = "Enter the event purpose.";
     if (!form.date) errors.date = "Enter the event date.";
-    else if (!isEventDateAfterToday(form.date, getSingaporeDateString())) {
+    else if (!isEventDateAfterToday(form.date, getSingaporeDateString(new Date(), form.eventTimezone))) {
       errors.date = "Event date must be after today.";
     }
     if (!form.startTime) errors.startTime = "Enter the start time.";
@@ -99,15 +100,15 @@ function validateSubmission() {
     if (form.registrationEnabled && !form.registrationClosesAt) {
       errors.registrationClosesAt = "Enter when registration should close.";
     }
-    if (form.registrationEnabled && getRegistrationOpeningError(form.registrationOpensAt)) {
-      errors.registrationOpensAt = getRegistrationOpeningError(form.registrationOpensAt);
+    if (form.registrationEnabled && getRegistrationOpeningError(form.registrationOpensAt, getSingaporeDateString(new Date(), form.eventTimezone))) {
+      errors.registrationOpensAt = getRegistrationOpeningError(form.registrationOpensAt, getSingaporeDateString(new Date(), form.eventTimezone));
     }
     const registrationClosingError = getRegistrationClosingError({
       opensAt: form.registrationOpensAt,
       closesAt: form.registrationClosesAt,
       eventDate: form.date,
       eventEndTime: form.endTime,
-    });
+    }, getSingaporeDateString(new Date(), form.eventTimezone));
     if (form.registrationEnabled && registrationClosingError) errors.registrationClosesAt = registrationClosingError;
   }
   fieldErrors.value = errors;
@@ -204,12 +205,17 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
             <textarea id="event-description" v-model="form.description" rows="4" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" placeholder="Add useful context for the planning team."></textarea>
           </div>
           <BauhausInput v-model="form.date" label="Proposed event date" type="date" required :min="earliestEventDate" :error="fieldErrors.date" />
-          <BauhausInput v-model="form.expectedAttendance" label="Expected attendance" type="number" required :error="fieldErrors.expectedAttendance" />
-          <BauhausInput v-model="form.startTime" label="Proposed start time" type="time" required :error="fieldErrors.startTime" />
-          <BauhausInput v-model="form.endTime" label="Proposed end time" type="time" required :error="fieldErrors.endTime" />
-          <div>
-            <BauhausSelect v-model="form.layoutPreference" label="Preferred layout" required :options="LAYOUTS" placeholder="Choose a layout" />
-            <p v-if="fieldErrors.layoutPreference" class="mt-2 text-xs font-bold uppercase tracking-wide text-bauhaus-red">{{ fieldErrors.layoutPreference }}</p>
+          <BauhausSelect v-model="form.eventTimezone" label="Event timezone" required :options="EVENT_TIMEZONES" />
+          <div class="sm:col-span-2 grid gap-6 sm:grid-cols-2">
+            <BauhausInput v-model="form.startTime" label="Proposed start time" type="time" required :error="fieldErrors.startTime" />
+            <BauhausInput v-model="form.endTime" label="Proposed end time" type="time" required :error="fieldErrors.endTime" />
+          </div>
+          <div class="sm:col-span-2 grid gap-6 sm:grid-cols-2">
+            <BauhausInput v-model="form.expectedAttendance" label="Expected attendance" type="number" required :error="fieldErrors.expectedAttendance" />
+            <div>
+              <BauhausSelect v-model="form.layoutPreference" label="Preferred layout" required :options="LAYOUTS" placeholder="Choose a layout" />
+              <p v-if="fieldErrors.layoutPreference" class="mt-2 text-xs font-bold uppercase tracking-wide text-bauhaus-red">{{ fieldErrors.layoutPreference }}</p>
+            </div>
           </div>
           <div class="sm:col-span-2">
             <BauhausCheckboxGroup v-model="form.facilitiesRequired" label="Facilities required" :options="FACILITIES" />
