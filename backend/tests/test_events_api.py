@@ -199,7 +199,6 @@ class TestEventDrafts:
         )
 
         assert response.status_code == 409
-
     def test_submitted_event_cannot_be_discarded(self, client, auth_headers, authenticate_as):
         authenticate_as("event_organiser")
 
@@ -292,20 +291,3 @@ class TestEventSubmission:
         response = client.post(f"/api/v1/events/{EVENT_ID}/submit", headers=auth_headers)
 
         assert response.status_code == 409
-
-    def test_registration_settings_are_required_and_validated_when_enabled(
-        self, client, auth_headers, authenticate_as
-    ):
-        authenticate_as("event_organiser")
-
-        response = client.post(
-            f"/api/v1/events/{EVENT_ID}/submit",
-            json={
-                **COMPLETE_REQUEST,
-                "registration_enabled": True,
-                "registration_capacity": 0,
-            },
-            headers=auth_headers,
-        )
-
-        assert response.status_code == 422

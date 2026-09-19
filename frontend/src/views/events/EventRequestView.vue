@@ -34,9 +34,6 @@ function validateSubmission() {
       errors.expectedAttendance = "Enter expected attendance of at least 1.";
     }
     if (!form.layoutPreference) errors.layoutPreference = "Choose a layout.";
-    if (form.registrationEnabled && !form.registrationCapacity) {
-      errors.registrationCapacity = "Enter a registration capacity.";
-    }
   }
   fieldErrors.value = errors;
   return Object.keys(errors).length === 0;
@@ -131,19 +128,6 @@ onMounted(async () => {
       </BauhausCard>
 
       <aside class="flex flex-col gap-6">
-        <BauhausCard background="blue" accent="circle" accent-color="bauhaus-yellow">
-          <h2 class="text-2xl font-black uppercase tracking-tight">Registration</h2>
-          <label class="mt-5 flex items-center gap-3 text-sm font-bold uppercase tracking-wide">
-            <input v-model="form.registrationEnabled" type="checkbox" class="h-5 w-5 accent-bauhaus-yellow" />
-            Enable attendee registration
-          </label>
-          <div v-if="form.registrationEnabled" class="mt-5 flex flex-col gap-5">
-            <BauhausInput v-model="form.registrationCapacity" label="Registration capacity" type="number" :error="fieldErrors.registrationCapacity" />
-            <BauhausInput v-model="form.registrationOpensAt" label="Registration opens" type="time" />
-            <BauhausInput v-model="form.registrationClosesAt" label="Registration closes" type="time" />
-          </div>
-        </BauhausCard>
-
         <BauhausCard background="white" accent="none">
           <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Workflow</p>
           <p class="mt-2 text-sm font-medium">Drafts stay private to you. Submission sends a complete request for coordinator review.</p>

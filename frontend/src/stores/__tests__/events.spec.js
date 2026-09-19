@@ -44,7 +44,6 @@ describe("event store", () => {
       expected_attendance: 150,
       layout_preference: "theatre",
       facilities_required: ["projector"],
-      registration_enabled: false,
     });
   });
 
@@ -55,7 +54,7 @@ describe("event store", () => {
 
     const result = await store.saveDraft(event);
 
-    expect(eventsApi.create).toHaveBeenCalledWith({ name: event.name, facilities_required: [], registration_enabled: false }, "access");
+    expect(eventsApi.create).toHaveBeenCalledWith({ name: event.name, facilities_required: [] }, "access");
     expect(result.id).toBe("e1");
     expect(store.events).toEqual([result]);
   });
