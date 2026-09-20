@@ -98,7 +98,7 @@ end $$;
 
 select set_config(
     'request.jwt.claims',
-    '{"sub":"a0000000-0000-0000-0000-000000000001","role":"authenticated"}',
+    '{"sub":"a0000000-0000-4000-8000-000000000001","role":"authenticated"}',
     true
 );
 set local role authenticated;
