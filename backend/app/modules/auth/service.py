@@ -118,7 +118,9 @@ def set_active_role(current_user: CurrentUser, role: str) -> ProfileResponse:
     # to be `role`, since a concurrent switch for the same session (e.g. two
     # tabs) can race this upsert, and the response should report whichever
     # write actually won, not just what this request asked for.
-    active_role = resolve_active_role(admin_client, current_user.session_id, default_role=role)
+    active_role = resolve_active_role(
+        admin_client, user_id=current_user.id, session_id=current_user.session_id, default_role=role
+    )
     return ProfileResponse(
         id=current_user.id,
         email=current_user.email,

@@ -489,7 +489,9 @@ class TestResolveActiveRole:
 
         admin_client = _make_table_mock(PROFILE_ROW, session_active_role={"role": "venue_staff"})
 
-        result = resolve_active_role(admin_client, TEST_SESSION_ID, default_role="event_coordinator")
+        result = resolve_active_role(
+            admin_client, user_id=PROFILE_ROW["id"], session_id=TEST_SESSION_ID, default_role="event_coordinator"
+        )
 
         assert result == "venue_staff"
 
@@ -498,9 +500,25 @@ class TestResolveActiveRole:
 
         admin_client = _make_table_mock(PROFILE_ROW)
 
-        result = resolve_active_role(admin_client, TEST_SESSION_ID, default_role="event_coordinator")
+        result = resolve_active_role(
+            admin_client, user_id=PROFILE_ROW["id"], session_id=TEST_SESSION_ID, default_role="event_coordinator"
+        )
 
         assert result == "event_coordinator"
+
+    def test_only_honours_a_session_row_that_belongs_to_the_caller(self):
+        """SCRUM-76: the same profile_id scoping private.current_user_role() applies in SQL."""
+        from app.core.security import resolve_active_role
+
+        admin_client = _make_table_mock(PROFILE_ROW, session_active_role={"role": "venue_staff"})
+
+        resolve_active_role(
+            admin_client, user_id=PROFILE_ROW["id"], session_id=TEST_SESSION_ID, default_role="event_coordinator"
+        )
+
+        filters = {call.args for call in admin_client.table("session_active_roles").eq.call_args_list}
+        assert ("session_id", TEST_SESSION_ID) in filters
+        assert ("profile_id", PROFILE_ROW["id"]) in filters
 
 
 class TestActiveRole:
