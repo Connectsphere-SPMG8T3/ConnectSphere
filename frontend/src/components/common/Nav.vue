@@ -56,8 +56,15 @@ watch(
 const showVenuesLink = computed(() =>
   ["event_coordinator", "venue_staff"].includes(authStore.role),
 );
+const showOrganiserViews = computed(() => authStore.role === "event_organiser");
 
 const isDashboardActive = computed(() => route.name?.startsWith("dashboard-"));
+const isOrganiserOverviewActive = computed(
+  () => route.name === "dashboard-organiser" && route.query.tab !== "events",
+);
+const isOrganiserEventsActive = computed(
+  () => route.name === "dashboard-organiser" && route.query.tab === "events",
+);
 const isProfileActive = computed(() => route.name === "profile");
 const isVenuesActive = computed(
   () => route.name === "venue-search" || route.name === "venue-detail",
@@ -139,7 +146,56 @@ async function handleLogout() {
       class="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-4 py-6"
       :class="sectionPadClass"
     >
+      <template v-if="showOrganiserViews">
+        <RouterLink
+          :to="{ name: 'dashboard-organiser', query: { tab: 'overview' } }"
+          :class="navLinkClass(isOrganiserOverviewActive)"
+          title="Overview"
+          aria-label="Overview"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-5 w-5 shrink-0"
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+          </svg>
+          <span :class="labelClass">Overview</span>
+        </RouterLink>
+
+        <RouterLink
+          :to="{ name: 'dashboard-organiser', query: { tab: 'events' } }"
+          :class="navLinkClass(isOrganiserEventsActive)"
+          title="Events"
+          aria-label="Events"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-5 w-5 shrink-0"
+            aria-hidden="true"
+          >
+            <rect x="3" y="4" width="18" height="17" />
+            <path d="M16 2v4M8 2v4M3 10h18" />
+          </svg>
+          <span :class="labelClass">Events</span>
+        </RouterLink>
+      </template>
+
       <RouterLink
+        v-else
         :to="authStore.dashboardPath"
         :class="navLinkClass(isDashboardActive)"
         title="Dashboard"

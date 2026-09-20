@@ -57,6 +57,19 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
     expect(el.querySelector('[data-testid="role-switcher"]')).toBeNull();
   });
 
+  it("shows organiser overview and events views in the side navigation", async () => {
+    const { el } = await mountNav({
+      id: "u1",
+      role: "event_organiser",
+      roles: ["event_organiser"],
+    });
+
+    expect(el.querySelector('a[href="/dashboard/organiser?tab=overview"]')).toBeTruthy();
+    expect(el.querySelector('a[href="/dashboard/organiser?tab=events"]')).toBeTruthy();
+    expect(el.textContent).toContain("Overview");
+    expect(el.textContent).toContain("Events");
+  });
+
   it("lists every held role with a human-readable label for a multi-role profile", async () => {
     const { el } = await mountNav({
       id: "u1",

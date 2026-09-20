@@ -1088,6 +1088,82 @@ Ties break by **soonest event date**, then by longest wait, then by ID for stabl
 
 **Mapping to SCRUM-72's acceptance criteria.** AC1 names three categories: *immediate action* (ranks 1–4), *awaiting initial approval/rejection* (rank 6), and *newly received client clarification responses* (rank 5). The third is the **return-for-amendment** cycle the customer confirmed (QA-22, QA-77, §6.4) — a resubmission *is* the clarification response. This supersedes the older "clarification thread" reading in SCRUM-33 (PROJECT_REVIEW §B2a). AC2 is the active-status overview, covering `under_review`, `returned`, `planning` and `confirmed`; `draft` is excluded by DR-R2 and terminal statuses are out of scope for an "active" view.
 
+#### 6.21.2 Event Organiser dashboard *(SCRUM-71)*
+
+The organiser dashboard is the primary workspace for event requests owned by the signed-in organiser. It is not an organisation-wide event directory: organisation-level read-only visibility is a separate future view. The dashboard composes the existing events feature store and links to the event request and event detail flows; it does not perform inline event mutations.
+
+**Scope decisions**
+
+- **[Team decision] Owned events are the primary list.** The dashboard shows events for which the signed-in organiser is the owner. Events belonging to other organisers, including organisers in the same organisation, are not included in this story's dashboard list. A future organisation-wide view may show those events read-only, subject to AUTH-R1 and AUTH-R2.
+- **[Team decision] Filtering and sorting are frontend operations.** The dashboard loads the organiser's accessible event list through the events API, then filters and sorts the loaded collection in the browser. Server-side filtering, pagination, and full-text search are outside this story and may replace the selectors when the dataset requires it.
+- **[Team decision] Mutations use existing flows.** Dashboard actions navigate to the event request or event detail page. The dashboard does not provide inline editing, change-request forms, or cancellation forms.
+- **[Team decision] Change and cancellation requests are outside this story.** The dashboard may provide a general event-detail action where a later story adds those workflows, but it does not implement or decide them here.
+
+**Dashboard overview and events tabs**
+
+The organiser side navigation provides **Overview** and **Events** views, matching the coordinator dashboard's navigation pattern. The dashboard opens on **Overview**, which restores honest counts from the loaded owned-event collection in two groups:
+
+- **Needs your action:** Drafts, Returned for amendments, and Rejected.
+- **My events:** Under review, Planning, Confirmed, and Completed. Submitted requests are included in the Under review count because they are awaiting the initial review decision.
+
+Each count is a clickable route into the separate **Events** tab with the corresponding status filter applied. The Events tab contains the complete owned-event list, filters, sorting, and lifecycle-specific actions. It remains the source for events in statuses not represented by an Overview count, including cancelled events.
+
+The Events tab lists every owned event regardless of lifecycle status: `draft`, `submitted`, `under_review`, `returned`, `planning`, `confirmed`, `rejected`, `cancelled`, and `completed`. Drafts and submitted requests are clearly distinguished, either as separate **Drafts** and **Requests** sections/tabs or an equivalent presentation that makes the distinction unambiguous (DR-R4).
+
+Each event row or card shows the external-safe summary:
+
+- event title;
+- human-readable status label and, where useful, the status explanation from §6.6;
+- local event date, start time, end time, and event timezone;
+- expected attendance;
+- assigned venue, or **Venue not assigned**;
+- coordinator assignment state, including **Awaiting assignment** where applicable; and
+- a visible organiser-attention indicator when the event is a draft, returned for amendment, awaiting assignment, or otherwise has a permitted organiser action.
+
+The dashboard does not show coordinator notes, venue preparation notes, technical preparation notes, or internal-only history entries (AUTH-R2, IM-R2).
+
+**Filtering and sorting**
+
+The organiser can filter the loaded owned-event collection by status and search it by event name. The organiser can sort the currently displayed results by event date, event name, or status. Multiple filters are applied together; clearing filters restores the complete owned-event collection. Missing dates must sort consistently and must not break rendering. When no event matches, the dashboard shows an empty state that explains how to clear or change the filters.
+
+**Permitted dashboard actions**
+
+| Event status | Dashboard action |
+|---|---|
+| `draft` | Continue editing; submit through the request flow; discard through the request flow |
+| `submitted` | View event; show that coordinator assignment is pending when `coordinator_id` is null |
+| `under_review` | View event |
+| `returned` | Open the existing request for amendment, view the coordinator feedback, and resubmit through the request flow |
+| `planning` | View event |
+| `confirmed` | View event |
+| `rejected` | View event and the rejection reason when available |
+| `cancelled` | View event and the cancellation reason when available |
+| `completed` | View event |
+
+Submitted events cannot be discarded or directly edited (ER-R3, DB-6). A returned request is amended and resubmitted as the same request; it is not replaced by a new event. The dashboard only exposes actions allowed by both the organiser's ownership and the lifecycle transition rules in §5.
+
+**Acceptance criteria**
+
+- **Given** I am an authenticated Event Organiser, **when** I open the dashboard, **then** I see every event request I created, regardless of whether it is a draft, submitted, under review, returned, planning, confirmed, rejected, cancelled, or completed.
+- **Given** another organiser owns an event, **when** I open my dashboard or request that event through its ID, **then** the event is not returned to me (AUTH-R1).
+- **Given** I have drafts and submitted requests, **when** I open the dashboard, **then** drafts and submitted requests are clearly distinguishable and drafts remain private to me (DR-R2, DR-R4).
+- **Given** an event is displayed, **then** its title, status, date, time, timezone, attendance, venue assignment, and coordinator assignment state are visible when those values exist.
+- **Given** I choose a status filter, **when** the dashboard applies it, **then** only owned events with that status are shown.
+- **Given** I enter an event-name search term, **when** the dashboard applies it, **then** only matching owned events are shown.
+- **Given** I choose a sort field, **when** the dashboard applies it, **then** the currently filtered events are ordered by event date, event name, or status without a page reload.
+- **Given** no event matches the active filters, **then** the dashboard shows an honest empty state and does not show fabricated counts or events.
+- **Given** I select an event, **when** navigation completes, **then** I reach its event detail or request flow and see the latest external-safe event information.
+- **Given** I select **Edit draft** for a draft, **then** the existing draft opens for editing rather than creating a second event.
+- **Given** a request is returned for amendment, **then** the dashboard visibly identifies it and provides navigation to the existing request so I can see the feedback and resubmit it.
+- **Given** an event is submitted, **then** no discard or inline direct-edit action is shown for it.
+- **Given** I select **New event request**, **then** the event request form opens.
+- **Given** I successfully save, update, submit, or resubmit an event through an existing flow, **then** returning to the dashboard shows the updated event data and status.
+- **Given** an event update fails, **then** the dashboard shows an error and does not display a false success state or falsely changed status.
+- **Given** the dashboard is loading, empty, unavailable, or has encountered an error, **then** the UI distinguishes those states and does not represent unavailable data as zero.
+- **Given** I view the dashboard on a mobile or desktop viewport, **then** event details, filters, sort controls, and actions remain readable and usable without horizontal scrolling (NFR-U1).
+
+**Out of scope:** organisation-wide read-only events; server-side filtering, sorting, pagination, and search; inline event editing; change-request and cancellation workflows; notification-centre work; real-time updates; and changes to the other role dashboards.
+
 ---
 
 #### 6.21.2 Venue staff dashboard *(SCRUM-70)*

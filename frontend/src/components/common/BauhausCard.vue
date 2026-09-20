@@ -2,6 +2,10 @@
 import { computed } from "vue";
 
 const props = defineProps({
+  clickable: {
+    type: Boolean,
+    default: false,
+  },
   /**
    * The card's tone. It colours a rule down the card's leading edge rather than
    * filling the whole surface, so colour stays free to mean something (red for
@@ -21,7 +25,17 @@ const props = defineProps({
     type: String,
     default: "bauhaus-yellow",
   },
+  compact: {
+    type: Boolean,
+    default: false,
+  },
 });
+
+const emit = defineEmits(["click"]);
+
+function activate() {
+  if (props.clickable) emit("click");
+}
 
 // Tailwind's scanner needs full, static class names to keep them in the
 // build — dynamic template interpolation (e.g. `bg-${accentColor}`) is
@@ -57,7 +71,17 @@ const accentBorderClass = computed(
 </script>
 
 <template>
-  <div class="relative overflow-hidden border-2 border-ink bg-surface p-6 text-ink sm:p-8">
+  <div
+    class="relative overflow-hidden border-2 border-ink bg-surface text-ink"
+    :class="[
+      compact ? 'p-4 sm:p-5' : 'p-6 sm:p-8',
+      clickable ? 'cursor-pointer transition-transform hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink' : '',
+    ]"
+    :role="clickable ? 'button' : undefined"
+    :tabindex="clickable ? 0 : undefined"
+    @click="activate"
+    @keydown.enter.prevent="activate"
+  >
     <span v-if="toneClass" class="absolute inset-y-0 left-0 w-1.5" :class="toneClass" aria-hidden="true" />
     <!-- Marks stay small: on a paper surface they read as a mark, where the
          old flood-fill sizes would out-shout the figure they sit beside. -->

@@ -34,6 +34,14 @@ const props = defineProps({
     type: String,
     default: "off",
   },
+  ariaLabel: {
+    type: String,
+    default: "",
+  },
+  compact: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 defineEmits(["update:modelValue"]);
@@ -54,11 +62,12 @@ const hasError = computed(() => Boolean(props.error));
       :placeholder="placeholder"
       :min="min"
       :aria-required="required"
+      :aria-label="ariaLabel || undefined"
       :autocomplete="autocomplete"
       :aria-invalid="hasError"
       :aria-describedby="hasError ? `${inputId}-error` : undefined"
-      class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium text-ink shadow-hard outline-none transition-colors placeholder:text-ink/40 focus:bg-bauhaus-yellow/20 sm:border-4"
-      :class="hasError ? 'border-bauhaus-red' : 'border-ink'"
+      class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium text-ink outline-none transition-colors placeholder:text-ink/40 focus:bg-bauhaus-yellow/20"
+      :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasError ? 'border-bauhaus-red' : 'border-ink']"
       @input="$emit('update:modelValue', $event.target.value)"
     />
     <p v-if="hasError" :id="`${inputId}-error`" class="text-xs font-bold uppercase tracking-wide text-bauhaus-red">
