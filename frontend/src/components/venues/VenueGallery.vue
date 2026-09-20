@@ -62,12 +62,16 @@ const step = (delta) => {
     @keydown.left.prevent="step(-1)"
     @keydown.right.prevent="step(1)"
   >
-    <div class="relative">
+    <!-- A fixed, modest band rather than an aspect ratio: `aspect-video` on a
+         full-width container makes the slide taller than the rest of the page
+         put together on a desktop. The schematic scales within it and centres;
+         a photo crops to fill. -->
+    <div class="relative flex h-44 items-center justify-center overflow-hidden bg-canvas sm:h-56 lg:h-64">
       <img
         v-if="current.kind === 'photo'"
         :src="current.url"
         :alt="current.caption || `${venueName}, photo ${index + 1} of ${count}`"
-        class="aspect-video w-full object-cover"
+        class="h-full w-full object-cover"
       />
       <VenueLayoutDiagram v-else :layout="current.layout" :label="current.label" />
 

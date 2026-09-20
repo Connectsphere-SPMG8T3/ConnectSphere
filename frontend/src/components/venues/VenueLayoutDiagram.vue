@@ -109,7 +109,7 @@ const roundTables = computed(() => plan.value.tables.filter((t) => t.r));
 <template>
   <svg
     :viewBox="`0 0 ${W} ${H}`"
-    class="aspect-video w-full bg-canvas"
+    class="h-full w-auto max-w-full bg-canvas"
     role="img"
     preserveAspectRatio="xMidYMid meet"
   >
