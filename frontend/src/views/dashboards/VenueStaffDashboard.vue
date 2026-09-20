@@ -12,15 +12,18 @@
  * this page is hardcoded — the three invented metrics that used to live here
  * were defect D8.
  */
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import VenueCalendar from "@/components/venues/VenueCalendar.vue";
 import {
+  ALL_VENUE_STATUSES,
   blockReasonLabel,
+  filterVenueStatuses,
   formatEventReference,
+  venueStatusFilterOptions,
   venueStatusMeta,
   waitingDays,
 } from "@/features/venues/dashboard";
@@ -46,6 +49,10 @@ const tiles = computed(() => [
     label: "Pending requests",
     value: show(counts.value.pendingHolds),
     detail: "Awaiting your approval",
+    // The tile counts a list that is further down the same page, so it takes
+    // you there. A plain fragment link, not a scroll handler: it works from
+    // the keyboard, survives a middle-click, and needs no JavaScript.
+    href: "#pending-requests",
     background: "yellow",
     accent: "circle",
     accentColor: "bauhaus-red",
@@ -81,11 +88,33 @@ const tiles = computed(() => [
 ]);
 
 const holds = computed(() => dashboard.oldestFirstHolds);
-const venueRows = computed(() => dashboard.venueStatuses());
 
+// AC2 asks for every venue's status at a glance; with the whole catalogue in
+// one panel, "at a glance" needs a way to ask for just the venues in one
+// state. The filter is view state, not session state — a reload should show
+// the full picture again.
+const allVenueRows = computed(() => dashboard.venueStatuses());
+const venueFilter = ref(ALL_VENUE_STATUSES);
+const filterOptions = computed(() => venueStatusFilterOptions(allVenueRows.value));
+// A status can vanish between loads (a block ends, and nothing is blocked any
+// more). The control for it goes with it, so fall back to All rather than
+// leaving an empty list with nothing on screen explaining why.
+const activeFilter = computed(() =>
+  filterOptions.value.some((option) => option.key === venueFilter.value)
+    ? venueFilter.value
+    : ALL_VENUE_STATUSES,
+);
+const venueRows = computed(() => filterVenueStatuses(allVenueRows.value, activeFilter.value));
+
+// Status badges. Red and yellow are the two that want something from you;
+// green is the one that does not, and saying so in colour is faster to scan
+// down a list than reading the word. The filter row above deliberately does
+// not repeat these colours — which filter you are on is a different question
+// from what state a venue is in.
 const pillClasses = {
   red: "border-2 border-ink bg-bauhaus-red text-canvas",
   yellow: "border-2 border-ink bg-bauhaus-yellow text-ink",
+  green: "border-2 border-ink bg-bauhaus-green text-canvas",
   plain: "border-2 border-ink bg-canvas text-ink",
   muted: "border-2 border-ink bg-muted text-ink/70",
 };
@@ -165,17 +194,40 @@ function emptyDetail(clearText) {
     </p>
 
     <div class="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-      <BauhausCard
+      <!-- Only the one tile that leads anywhere is a link, and it says so on
+           hover rather than carrying a standing label: the tiles are read as a
+           row of figures, and a permanent instruction on one of them competes
+           with the figure it sits under. `group` drives the cue below; the
+           shadow on hover and focus is the same one every other clickable card
+           on the page uses, so the affordance is not new vocabulary. -->
+      <component
+        :is="tile.href ? 'a' : 'div'"
         v-for="tile in tiles"
         :key="tile.key"
-        :background="tile.background"
-        :accent="tile.accent"
-        :accent-color="tile.accentColor"
+        :href="tile.href"
+        class="block"
+        :class="
+          tile.href
+            ? 'group transition-shadow hover:shadow-hard focus-visible:shadow-hard active-press'
+            : ''
+        "
       >
-        <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ tile.label }}</p>
-        <p class="mt-2 text-5xl font-black tracking-tighter">{{ tile.value }}</p>
-        <p class="mt-2 text-xs font-medium text-ink/60">{{ tile.detail }}</p>
-      </BauhausCard>
+        <BauhausCard :background="tile.background" :accent="tile.accent" :accent-color="tile.accentColor">
+          <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ tile.label }}</p>
+          <p class="mt-2 text-5xl font-black tracking-tighter">{{ tile.value }}</p>
+          <p class="mt-2 flex items-baseline gap-2 text-xs font-medium text-ink/60">
+            {{ tile.detail }}
+            <!-- Hidden by opacity, not by `v-if`: it stays in the accessible
+                 name, so a screen reader still hears where the link goes. -->
+            <span
+              v-if="tile.href"
+              class="font-bold uppercase tracking-widest text-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+            >
+              See the list ↓
+            </span>
+          </p>
+        </BauhausCard>
+      </component>
     </div>
 
     <div class="mb-6">
@@ -183,7 +235,9 @@ function emptyDetail(clearText) {
     </div>
 
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <section aria-labelledby="pending-requests">
+      <!-- `scroll-mt` keeps the heading clear of the sticky top bar when the
+           tile above jumps here. -->
+      <section class="scroll-mt-24" aria-labelledby="pending-requests">
         <h2
           id="pending-requests"
           class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl"
@@ -233,7 +287,35 @@ function emptyDetail(clearText) {
           Venue staff work as one pool, so every venue is yours to manage.
         </p>
 
-        <ul v-if="venueRows.length" class="flex flex-col gap-3">
+        <div
+          v-if="filterOptions.length > 1"
+          class="mb-4 flex flex-wrap gap-2"
+          role="group"
+          aria-label="Filter venues by status"
+        >
+          <button
+            v-for="option in filterOptions"
+            :key="option.key"
+            type="button"
+            class="border-2 border-ink px-3 py-2 text-[10px] font-bold uppercase tracking-widest active-press"
+            :class="activeFilter === option.key ? 'bg-ink text-canvas' : 'bg-canvas text-ink'"
+            :aria-pressed="activeFilter === option.key"
+            @click="venueFilter = option.key"
+          >
+            {{ option.label }}
+            <span class="ml-1 opacity-70">{{ option.count }}</span>
+          </button>
+        </div>
+
+        <!-- A capped height rather than a growing panel: the catalogue is the
+             longest thing on the page and would otherwise push everything
+             below it out of reach. `pr-1`/`pb-1` leave room for the rows' hard
+             shadows, which the scroll container would otherwise clip. -->
+        <ul
+          v-if="venueRows.length"
+          id="all-venues-list"
+          class="flex max-h-[28rem] flex-col gap-3 overflow-y-auto pb-1 pr-1"
+        >
           <li v-for="row in venueRows" :key="row.venue.id">
             <RouterLink
               :to="{ name: 'venue-detail', params: { id: row.venue.id } }"

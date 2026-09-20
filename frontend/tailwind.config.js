@@ -15,6 +15,11 @@ export default {
         "bauhaus-red": "#C22B22",
         "bauhaus-blue": "#1A44B8",
         "bauhaus-yellow": "#E0AE1F",
+        // Not a Bauhaus primary, and deliberately the only one: green is here
+        // to mean "needs nothing from you" on the venue-staff dashboard, where
+        // every other status already spends a primary (red blocked, yellow
+        // waiting). Held to the same saturation as the three above.
+        "bauhaus-green": "#2E7D32",
         muted: "#E4E2DC",
       },
       fontFamily: {

@@ -164,6 +164,122 @@ describe("VenueStaffDashboard", () => {
     expect(el.textContent).toContain("Inactive");
   });
 
+  it("filters the venue list by status, and counts each status on its control", async () => {
+    // AC2: status at a glance. With one block sitting on the Rooftop Terrace,
+    // the three venues split one apiece.
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const filters = () => [...el.querySelectorAll('[aria-label="Filter venues by status"] button')];
+
+    expect(filters().map((b) => b.textContent.replace(/\s+/g, " ").trim())).toEqual([
+      "All 3",
+      "Block scheduled 1",
+      "Active 1",
+      "Inactive 1",
+    ]);
+
+    filters().find((b) => b.textContent.includes("Block scheduled")).click();
+    await nextTick();
+
+    const links = [...el.querySelectorAll('a[href^="/venues/"]')];
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/venues/b-5"]);
+    expect(filters().find((b) => b.textContent.includes("Block scheduled")).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+  });
+
+  it("colours the ACTIVE badge on a venue row green, and nothing else", async () => {
+    // Green marks the one status that asks nothing of the person reading it.
+    // It belongs on the row badge, beside the venue, not on the filter row:
+    // being filtered on is a different question from being active.
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const badgeFor = (venueId) =>
+      [...el.querySelector(`a[href="/venues/${venueId}"]`).querySelectorAll("span")].find(
+        (s) => s.className.includes("tracking-widest") && s.textContent.trim(),
+      );
+
+    // b-1 has no block on it and is flagged active.
+    expect(badgeFor("b-1").textContent.trim()).toBe("Active");
+    expect(badgeFor("b-1").className).toContain("bg-bauhaus-green");
+
+    // Every other status keeps its own colour.
+    expect(badgeFor("b-5").className).not.toContain("bg-bauhaus-green");
+    expect(badgeFor("b-8").className).not.toContain("bg-bauhaus-green");
+
+    // The filter controls stay plain — the colour is not repeated there.
+    const filters = [...el.querySelectorAll('[aria-label="Filter venues by status"] button')];
+    expect(filters.every((b) => !b.className.includes("bg-bauhaus-green"))).toBe(true);
+  });
+
+  it("brings every venue back when All is chosen again", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const filters = () => [...el.querySelectorAll('[aria-label="Filter venues by status"] button')];
+
+    filters().find((b) => b.textContent.includes("Inactive")).click();
+    await nextTick();
+    expect(el.querySelectorAll('a[href^="/venues/"]')).toHaveLength(1);
+
+    filters().find((b) => b.textContent.startsWith("All")).click();
+    await nextTick();
+    expect(el.querySelectorAll('a[href^="/venues/"]')).toHaveLength(3);
+  });
+
+  it("offers no filter that would empty the list", async () => {
+    // Every venue is active here, so a "Blocked now" control would be a dead
+    // one — it is not offered at all.
+    venuesApi.venueStaffDashboard.mockResolvedValue({
+      ...PAYLOAD,
+      venues: [{ id: "b-2", name: "Auditorium A", location: "Bukit Timah", is_active: true }],
+      blocks: [],
+    });
+
+    const el = await mountDashboard();
+    const labels = [...el.querySelectorAll('[aria-label="Filter venues by status"] button')].map((b) =>
+      b.textContent.replace(/\s+/g, " ").trim(),
+    );
+
+    expect(labels).toEqual(["All 1", "Active 1"]);
+  });
+
+  it("scrolls the venue list rather than letting it run off the page", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const list = el.querySelector("#all-venues-list");
+
+    // A capped height is what makes `overflow-y-auto` engage; without it the
+    // panel just grows and the scrollbar never appears.
+    expect(list.className).toContain("overflow-y-auto");
+    expect(list.className).toMatch(/max-h-/);
+  });
+
+  it("jumps from the pending requests tile to the list further down the page", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const jump = el.querySelector('a[href="#pending-requests"]');
+
+    expect(jump).not.toBeNull();
+    expect(jump.textContent).toContain("Pending requests");
+    // The cue is revealed on hover and focus rather than standing on the tile,
+    // but it stays in the DOM so it is part of the link's accessible name.
+    const cue = [...jump.querySelectorAll("span")].find((s) => s.textContent.includes("See the list"));
+    expect(cue).toBeDefined();
+    expect(cue.className).toContain("opacity-0");
+    expect(cue.className).toContain("group-hover:opacity-100");
+    expect(jump.className).toContain("group");
+    // The anchor is worthless without its target, and the target must clear
+    // the sticky top bar once jumped to.
+    const target = el.querySelector("#pending-requests");
+    expect(target).not.toBeNull();
+    expect(target.closest("section").className).toMatch(/scroll-mt-/);
+  });
+
   it("opens the calendar on the month that actually has something in it", async () => {
     // Today is in September; every block and request sits in October.
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);

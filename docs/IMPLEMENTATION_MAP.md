@@ -9,7 +9,7 @@ This file describes the **current state** of the codebase, so a developer (or AI
 
 **Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current").
 
-_Last updated: 2026-09-19. Reflects `main` at `eb6bf55` (after PR #13), plus unmerged branches listed in §6, plus the in-progress `feature/scrum-70-venue-staff-dashboard` branch described below._
+_Last updated: 2026-09-20. Reflects `main` at `eb6bf55` (after PR #13), plus unmerged branches listed in §6, plus the in-progress `feature/scrum-70-venue-staff-dashboard` branch described below._
 
 ---
 
@@ -104,7 +104,7 @@ _Last updated: 2026-09-19. Reflects `main` at `eb6bf55` (after PR #13), plus unm
 | Month- and week-grid construction, and placing periods on days | `buildMonthGrid`, `buildWeekGrid`, `singaporeDayKeysCovered`, `itemDayRange`, `toCalendarItems`, `defaultMonth`, `defaultWeekKey`, `shiftMonth`, `shiftWeekKey`, `startOfWeekKey`, `canGoPrev`, `canGoPrevWeek`, `CALENDAR_KINDS` | `features/venues/calendar.js` |
 | Exporting a calendar as .ics | `toIcsCalendar(items, {now})`, `icsFilename(now)`, plus `escapeIcsText` / `foldIcsLine` / `toIcsStamp` — hand-written RFC 5545, no dependency | `features/venues/ics.js` |
 | Packing multi-day items into calendar bars | `layoutWeekSegments(cells, {maxLanes})`, `toWeekRows(grid, {maxLanes})` — greedy lane assignment, with per-day overflow counts so nothing is silently dropped | `features/venues/calendar.js` |
-| Venue-staff dashboard logic (pure functions) | `summariseVenueStaffDashboard`, `sortPendingHoldsOldestFirst`, `waitingDays`, `formatEventReference`, `venueStatuses`, `BLOCK_REASON_LABELS`, `BOOKING_STATUS_LABELS` | `features/venues/dashboard.js` |
+| Venue-staff dashboard logic (pure functions) | `summariseVenueStaffDashboard`, `sortPendingHoldsOldestFirst`, `waitingDays`, `formatEventReference`, `venueStatuses`, `venueStatusFilterOptions`, `filterVenueStatuses`, `ALL_VENUE_STATUSES`, `BLOCK_REASON_LABELS`, `BOOKING_STATUS_LABELS` | `features/venues/dashboard.js` |
 | Venue-staff dashboard state | `useVenueStaffDashboardStore` | `features/venues/venueStaffDashboardStore.js` |
 | Calendar over blocks and bookings, month or week | `VenueCalendar` (`items`, `hasSettled`, `today`) — built for SCRUM-70, intended for SCRUM-16's per-venue calendar too. Both grids share one cell shape, so the component renders either from one set of rules | `components/venues/VenueCalendar.vue` |
 | Event status labels and dashboard logic (pure functions) | `STATUS_LABELS`, `STATUS_DESCRIPTIONS`, `ACTIVE_COORDINATOR_STATUSES`, `ACTION_KINDS`, `actionKindMeta`, `prioritiseActionItems`, `summariseActionItems`, `groupActiveEventsByStatus`, `countByStatus`, `outstandingReadiness`, `readinessGaps` | `features/events/dashboard.js` |

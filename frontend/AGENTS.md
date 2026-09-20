@@ -57,6 +57,7 @@ Treat this as the design brief for **any** UI work, whether a new view, a dashbo
 | `bauhaus-red` | `#D02020` | `BauhausButton variant="primary"` |
 | `bauhaus-blue` | `#1040C0` | `BauhausButton variant="secondary"` |
 | `bauhaus-yellow` | `#F0C020` | `BauhausButton variant="yellow"`, text selection |
+| `bauhaus-green` | `#2E7D32` | the `ACTIVE` status badge on the venue-staff dashboard's venue rows — the one status that needs no attention. Not a Bauhaus primary; don't spend it on anything else without saying why |
 | `muted` | `#E0E0E0` | nav link hover (every at-rest surface is white — don't fill panels with it) |
 | `font-sans` | Outfit 400/500/700/900 | all text |
 | `shadow-hard` / `shadow-hard-lg` | 4px / 8px offset, no blur | cards and raised elements |

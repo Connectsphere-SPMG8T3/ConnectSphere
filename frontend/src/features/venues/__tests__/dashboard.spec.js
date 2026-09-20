@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ALL_VENUE_STATUSES,
   blockReasonLabel,
   bookingStatusLabel,
+  filterVenueStatuses,
   formatEventReference,
   sortPendingHoldsOldestFirst,
   summariseVenueStaffDashboard,
+  venueStatusFilterOptions,
   venueStatuses,
   waitingDays,
 } from "@/features/venues/dashboard";
@@ -210,5 +213,67 @@ describe("labels", () => {
   it("degrades readably for a value the SPA does not know", () => {
     expect(blockReasonLabel("act_of_god")).toBe("act of god");
     expect(bookingStatusLabel(undefined)).toBe("");
+  });
+});
+
+describe("venueStatusFilterOptions", () => {
+  // The rows a loaded dashboard would hold: one of each status.
+  const rows = [
+    { venue: venue("b-1", "Grand Ballroom"), status: "blocked" },
+    { venue: venue("b-5", "Rooftop Terrace"), status: "block_scheduled" },
+    { venue: venue("b-7", "Heritage Hall"), status: "block_scheduled" },
+    { venue: venue("b-2", "Auditorium A"), status: "active" },
+    { venue: venue("b-8", "Old Lecture Theatre"), status: "inactive" },
+  ];
+
+  it("leads with All, counting every venue", () => {
+    const [first] = venueStatusFilterOptions(rows);
+    expect(first).toEqual({ key: ALL_VENUE_STATUSES, label: "All", count: 5 });
+  });
+
+  it("offers each status that is actually present, worst first, with its count", () => {
+    expect(venueStatusFilterOptions(rows).slice(1)).toEqual([
+      { key: "blocked", label: "Blocked now", count: 1 },
+      { key: "block_scheduled", label: "Block scheduled", count: 2 },
+      { key: "active", label: "Active", count: 1 },
+      { key: "inactive", label: "Inactive", count: 1 },
+    ]);
+  });
+
+  it("omits a status no venue has, so no control can produce an empty list", () => {
+    const keys = venueStatusFilterOptions(rows.filter((row) => row.status !== "inactive")).map((o) => o.key);
+    expect(keys).not.toContain("inactive");
+  });
+
+  it("offers only All when there are no venues at all", () => {
+    expect(venueStatusFilterOptions([])).toEqual([{ key: ALL_VENUE_STATUSES, label: "All", count: 0 }]);
+  });
+});
+
+describe("filterVenueStatuses", () => {
+  const rows = [
+    { venue: venue("b-1", "Grand Ballroom"), status: "blocked" },
+    { venue: venue("b-5", "Rooftop Terrace"), status: "block_scheduled" },
+    { venue: venue("b-8", "Old Lecture Theatre"), status: "inactive" },
+  ];
+
+  it("keeps every row, in order, when nothing is filtered", () => {
+    expect(filterVenueStatuses(rows, ALL_VENUE_STATUSES).map((r) => r.venue.id)).toEqual(["b-1", "b-5", "b-8"]);
+  });
+
+  it("narrows to one status", () => {
+    expect(filterVenueStatuses(rows, "inactive").map((r) => r.venue.id)).toEqual(["b-8"]);
+  });
+
+  it("falls back to everything for a status it does not know, rather than to nothing", () => {
+    // An empty list reads as "no venues", which would be a lie. Showing too
+    // much is recoverable; showing nothing is not.
+    expect(filterVenueStatuses(rows, "decommissioned")).toHaveLength(3);
+  });
+
+  it("does not mutate its input", () => {
+    const copy = [...rows];
+    filterVenueStatuses(rows, "blocked");
+    expect(rows).toEqual(copy);
   });
 });

@@ -109,11 +109,51 @@ export const VENUE_STATUS_ORDER = ["blocked", "block_scheduled", "active", "inac
 const STATUS_META = {
   blocked: { label: "Blocked now", tone: "red" },
   block_scheduled: { label: "Block scheduled", tone: "yellow" },
-  active: { label: "Active", tone: "plain" },
+  active: { label: "Active", tone: "green" },
   inactive: { label: "Inactive", tone: "muted" },
 };
 
 export const venueStatusMeta = (status) => STATUS_META[status] ?? STATUS_META.active;
+
+/** The filter row's "no filter" key, kept out of the status vocabulary. */
+export const ALL_VENUE_STATUSES = "all";
+
+/**
+ * The status filters to offer for a set of venue rows (SCRUM-70 AC2).
+ *
+ * Only statuses some venue actually has are offered: a control that can only
+ * ever produce an empty list is a dead control, and it would also invite the
+ * reading that the dashboard is hiding something. Each option carries its own
+ * count, so the row doubles as the at-a-glance breakdown AC2 asks for.
+ *
+ * "All" leads, so the unfiltered list is always one click away, and the rest
+ * follow `VENUE_STATUS_ORDER` — worst first, matching the list beneath them.
+ */
+export function venueStatusFilterOptions(rows = []) {
+  const counts = new Map();
+  for (const row of rows) counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
+
+  return [
+    { key: ALL_VENUE_STATUSES, label: "All", count: rows.length },
+    ...VENUE_STATUS_ORDER.filter((status) => counts.has(status)).map((status) => ({
+      key: status,
+      label: venueStatusMeta(status).label,
+      count: counts.get(status),
+    })),
+  ];
+}
+
+/**
+ * Narrow venue rows to one status, preserving their order.
+ *
+ * A key outside the vocabulary falls back to every row rather than to none:
+ * an empty venue list reads as "you have no venues", which would be a lie.
+ * Showing too much is recoverable at a glance; showing nothing is not.
+ */
+export function filterVenueStatuses(rows = [], status = ALL_VENUE_STATUSES) {
+  if (status === ALL_VENUE_STATUSES || !VENUE_STATUS_ORDER.includes(status)) return [...rows];
+  return rows.filter((row) => row.status === status);
+}
 
 export function venueStatuses(venues = [], blocks = [], now = new Date()) {
   const at = now.getTime();
