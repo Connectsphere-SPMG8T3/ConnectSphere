@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 from app.core.exceptions import VenueNotFoundError
+from app.modules.events import service as events_service
 from app.modules.venues import repository, search
 from app.modules.venues.schemas import (
     VenueDetail,
@@ -38,14 +39,27 @@ def search_venues(criteria: VenueSearchCriteria) -> VenueSearchResponse:
 
 
 def get_venue(venue_id: str) -> VenueDetail:
+    """The full venue profile: attributes, who last touched them, and what is
+    already booked (SCRUM-67).
+
+    One response, because the profile is read to plan around the venue and a
+    page that fetched its bookings separately could show attributes and
+    occupancy from two different instants.
+    """
     venue = repository.get_venue(venue_id)
     if venue is None:
         raise VenueNotFoundError()
     now = datetime.now(timezone.utc)
+    bookings = repository.list_upcoming_bookings(venue_id, now)
+    # One lookup for the whole list, not one per booking. Skipped entirely when
+    # the venue is free, so a quiet venue costs no second round trip.
+    names = events_service.names_by_id(b.event_id for b in bookings) if bookings else {}
+    for booking in bookings:
+        booking.event_name = names.get(booking.event_id)
     return VenueDetail(
         **venue.model_dump(),
         upcoming_blocks=repository.list_upcoming_blocks(venue_id, now),
-        upcoming_bookings=repository.list_upcoming_bookings(venue_id, now),
+        upcoming_bookings=bookings,
     )
 
 

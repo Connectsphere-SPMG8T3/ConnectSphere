@@ -146,37 +146,121 @@ describe("VenueSearchView", () => {
   });
 });
 
-describe("VenueDetailView", () => {
+const PROFILE = {
+  ...HALL_A,
+  updated_at: "2026-09-18T02:30:00Z",
+  updated_by: { id: "a0000000-0000-4000-8000-000000000003", full_name: "Val Staff" },
+  turnaround_minutes: 0,
+  upcoming_blocks: [
+    {
+      id: "c1",
+      period: { starts_at: "2026-10-10T00:00:00Z", ends_at: "2026-10-10T04:00:00Z" },
+      reason: "maintenance",
+      notes: "Air-con servicing",
+    },
+  ],
+  upcoming_bookings: [
+    {
+      id: "d1",
+      event_id: "e1",
+      event_name: "Annual Town Hall",
+      period: { starts_at: "2026-10-10T05:00:00Z", ends_at: "2026-10-10T08:00:00Z" },
+      status: "held",
+    },
+    {
+      id: "d2",
+      event_id: "e2",
+      event_name: "Alumni Dinner",
+      period: { starts_at: "2026-10-12T03:00:00Z", ends_at: "2026-10-12T06:00:00Z" },
+      status: "approved",
+    },
+  ],
+};
+
+describe("VenueDetailView (SCRUM-67)", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     vi.clearAllMocks();
+    venuesApi.get.mockResolvedValue(PROFILE);
   });
 
-  it("renders the venue with its upcoming blocks and bookings in Singapore time", async () => {
-    venuesApi.get.mockResolvedValue({
-      ...HALL_A,
-      upcoming_blocks: [
-        {
-          id: "c1",
-          period: { starts_at: "2026-10-10T00:00:00Z", ends_at: "2026-10-10T04:00:00Z" },
-          reason: "maintenance",
-          notes: "Air-con servicing",
-        },
-      ],
-      upcoming_bookings: [
-        { id: "d1", event_id: "e1", period: { starts_at: "2026-10-10T05:00:00Z", ends_at: "2026-10-10T08:00:00Z" }, status: "held" },
-      ],
-    });
+  async function openProfile() {
     const { default: VenueDetailView } = await import("@/views/venues/VenueDetailView.vue");
     const { el } = await mountView(VenueDetailView, { route: { name: "venue-detail", params: { id: HALL_A.id } } });
     await settle();
+    return el;
+  }
+
+  it("renders the venue with its upcoming blocks in Singapore time", async () => {
+    const el = await openProfile();
 
     expect(venuesApi.get).toHaveBeenCalledWith(HALL_A.id, "access");
     expect(el.textContent).toContain("Hall A");
-    expect(el.textContent).toContain("Blocked · maintenance");
+    expect(el.textContent).toContain("Maintenance");
     expect(el.textContent).toContain("Air-con servicing");
-    expect(el.textContent).toContain("Tentative hold");
     // 05:00Z is 13:00 in Singapore.
     expect(el.textContent).toMatch(/13:00/);
+  });
+
+  it("shows the whole profile in one place, from one request (AC1)", async () => {
+    const el = await openProfile();
+
+    expect(venuesApi.get).toHaveBeenCalledTimes(1);
+    expect(el.textContent).toContain("Bukit Timah Campus"); // location
+    expect(el.textContent).toContain("150 pax"); // capacity
+    expect(el.textContent).toContain("Theatre"); // supported layout
+    expect(el.textContent).toContain("Projector"); // facility
+    expect(el.textContent).toContain("Wheelchair access"); // accessibility
+    expect(el.textContent).toMatch(/08:00.22:00/); // operating hours
+    expect(el.textContent).toContain("bookings may run back to back"); // turnaround
+  });
+
+  it("says when the profile was last updated and by whom (AC2)", async () => {
+    const el = await openProfile();
+
+    expect(el.textContent).toContain("Last updated");
+    expect(el.textContent).toContain("Val Staff");
+    // 02:30Z on 18 Sep is 10:30 in Singapore. The month abbreviation is left to
+    // the platform's ICU data ("Sep" or "Sept"), which is not what is under test.
+    expect(el.textContent).toMatch(/18 Sept? 2026, 10:30/);
+  });
+
+  it("reports an unrecorded editor instead of inventing one (AC2)", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, updated_by: null });
+    const el = await openProfile();
+
+    expect(el.textContent).toContain("Not recorded");
+    expect(el.textContent).not.toContain("Val Staff");
+  });
+
+  it("summarises upcoming confirmed and tentative bookings, each naming its event (AC3)", async () => {
+    const el = await openProfile();
+
+    const summary = el.querySelector("[data-testid='upcoming-bookings']");
+    expect(summary).toBeTruthy();
+    expect(summary.textContent).toContain("Confirmed");
+    expect(summary.textContent).toContain("Alumni Dinner");
+    expect(summary.textContent).toContain("Tentative");
+    expect(summary.textContent).toContain("Annual Town Hall");
+    expect(summary.textContent).toContain("2 upcoming");
+  });
+
+  it("falls back to a short event reference when the booking has no event name", async () => {
+    venuesApi.get.mockResolvedValue({
+      ...PROFILE,
+      upcoming_bookings: [
+        { ...PROFILE.upcoming_bookings[0], event_name: null, event_id: "abcd1234-0000-4000-8000-000000000001" },
+      ],
+    });
+    const el = await openProfile();
+
+    expect(el.querySelector("[data-testid='upcoming-bookings']").textContent).toContain("Event ABCD1234");
+  });
+
+  it("states that nothing is booked rather than leaving the section blank", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, upcoming_bookings: [] });
+    const el = await openProfile();
+
+    expect(el.querySelector("[data-testid='upcoming-bookings']").textContent).toContain("No upcoming bookings");
   });
 });

@@ -8,16 +8,19 @@ from datetime import datetime, time, timedelta, timezone
 
 import pytest
 
+from app.modules.events import repository as events_repository
 from app.modules.venues import repository
 from app.modules.venues.schemas import (
     AccessibilityFeature,
     BlockSummary,
     BookingSummary,
+    Editor,
     Facility,
     LayoutOption,
     Occupant,
     Period,
     VenueLayout,
+    VenueProfile,
     VenueStaffBlock,
     VenueStaffBooking,
     VenueSummary,
@@ -47,6 +50,21 @@ def make_venue(venue_id: str, name: str, **overrides) -> VenueSummary:
     return VenueSummary(**fields)
 
 
+VENUE_STAFF_ID = "a0000000-0000-4000-8000-000000000003"
+SEED_EVENT_ID = "e0000000-0000-4000-8000-000000000101"
+
+
+def make_venue_profile(venue_id: str, name: str, **overrides) -> VenueProfile:
+    """A venue as its own profile page reads it: catalogue fields plus the
+    audit stamp SCRUM-67 shows."""
+    fields = {
+        "updated_at": datetime(2026, 9, 18, 10, 30, tzinfo=SGT),
+        "updated_by": Editor(id=VENUE_STAFF_ID, full_name="Val Staff"),
+    }
+    fields.update(overrides)
+    return VenueProfile(**make_venue(venue_id, name).model_dump(), **fields)
+
+
 @pytest.fixture()
 def catalogue(monkeypatch):
     """Two venues; Hall B is held 13:00–16:00 on 10 Oct by another event."""
@@ -64,7 +82,9 @@ def catalogue(monkeypatch):
 
     monkeypatch.setattr(repository, "list_venues", lambda: venues)
     monkeypatch.setattr(repository, "list_occupants", _list_occupants)
-    monkeypatch.setattr(repository, "get_venue", lambda venue_id: next((v for v in venues if v.id == str(venue_id)), None))
+    profiles = {v.id: make_venue_profile(v.id, v.name, **({} if v.id == HALL_A_ID else {"updated_by": None})) for v in venues}
+    monkeypatch.setattr(repository, "get_venue", lambda venue_id: profiles.get(str(venue_id)))
+    monkeypatch.setattr(events_repository, "list_event_names", lambda event_ids: {SEED_EVENT_ID: "Seed Auditorium Event"})
     monkeypatch.setattr(
         repository,
         "list_upcoming_blocks",
@@ -227,6 +247,132 @@ class TestVenueDetail:
         response = client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers)
         assert response.status_code == 403
 
+
+class TestVenueProfile:
+    """SCRUM-67 — the venue profile venue staff read before planning around a venue.
+
+    AC1 (the attributes themselves) is exercised by `TestVenueDetail` and the
+    search tests; what follows covers what SCRUM-67 adds on top: the audit
+    stamp, the turnaround figure, and the upcoming-bookings summary.
+    """
+
+    @pytest.fixture()
+    def occupied(self, monkeypatch, catalogue):
+        """Hall A with one booking per occupying status (§6.14)."""
+
+        def _period(hour: int) -> Period:
+            return Period(
+                starts_at=datetime(2026, 10, 10, hour, tzinfo=SGT),
+                ends_at=datetime(2026, 10, 10, hour + 2, tzinfo=SGT),
+            )
+
+        bookings = [
+            BookingSummary(id="d1", event_id=SEED_EVENT_ID, period=_period(9), status="approved"),
+            BookingSummary(id="d2", event_id="e0000000-0000-4000-8000-000000000102", period=_period(13), status="held"),
+            BookingSummary(id="d3", event_id="e0000000-0000-4000-8000-000000000103", period=_period(17), status="re_review"),
+        ]
+        monkeypatch.setattr(repository, "list_upcoming_bookings", lambda venue_id, since: bookings)
+        return bookings
+
+    def test_every_attribute_arrives_in_one_response(self, client, auth_headers, authenticate_as, catalogue):
+        """AC1: one request answers location, capacity, facilities, accessibility,
+        layouts and operating hours — no second call to assemble the profile."""
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers).json()
+
+        assert body["location"] == "Bukit Timah Campus"
+        assert body["capacity"] == 150
+        assert body["facilities"] == ["projector"]
+        assert body["accessibility_features"] == ["wheelchair_access"]
+        assert body["layouts"] == [{"layout": "theatre", "capacity_for_layout": None}]
+        assert (body["opens_at"], body["closes_at"]) == ("08:00:00", "22:00:00")
+
+    def test_it_reports_when_the_profile_was_last_updated_and_by_whom(
+        self, client, auth_headers, authenticate_as, catalogue
+    ):
+        """AC2."""
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers).json()
+
+        assert body["updated_at"] == "2026-09-18T10:30:00+08:00"
+        assert body["updated_by"] == {"id": VENUE_STAFF_ID, "full_name": "Val Staff"}
+
+    def test_an_unattributed_edit_reports_no_editor_rather_than_guessing(
+        self, client, auth_headers, authenticate_as, catalogue
+    ):
+        """AC2 boundary: `venues.updated_by` is null for every edit made before
+        the column existed, and for an editor whose account has been removed."""
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venues/{HALL_B_ID}", headers=auth_headers).json()
+
+        assert body["updated_at"] is not None
+        assert body["updated_by"] is None
+
+    def test_turnaround_is_reported_as_zero(self, client, auth_headers, authenticate_as, catalogue):
+        """AC1: the profile states the setup/turnaround time. The customer set it
+        to zero (QA-28), so the SPA reads the figure off the contract instead of
+        hard-coding a business rule."""
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers).json()
+
+        assert body["turnaround_minutes"] == 0
+
+    def test_confirmed_tentative_and_re_review_bookings_are_all_listed(
+        self, client, auth_headers, authenticate_as, occupied
+    ):
+        """AC3: every booking that occupies the venue is on the profile, soonest
+        first, each carrying the status the SPA groups on."""
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers).json()
+
+        assert [b["status"] for b in body["upcoming_bookings"]] == ["approved", "held", "re_review"]
+
+    def test_upcoming_bookings_name_their_event(self, client, auth_headers, authenticate_as, occupied):
+        """AC3: "plan around it" needs to say which event holds the slot, so the
+        venue module resolves the names through the events module's service."""
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers).json()
+
+        assert body["upcoming_bookings"][0]["event_name"] == "Seed Auditorium Event"
+
+    def test_a_booking_whose_event_row_is_missing_keeps_a_null_name(
+        self, client, auth_headers, authenticate_as, occupied
+    ):
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers).json()
+
+        assert [b["event_name"] for b in body["upcoming_bookings"][1:]] == [None, None]
+
+    def test_a_free_venue_asks_the_events_module_for_nothing(
+        self, client, auth_headers, authenticate_as, catalogue, monkeypatch
+    ):
+        """No bookings means no event ids, and so no second round trip."""
+        authenticate_as("venue_staff")
+        calls = []
+        monkeypatch.setattr(repository, "list_upcoming_bookings", lambda venue_id, since: [])
+        monkeypatch.setattr(events_repository, "list_event_names", lambda ids: calls.append(list(ids)) or {})
+
+        body = client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers).json()
+
+        assert body["upcoming_bookings"] == []
+        assert calls == []
+
+    def test_a_coordinator_reads_the_same_profile(self, client, auth_headers, authenticate_as, catalogue):
+        """SCRUM-67 is a venue-staff story, but the endpoint is the catalogue
+        read that coordinators already hold (§2); it is not narrowed here."""
+        authenticate_as("event_coordinator")
+
+        response = client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["updated_by"]["full_name"] == "Val Staff"
 
 VENUE_STAFF_DASHBOARD = "/api/v1/venues/dashboard/venue-staff"
 

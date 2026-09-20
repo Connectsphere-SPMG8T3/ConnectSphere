@@ -14,8 +14,10 @@ from app.db.supabase import get_supabase_admin_client
 from app.modules.venues.schemas import (
     BlockSummary,
     BookingSummary,
+    Editor,
     Occupant,
     Period,
+    VenueProfile,
     VenueStaffBlock,
     VenueStaffBooking,
     VenueSummary,
@@ -26,6 +28,12 @@ _VENUE_COLUMNS = (
     "id, name, location, capacity, accessibility_features, opens_at, closes_at, is_active, description, "
     "venue_layouts(layout, capacity_for_layout), venue_facilities(facility)"
 )
+
+# The profile page additionally shows when the venue was last updated and by
+# whom (SCRUM-67 AC2). The embed names its constraint even though `venues` has
+# only one foreign key to `profiles` today: a second one (an owner, a creator)
+# would otherwise break this query with PGRST201 rather than the new column.
+_VENUE_PROFILE_COLUMNS = _VENUE_COLUMNS + ", updated_at, updated_by, profiles!venues_updated_by_fkey(id, full_name)"
 
 # PostgREST renders a tstzrange as e.g. ["2026-10-10 06:00:00+00","2026-10-10 09:00:00+00")
 _RANGE_PATTERN = re.compile(r'^[\[(]"?([^",]+)"?,"?([^")\]]+)"?[)\]]$')
@@ -54,18 +62,37 @@ def _open_ended_literal(since: datetime) -> str:
     return f"[{since.isoformat()},)"
 
 
-def _embedded_venue_name(row: dict) -> str:
-    """The `venues(name)` embed, which PostgREST may return either way.
+def _to_one_embed(row: dict, key: str) -> dict | None:
+    """Read a to-one PostgREST embed, whichever way it arrived.
 
-    A to-one embed normally arrives as a dict, but PostgREST falls back to a
+    A to-one embed normally comes back as a dict, but PostgREST falls back to a
     one-element list when it cannot prove the relationship is to-one. Accept
-    both rather than guessing, and degrade to "" rather than raising — a
-    missing name should cost one label, not the whole dashboard.
+    both rather than guessing.
     """
-    embedded = row.get("venues")
+    embedded = row.get(key)
     if isinstance(embedded, list):
         embedded = embedded[0] if embedded else None
-    return (embedded or {}).get("name", "")
+    return embedded or None
+
+
+def _embedded_venue_name(row: dict) -> str:
+    """The `venues(name)` embed. Degrades to "" rather than raising — a missing
+    name should cost one label, not the whole dashboard."""
+    return (_to_one_embed(row, "venues") or {}).get("name", "")
+
+
+def _to_editor(row: dict) -> Editor | None:
+    """Who last edited the venue (SCRUM-67 AC2), or None when nothing recorded it.
+
+    Falls back to `venues.updated_by` when the `profiles` embed is empty, which
+    happens if the editor's row is not readable: the id is still a truer answer
+    than claiming nobody edited it.
+    """
+    profile = _to_one_embed(row, "profiles")
+    if profile:
+        return Editor(id=profile["id"], full_name=profile.get("full_name"))
+    editor_id = row.get("updated_by")
+    return Editor(id=editor_id) if editor_id else None
 
 
 def _to_venue(row: dict) -> VenueSummary:
@@ -91,12 +118,24 @@ def list_venues() -> list[VenueSummary]:
     return [_to_venue(row) for row in response.data or []]
 
 
-def get_venue(venue_id: str) -> VenueSummary | None:
+def get_venue(venue_id: str) -> VenueProfile | None:
+    """One venue with the audit stamp its profile page shows (SCRUM-67)."""
     response = (
-        get_supabase_admin_client().table("venues").select(_VENUE_COLUMNS).eq("id", venue_id).maybe_single().execute()
+        get_supabase_admin_client()
+        .table("venues")
+        .select(_VENUE_PROFILE_COLUMNS)
+        .eq("id", venue_id)
+        .maybe_single()
+        .execute()
     )
     row = response.data if response else None
-    return _to_venue(row) if row else None
+    if not row:
+        return None
+    return VenueProfile(
+        **_to_venue(row).model_dump(),
+        updated_at=row["updated_at"],
+        updated_by=_to_editor(row),
+    )
 
 
 def list_occupants(period: Period) -> dict[str, list[Occupant]]:

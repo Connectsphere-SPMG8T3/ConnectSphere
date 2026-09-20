@@ -574,6 +574,64 @@ The submitted request detail view converts returned UTC instants back into the e
 - `npm run build`: passed.
 - Editor diagnostics and `git diff --check`: passed.
 
+### 4.10. SCRUM-67 — View venue details (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-67` |
+| Summary | View venue details |
+| Issue type | Story |
+| Parent epic | `SCRUM-15` — Venue catalogue |
+| Status | In progress at time of writing (`feature/scrum-67-view-venue-details`) |
+
+**User story (verbatim, as supplied by the developer):**
+
+> As a Venue Staff, I want to view the full details of a venue, so that I can verify current information and plan around it.
+
+**Acceptance criteria (verbatim, as supplied by the developer):**
+
+> Can view a single venue's full profile in one place: location, capacity, facilities, accessibility, supported room layouts, operating hours, and setup/turnaround time
+>
+> Can view when the profile was last updated and by whom
+>
+> Can view a summary of the venue's upcoming confirmed and tentative bookings from this profile
+
+*(The Jira MCP was not available in this session, so the story and criteria were taken from the developer's message rather than fetched from the ticket.)*
+
+#### How the implementation maps to the ticket
+
+SCRUM-39 already shipped a venue detail page, so this story is mostly about the three things it did **not** answer. Each needed a decision the ticket left implicit:
+
+1. **"setup/turnaround time" (AC1).** The catalogue has no such column, and adding one would have invented a business rule. The customer already answered the question: turnaround is **zero** (QA-28, QA-82, QA-103), which is why DB-1 uses half-open ranges and back-to-back bookings are allowed (§6.14). So the profile *states* the rule rather than storing a per-venue figure — `TURNAROUND_MINUTES` in `backend/app/modules/venues/schemas.py`, served as `turnaround_minutes`. Recorded as **VC-R5** in REQUIREMENTS §6.8. The SPA reads the number off the contract, so if the customer ever asks for a real buffer it changes in one place instead of in a template.
+
+2. **"last updated and by whom" (AC2).** `venues.updated_at` already existed (SCRUM-39's trigger); nothing recorded the editor. Migration `20260920000000_venues_last_updated_by.sql` adds `venues.updated_by → profiles(id) on delete set null`. It is deliberately a **last-writer stamp, not an audit trail** — the per-field change history VC-R3 asks for is §6.7 / SCRUM-14 and wants its own table, and pre-empting that design here would have been the wrong shape. No trigger fills the column: every API write uses the secret key, so Postgres cannot see which signed-in user the request is acting for; the venue edit path (SCRUM-63/64) will set it from the verified JWT. Until then it is null everywhere except the seed, and the UI says **"Not recorded"** rather than naming anyone. Recorded as **VC-R4**.
+
+3. **"confirmed and tentative bookings" (AC3).** `CONTEXT.md` fixes the vocabulary: an **approved** booking is the confirmed one, a **hold** is the tentative one. `re_review` is neither — it is a settled booking reopened by a significant change (§6.19) — so it gets its own group rather than being folded into either, which would have misstated what is actually agreed. All three occupy the venue, so all three constrain planning. Recorded as **VC-R6**. Each row names its event: the bookings already carried `event_id`, and `public.events` exists since SCRUM-8, so `events.service.names_by_id` resolves the names. `venue_bookings.event_id` still has no foreign key to `events`, so a PostgREST embed is not available and the lookup is a second query — skipped entirely when the venue has no bookings.
+
+Following `VenueStaffDashboard`'s precedent, the API returns **one flat list with a status on each row and no server-side counts**; grouping and counting happen in `features/venues/venueProfile.js`, so a count can never disagree with the list rendered beside it.
+
+What was actually built:
+
+1. `supabase/migrations/20260920000000_venues_last_updated_by.sql` — `venues.updated_by`, its named `venues_updated_by_fkey` constraint (the profile embeds `profiles` through it) and a covering index. `supabase/seed.sql` stamps the seeded catalogue as edited by the venue-staff account, guarded on `updated_by is null` so re-seeding does not keep bumping `updated_at`.
+2. `backend/app/modules/venues/schemas.py` — `Editor`, `VenueProfile` (the catalogue fields plus the audit stamp), `TURNAROUND_MINUTES`, and `event_name` moved onto `BookingSummary` so `VenueStaffBooking` inherits it instead of redeclaring it. The audit fields are deliberately **not** on `VenueSummary`, which is also a search result and a dashboard row.
+3. `backend/app/modules/venues/repository.py` — `_VENUE_PROFILE_COLUMNS` with the `profiles!venues_updated_by_fkey(id, full_name)` embed; `_to_one_embed` generalised out of `_embedded_venue_name`, and `_to_editor`, which falls back to the bare `updated_by` id when the embed is empty.
+4. `backend/app/modules/events/{repository,service}.py` — `list_event_names` / `names_by_id`, the events module's answer to "what is this event called?" for a module that only holds an `event_id`.
+5. `backend/app/modules/venues/service.py` — `get_venue` now resolves booking event names in one lookup for the whole list.
+6. `frontend/src/features/venues/venueProfile.js` — `groupUpcomingBookings`, `formatTurnaround`, `lastEditorName`, `BOOKING_GROUPS`. An unrecognised booking status lands in a trailing "Other" group rather than being dropped: a booking nobody can see is the one way this screen could actively mislead someone planning around the venue.
+7. `frontend/src/views/venues/VenueDetailView.vue` — last-updated line in the header, a Turnaround row beside capacity and hours, and the old "Upcoming unavailability" card split into **Upcoming bookings** (grouped, counted, each naming its event) and **Blocks**.
+
+#### Verification
+
+- `pytest`: 161 passing (9 new, written red first — the SCRUM-67 class failed to import before `Editor`/`VenueProfile` existed).
+- `npm test`: 245 passing across 19 files (11 new in `venueProfile.spec.js`, 7 new view tests).
+- `npm run build`: passing — see D9 below, which it was failing on beforehand.
+- Against the live project (`vuiryrzzyfecjqftwicj`): login, `GET /venues`, `GET /venues/dashboard/venue-staff` all 200; the `events?select=id,name&id=in.(…)` read behind `names_by_id` returns the two seeded events and silently skips an id with no row.
+- **Not verified:** `GET /venues/{id}` against live, and therefore the screen in a browser. The migration could not be applied from this session (no `supabase` CLI, no `psql`, no access token), so the endpoint still answers `PGRST200`. Run `supabase db push` and re-run `supabase/seed.sql`, then re-check.
+
+#### Defect found while doing this (D9)
+
+`npm run build` and `npm test` were already broken on `main`: `frontend/src/stores/events.js` imports `@/stores/venues`, which SCRUM-70 moved to `features/venues/venueSearchStore.js` while SCRUM-8 was in flight. The two merged without the import being repointed, so the SPA would not build at all. Fixed in a separate commit on this branch because it blocked verifying anything in a browser; logged as **D9** in `docs/PROJECT_REVIEW.md`.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.

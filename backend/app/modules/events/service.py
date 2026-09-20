@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -17,6 +18,19 @@ class EventNotFoundError(HTTPException):
 class EventConflictError(HTTPException):
     def __init__(self, detail: str = "The event was changed by another request.") -> None:
         super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+def names_by_id(event_ids: Iterable[str]) -> dict[str, str]:
+    """`{event_id: name}` for the ids given — the events module's answer to
+    "what is this event called?" for modules that only hold an `event_id`.
+
+    No ownership check: the callers are already behind their own role and
+    relationship guards, and an event's name is the least of what they are
+    cleared to see. `venue_bookings.event_id` has no foreign key to `events`
+    (SCENARIO §4.9), so a PostgREST embed is not available and a caller that
+    needs names asks here rather than reading another module's table.
+    """
+    return repository.list_event_names(event_ids)
 
 
 def _to_response(row: dict) -> EventResponse:
