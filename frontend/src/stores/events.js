@@ -4,7 +4,10 @@ import { eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 import { DEFAULT_EVENT_TIMEZONE, fromZonedDateTime, toZonedIso } from "@/features/events/timezones";
-import { FACILITIES, LAYOUTS } from "@/stores/venues";
+// `stores/venues.js` moved to `features/venues/venueSearchStore.js` during
+// SCRUM-70 while SCRUM-8 was in flight; the two merged without this import
+// being repointed, which broke `npm run build` (PROJECT_REVIEW D9).
+import { FACILITIES, LAYOUTS } from "@/features/venues/venueSearchStore";
 
 export { FACILITIES, LAYOUTS };
 
