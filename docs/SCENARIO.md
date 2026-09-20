@@ -623,7 +623,7 @@ What was actually built:
 #### Verification
 
 - `pytest`: 162 passing (10 new, written red first — the SCRUM-67 class failed to import before `Editor`/`VenueProfile` existed).
-- `npm test`: 258 passing across 19 files (19 in `venueProfile.spec.js`, 12 view tests).
+- `npm test`: 265 passing across 19 files (23 in `venueProfile.spec.js`, 15 view tests).
 - `npm run build`: passing — see D9 below, which it was failing on beforehand.
 - Against the live project (`vuiryrzzyfecjqftwicj`): login, `GET /venues`, `GET /venues/dashboard/venue-staff` all 200; the `events?select=id,name&id=in.(…)` read behind `names_by_id` returns the two seeded events and silently skips an id with no row.
 - **Verified against live after the migration landed:** `GET /venues/{id}` returns 200 with CORS headers; Seminar Room 1 shows its tentative booking named "Seed Seminar Event", Auditorium A its confirmed "Seed Auditorium Event", Boardroom Orchid an empty summary, Heritage Hall a renovation block and no bookings; `turnaround_minutes` is 0 and `photos` is `[]`.
@@ -635,6 +635,8 @@ The developer asked for a photo slideshow at the top and the detail sections beh
 
 - **There is no venue photo data anywhere** — no column on `venues`, no `venue_photos` table, zero storage buckets on the project, and no mention of photos in REQUIREMENTS or CONTEXT. Stock imagery was rejected: this page's stated purpose is letting staff *verify current information*, so invented photos are the same class of problem as the fabricated dashboard metrics in PROJECT_REVIEW D8. The chosen route was contract-first — `VenueDetail.photos` is declared, always `[]`, and `VenuePhotoCarousel` renders an honest empty state. The carousel is built against the real shape, so it starts working the day photos exist. Recorded as **VC-R8**, with the photo library added to the §8 backlog.
 - **Tabs hide things**, which is a genuine cost for AC3 — the bookings summary is what staff are planning around, and a closed tab can imply there is nothing behind it. The two time-based tabs therefore carry a count in the tab itself ("Upcoming bookings · 2"), while the attribute tabs carry none, because every venue has capacity and hours and a `0` there would read as "none recorded". Recorded as **VC-R7**.
+
+The booking statuses were then tabbed one level in as well. The venue's total stays above that inner row so it is never hidden, each status tab carries its own count, and the row **opens on the first status that has bookings** (`defaultBookingGroupKey`) rather than always Confirmed — a venue whose only commitment is a hold would otherwise open on an empty Confirmed panel reading as "nothing booked", the exact misreading the counts exist to prevent.
 
 Built: `components/venues/VenuePhotoCarousel.vue` (prev/next, dot indicators, arrow keys, wrapping via `stepIndex` so the controls never dead-end), plus `venueProfileTabs` and `stepIndex` in `features/venues/venueProfile.js` and an ARIA tablist in the view. Only the selected panel is mounted, and switching tabs makes no network request.
 

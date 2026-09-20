@@ -7,6 +7,7 @@ import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import VenuePhotoCarousel from "@/components/venues/VenuePhotoCarousel.vue";
 import { blockReasonLabel, formatEventReference } from "@/features/venues/dashboard";
 import {
+  defaultBookingGroupKey,
   formatTurnaround,
   groupUpcomingBookings,
   lastEditorName,
@@ -66,6 +67,23 @@ function moveTab(delta) {
   const keys = tabs.value.map((tab) => tab.key);
   const next = stepIndex(keys.indexOf(activeTab.value), keys.length, delta);
   activeTab.value = keys[next];
+}
+
+// The booking statuses are tabbed too, one level in. The selection follows the
+// data rather than defaulting to "Confirmed": a venue whose only commitment is
+// a hold would otherwise open on an empty panel reading as "nothing booked".
+const activeGroup = ref(defaultBookingGroupKey(bookingGroups.value));
+watch(bookingGroups, (groups) => {
+  activeGroup.value = defaultBookingGroupKey(groups);
+});
+const currentGroup = computed(
+  () => bookingGroups.value.find((group) => group.key === activeGroup.value) ?? bookingGroups.value[0],
+);
+
+function moveGroup(delta) {
+  const keys = bookingGroups.value.map((group) => group.key);
+  const next = stepIndex(keys.indexOf(activeGroup.value), keys.length, delta);
+  activeGroup.value = keys[next];
 }
 
 // Tone → pill class maps are spelled out because Tailwind's scanner cannot see
@@ -232,17 +250,41 @@ watch(() => route.params.id, load);
           detail="Nothing is confirmed or held on this venue from now on."
         />
 
-        <div v-else class="flex flex-col gap-6">
-          <section v-for="group in bookingGroups" :key="group.key">
-            <div class="mb-2 flex flex-wrap items-center gap-3">
-              <span :class="pillClasses[group.tone]" class="px-2 py-0.5 text-xs font-bold uppercase tracking-wide">
-                {{ group.label }} · {{ group.bookings.length }}
-              </span>
-              <span class="text-xs font-medium text-ink/70">{{ group.detail }}</span>
-            </div>
-            <ul v-if="group.bookings.length" class="flex flex-col gap-2 text-sm">
+        <template v-else>
+          <div
+            class="mb-4 flex flex-wrap gap-2"
+            role="tablist"
+            aria-label="Booking status"
+            @keydown.left.prevent="moveGroup(-1)"
+            @keydown.right.prevent="moveGroup(1)"
+          >
+            <button
+              v-for="group in bookingGroups"
+              :id="`tab-group-${group.key}`"
+              :key="group.key"
+              type="button"
+              role="tab"
+              :aria-selected="activeGroup === group.key ? 'true' : 'false'"
+              :aria-controls="`panel-group-${group.key}`"
+              :tabindex="activeGroup === group.key ? 0 : -1"
+              class="px-3 py-1.5 text-xs font-bold uppercase tracking-wide active-press"
+              :class="[pillClasses[group.tone], activeGroup === group.key ? 'shadow-hard' : 'opacity-60']"
+              @click="activeGroup = group.key"
+            >
+              {{ group.label }} · {{ group.bookings.length }}
+            </button>
+          </div>
+
+          <div
+            v-if="currentGroup"
+            :id="`panel-group-${currentGroup.key}`"
+            role="tabpanel"
+            :aria-labelledby="`tab-group-${currentGroup.key}`"
+          >
+            <p class="mb-3 text-xs font-medium text-ink/70">{{ currentGroup.detail }}</p>
+            <ul v-if="currentGroup.bookings.length" class="flex flex-col gap-2 text-sm">
               <li
-                v-for="booking in group.bookings"
+                v-for="booking in currentGroup.bookings"
                 :key="booking.id"
                 class="flex flex-wrap items-center gap-x-3 gap-y-1 border-2 border-ink px-3 py-2"
               >
@@ -251,8 +293,8 @@ watch(() => route.params.id, load);
               </li>
             </ul>
             <p v-else class="text-sm font-medium text-ink/60">None.</p>
-          </section>
-        </div>
+          </div>
+        </template>
       </BauhausCard>
 
       <BauhausCard

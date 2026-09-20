@@ -282,17 +282,65 @@ describe("VenueDetailView (SCRUM-67)", () => {
     expect(el.textContent).not.toContain("Val Staff");
   });
 
+  const groupTab = (el, label) =>
+    [...el.querySelectorAll("[aria-label='Booking status'] [role='tab']")].find((b) => b.textContent.includes(label));
+
   it("summarises upcoming confirmed and tentative bookings, each naming its event (AC3)", async () => {
     const el = await openProfile();
     const summary = await openTab(el, "Upcoming bookings");
 
-    expect(summary.textContent).toContain("Confirmed");
-    expect(summary.textContent).toContain("Alumni Dinner");
-    expect(summary.textContent).toContain("Tentative");
-    expect(summary.textContent).toContain("Annual Town Hall");
+    // The total is stated once, above the status tabs, so it is never hidden.
     expect(summary.textContent).toContain("2 upcoming");
+    // Every status is on screen as a tab with its own count.
+    expect(groupTab(el, "Confirmed").textContent).toContain("1");
+    expect(groupTab(el, "Tentative").textContent).toContain("1");
+    expect(groupTab(el, "Under re-review").textContent).toContain("0");
+
+    // Confirmed is selected first and shows its booking.
+    expect(summary.textContent).toContain("Alumni Dinner");
+    expect(summary.textContent).not.toContain("Annual Town Hall");
+
+    groupTab(el, "Tentative").click();
+    await settle();
+
+    expect(summary.textContent).toContain("Annual Town Hall");
+    expect(summary.textContent).not.toContain("Alumni Dinner");
     // 05:00Z is 13:00 in Singapore.
     expect(summary.textContent).toMatch(/13:00/);
+  });
+
+  it("opens on the first status that actually has bookings, not always Confirmed", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, upcoming_bookings: [PROFILE.upcoming_bookings[0]] });
+    const el = await openProfile();
+    const summary = await openTab(el, "Upcoming bookings");
+
+    expect(groupTab(el, "Tentative").getAttribute("aria-selected")).toBe("true");
+    expect(groupTab(el, "Confirmed").getAttribute("aria-selected")).toBe("false");
+    expect(summary.textContent).toContain("Annual Town Hall");
+  });
+
+  it("says None rather than going blank on a status with no bookings", async () => {
+    const el = await openProfile();
+    const summary = await openTab(el, "Upcoming bookings");
+
+    groupTab(el, "Under re-review").click();
+    await settle();
+
+    expect(summary.textContent).toContain("None.");
+  });
+
+  it("moves between status tabs with the arrow keys", async () => {
+    const el = await openProfile();
+    await openTab(el, "Upcoming bookings");
+
+    el.querySelector("[aria-label='Booking status']").dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+    );
+    await settle();
+
+    expect(groupTab(el, "Tentative").getAttribute("aria-selected")).toBe("true");
+    // The outer tab row must not move as well.
+    expect(tab(el, "Upcoming bookings").getAttribute("aria-selected")).toBe("true");
   });
 
   it("falls back to a short event reference when the booking has no event name", async () => {

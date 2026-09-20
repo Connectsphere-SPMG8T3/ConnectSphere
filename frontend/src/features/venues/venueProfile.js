@@ -164,3 +164,18 @@ export function stepIndex(current, length, delta) {
   if (!length || length <= 0) return 0;
   return (((current + delta) % length) + length) % length;
 }
+
+/**
+ * Which booking group the Upcoming bookings tab should open on.
+ *
+ * The first group that actually has something, rather than always `confirmed`.
+ * A venue whose only commitment is a hold would otherwise open on an empty
+ * "Confirmed" panel, which reads as "nothing booked" — the precise misreading
+ * the counts on the tabs exist to prevent. Falls back to the first group when
+ * every one is empty, so the tab row still has a selection.
+ */
+export function defaultBookingGroupKey(groups) {
+  const list = Array.isArray(groups) ? groups : [];
+  const occupied = list.find((group) => group.bookings?.length > 0);
+  return occupied?.key ?? list[0]?.key ?? BOOKING_GROUPS[0].key;
+}

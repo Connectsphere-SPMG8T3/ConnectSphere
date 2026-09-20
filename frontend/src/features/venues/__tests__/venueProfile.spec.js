@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   BOOKING_GROUPS,
   VENUE_PROFILE_TABS,
+  defaultBookingGroupKey,
   formatTurnaround,
   groupUpcomingBookings,
   lastEditorName,
@@ -142,5 +143,28 @@ describe("stepIndex (photo carousel)", () => {
 
   it("handles a single photo without moving", () => {
     expect(stepIndex(0, 1, 1)).toBe(0);
+  });
+});
+
+describe("defaultBookingGroupKey", () => {
+  it("opens on the first group that actually has bookings", () => {
+    const groups = groupUpcomingBookings([booking("1", "held", 1)]);
+
+    expect(defaultBookingGroupKey(groups)).toBe("tentative");
+  });
+
+  it("prefers the earlier group when several have bookings", () => {
+    const groups = groupUpcomingBookings([booking("1", "held", 1), booking("2", "approved", 2)]);
+
+    expect(defaultBookingGroupKey(groups)).toBe("confirmed");
+  });
+
+  it("falls back to the first group when everything is empty", () => {
+    expect(defaultBookingGroupKey(groupUpcomingBookings([]))).toBe("confirmed");
+  });
+
+  it("tolerates being given nothing", () => {
+    expect(defaultBookingGroupKey([])).toBe(BOOKING_GROUPS[0].key);
+    expect(defaultBookingGroupKey()).toBe(BOOKING_GROUPS[0].key);
   });
 });
