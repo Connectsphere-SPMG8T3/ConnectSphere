@@ -223,6 +223,14 @@ values
      'Decommissioned pending refurbishment.')
 on conflict (name) do nothing;
 
+-- SCRUM-67: the venue profile shows when it was last updated and by whom. The
+-- catalogue was entered by venue staff, so the seed stamps them as the last
+-- editor. Guarded on `updated_by is null` so re-running the seed does not keep
+-- bumping `updated_at` through the trigger.
+update public.venues
+   set updated_by = 'a0000000-0000-4000-8000-000000000003'
+ where updated_by is null;
+
 insert into public.venue_layouts (venue_id, layout, capacity_for_layout)
 values
     ('b0000000-0000-4000-8000-000000000001', 'theatre', 500),

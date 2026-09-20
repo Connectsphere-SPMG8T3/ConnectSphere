@@ -146,37 +146,280 @@ describe("VenueSearchView", () => {
   });
 });
 
-describe("VenueDetailView", () => {
+const PROFILE = {
+  ...HALL_A,
+  updated_at: "2026-09-18T02:30:00Z",
+  updated_by: { id: "a0000000-0000-4000-8000-000000000003", full_name: "Val Staff" },
+  turnaround_minutes: 0,
+  upcoming_blocks: [
+    {
+      id: "c1",
+      period: { starts_at: "2026-10-10T00:00:00Z", ends_at: "2026-10-10T04:00:00Z" },
+      reason: "maintenance",
+      notes: "Air-con servicing",
+    },
+  ],
+  upcoming_bookings: [
+    {
+      id: "d1",
+      event_id: "e1",
+      event_name: "Annual Town Hall",
+      period: { starts_at: "2026-10-10T05:00:00Z", ends_at: "2026-10-10T08:00:00Z" },
+      status: "held",
+    },
+    {
+      id: "d2",
+      event_id: "e2",
+      event_name: "Alumni Dinner",
+      period: { starts_at: "2026-10-12T03:00:00Z", ends_at: "2026-10-12T06:00:00Z" },
+      status: "approved",
+    },
+  ],
+};
+
+describe("VenueDetailView (SCRUM-67)", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     vi.clearAllMocks();
+    venuesApi.get.mockResolvedValue(PROFILE);
   });
 
-  it("renders the venue with its upcoming blocks and bookings in Singapore time", async () => {
-    venuesApi.get.mockResolvedValue({
-      ...HALL_A,
-      upcoming_blocks: [
-        {
-          id: "c1",
-          period: { starts_at: "2026-10-10T00:00:00Z", ends_at: "2026-10-10T04:00:00Z" },
-          reason: "maintenance",
-          notes: "Air-con servicing",
-        },
-      ],
-      upcoming_bookings: [
-        { id: "d1", event_id: "e1", period: { starts_at: "2026-10-10T05:00:00Z", ends_at: "2026-10-10T08:00:00Z" }, status: "held" },
-      ],
-    });
+  async function openProfile() {
     const { default: VenueDetailView } = await import("@/views/venues/VenueDetailView.vue");
     const { el } = await mountView(VenueDetailView, { route: { name: "venue-detail", params: { id: HALL_A.id } } });
     await settle();
+    return el;
+  }
+
+  const tab = (el, label) => [...el.querySelectorAll("[role='tab']")].find((b) => b.textContent.includes(label));
+
+  async function openTab(el, label) {
+    tab(el, label).click();
+    await settle();
+    return el.querySelector("[role='tabpanel']");
+  }
+
+  it("shows the whole profile from one request, across its tabs (AC1)", async () => {
+    const el = await openProfile();
+
+    expect(venuesApi.get).toHaveBeenCalledTimes(1);
+    // Always visible, outside the tabs.
+    expect(el.textContent).toContain("Hall A");
+    expect(el.textContent).toContain("Bukit Timah Campus");
+
+    const capacity = el.querySelector("[role='tabpanel']");
+    expect(capacity.textContent).toContain("150 pax");
+    expect(capacity.textContent).toMatch(/08:00.22:00/);
+    expect(capacity.textContent).toContain("bookings may run back to back");
+    expect(capacity.textContent).toContain("Theatre");
+
+    const facilities = await openTab(el, "Facilities & access");
+    expect(facilities.textContent).toContain("Projector");
+    expect(facilities.textContent).toContain("Wheelchair access");
+  });
+
+  it("opens on Capacity & hours and switches panels on click", async () => {
+    const el = await openProfile();
+
+    expect(tab(el, "Capacity & hours").getAttribute("aria-selected")).toBe("true");
+    expect(el.querySelector("[role='tabpanel']").id).toBe("panel-capacity");
+
+    await openTab(el, "Blocks");
+
+    expect(tab(el, "Capacity & hours").getAttribute("aria-selected")).toBe("false");
+    expect(tab(el, "Blocks").getAttribute("aria-selected")).toBe("true");
+    // Only the selected panel is mounted.
+    expect(el.querySelectorAll("[role='tabpanel']")).toHaveLength(1);
+    expect(el.querySelector("[role='tabpanel']").id).toBe("panel-blocks");
+  });
+
+  it("counts what is behind the time-based tabs, so a closed tab never implies it is empty", async () => {
+    const el = await openProfile();
+
+    expect(tab(el, "Upcoming bookings").textContent).toContain("2");
+    expect(tab(el, "Blocks").textContent).toContain("1");
+    // Every venue has capacity and hours; a "0" there would read as "none recorded".
+    expect(tab(el, "Capacity & hours").textContent).not.toMatch(/·/);
+  });
+
+  it("moves between tabs with the arrow keys", async () => {
+    const el = await openProfile();
+
+    el.querySelector("[role='tablist']").dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+    );
+    await settle();
+
+    expect(el.querySelector("[role='tabpanel']").id).toBe("panel-facilities");
+  });
+
+  it("renders the venue's blocks in Singapore time", async () => {
+    const el = await openProfile();
+    const blocks = await openTab(el, "Blocks");
 
     expect(venuesApi.get).toHaveBeenCalledWith(HALL_A.id, "access");
-    expect(el.textContent).toContain("Hall A");
-    expect(el.textContent).toContain("Blocked · maintenance");
-    expect(el.textContent).toContain("Air-con servicing");
-    expect(el.textContent).toContain("Tentative hold");
+    expect(blocks.textContent).toContain("Maintenance");
+    expect(blocks.textContent).toContain("Air-con servicing");
+    // 00:00Z is 08:00 in Singapore.
+    expect(blocks.textContent).toMatch(/08:00/);
+  });
+
+  it("says when the profile was last updated and by whom (AC2)", async () => {
+    const el = await openProfile();
+
+    expect(el.textContent).toContain("Last updated");
+    expect(el.textContent).toContain("Val Staff");
+    // 02:30Z on 18 Sep is 10:30 in Singapore. The month abbreviation is left to
+    // the platform's ICU data ("Sep" or "Sept"), which is not what is under test.
+    expect(el.textContent).toMatch(/18 Sept? 2026, 10:30/);
+  });
+
+  it("reports an unrecorded editor instead of inventing one (AC2)", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, updated_by: null });
+    const el = await openProfile();
+
+    expect(el.textContent).toContain("Not recorded");
+    expect(el.textContent).not.toContain("Val Staff");
+  });
+
+  const groupTab = (el, label) =>
+    [...el.querySelectorAll("[aria-label='Booking status'] [role='tab']")].find((b) => b.textContent.includes(label));
+
+  it("summarises upcoming confirmed and tentative bookings, each naming its event (AC3)", async () => {
+    const el = await openProfile();
+    const summary = await openTab(el, "Upcoming bookings");
+
+    // The total is stated once, above the status tabs, so it is never hidden.
+    expect(summary.textContent).toContain("2 upcoming");
+    // Every status is on screen as a tab with its own count.
+    expect(groupTab(el, "Confirmed").textContent).toContain("1");
+    expect(groupTab(el, "Tentative").textContent).toContain("1");
+    expect(groupTab(el, "Under re-review").textContent).toContain("0");
+
+    // Confirmed is selected first and shows its booking.
+    expect(summary.textContent).toContain("Alumni Dinner");
+    expect(summary.textContent).not.toContain("Annual Town Hall");
+
+    groupTab(el, "Tentative").click();
+    await settle();
+
+    expect(summary.textContent).toContain("Annual Town Hall");
+    expect(summary.textContent).not.toContain("Alumni Dinner");
     // 05:00Z is 13:00 in Singapore.
-    expect(el.textContent).toMatch(/13:00/);
+    expect(summary.textContent).toMatch(/13:00/);
+  });
+
+  it("opens on the first status that actually has bookings, not always Confirmed", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, upcoming_bookings: [PROFILE.upcoming_bookings[0]] });
+    const el = await openProfile();
+    const summary = await openTab(el, "Upcoming bookings");
+
+    expect(groupTab(el, "Tentative").getAttribute("aria-selected")).toBe("true");
+    expect(groupTab(el, "Confirmed").getAttribute("aria-selected")).toBe("false");
+    expect(summary.textContent).toContain("Annual Town Hall");
+  });
+
+  it("says None rather than going blank on a status with no bookings", async () => {
+    const el = await openProfile();
+    const summary = await openTab(el, "Upcoming bookings");
+
+    groupTab(el, "Under re-review").click();
+    await settle();
+
+    expect(summary.textContent).toContain("None.");
+  });
+
+  it("moves between status tabs with the arrow keys", async () => {
+    const el = await openProfile();
+    await openTab(el, "Upcoming bookings");
+
+    el.querySelector("[aria-label='Booking status']").dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+    );
+    await settle();
+
+    expect(groupTab(el, "Tentative").getAttribute("aria-selected")).toBe("true");
+    // The outer tab row must not move as well.
+    expect(tab(el, "Upcoming bookings").getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("falls back to a short event reference when the booking has no event name", async () => {
+    venuesApi.get.mockResolvedValue({
+      ...PROFILE,
+      upcoming_bookings: [
+        { ...PROFILE.upcoming_bookings[0], event_name: null, event_id: "abcd1234-0000-4000-8000-000000000001" },
+      ],
+    });
+    const el = await openProfile();
+
+    expect((await openTab(el, "Upcoming bookings")).textContent).toContain("Event ABCD1234");
+  });
+
+  it("states that nothing is booked rather than leaving the section blank", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, upcoming_bookings: [] });
+    const el = await openProfile();
+
+    expect((await openTab(el, "Upcoming bookings")).textContent).toContain("No upcoming bookings");
+  });
+
+  it("shows a schematic of each supported layout instead of stock imagery (VC-R8)", async () => {
+    const el = await openProfile();
+    const gallery = el.querySelector("[aria-roledescription='carousel']");
+
+    expect(el.querySelector("img")).toBeNull();
+    expect(gallery.querySelector("svg")).toBeTruthy();
+    expect(gallery.textContent).toContain("Theatre · 120 pax");
+    expect(gallery.textContent).toContain("Schematic arrangement");
+    expect(gallery.querySelector("svg title").textContent).toContain("not this room's floor plan");
+  });
+
+  it("says so when the capacity shown is the venue figure rather than measured for that layout (VS-R6)", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, layouts: [{ layout: "theatre", capacity_for_layout: null }] });
+    const el = await openProfile();
+    const gallery = el.querySelector("[aria-roledescription='carousel']");
+
+    expect(gallery.textContent).toContain("Theatre · 150 pax");
+    expect(gallery.textContent).toContain("capacity is the venue figure");
+  });
+
+  it("leads with real photos once they exist, keeping the schematics after them", async () => {
+    venuesApi.get.mockResolvedValue({
+      ...PROFILE,
+      photos: [
+        { url: "https://example.test/a.jpg", caption: "From the stage" },
+        { url: "https://example.test/b.jpg", caption: null },
+      ],
+    });
+    const el = await openProfile();
+
+    expect(el.textContent).toContain("1 of 3");
+    expect(el.querySelector("img").getAttribute("src")).toBe("https://example.test/a.jpg");
+    expect(el.querySelector("img").getAttribute("alt")).toBe("From the stage");
+
+    const next = [...el.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Next slide");
+    next.click();
+    await settle();
+    expect(el.querySelector("img").getAttribute("src")).toBe("https://example.test/b.jpg");
+    // No caption on the second photo, so the alt text describes the position.
+    expect(el.querySelector("img").getAttribute("alt")).toBe("Hall A, photo 2 of 3");
+
+    // Third slide is the layout schematic.
+    next.click();
+    await settle();
+    expect(el.querySelector("img")).toBeNull();
+    expect(el.textContent).toContain("Theatre · 120 pax");
+
+    // And it wraps back to the first photo.
+    next.click();
+    await settle();
+    expect(el.querySelector("img").getAttribute("src")).toBe("https://example.test/a.jpg");
+  });
+
+  it("says there is nothing to show when the venue has neither photos nor layouts", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, layouts: [] });
+    const el = await openProfile();
+
+    expect(el.textContent).toContain("Nothing to show");
+    expect(el.querySelector("[aria-roledescription='carousel']")).toBeNull();
   });
 });

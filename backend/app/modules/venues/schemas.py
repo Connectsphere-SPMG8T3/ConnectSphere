@@ -57,6 +57,15 @@ class ReasonCode(str, Enum):
     booked = "booked"
 
 
+# Setup/turnaround between consecutive bookings, in minutes. The customer set
+# it to zero (QA-28, QA-82, QA-103), so back-to-back bookings are allowed and
+# no availability check applies a buffer (VS-R1, §6.14). It is a named constant
+# served on the venue profile rather than a number the SPA hard-codes, so the
+# day the customer asks for a real buffer, this is the one place it changes
+# (REQUIREMENTS §8, "a future rule plugs into §6.11 and §6.14").
+TURNAROUND_MINUTES = 0
+
+
 def label(value: str | Enum) -> str:
     """Human wording for an enum value: `sound_system` -> `sound system`."""
     raw = value.value if isinstance(value, Enum) else value
@@ -122,10 +131,68 @@ class BookingSummary(BaseModel):
     event_id: str
     period: Period
     status: str
+    # Resolved through `events.service.names_by_id`, because `venue_bookings`
+    # has no foreign key to `events` and so cannot embed the name in one query.
+    # Null when the event row has gone: a booking with no name is still a
+    # booking staff must plan around, so it is shown with a short id rather
+    # than dropped.
+    event_name: str | None = None
 
 
-class VenueDetail(VenueSummary):
+class Editor(BaseModel):
+    """Whoever last edited a venue profile (SCRUM-67 AC2).
+
+    `full_name` may be null: `profiles` allows it, and the caller is shown the
+    fact rather than a fabricated name.
+    """
+
+    id: str
+    full_name: str | None = None
+
+
+class VenueProfile(VenueSummary):
+    """A venue read for its own profile page: the catalogue fields plus the
+    audit stamp (SCRUM-67 AC2).
+
+    Kept off `VenueSummary` on purpose. That shape is also a search result and
+    a venue-staff dashboard row, where "who last edited this" is noise, and
+    reading it there would cost a `profiles` embed on every venue in the
+    catalogue for something no one looks at.
+    """
+
+    updated_at: datetime
+    # Null until the venue is edited through a path that records the editor
+    # (SCRUM-63/64), or when that account has since been removed.
+    updated_by: Editor | None = None
+
+
+class VenuePhoto(BaseModel):
+    """One image in the venue profile's carousel.
+
+    Declared now, populated by nothing. There is no `venue_photos` table and
+    no storage bucket on the project, so `VenueDetail.photos` is always empty
+    and the SPA renders an empty state. The field exists so the carousel is
+    built against the real shape and starts working the day photos are added,
+    without another SPA change — the same contract-first move `event_name`
+    made for the venue-staff dashboard. Stock imagery is deliberately not used:
+    this page's job is letting staff verify *current* information.
+    """
+
+    url: str
+    caption: str | None = None
+
+
+class VenueDetail(VenueProfile):
+    # Stated on the profile so venue staff can see the rule they are planning
+    # against, instead of inferring it from bookings that sit back-to-back.
+    turnaround_minutes: int = TURNAROUND_MINUTES
+    photos: list[VenuePhoto] = []
     upcoming_blocks: list[BlockSummary] = []
+    # Every booking that occupies the venue (§6.14): `approved` (confirmed),
+    # `held` (tentative) and `re_review`. Deliberately one list with a status
+    # on each row, not three server-side buckets — the same reasoning as
+    # `VenueStaffDashboard` below, where grouping and counting a complete list
+    # belongs to the reader, not to a second source of truth.
     upcoming_bookings: list[BookingSummary] = []
 
 
@@ -147,11 +214,9 @@ class VenueStaffBooking(BookingSummary):
     # been waiting is the only nudge the system gives, and the dashboard sorts
     # on it (§6.21). That makes it part of the contract, not a display detail.
     requested_at: datetime
-    # There is no `events` table yet, so `event_id` is a bare uuid with nothing
-    # to join to. The field is declared now and left None so SCRUM-8/19 can fill
-    # it in without an SPA change — the same contract-first move the coordinator
-    # dashboard made. The SPA falls back to a short id and never invents a name.
-    event_name: str | None = None
+    # `event_name` is inherited from `BookingSummary`. The dashboard does not
+    # resolve it yet, so it stays null here and the SPA falls back to a short
+    # id; `venues.service.get_venue` shows how to fill it (SCRUM-67).
 
 
 class VenueStaffDashboard(BaseModel):
