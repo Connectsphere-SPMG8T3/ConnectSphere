@@ -695,6 +695,13 @@ SCRUM-74/75 had already made the **API** layer correct: `get_current_user` resol
 - **In a browser** (dev servers against the live project): signed in as `coordinator@connectsphere.dev`, acting as Event Coordinator, `/dashboard/venue-staff` redirected to `/dashboard/coordinator` and a raw request to `/venues/dashboard/venue-staff` returned 403; after switching to Venue Staff both opened (200); switching back returned 403 again (TC-ROLE-017–019).
 - **Not verified:** RLS denial through a real token for an account that *holds* a staff role but acts as a non-staff one, because no seeded account is shaped that way; it is covered with simulated claims in `active_role_checks.sql` instead.
 
+### 4.12. Chore — SCRUM-76 follow-ups: timezone data and a real-token RLS check
+
+Not a Jira story; two loose ends left by SCRUM-76 (§4.11), done on `chore/timezone-data-and-real-token-rls-check`.
+
+1. **Timezone data.** 14 tests in `test_events_api.py` failed on Windows with `event_timezone must be a valid IANA timezone`. `events/schemas.py` validates with `zoneinfo.ZoneInfo`, which reads the operating system's timezone database, and Windows has none. `tzdata` was neither installed nor in `requirements.txt`, so every Windows developer hit it. It is now pinned in `backend/requirements.txt` (`tzdata==2026.4`) and `pytest` passes in full (182). Linux and the Docker image already had system data, so nothing there changes.
+2. **RLS denial through a real token.** SCRUM-76's own verification left one gap: `active_role_checks.sql` simulates JWT claims, and no seeded account holds a staff role while acting as a non-staff one. A throwaway account (`venue_staff` default, also `attendee`) was created on the live project, logged in through the real API, and queried through PostgREST with its own access token: **8 venues** un-switched, **0 venues and a 403 from the API** after switching to `attendee` through `POST /auth/active-role`, **8 and 200** after switching back. The account was then deleted and every table it touched checked empty. Recorded as **TC-DATA-014** so it can be repeated.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.
