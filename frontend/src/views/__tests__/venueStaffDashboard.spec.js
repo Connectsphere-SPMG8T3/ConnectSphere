@@ -246,16 +246,24 @@ describe("VenueStaffDashboard", () => {
     expect(labels).toEqual(["All 1", "Active 1"]);
   });
 
-  it("scrolls the venue list rather than letting it run off the page", async () => {
+  it("scrolls both list panels rather than letting them run off the page", async () => {
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
 
     const el = await mountDashboard();
-    const list = el.querySelector("#all-venues-list");
+    const venues = el.querySelector("#all-venues-list");
+    const requests = el.querySelector("#pending-requests-list");
 
     // A capped height is what makes `overflow-y-auto` engage; without it the
     // panel just grows and the scrollbar never appears.
-    expect(list.className).toContain("overflow-y-auto");
-    expect(list.className).toMatch(/max-h-/);
+    for (const list of [venues, requests]) {
+      expect(list.className).toContain("overflow-y-auto");
+      expect(list.className).toMatch(/max-h-/);
+    }
+
+    // The two sit side by side, so they cap at the same height or the columns
+    // fall out of step as soon as one of them fills up.
+    const capOf = (list) => list.className.match(/max-h-\[[^\]]+\]/)[0];
+    expect(capOf(requests)).toBe(capOf(venues));
   });
 
   it("jumps from the pending requests tile to the list further down the page", async () => {

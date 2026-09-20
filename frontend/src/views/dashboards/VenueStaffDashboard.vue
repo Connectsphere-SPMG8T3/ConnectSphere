@@ -248,7 +248,16 @@ function emptyDetail(clearText) {
           Longest-waiting first. A hold stays until you decide — nothing expires on its own.
         </p>
 
-        <ol v-if="holds.length" class="flex flex-col gap-3">
+        <!-- Capped and scrolling, like the venue list beside it: a busy queue
+             would otherwise push the whole page down, and the two columns have
+             to agree on a height or they fall out of step. `pr-1`/`pb-1` leave
+             room for the rows' hard shadows, which the scroll container would
+             otherwise clip. -->
+        <ol
+          v-if="holds.length"
+          id="pending-requests-list"
+          class="flex max-h-[28rem] flex-col gap-3 overflow-y-auto pb-1 pr-1"
+        >
           <li v-for="hold in holds" :key="hold.id">
             <RouterLink
               :to="{ name: 'booking-request', params: { id: hold.id } }"
@@ -307,10 +316,7 @@ function emptyDetail(clearText) {
           </button>
         </div>
 
-        <!-- A capped height rather than a growing panel: the catalogue is the
-             longest thing on the page and would otherwise push everything
-             below it out of reach. `pr-1`/`pb-1` leave room for the rows' hard
-             shadows, which the scroll container would otherwise clip. -->
+        <!-- Same cap as the pending list above, for the same reasons. -->
         <ul
           v-if="venueRows.length"
           id="all-venues-list"
