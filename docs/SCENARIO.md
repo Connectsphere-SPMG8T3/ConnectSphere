@@ -650,6 +650,51 @@ Repaired with `migration repair --status applied` on the six and `--status rever
 
 `npm run build` and `npm test` were already broken on `main`: `frontend/src/stores/events.js` imports `@/stores/venues`, which SCRUM-70 moved to `features/venues/venueSearchStore.js` while SCRUM-8 was in flight. The two merged without the import being repointed, so the SPA would not build at all. Fixed in a separate commit on this branch because it blocked verifying anything in a browser; logged as **D9** in `docs/PROJECT_REVIEW.md`.
 
+### 4.11. SCRUM-76 — Enforce endpoint access by active role, not all held roles (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-76` |
+| Summary | Enforce endpoint access by active role, not all held roles |
+| Issue type | Story |
+| Parent epic | `SCRUM-7` — User authorisation and authentication |
+| Status | In progress at time of writing (`feature/scrum-76-enforce-active-role`) |
+
+**User story (verbatim):**
+
+> As a system, I want every protected endpoint to check the user's currently active role, not the full set of roles they hold, so that a user cannot access another role's data just because they also hold that role.
+
+**Acceptance criteria (verbatim from Jira):**
+
+> * Calling an endpoint restricted to role X while active role is Y returns 403, even if the user separately holds role X
+> * RLS policies enforce this at the database layer, not just the API layer (private.current_user_role() reads active_role)
+> * This holds true even for direct API calls that bypass the UI (verified with a raw request, not just clicking through the app)
+> * Existing RLS policies (events, profiles, venues, venue_bookings, venue_blocks, venue_facilities, venue_layouts) continue to pass their current test cases after the function is repointed
+
+*Jira also notes that SCRUM-70, 71, 73 (and a re-check of 72) have acceptance criteria that assume direct routing to one dashboard on login.*
+
+#### How the implementation maps to the ticket
+
+SCRUM-74/75 had already made the **API** layer correct: `get_current_user` resolves the session's active role and `require_roles` gates on it. What was still wrong was the database layer. `private.current_user_role()`, which every RLS policy calls, read `profiles.role`, the account's default. `docs/REQUIREMENTS.md` ACC-R4 had recorded that as an intentional gap; it is superseded here, because a session switched to another role kept its default role's access to anything reached through RLS.
+
+1. **AC2 and AC4 — the function.** Migration `20260920100000_current_user_role_reads_active_role.sql` rewrites `private.current_user_role()` with the same signature, so no policy needed editing. It returns the `session_active_roles` row matching the JWT's `session_id` **and** `auth.uid()`, falling back to `profiles.role` when the session never switched or the token has no `session_id` (the same fallback as `resolve_active_role`). Matching on the profile as well means a session id belonging to another account is never honoured.
+2. **AC1 and AC3 — the API.** No production change was needed, so this is proved rather than built: `backend/tests/test_active_role_access.py` sends a raw request through the app for **every mounted route and every (held role, active role) pair** and asserts that acting as Y while also holding X is denied exactly when a Y-only account is. A second test fails any endpoint that no role is denied on, so a new endpoint written without `require_roles` cannot slip through.
+3. **Route guards.** `frontend/src/router/__tests__/activeRoleAccess.spec.js` does the same for every guarded page: with an account that holds all five roles, each route opens only for the role the session is acting as. A route without `allowedRoles` fails unless it is `login` or `profile`. The guard is UX; the API is the enforcement point.
+4. **Parity in the API lookup (code review follow-up).** `resolve_active_role` in `backend/app/core/security.py` filtered `session_active_roles` by `session_id` alone, while the SQL function also matches `profile_id`. Both ids come from the same verified JWT so it was not exploitable, but it now takes `user_id` and applies the same scoping, so the two layers follow one rule.
+5. **Standing rule.** `AGENTS.md`'s security baseline now says every new endpoint, policy and page authorises by the active role, and REQUIREMENTS gains **AUTH-R6**.
+
+**Scope decision:** the dashboards for SCRUM-71 and SCRUM-73 are on unmerged branches, so they were not touched. `docs/IMPLEMENTATION_MAP.md` records the pre-merge check, and the matrix tests will cover them once merged. SCRUM-70/72 (on `main`) are covered by the route matrix.
+
+#### Verification
+
+- Written red first: `supabase/verification/active_role_checks.sql` failed against the live function with `switched session (attendee) resolved as venue_staff`, then passed with the new function, run in a rolled-back transaction so nothing was persisted.
+- The two matrices passed on their first run (they characterise behaviour SCRUM-74/75 already built), so each was **mutation-checked**: making `get_current_user` ignore the active role failed the backend matrix on every organiser route, and making the guard accept any held role failed two frontend tests. Both changes were reverted.
+- `npm test`: 281 passing across 21 files. `pytest`: 168 passing including the 19 new matrix tests and the parity test (written red first), with 14 failures in `test_events_api.py` that fail identically without this story: this Windows Python has no IANA timezone data, so `event_timezone = "Asia/Singapore"` is rejected (an environment problem, not a code defect).
+- **Migration applied to the live project (2026-09-20).** The ledger matched the ten local files first; `apply_migration` recorded it under a generated version, which was renamed to `20260920100000` so the ledger matches the file. `get_advisors` (security) shows only the leaked-password warning that was already open.
+- **Live, after applying:** `active_role_checks.sql`, `auth_security_checks.sql` and `venue_schema_checks.sql` all pass (each rolled back). With real tokens through PostgREST (not simulated claims), both tokens carry a `session_id` claim; the attendee reads 0 venues and the coordinator reads 8. `event_schema_checks.sql` passes too, after fixing a typo in it: it used organiser id `a0000000-0000-0000-0000-000000000001`, which does not exist (the seed's is `...4000-8000-...`), so its RLS check failed regardless of this story.
+- **In a browser** (dev servers against the live project): signed in as `coordinator@connectsphere.dev`, acting as Event Coordinator, `/dashboard/venue-staff` redirected to `/dashboard/coordinator` and a raw request to `/venues/dashboard/venue-staff` returned 403; after switching to Venue Staff both opened (200); switching back returned 403 again (TC-ROLE-017–019).
+- **Not verified:** RLS denial through a real token for an account that *holds* a staff role but acts as a non-staff one, because no seeded account is shaped that way; it is covered with simulated claims in `active_role_checks.sql` instead.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.

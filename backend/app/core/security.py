@@ -67,16 +67,19 @@ def decode_access_token(token: str) -> dict:
     return claims
 
 
-def resolve_active_role(admin_client, session_id: str, default_role: str) -> str:
+def resolve_active_role(admin_client, user_id: str, session_id: str, default_role: str) -> str:
     """The role `session_id` is currently acting as (SCRUM-75).
 
     Falls back to `default_role` (the account's `profiles.role`) when this
-    session has never switched — most sessions, most of the time.
+    session has never switched — most sessions, most of the time. The row must
+    also belong to `user_id`, the same scoping `private.current_user_role()`
+    applies in SQL (SCRUM-76), so a session id is never honoured for another account.
     """
     response = (
         admin_client.table("session_active_roles")
         .select("role")
         .eq("session_id", session_id)
+        .eq("profile_id", user_id)
         .maybe_single()
         .execute()
     )
@@ -101,7 +104,9 @@ def load_profile_with_active_role(admin_client, user_id: str, session_id: str) -
     if not profile:
         raise ProfileNotFoundError()
 
-    active_role = resolve_active_role(admin_client, session_id, default_role=profile["role"])
+    active_role = resolve_active_role(
+        admin_client, user_id=user_id, session_id=session_id, default_role=profile["role"]
+    )
     return {**profile, "role": active_role}
 
 
