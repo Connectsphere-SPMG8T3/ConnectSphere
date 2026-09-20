@@ -115,3 +115,52 @@ export function lastEditorName(editor) {
   const id = String(editor.id ?? "");
   return id ? `Account ${id.slice(0, 8).toUpperCase()}` : "Not recorded";
 }
+
+/**
+ * The profile's tabs, in a fixed reading order (SCRUM-67).
+ *
+ * The attributes come first because they answer "is this the right venue?",
+ * and the two time-based sections follow because they answer "can I have it?".
+ */
+export const VENUE_PROFILE_TABS = [
+  { key: "capacity", label: "Capacity & hours", counted: false },
+  { key: "facilities", label: "Facilities & access", counted: false },
+  { key: "bookings", label: "Upcoming bookings", counted: true },
+  { key: "blocks", label: "Blocks", counted: true },
+];
+
+/**
+ * The tabs with a count on the two that hide something time-sensitive.
+ *
+ * Tabs hide content by design, which is a real cost for AC3: the bookings
+ * summary is the thing staff are planning around, and a closed tab could
+ * imply there is nothing behind it. The count on the tab itself is what keeps
+ * that honest — "Upcoming bookings 2" is visible without opening anything.
+ *
+ * The attribute tabs get `null`, not `0`. Every venue has capacity and hours,
+ * so a zero there would be read as "none recorded", which is a different and
+ * false claim.
+ */
+export function venueProfileTabs(venue) {
+  const counts = {
+    bookings: venue?.upcoming_bookings?.length ?? 0,
+    blocks: venue?.upcoming_blocks?.length ?? 0,
+  };
+  return VENUE_PROFILE_TABS.map((tab) => ({
+    ...tab,
+    count: tab.counted ? counts[tab.key] : null,
+  }));
+}
+
+/**
+ * Move `delta` places through `length` items, wrapping at both ends.
+ *
+ * Wrapping rather than clamping, so the carousel never dead-ends on the first
+ * or last photo with a control that silently does nothing. Guards `length <= 0`
+ * because the modulo would otherwise produce `NaN` and leave the carousel
+ * stuck on an index that renders nothing.
+ */
+export function stepIndex(current, length, delta) {
+  if (!length || length <= 0) return 0;
+  return (((current + delta) % length) + length) % length;
+}

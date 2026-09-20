@@ -191,28 +191,77 @@ describe("VenueDetailView (SCRUM-67)", () => {
     return el;
   }
 
-  it("renders the venue with its upcoming blocks in Singapore time", async () => {
-    const el = await openProfile();
+  const tab = (el, label) => [...el.querySelectorAll("[role='tab']")].find((b) => b.textContent.includes(label));
 
-    expect(venuesApi.get).toHaveBeenCalledWith(HALL_A.id, "access");
-    expect(el.textContent).toContain("Hall A");
-    expect(el.textContent).toContain("Maintenance");
-    expect(el.textContent).toContain("Air-con servicing");
-    // 05:00Z is 13:00 in Singapore.
-    expect(el.textContent).toMatch(/13:00/);
-  });
+  async function openTab(el, label) {
+    tab(el, label).click();
+    await settle();
+    return el.querySelector("[role='tabpanel']");
+  }
 
-  it("shows the whole profile in one place, from one request (AC1)", async () => {
+  it("shows the whole profile from one request, across its tabs (AC1)", async () => {
     const el = await openProfile();
 
     expect(venuesApi.get).toHaveBeenCalledTimes(1);
-    expect(el.textContent).toContain("Bukit Timah Campus"); // location
-    expect(el.textContent).toContain("150 pax"); // capacity
-    expect(el.textContent).toContain("Theatre"); // supported layout
-    expect(el.textContent).toContain("Projector"); // facility
-    expect(el.textContent).toContain("Wheelchair access"); // accessibility
-    expect(el.textContent).toMatch(/08:00.22:00/); // operating hours
-    expect(el.textContent).toContain("bookings may run back to back"); // turnaround
+    // Always visible, outside the tabs.
+    expect(el.textContent).toContain("Hall A");
+    expect(el.textContent).toContain("Bukit Timah Campus");
+
+    const capacity = el.querySelector("[role='tabpanel']");
+    expect(capacity.textContent).toContain("150 pax");
+    expect(capacity.textContent).toMatch(/08:00.22:00/);
+    expect(capacity.textContent).toContain("bookings may run back to back");
+    expect(capacity.textContent).toContain("Theatre");
+
+    const facilities = await openTab(el, "Facilities & access");
+    expect(facilities.textContent).toContain("Projector");
+    expect(facilities.textContent).toContain("Wheelchair access");
+  });
+
+  it("opens on Capacity & hours and switches panels on click", async () => {
+    const el = await openProfile();
+
+    expect(tab(el, "Capacity & hours").getAttribute("aria-selected")).toBe("true");
+    expect(el.querySelector("[role='tabpanel']").id).toBe("panel-capacity");
+
+    await openTab(el, "Blocks");
+
+    expect(tab(el, "Capacity & hours").getAttribute("aria-selected")).toBe("false");
+    expect(tab(el, "Blocks").getAttribute("aria-selected")).toBe("true");
+    // Only the selected panel is mounted.
+    expect(el.querySelectorAll("[role='tabpanel']")).toHaveLength(1);
+    expect(el.querySelector("[role='tabpanel']").id).toBe("panel-blocks");
+  });
+
+  it("counts what is behind the time-based tabs, so a closed tab never implies it is empty", async () => {
+    const el = await openProfile();
+
+    expect(tab(el, "Upcoming bookings").textContent).toContain("2");
+    expect(tab(el, "Blocks").textContent).toContain("1");
+    // Every venue has capacity and hours; a "0" there would read as "none recorded".
+    expect(tab(el, "Capacity & hours").textContent).not.toMatch(/·/);
+  });
+
+  it("moves between tabs with the arrow keys", async () => {
+    const el = await openProfile();
+
+    el.querySelector("[role='tablist']").dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+    );
+    await settle();
+
+    expect(el.querySelector("[role='tabpanel']").id).toBe("panel-facilities");
+  });
+
+  it("renders the venue's blocks in Singapore time", async () => {
+    const el = await openProfile();
+    const blocks = await openTab(el, "Blocks");
+
+    expect(venuesApi.get).toHaveBeenCalledWith(HALL_A.id, "access");
+    expect(blocks.textContent).toContain("Maintenance");
+    expect(blocks.textContent).toContain("Air-con servicing");
+    // 00:00Z is 08:00 in Singapore.
+    expect(blocks.textContent).toMatch(/08:00/);
   });
 
   it("says when the profile was last updated and by whom (AC2)", async () => {
@@ -235,14 +284,15 @@ describe("VenueDetailView (SCRUM-67)", () => {
 
   it("summarises upcoming confirmed and tentative bookings, each naming its event (AC3)", async () => {
     const el = await openProfile();
+    const summary = await openTab(el, "Upcoming bookings");
 
-    const summary = el.querySelector("[data-testid='upcoming-bookings']");
-    expect(summary).toBeTruthy();
     expect(summary.textContent).toContain("Confirmed");
     expect(summary.textContent).toContain("Alumni Dinner");
     expect(summary.textContent).toContain("Tentative");
     expect(summary.textContent).toContain("Annual Town Hall");
     expect(summary.textContent).toContain("2 upcoming");
+    // 05:00Z is 13:00 in Singapore.
+    expect(summary.textContent).toMatch(/13:00/);
   });
 
   it("falls back to a short event reference when the booking has no event name", async () => {
@@ -254,13 +304,47 @@ describe("VenueDetailView (SCRUM-67)", () => {
     });
     const el = await openProfile();
 
-    expect(el.querySelector("[data-testid='upcoming-bookings']").textContent).toContain("Event ABCD1234");
+    expect((await openTab(el, "Upcoming bookings")).textContent).toContain("Event ABCD1234");
   });
 
   it("states that nothing is booked rather than leaving the section blank", async () => {
     venuesApi.get.mockResolvedValue({ ...PROFILE, upcoming_bookings: [] });
     const el = await openProfile();
 
-    expect(el.querySelector("[data-testid='upcoming-bookings']").textContent).toContain("No upcoming bookings");
+    expect((await openTab(el, "Upcoming bookings")).textContent).toContain("No upcoming bookings");
+  });
+
+  it("leads with an empty state instead of stock imagery when there are no photos", async () => {
+    const el = await openProfile();
+
+    expect(el.textContent).toContain("No photos yet");
+    expect(el.querySelector("img")).toBeNull();
+  });
+
+  it("runs a slideshow once photos exist, wrapping at both ends", async () => {
+    venuesApi.get.mockResolvedValue({
+      ...PROFILE,
+      photos: [
+        { url: "https://example.test/a.jpg", caption: "From the stage" },
+        { url: "https://example.test/b.jpg", caption: null },
+      ],
+    });
+    const el = await openProfile();
+
+    expect(el.querySelector("img").getAttribute("src")).toBe("https://example.test/a.jpg");
+    expect(el.textContent).toContain("Photo 1 of 2");
+    expect(el.querySelector("img").getAttribute("alt")).toBe("From the stage");
+
+    const next = [...el.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Next photo");
+    next.click();
+    await settle();
+    expect(el.querySelector("img").getAttribute("src")).toBe("https://example.test/b.jpg");
+    expect(el.textContent).toContain("Photo 2 of 2");
+    // No caption on the second photo, so the alt text describes the position.
+    expect(el.querySelector("img").getAttribute("alt")).toBe("Hall A, photo 2 of 2");
+
+    next.click();
+    await settle();
+    expect(el.querySelector("img").getAttribute("src")).toBe("https://example.test/a.jpg");
   });
 });

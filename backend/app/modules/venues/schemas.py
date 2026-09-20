@@ -166,10 +166,27 @@ class VenueProfile(VenueSummary):
     updated_by: Editor | None = None
 
 
+class VenuePhoto(BaseModel):
+    """One image in the venue profile's carousel.
+
+    Declared now, populated by nothing. There is no `venue_photos` table and
+    no storage bucket on the project, so `VenueDetail.photos` is always empty
+    and the SPA renders an empty state. The field exists so the carousel is
+    built against the real shape and starts working the day photos are added,
+    without another SPA change — the same contract-first move `event_name`
+    made for the venue-staff dashboard. Stock imagery is deliberately not used:
+    this page's job is letting staff verify *current* information.
+    """
+
+    url: str
+    caption: str | None = None
+
+
 class VenueDetail(VenueProfile):
     # Stated on the profile so venue staff can see the rule they are planning
     # against, instead of inferring it from bookings that sit back-to-back.
     turnaround_minutes: int = TURNAROUND_MINUTES
+    photos: list[VenuePhoto] = []
     upcoming_blocks: list[BlockSummary] = []
     # Every booking that occupies the venue (§6.14): `approved` (confirmed),
     # `held` (tentative) and `re_review`. Deliberately one list with a status

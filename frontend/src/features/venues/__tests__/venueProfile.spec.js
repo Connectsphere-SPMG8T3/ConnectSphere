@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   BOOKING_GROUPS,
+  VENUE_PROFILE_TABS,
   formatTurnaround,
   groupUpcomingBookings,
   lastEditorName,
+  stepIndex,
+  venueProfileTabs,
 } from "@/features/venues/venueProfile";
 
 const booking = (id, status, startHour) => ({
@@ -87,5 +90,57 @@ describe("lastEditorName (SCRUM-67 AC2)", () => {
   it("reports that nothing was recorded rather than inventing an editor", () => {
     expect(lastEditorName(null)).toBe("Not recorded");
     expect(lastEditorName(undefined)).toBe("Not recorded");
+  });
+});
+
+describe("venueProfileTabs", () => {
+  const venue = {
+    upcoming_bookings: [booking("1", "approved", 1), booking("2", "held", 2)],
+    upcoming_blocks: [{ id: "c1" }],
+  };
+
+  it("returns the four profile tabs in a fixed order", () => {
+    expect(venueProfileTabs(venue).map((t) => t.key)).toEqual(VENUE_PROFILE_TABS.map((t) => t.key));
+    expect(venueProfileTabs(venue).map((t) => t.key)).toEqual(["capacity", "facilities", "bookings", "blocks"]);
+  });
+
+  it("counts what is behind the time-based tabs, so a closed tab still shows there is something in it", () => {
+    const byKey = Object.fromEntries(venueProfileTabs(venue).map((t) => [t.key, t.count]));
+
+    expect(byKey.bookings).toBe(2);
+    expect(byKey.blocks).toBe(1);
+  });
+
+  it("gives the attribute tabs no count, rather than a misleading zero", () => {
+    const byKey = Object.fromEntries(venueProfileTabs(venue).map((t) => [t.key, t.count]));
+
+    expect(byKey.capacity).toBeNull();
+    expect(byKey.facilities).toBeNull();
+  });
+
+  it("counts zero for an empty venue, and tolerates a missing venue", () => {
+    expect(venueProfileTabs({}).find((t) => t.key === "bookings").count).toBe(0);
+    expect(venueProfileTabs().find((t) => t.key === "blocks").count).toBe(0);
+  });
+});
+
+describe("stepIndex (photo carousel)", () => {
+  it("moves forward and backward", () => {
+    expect(stepIndex(0, 3, 1)).toBe(1);
+    expect(stepIndex(2, 3, -1)).toBe(1);
+  });
+
+  it("wraps at both ends, so the carousel never dead-ends", () => {
+    expect(stepIndex(2, 3, 1)).toBe(0);
+    expect(stepIndex(0, 3, -1)).toBe(2);
+  });
+
+  it("stays at zero when there is nothing to show", () => {
+    expect(stepIndex(0, 0, 1)).toBe(0);
+    expect(stepIndex(0, 0, -1)).toBe(0);
+  });
+
+  it("handles a single photo without moving", () => {
+    expect(stepIndex(0, 1, 1)).toBe(0);
   });
 });

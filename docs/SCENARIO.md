@@ -622,11 +622,27 @@ What was actually built:
 
 #### Verification
 
-- `pytest`: 161 passing (9 new, written red first — the SCRUM-67 class failed to import before `Editor`/`VenueProfile` existed).
-- `npm test`: 245 passing across 19 files (11 new in `venueProfile.spec.js`, 7 new view tests).
+- `pytest`: 162 passing (10 new, written red first — the SCRUM-67 class failed to import before `Editor`/`VenueProfile` existed).
+- `npm test`: 258 passing across 19 files (19 in `venueProfile.spec.js`, 12 view tests).
 - `npm run build`: passing — see D9 below, which it was failing on beforehand.
 - Against the live project (`vuiryrzzyfecjqftwicj`): login, `GET /venues`, `GET /venues/dashboard/venue-staff` all 200; the `events?select=id,name&id=in.(…)` read behind `names_by_id` returns the two seeded events and silently skips an id with no row.
-- **Not verified:** `GET /venues/{id}` against live, and therefore the screen in a browser. The migration could not be applied from this session (no `supabase` CLI, no `psql`, no access token), so the endpoint still answers `PGRST200`. Run `supabase db push` and re-run `supabase/seed.sql`, then re-check.
+- **Verified against live after the migration landed:** `GET /venues/{id}` returns 200 with CORS headers; Seminar Room 1 shows its tentative booking named "Seed Seminar Event", Auditorium A its confirmed "Seed Auditorium Event", Boardroom Orchid an empty summary, Heritage Hall a renovation block and no bookings; `turnaround_minutes` is 0 and `photos` is `[]`.
+- **Not verified:** the page in a real browser (no browser automation in this session — the Vitest specs assert rendered text in jsdom, which is not the same as a visual check), and AC2's "by whom" against live, because `venues.updated_by` is null on all 8 rows: the seed's stamping `update` is a write to the shared project and was blocked here. Run it, then re-check.
+
+#### Follow-up in the same story: slideshow and tabs
+
+The developer asked for a photo slideshow at the top and the detail sections behind tabs. Neither is in SCRUM-67's acceptance criteria, but the tabs are a presentation choice about AC1's content, and the slideshow needed a decision rather than a build:
+
+- **There is no venue photo data anywhere** — no column on `venues`, no `venue_photos` table, zero storage buckets on the project, and no mention of photos in REQUIREMENTS or CONTEXT. Stock imagery was rejected: this page's stated purpose is letting staff *verify current information*, so invented photos are the same class of problem as the fabricated dashboard metrics in PROJECT_REVIEW D8. The chosen route was contract-first — `VenueDetail.photos` is declared, always `[]`, and `VenuePhotoCarousel` renders an honest empty state. The carousel is built against the real shape, so it starts working the day photos exist. Recorded as **VC-R8**, with the photo library added to the §8 backlog.
+- **Tabs hide things**, which is a genuine cost for AC3 — the bookings summary is what staff are planning around, and a closed tab can imply there is nothing behind it. The two time-based tabs therefore carry a count in the tab itself ("Upcoming bookings · 2"), while the attribute tabs carry none, because every venue has capacity and hours and a `0` there would read as "none recorded". Recorded as **VC-R7**.
+
+Built: `components/venues/VenuePhotoCarousel.vue` (prev/next, dot indicators, arrow keys, wrapping via `stepIndex` so the controls never dead-end), plus `venueProfileTabs` and `stepIndex` in `features/venues/venueProfile.js` and an ARIA tablist in the view. Only the selected panel is mounted, and switching tabs makes no network request.
+
+#### Migration history repair (2026-09-20)
+
+Pushing `20260920000000` surfaced drift far worse than PROJECT_REVIEW D8's single missing row. `supabase migration list --linked` showed six local files applied-but-unrecorded and three remote rows with no local file. Querying `supabase_migrations.schema_migrations` showed the three were the *same* migrations under earlier timestamps from another working copy (`role_switching`, `session_active_roles_fk_user_roles`, `profiles_role_requires_user_roles_membership`), and direct schema checks confirmed all six local files were live in substance — `public.events`, `events.event_timezone`, `events_registration_closes_before_event_end`, `user_roles`, `session_active_roles_profile_role_fkey`, `profiles_role_requires_user_roles_membership_fkey` all present. A plain `db push` would have replayed `create table public.events` against a populated table.
+
+Repaired with `migration repair --status applied` on the six and `--status reverted` on the three duplicates, then pushed. Local and remote now match exactly. **Check `migration list --linked` before every push** — this is the second time the ledger has drifted.
 
 #### Defect found while doing this (D9)
 

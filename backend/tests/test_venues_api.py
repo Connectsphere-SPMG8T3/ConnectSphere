@@ -364,6 +364,17 @@ class TestVenueProfile:
         assert body["upcoming_bookings"] == []
         assert calls == []
 
+    def test_the_profile_declares_a_photos_field_that_is_empty(self, client, auth_headers, authenticate_as, catalogue):
+        """The profile page leads with a photo carousel, so `photos` is part of
+        the contract from the start. Nothing populates it yet — there is no
+        `venue_photos` table and no storage bucket — so it is always `[]` and
+        the SPA shows an empty state rather than stock imagery."""
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers).json()
+
+        assert body["photos"] == []
+
     def test_a_coordinator_reads_the_same_profile(self, client, auth_headers, authenticate_as, catalogue):
         """SCRUM-67 is a venue-staff story, but the endpoint is the catalogue
         read that coordinators already hold (§2); it is not narrowed here."""
