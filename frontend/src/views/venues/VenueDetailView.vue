@@ -4,7 +4,7 @@ import { RouterLink, useRoute } from "vue-router";
 
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
-import VenuePhotoCarousel from "@/components/venues/VenuePhotoCarousel.vue";
+import VenueGallery from "@/components/venues/VenueGallery.vue";
 import { blockReasonLabel, formatEventReference } from "@/features/venues/dashboard";
 import {
   defaultBookingGroupKey,
@@ -13,6 +13,7 @@ import {
   lastEditorName,
   stepIndex,
   venueProfileTabs,
+  venueSlides,
 } from "@/features/venues/venueProfile";
 import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS, useVenuesStore } from "@/features/venues/venueSearchStore";
 
@@ -55,6 +56,9 @@ const lastUpdated = computed(() => ({
 // so the rules are testable without mounting this view.
 const bookingGroups = computed(() => groupUpcomingBookings(venue.value?.upcoming_bookings));
 const upcomingBookingCount = computed(() => venue.value?.upcoming_bookings?.length ?? 0);
+
+// Photos first, then a schematic per supported layout (VC-R8).
+const slides = computed(() => venueSlides(venue.value));
 
 // The tabs carry counts, so a closed tab never implies there is nothing in it.
 const tabs = computed(() => venueProfileTabs(venue.value));
@@ -127,7 +131,7 @@ watch(() => route.params.id, load);
     <p v-else-if="venuesStore.isLoading && !venue" class="text-sm font-medium">Loading venue…</p>
 
     <template v-if="venue">
-      <VenuePhotoCarousel :photos="venue.photos ?? []" :venue-name="venue.name" data-testid="venue-photos" />
+      <VenueGallery :slides="slides" :venue-name="venue.name" data-testid="venue-gallery" />
 
       <BauhausCard background="blue" accent="circle" accent-color="bauhaus-yellow" class="mb-8">
         <p class="text-xs font-bold uppercase tracking-widest opacity-80">

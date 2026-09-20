@@ -9,6 +9,7 @@ import {
   lastEditorName,
   stepIndex,
   venueProfileTabs,
+  venueSlides,
 } from "@/features/venues/venueProfile";
 
 const booking = (id, status, startHour) => ({
@@ -166,5 +167,54 @@ describe("defaultBookingGroupKey", () => {
   it("tolerates being given nothing", () => {
     expect(defaultBookingGroupKey([])).toBe(BOOKING_GROUPS[0].key);
     expect(defaultBookingGroupKey()).toBe(BOOKING_GROUPS[0].key);
+  });
+});
+
+describe("venueSlides", () => {
+  const venue = {
+    capacity: 60,
+    photos: [],
+    layouts: [
+      { layout: "classroom", capacity_for_layout: 40 },
+      { layout: "theatre", capacity_for_layout: null },
+    ],
+  };
+
+  it("turns each supported layout into a schematic slide", () => {
+    const slides = venueSlides(venue);
+
+    expect(slides.map((s) => [s.kind, s.layout, s.capacity])).toEqual([
+      ["layout", "classroom", 40],
+      ["layout", "theatre", 60],
+    ]);
+  });
+
+  it("labels the layout as the catalogue does", () => {
+    expect(venueSlides(venue)[0].label).toBe("Classroom");
+  });
+
+  it("flags when the figure is the venue capacity rather than a per-layout one (VS-R6)", () => {
+    const [classroom, theatre] = venueSlides(venue);
+
+    expect(classroom.usesVenueCapacity).toBe(false);
+    expect(theatre.usesVenueCapacity).toBe(true);
+  });
+
+  it("leads with real photos once they exist, keeping the schematics after them", () => {
+    const slides = venueSlides({ ...venue, photos: [{ url: "a.jpg", caption: "From the stage" }] });
+
+    expect(slides.map((s) => s.kind)).toEqual(["photo", "layout", "layout"]);
+    expect(slides[0]).toMatchObject({ url: "a.jpg", caption: "From the stage" });
+  });
+
+  it("returns nothing when the venue records neither photos nor layouts", () => {
+    expect(venueSlides({ capacity: 60, photos: [], layouts: [] })).toEqual([]);
+    expect(venueSlides()).toEqual([]);
+  });
+
+  it("gives every slide a stable unique key", () => {
+    const keys = venueSlides(venue).map((s) => s.key);
+
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });

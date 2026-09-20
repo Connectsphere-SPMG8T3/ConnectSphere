@@ -362,14 +362,27 @@ describe("VenueDetailView (SCRUM-67)", () => {
     expect((await openTab(el, "Upcoming bookings")).textContent).toContain("No upcoming bookings");
   });
 
-  it("leads with an empty state instead of stock imagery when there are no photos", async () => {
+  it("shows a schematic of each supported layout instead of stock imagery (VC-R8)", async () => {
     const el = await openProfile();
+    const gallery = el.querySelector("[aria-roledescription='carousel']");
 
-    expect(el.textContent).toContain("No photos yet");
     expect(el.querySelector("img")).toBeNull();
+    expect(gallery.querySelector("svg")).toBeTruthy();
+    expect(gallery.textContent).toContain("Theatre · 120 pax");
+    expect(gallery.textContent).toContain("Schematic arrangement");
+    expect(gallery.querySelector("svg title").textContent).toContain("not this room's floor plan");
   });
 
-  it("runs a slideshow once photos exist, wrapping at both ends", async () => {
+  it("says so when the capacity shown is the venue figure rather than measured for that layout (VS-R6)", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, layouts: [{ layout: "theatre", capacity_for_layout: null }] });
+    const el = await openProfile();
+    const gallery = el.querySelector("[aria-roledescription='carousel']");
+
+    expect(gallery.textContent).toContain("Theatre · 150 pax");
+    expect(gallery.textContent).toContain("capacity is the venue figure");
+  });
+
+  it("leads with real photos once they exist, keeping the schematics after them", async () => {
     venuesApi.get.mockResolvedValue({
       ...PROFILE,
       photos: [
@@ -379,20 +392,34 @@ describe("VenueDetailView (SCRUM-67)", () => {
     });
     const el = await openProfile();
 
+    expect(el.textContent).toContain("1 of 3");
     expect(el.querySelector("img").getAttribute("src")).toBe("https://example.test/a.jpg");
-    expect(el.textContent).toContain("Photo 1 of 2");
     expect(el.querySelector("img").getAttribute("alt")).toBe("From the stage");
 
-    const next = [...el.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Next photo");
+    const next = [...el.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Next slide");
     next.click();
     await settle();
     expect(el.querySelector("img").getAttribute("src")).toBe("https://example.test/b.jpg");
-    expect(el.textContent).toContain("Photo 2 of 2");
     // No caption on the second photo, so the alt text describes the position.
-    expect(el.querySelector("img").getAttribute("alt")).toBe("Hall A, photo 2 of 2");
+    expect(el.querySelector("img").getAttribute("alt")).toBe("Hall A, photo 2 of 3");
 
+    // Third slide is the layout schematic.
+    next.click();
+    await settle();
+    expect(el.querySelector("img")).toBeNull();
+    expect(el.textContent).toContain("Theatre · 120 pax");
+
+    // And it wraps back to the first photo.
     next.click();
     await settle();
     expect(el.querySelector("img").getAttribute("src")).toBe("https://example.test/a.jpg");
+  });
+
+  it("says there is nothing to show when the venue has neither photos nor layouts", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, layouts: [] });
+    const el = await openProfile();
+
+    expect(el.textContent).toContain("Nothing to show");
+    expect(el.querySelector("[aria-roledescription='carousel']")).toBeNull();
   });
 });

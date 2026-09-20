@@ -1,3 +1,5 @@
+import { LAYOUTS } from "@/features/venues/venueSearchStore";
+
 /**
  * Pure presentation logic for the venue profile page (SCRUM-67).
  *
@@ -8,6 +10,41 @@
  * are unit-testable without mounting anything — the same split as
  * `features/venues/dashboard.js`.
  */
+
+const LAYOUT_LABELS = Object.fromEntries(LAYOUTS.map((entry) => [entry.value, entry.label]));
+
+/**
+ * The slides in the profile's carousel, in reading order (SCRUM-67).
+ *
+ * Real photos lead, then one schematic per layout the venue supports. Photos
+ * are always absent today (VC-R8), so in practice this is the layout
+ * schematics — which are drawn from `venue_layouts`, data we actually hold,
+ * rather than being decorative filler.
+ *
+ * The capacity shown follows VS-R6: the per-layout figure when the venue
+ * records one, otherwise the venue-wide capacity. `usesVenueCapacity` says
+ * which of the two it is, so the diagram can label the fallback honestly
+ * instead of implying the venue was measured in that layout.
+ */
+export function venueSlides(venue) {
+  const photos = (venue?.photos ?? []).map((photo, index) => ({
+    key: `photo-${index}`,
+    kind: "photo",
+    url: photo.url,
+    caption: photo.caption ?? null,
+  }));
+
+  const layouts = (venue?.layouts ?? []).map((entry) => ({
+    key: `layout-${entry.layout}`,
+    kind: "layout",
+    layout: entry.layout,
+    label: LAYOUT_LABELS[entry.layout] ?? String(entry.layout ?? "").replace(/_/g, " "),
+    capacity: entry.capacity_for_layout ?? venue?.capacity ?? null,
+    usesVenueCapacity: entry.capacity_for_layout == null,
+  }));
+
+  return [...photos, ...layouts];
+}
 
 /**
  * How the profile groups the bookings that occupy a venue (§6.14).
