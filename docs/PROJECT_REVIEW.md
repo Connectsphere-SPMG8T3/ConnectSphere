@@ -76,7 +76,7 @@ Legend for the "Story quality" column:
 | # | Core feature | Jira epic | Stories | Story quality | Main gaps |
 |---|---|---|---|---|---|
 | 1 | Authorisation & authentication | SCRUM-7 | 48 ✔, 50, (70–73 misfiled here) | Good / Weak | No story for **relationship-based access**, logout, session expiry/refresh, or account provisioning. SCRUM-48 says "username" but we implemented email (needs a recorded decision). Dashboards 70–73 aren't auth. |
-| 2 | Event request creation | **none** | SCRUM-8 (Story, no epic) | **Raw** | No user story format, no acceptance criteria, no validation rules, no edge cases (§6.2). |
+| 2 | Event request creation | **none** | SCRUM-8 (Story, no epic) | **Implemented** | Implemented on `feature/scrum-8-event-request` with draft, submission, validation, detail retrieval, and event-timezone coverage. Coordinator assignment and notifications remain SCRUM-12 / SCRUM-68 scope. |
 | 3 | Draft event requests | **none** | SCRUM-9, SCRUM-65 (overlap) | Raw / Weak | Duplicated between 9 and 65. No "drafts invisible to staff" rule, no delete-draft behaviour. |
 | 4 | Event review & approval | SCRUM-11 | 33, 34, 49, 52 | Good | **Missing the organiser side.** The customer's model is *return for amendment*: the organiser edits the same request and resubmits (QA-22, QA-77). SCRUM-33 instead describes a clarification thread the coordinator "marks resolved". No story covers "planning only after requirements gathered" (QA-22) or feasibility criteria (QA-23). |
 | 5 | Coordinator assignment | **none** | SCRUM-12 (Story), 68 | Raw | The customer answered: **automatic, by load, at most one coordinator** (QA-5, QA-54, QA-79), but SCRUM-12 has no acceptance criteria reflecting this. **No reassignment story** (required by W4). Load balancing under simultaneous submissions isn't covered. |
@@ -141,7 +141,7 @@ Update these in Jira, and leave a comment on each, for example: *"Updated after 
 | SCRUM-69 | Users opt for email, SMS, or in-app | Channel is the team's choice (QA-11) | Release 1: in-app; email story at Low priority |
 | SCRUM-70 | "Venues the Venue Staff member manages" | Staff allocation to venues is not tracked (QA-44) | All venues; staff work as one pool (§2.2 AUTH-R5). **Resolved and built this way** on `feature/scrum-70-venue-staff-dashboard`; the dashboard is headed "All venues" and states the reason (SCENARIO §4.9) |
 | SCRUM-32 | "Organiser can propose modifications to any event details" | Also covers **cancellation requests**, approved by the coordinator (QA-12) | Add a cancellation criterion (§6.19) |
-| SCRUM-8 | Raw text | Mandatory: title, pax, date and times, purpose, venue/layout. One date per request. Preliminary equipment needs allowed. (QA-19, QA-24, QA-134, QA-135) | §6.2 field table |
+| SCRUM-8 | Implemented on `feature/scrum-8-event-request` | Request creation, drafts, validated submission, submitted detail retrieval, and event-local timezone handling. Coordinator assignment and notifications are separate SCRUM-12 / SCRUM-68 scope. | §6.2 field table; SCENARIO §4.9 |
 
 ### B3. Backlog hygiene issues (visible to graders in the exported backlog)
 

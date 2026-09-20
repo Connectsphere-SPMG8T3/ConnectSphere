@@ -320,7 +320,7 @@ sequenceDiagram
 
 ## 4. Domain model
 
-This is the target schema. **Built so far: `profiles` (SCRUM-48) and the venue tables `venues`, `venue_layouts`, `venue_facilities`, `venue_blocks`, `venue_bookings` (SCRUM-39, migration `20260915090000`).** It is 3NF, with UUID primary keys and `timestamptz` stored in UTC and displayed in Asia/Singapore.
+This is the target schema. **Built so far: `profiles` (SCRUM-48), the venue tables `venues`, `venue_layouts`, `venue_facilities`, `venue_blocks`, `venue_bookings` (SCRUM-39, migration `20260915090000`), and event requests (SCRUM-8, migrations `20260916090000` and `20260919110000`).** It is 3NF, with UUID primary keys and `timestamptz` stored as UTC instants. Event and registration schedules are entered and displayed in the event's IANA timezone; Singapore remains the default for existing events.
 
 ```mermaid
 erDiagram
@@ -365,6 +365,7 @@ erDiagram
     uuid coordinator_id FK
     enum status
     string name
+    string event_timezone
     string purpose
     text description
     timestamptz starts_at
@@ -604,25 +605,28 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 | name (event title) | ✔ (QA-24) | 3–150 characters |
 | purpose | ✔ (QA-19) | 1–500 characters |
 | description | – | ≤ 5000 characters |
-| event date + start time + end time (**one date per request**, QA-135) | ✔ (QA-19, QA-24: "preferred dates/times", "duration") | `starts_at` not in the past; `ends_at` > `starts_at`. **No minimum or maximum lead time** (QA-80, QA-91). |
+| event date + start time + end time (**one date per request**, QA-135) | ✔ (QA-19, QA-24: "preferred dates/times", "duration") | The organiser selects an IANA event timezone; instants are stored as UTC and the local event date must be strictly after today in that timezone. `ends_at` > `starts_at`. **No minimum or maximum lead time beyond this calendar-date rule** (QA-80, QA-91). |
 | expected_attendance (pax) | ✔ (QA-19, QA-24) | Integer ≥ 1 |
 | layout_preference and venue requirements (location preference, required facilities) | ✔ layout (QA-24: "primary venue/layout preferences") | Layout from a controlled list; facilities from a controlled list |
 | accessibility_needs | – (QA-53) | ≤ 1000 characters |
 | preliminary_equipment_needs | – (QA-134) | Free text, refined later by coordinator and tech support |
 | registration_enabled | – (QA-53) | Boolean, default false |
-| registration_capacity, registration_opens_at / closes_at | ✔ if registration is enabled (QA-89) | 1 ≤ capacity; opens < closes ≤ `starts_at` |
+| registration_capacity, registration_opens_at / closes_at | ✔ if registration is enabled (QA-89) | 1 ≤ capacity; opening and closing dates are after today in the event timezone; opens < closes ≤ `ends_at` |
 
 **Rules**
 - **ER-R1:** Submit validates everything and returns **all** field errors at once.
-- **ER-R2:** On submit, the system auto-assigns a coordinator in the same operation (§6.5).
+- **ER-R2:** SCRUM-8 submission changes the draft to `under_review`. Coordinator assignment and submission notifications are separate scope owned by SCRUM-12 / SCRUM-68; until those stories land, `coordinator_id` remains null and the organiser sees that assignment is pending.
 - **ER-R3:** After submission the organiser can't edit directly. They edit only when the request is **returned** (§6.4), or they raise a change request (§6.19). Organisers who "submit and request amendments later" follow this route (QA-94).
 - **ER-R4:** Submitting an already-submitted event returns `409`, so a double-click can't create a duplicate.
 
 **Acceptance criteria**
-- **Given** a valid draft with title, purpose, date and times, pax, and layout, **when** I submit, **then** its status becomes `under_review`, a coordinator is assigned, both the coordinator and I are notified, and I see my coordinator's name.
+- **Given** a valid draft with title, purpose, date and times, pax, and layout, **when** I submit, **then** its status becomes `under_review`, the request is stored, and I can see that coordinator assignment is pending.
 - **Given** a draft missing pax and layout, **when** I submit, **then** both field errors show and the status stays `draft`.
 - **Given** end time ≤ start time, **when** I submit, **then** I see "End time must be after start time."
 - **Given** an event date one day from now, **when** I submit, **then** it is accepted (no lead-time rule).
+- **Given** an event date equal to today's event-local date, **when** I submit, **then** it is rejected even if the start time has not passed.
+
+**SCRUM-8 scope boundary:** Coordinator assignment, reassignment, coordinator notifications, and organiser notifications are not part of event request creation. They are tracked under SCRUM-12 / SCRUM-68 and will consume the submitted `under_review` event produced here.
 
 ### 6.3 Draft event requests *(SCRUM-9, SCRUM-65)*
 

@@ -93,9 +93,9 @@ The customer briefing describes far more functionality (client management, recur
 
 The instructions are explicit that these 20 features are **not isolated** — the release should demonstrate coherent end-to-end workflows across them (matching the lifecycle in §2.2), and design/tests should reflect the relationships between features (e.g. an attendance change should be able to affect venue suitability).
 
-As of the most recent entry in §4's implementation log, only feature #1 (User Authorisation and Authentication) has any implementation. Features 2–20 have empty stub packages (`backend/app/modules/{events,venues,equipment}/`) reserved for future sprints — do not assume any of that domain logic exists until a log entry below says otherwise. **When a story lands for one of features 2–20, add a log entry in §4 and update this sentence and the stub-package note.**
+As of the most recent entries in §4's implementation log, features #1 (User Authorisation and Authentication), #2 (Event Request Creation), #3 (Draft Event Requests), and #8 (Venue Catalogue) have implementation. The remaining feature packages may still be reserved for future sprints — do not assume their domain logic exists until a log entry below says otherwise. **When a story lands for one of features 2–20, add a log entry in §4 and update this sentence and the stub-package note.**
 
-One qualification, from §4.5 (SCRUM-72): `frontend/src/features/events/` now exists, but holds **presentation logic only** — the coordinator dashboard's ordering, grouping and labelling, plus the data contract it expects. There is still no events domain logic, no events table, and no events endpoint. The proposed schema in `docs/proposals/` has not been applied to any database.
+`frontend/src/features/events/` contains coordinator-dashboard presentation logic, while the SCRUM-8 request implementation lives in `backend/app/modules/events/` and `frontend/src/stores/events.js` / `frontend/src/views/events/`. Coordinator assignment, reassignment, and submission notifications remain separate SCRUM-12 / SCRUM-68 scope.
 
 ## 4. Implementation log (append one entry per completed Scrum story)
 
@@ -292,7 +292,7 @@ Each defect was reproduced before changing code, and each has a regression test 
 The story was kept as one deliverable (catalogue view + search/filter + availability) rather than split into 39a/39b as `PROJECT_REVIEW` B4 suggested, because with empty filters the search page *is* the catalogue view. Decisions that the ticket left open, each recorded in `REQUIREMENTS.md` §6.8/§6.10:
 
 - **The buffer criterion was dropped.** The customer set setup/turnaround to zero (QA-28, QA-82, QA-93, QA-103); DB-1 and §6.14 are built on half-open `[starts_at, ends_at)` ranges so back-to-back bookings are allowed. Building the buffer would contradict the rule SCRUM-21 will test. Jira comment to add: *"Updated after Session 1 Q&A (QA-28): turnaround assumed zero; buffer criterion removed."*
-- **"Based on the Event Organiser's information"** means the event request's fields (date/time, pax, layout, facilities, accessibility). `events` does not exist yet, so the API takes those as explicit query parameters; pre-filling from an `event_id` is a thin adapter for when SCRUM-8 lands.
+- **"Based on the Event Organiser's information"** means the event request's fields (date/time, pax, layout, facilities, accessibility). At the time this venue-search entry was implemented, `events` did not exist, so the API took those as explicit query parameters; SCRUM-8 now provides the event request and its detail workflow.
 - **"Marked as unavailable due to maintenance, renovation, or safety"** maps to **blocks** (§6.9). The three reasons are examples, not an allow-list: any block (also `internal_activity`, `other`) excludes, per CAL-R3, and so do `held`/`approved`/`re_review` bookings (BR-R2, §6.14).
 - **Every criterion the coordinator sets is strict** — including layout and accessibility, which §6.11 classes as *warnings* for the suitability badge. Filtering is what the coordinator asked for; SCRUM-18's badge covers the "found it, but with caveats" case. A "Show N excluded" toggle reveals excluded venues with reasons so nothing is silently hidden.
 - **Availability and suitability stay distinguishable** (§6.11): availability is its own field on each result; criterion failures are listed as reasons with codes.
@@ -558,6 +558,21 @@ Two findings from the same review round were investigated and not treated as bug
 - **The new seed rows are not in the live database.** The hosted project still carries the old seed, so the re-review tile reads 0 there rather than 1. `supabase db push`/`db reset` has not been run — no Supabase CLI was available in the environment where this was built.
 - The re-review path itself is untested end to end, because nothing can yet *put* a booking into `re_review` — that arrives with SCRUM-19/20.
 - `waitingDays` was checked against fixed clocks in tests, not across a real day boundary.
+### 4.9. SCRUM-8 — Event request creation, drafts, submission, and timezone support
+
+SCRUM-8 is implemented on `feature/scrum-8-event-request`, pending merge. Organisers can create minimal drafts, resume and update their own drafts, discard never-submitted drafts, submit validated requests, and retrieve submitted request details. Submission changes the request to `under_review`; coordinator assignment, reassignment, and notifications are explicitly outside SCRUM-8 and remain tracked under SCRUM-12 / SCRUM-68.
+
+The event request workflow now treats the event's local timezone as explicit data rather than assuming Singapore for every request. Organisers choose an IANA timezone from the supported Southeast Asia list, the frontend converts local date/time input to timezone-aware UTC ISO instants, and the backend validates the event and registration calendar dates in that selected timezone. PostgreSQL stores the instants in `timestamptz` columns and stores the IANA identifier in `events.event_timezone`, defaulting existing events to `Asia/Singapore`.
+
+The submitted request detail view converts returned UTC instants back into the event timezone and labels the timezone beside the schedule. Venue catalogue records still have no timezone field and remain Singapore-specific; extending venue operating hours and venue display to multiple countries requires a separate venue-catalogue migration.
+
+#### Verification
+
+- TDD regression tests were red before implementation for Bangkok payload conversion, response normalization, and API timezone persistence.
+- `pytest`: 114 passing.
+- `npm test -- --run`: 85 passing across 13 files.
+- `npm run build`: passed.
+- Editor diagnostics and `git diff --check`: passed.
 
 ## 5. Architecture: modular monolith
 

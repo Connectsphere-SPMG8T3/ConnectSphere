@@ -77,10 +77,26 @@ export const venuesApi = {
 };
 
 export const eventsApi = {
-  // Not implemented by the backend yet — the `events` module is still an empty
-  // stub package, so this answers 404 until that story lands (SCRUM-72).
   coordinatorDashboard(token) {
     return request("/events/dashboard/coordinator", { token });
+  },
+  list(token) {
+    return request("/events", { token });
+  },
+  get(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}`, { token });
+  },
+  create(payload, token) {
+    return request("/events", { method: "POST", body: payload, token });
+  },
+  update(eventId, payload, token) {
+    return request(`/events/${encodeURIComponent(eventId)}`, { method: "PATCH", body: payload, token });
+  },
+  remove(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}`, { method: "DELETE", token });
+  },
+  submit(eventId, payload, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/submit`, { method: "POST", body: payload, token });
   },
 };
 

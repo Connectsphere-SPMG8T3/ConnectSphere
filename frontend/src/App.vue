@@ -4,6 +4,7 @@ import { useRoute } from "vue-router";
 
 import Nav from "@/components/common/Nav.vue";
 import TopBar from "@/components/common/TopBar.vue";
+import Toast from "@/components/common/Toast.vue";
 import { useSidebarState } from "@/composables/useSidebarState";
 
 const route = useRoute();
@@ -29,5 +30,6 @@ const contentOffsetClass = computed(() => {
         <RouterView />
       </div>
     </div>
+    <Toast />
   </div>
 </template>

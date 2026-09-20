@@ -170,6 +170,25 @@ begin
 end $$;
 
 -- =============================================================================
+-- SCRUM-8: event records referenced by the venue catalogue fixtures. These are
+-- planning records so the venue bookings have valid event foreign keys while
+-- remaining outside the organiser's normal draft workflow.
+-- =============================================================================
+
+insert into public.events (
+    id, organiser_id, status, name, purpose, starts_at, ends_at,
+    expected_attendance, layout_preference
+)
+values
+    ('e0000000-0000-4000-8000-000000000101', 'a0000000-0000-4000-8000-000000000001', 'planning',
+     'Seed Auditorium Event', 'Venue search fixture', '2026-10-10 11:00+08', '2026-10-10 14:00+08', 120, 'theatre'),
+    ('e0000000-0000-4000-8000-000000000102', 'a0000000-0000-4000-8000-000000000001', 'planning',
+     'Seed Seminar Event', 'Venue search fixture', '2026-10-10 13:00+08', '2026-10-10 16:00+08', 50, 'classroom'),
+    ('e0000000-0000-4000-8000-000000000103', 'a0000000-0000-4000-8000-000000000001', 'planning',
+     'Seed Innovation Event', 'Venue search fixture', '2026-10-10 14:00+08', '2026-10-10 17:00+08', 60, 'classroom')
+on conflict (id) do nothing;
+
+-- =============================================================================
 -- SCRUM-39: venue catalogue with a few blocks and bookings on 10 Oct 2026, so
 -- a search for 10 Oct 14:00–17:00 (Asia/Singapore) demonstrates every
 -- exclusion reason. Idempotent: fixed ids, `on conflict do nothing`.
