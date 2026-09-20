@@ -650,6 +650,47 @@ Repaired with `migration repair --status applied` on the six and `--status rever
 
 `npm run build` and `npm test` were already broken on `main`: `frontend/src/stores/events.js` imports `@/stores/venues`, which SCRUM-70 moved to `features/venues/venueSearchStore.js` while SCRUM-8 was in flight. The two merged without the import being repointed, so the SPA would not build at all. Fixed in a separate commit on this branch because it blocked verifying anything in a browser; logged as **D9** in `docs/PROJECT_REVIEW.md`.
 
+### 4.11. SCRUM-76 — Enforce endpoint access by active role, not all held roles (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-76` |
+| Summary | Enforce endpoint access by active role, not all held roles |
+| Issue type | Story |
+| Parent epic | `SCRUM-7` — User authorisation and authentication |
+| Status | In progress at time of writing (`feature/scrum-76-enforce-active-role`) |
+
+**User story (verbatim):**
+
+> As a system, I want every protected endpoint to check the user's currently active role, not the full set of roles they hold, so that a user cannot access another role's data just because they also hold that role.
+
+**Acceptance criteria (verbatim from Jira):**
+
+> * Calling an endpoint restricted to role X while active role is Y returns 403, even if the user separately holds role X
+> * RLS policies enforce this at the database layer, not just the API layer (private.current_user_role() reads active_role)
+> * This holds true even for direct API calls that bypass the UI (verified with a raw request, not just clicking through the app)
+> * Existing RLS policies (events, profiles, venues, venue_bookings, venue_blocks, venue_facilities, venue_layouts) continue to pass their current test cases after the function is repointed
+
+*Jira also notes that SCRUM-70, 71, 73 (and a re-check of 72) have acceptance criteria that assume direct routing to one dashboard on login.*
+
+#### How the implementation maps to the ticket
+
+SCRUM-74/75 had already made the **API** layer correct: `get_current_user` resolves the session's active role and `require_roles` gates on it. What was still wrong was the database layer. `private.current_user_role()`, which every RLS policy calls, read `profiles.role`, the account's default. `docs/REQUIREMENTS.md` ACC-R4 had recorded that as an intentional gap; it is superseded here, because a session switched to another role kept its default role's access to anything reached through RLS.
+
+1. **AC2 and AC4 — the function.** Migration `20260920100000_current_user_role_reads_active_role.sql` rewrites `private.current_user_role()` with the same signature, so no policy needed editing. It returns the `session_active_roles` row matching the JWT's `session_id` **and** `auth.uid()`, falling back to `profiles.role` when the session never switched or the token has no `session_id` (the same fallback as `resolve_active_role`). Matching on the profile as well means a session id belonging to another account is never honoured.
+2. **AC1 and AC3 — the API.** No production change was needed, so this is proved rather than built: `backend/tests/test_active_role_access.py` sends a raw request through the app for **every mounted route and every (held role, active role) pair** and asserts that acting as Y while also holding X is denied exactly when a Y-only account is. A second test fails any endpoint that no role is denied on, so a new endpoint written without `require_roles` cannot slip through.
+3. **Route guards.** `frontend/src/router/__tests__/activeRoleAccess.spec.js` does the same for every guarded page: with an account that holds all five roles, each route opens only for the role the session is acting as. A route without `allowedRoles` fails unless it is `login` or `profile`. The guard is UX; the API is the enforcement point.
+4. **Standing rule.** `AGENTS.md`'s security baseline now says every new endpoint, policy and page authorises by the active role, and REQUIREMENTS gains **AUTH-R6**.
+
+**Scope decision:** the dashboards for SCRUM-71 and SCRUM-73 are on unmerged branches, so they were not touched. `docs/IMPLEMENTATION_MAP.md` records the pre-merge check, and the matrix tests will cover them once merged. SCRUM-70/72 (on `main`) are covered by the route matrix.
+
+#### Verification
+
+- Written red first: `supabase/verification/active_role_checks.sql` failed against the live function with `switched session (attendee) resolved as venue_staff`, then passed with the new function, run in a rolled-back transaction so nothing was persisted.
+- The two matrices passed on their first run (they characterise behaviour SCRUM-74/75 already built), so each was **mutation-checked**: making `get_current_user` ignore the active role failed the backend matrix on every organiser route, and making the guard accept any held role failed two frontend tests. Both changes were reverted.
+- `npm test`: 281 passing across 21 files. `pytest`: 167 passing including the 19 new tests, with 14 failures in `test_events_api.py` that fail identically without this story: this Windows Python has no IANA timezone data, so `event_timezone = "Asia/Singapore"` is rejected (an environment problem, not a code defect).
+- **Not verified:** the migration is **not yet applied to the live project**, so the raw HTTP request against a running `uvicorn` with a real token, and each existing RLS policy re-run as its real role, are still to do after it is applied. The frontend was not exercised in a real browser (TC-ROLE-019 is manual).
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.
