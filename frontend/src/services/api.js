@@ -51,6 +51,55 @@ export const authApi = {
   },
 };
 
+// Repeats array values as `key=a&key=b`, which FastAPI reads as a list.
+function toQueryString(params) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value === undefined || value === null || value === "") continue;
+    if (Array.isArray(value)) value.forEach((entry) => query.append(key, entry));
+    else query.append(key, value);
+  }
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+export const venuesApi = {
+  search(params, token) {
+    return request(`/venues${toQueryString(params)}`, { token });
+  },
+  get(venueId, token) {
+    return request(`/venues/${encodeURIComponent(venueId)}`, { token });
+  },
+  // The venue-staff work queue across every venue (SCRUM-70).
+  venueStaffDashboard(token) {
+    return request("/venues/dashboard/venue-staff", { token });
+  },
+};
+
+export const eventsApi = {
+  coordinatorDashboard(token) {
+    return request("/events/dashboard/coordinator", { token });
+  },
+  list(token) {
+    return request("/events", { token });
+  },
+  get(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}`, { token });
+  },
+  create(payload, token) {
+    return request("/events", { method: "POST", body: payload, token });
+  },
+  update(eventId, payload, token) {
+    return request(`/events/${encodeURIComponent(eventId)}`, { method: "PATCH", body: payload, token });
+  },
+  remove(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}`, { method: "DELETE", token });
+  },
+  submit(eventId, payload, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/submit`, { method: "POST", body: payload, token });
+  },
+};
+
 export const equipmentApi = {
   checkEquipmentAvailability(payload, token) {
     return request("/equipment/availability/check", {

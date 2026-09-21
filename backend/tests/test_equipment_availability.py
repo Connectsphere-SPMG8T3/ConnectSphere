@@ -140,6 +140,7 @@ def test_non_technical_support_role_is_forbidden(monkeypatch):
         email="coordinator@connectsphere.dev",
         full_name="Coordinator",
         role="event_coordinator",
+        session_id=str(uuid4()),
         access_token="test-token",
     )
     app.dependency_overrides[get_current_user] = lambda: user
