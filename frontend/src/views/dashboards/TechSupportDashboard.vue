@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import { ApiError, checkEquipmentAvailability, equipmentApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
@@ -38,27 +39,6 @@ const inventoryError = ref("");
 const maintenanceItems = ref([]);
 const maintenanceLoading = ref(false);
 const maintenanceError = ref("");
-const incomingRequests = ref([
-  {
-    id: "request-001",
-    requesterName: "Marcus Lim",
-    requestedItem: "4K Projector",
-    startAt: "2026-10-15T09:00:00Z",
-    endAt: "2026-10-15T17:00:00Z",
-    quantity: 2,
-    status: "PENDING",
-  },
-  {
-    id: "request-002",
-    requesterName: "Olivia Tan",
-    requestedItem: "Wireless Mics",
-    startAt: "2026-10-22T13:00:00Z",
-    endAt: "2026-10-22T18:00:00Z",
-    quantity: 6,
-    status: "PENDING",
-  },
-]);
-
 const statusLabel = computed(() => (results.value?.sufficient ? "SUFFICIENT" : "INSUFFICIENT"));
 
 function inventoryStatus(item) {
@@ -167,11 +147,6 @@ async function loadInventory() {
 function selectTab(tab) {
   activeTab.value = tab;
   if (tab === "inventory" && inventoryItems.value.length === 0) loadInventory();
-}
-
-function updateRequestStatus(requestId, status) {
-  const request = incomingRequests.value.find((item) => item.id === requestId);
-  if (request) request.status = status;
 }
 
 function formatDate(value) {
@@ -322,32 +297,16 @@ function formatDate(value) {
         </div>
 
         <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <section class="border-2 border-ink bg-bauhaus-yellow p-5" aria-labelledby="incoming-requests-heading">
-            <div class="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Mocked workflow</p>
-                <h3 id="incoming-requests-heading" class="mt-2 text-xl font-black uppercase tracking-tight">Active requests</h3>
-              </div>
-              <span class="border-2 border-ink bg-canvas px-2 py-1 text-xs font-black">{{ incomingRequests.filter((request) => request.status === "PENDING").length }} PENDING</span>
+          <section class="border-2 border-ink bg-canvas p-5" aria-labelledby="incoming-requests-heading">
+            <div class="mb-5">
+              <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Not yet available</p>
+              <h3 id="incoming-requests-heading" class="mt-2 text-xl font-black uppercase tracking-tight">Active requests</h3>
             </div>
 
-            <div class="flex flex-col gap-4">
-              <article v-for="request in incomingRequests" :key="request.id" class="border-2 border-ink bg-canvas p-4">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p class="font-black">{{ request.requestedItem }} <span class="font-medium">× {{ request.quantity }}</span></p>
-                    <p class="mt-1 text-xs font-bold uppercase tracking-wide text-ink/70">Requested by {{ request.requesterName }}</p>
-                  </div>
-                  <span class="border-2 border-ink px-2 py-1 text-xs font-black" :class="request.status === 'PENDING' ? 'bg-orange-400 text-ink' : request.status === 'APPROVED' ? 'bg-green-500 text-ink' : 'bg-bauhaus-red text-canvas'">{{ request.status }}</span>
-                </div>
-                <p class="mt-3 text-xs font-bold uppercase tracking-wide">{{ formatDate(request.startAt) }} – {{ formatDate(request.endAt) }}</p>
-                <div v-if="request.status === 'PENDING'" class="mt-4 flex gap-3">
-                  <button type="button" class="border-2 border-ink bg-green-500 px-3 py-2 text-xs font-black uppercase tracking-wide hover:bg-green-400" @click="updateRequestStatus(request.id, 'APPROVED')">Approve</button>
-                  <button type="button" class="border-2 border-ink bg-bauhaus-red px-3 py-2 text-xs font-black uppercase tracking-wide text-canvas hover:bg-red-700" @click="updateRequestStatus(request.id, 'REJECTED')">Reject</button>
-                </div>
-              </article>
-              <p v-if="incomingRequests.length === 0" class="border-2 border-ink bg-canvas p-4 text-sm font-bold uppercase tracking-wide">No incoming requests.</p>
-            </div>
+            <BauhausEmptyState
+              title="No request workflow yet"
+              detail="Equipment requests appear here once organisers can raise them and tech support can reserve or reject them (SCRUM-24)."
+            />
           </section>
 
           <section class="border-2 border-ink bg-canvas p-5" aria-labelledby="maintenance-heading">
