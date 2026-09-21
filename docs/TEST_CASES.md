@@ -1,5 +1,4 @@
-# ConnectSphere — Manual Test Cases (SCRUM-48: Basic User Authentication · SCRUM-39: Venue Catalogue & Search · SCRUM-72: Coordinator Dashboard · SCRUM-70: Venue Staff Dashboard)
-# ConnectSphere — Manual Test Cases (SCRUM-48: Basic User Authentication · SCRUM-39: Venue Catalogue & Search · SCRUM-72: Coordinator Dashboard · SCRUM-8: Event Request Creation)
+# ConnectSphere — Manual Test Cases
 
 Manual test-case suite for the features implemented so far:
 
@@ -7,6 +6,7 @@ Manual test-case suite for the features implemented so far:
 - **§8 — SCRUM-39: Venue catalogue, search and availability**.
 - **§9 — SCRUM-72: Event Coordinator dashboard**: the prioritised action list, the active-event status overview, and their empty states.
 - **§10 — SCRUM-70: Venue Staff dashboard**: the four work-queue tiles, the month calendar, the pending-request list and the venue list — all against real seeded data.
+- **§12 — SCRUM-73: Technical Support dashboard**: the equipment inventory, the scheduled-maintenance list, and the active-requests empty state — against real seeded data.
 
 See [docs/SCENARIO.md](SCENARIO.md) for the full requirement context and [docs/SETUP.md](SETUP.md) for environment setup.
 
@@ -16,11 +16,11 @@ Every test case traces back to either the SCRUM-48 acceptance criteria, a custom
 
 - **In scope:** `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`, the `LoginView`/`ProfileView` pages, the five role dashboards as RBAC targets, and the Vue Router guards that protect them.
 - **Also in scope (§8):** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, the `/venues` search page and `/venues/:id` detail page (SCRUM-39).
-- **Also in scope (§9):** the Event Coordinator dashboard's presentation logic (SCRUM-72) — rendering, ordering, and empty states, not event data.
+- **Also in scope (§9):** the Event Coordinator dashboard's presentation logic (SCRUM-72) — rendering, ordering, and empty states, plus organiser event drafts and event request submission (SCRUM-8).
 - **Also in scope (§10):** `GET /api/v1/venues/dashboard/venue-staff`, the `/dashboard/venue-staff` page and the `/bookings/:id` placeholder (SCRUM-70). Unlike §9 this runs against real data, since the venue tables exist and are seeded.
-- **Out of scope:** everything under the `events` and `equipment` **backend** modules — empty stub packages with no logic to test yet. §9 therefore tests the coordinator dashboard's rendering and empty states only.
- **Also in scope (§9):** the Event Coordinator dashboard's presentation logic (SCRUM-72) — rendering, ordering, and empty states, plus organiser event drafts and event request submission (SCRUM-8).
- **Out of scope:** coordinator assignment and reassignment (SCRUM-12 / SCRUM-68), and the equipment module.
+- **Also in scope (§12):** `GET /api/v1/equipment/inventory` and `GET /api/v1/equipment/maintenance`, and the `/dashboard/tech-support` page (SCRUM-73). Like §10 this runs against real data, since the equipment tables exist and are seeded.
+- **Out of scope:** the equipment **reservation workflow** (SCRUM-24) — organisers cannot yet raise equipment requests, so the dashboard's "Active requests" panel has no data source and is tested as an empty state only.
+- **Out of scope:** coordinator assignment and reassignment (SCRUM-12 / SCRUM-68).
 - **Environment:** a Supabase project with every migration in `supabase/migrations/` applied and `supabase/seed.sql` run, backend on `http://localhost:8000`, frontend on `http://localhost:5173`. The live project (`vuiryrzzyfecjqftwicj`) has both migrations and the seed applied. The data-layer cases in §6 are automated by `supabase/verification/auth_security_checks.sql` (runs inside a rolled-back transaction and raises on any failure).
 - **Seeded accounts** (all share the password `Cs1234`, per `supabase/seed.sql`):
 
@@ -457,3 +457,41 @@ Automated equivalents live in `frontend/src/features/venues/__tests__/` and `bac
 TC-VSD-023–030 were added when SCRUM-70's user story was restated, to pin the acceptance criteria's own wording rather than only the widgets built for it. Their automated equivalents, where they exist: `backend/tests/test_venue_dashboard.py::TestCrossVenueReads` covers TC-VSD-025's cut-off (blocks are filtered on an open-ended range in Postgres, so a finished one never leaves the database) and TC-VSD-026's server half (every row names its venue); `dashboard.spec.js::venueStatuses` covers TC-VSD-024's and TC-VSD-028's status transitions, including a block that ends exactly now. TC-VSD-023 (login through to a settled queue), TC-VSD-027 (no creator column to filter on), TC-VSD-029 (deep link) and TC-VSD-030 (the re-review gap) are end-to-end or documentary and remain manual.
 
 TC-VSD-031–034 cover the venue-list filter, its scrolling and the tile jump. `dashboard.spec.js::venueStatusFilterOptions` and `::filterVenueStatuses` cover the pure half — the option order and counts, that an absent status is never offered, and that an unknown key falls back to every row rather than to none — and `views/__tests__/venueStaffDashboard.spec.js` covers the wiring: the controls' labels and counts, narrowing and restoring the list, the capped scrolling container, and the tile's `#pending-requests` anchor with a target that clears the sticky bar. What stays manual is what only a browser shows: that the scrollbar is reachable and the shadows are not clipped (TC-VSD-033), and that the jump lands with the heading visible (TC-VSD-034).
+
+## 12. Technical Support dashboard (SCRUM-73)
+
+**Preconditions for every case:** logged in as `tech.support@connectsphere.dev` / `Cs1234`, on `/dashboard/tech-support`, with every migration and `supabase/seed.sql` applied.
+
+Like §10 and unlike §9, these run against real data: `equipment`, `equipment_unavailability` and `equipment_reservations` all exist and are seeded.
+
+**Expected seeded figures** (from `supabase/seed.sql`): **4 equipment types** — 4K Projector (4), Wireless Mics (12), PA Systems (3), Stage Lighting (8) — and **2 maintenance records**, both on 15 Oct 2026: PA Systems 08:00–13:00 UTC ("Amplifier inspection and battery replacement") and 4K Projector 12:00–18:00 UTC ("Scheduled maintenance and lens calibration"). Two `confirmed` reservations also exist on 15 Oct: 2 × 4K Projector (09:00–17:00) and 8 × Wireless Mics (10:00–14:00). If the inventory shows fewer than four rows, the database predates this story's seed — re-run it.
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-TSD-001 | AC1 — the whole equipment list is shown | Seed applied | Open the dashboard and read the inventory table | — | All **4** seeded types are listed with name, total, reserved, in-maintenance and net-available figures. Every figure matches `GET /api/v1/equipment/inventory`. | 🔴 |
+| TC-TSD-002 | AC1 — the list can be searched by name | Seed applied | Type `mic` into the inventory search box | `mic` | Only "Wireless Mics" remains. Clearing the box restores all four rows. The filter is case-insensitive. | 🟠 |
+| TC-TSD-003 | AC1 — status badges reflect real stock, not a guess | Seed applied | Read each row's status badge | — | A row with `net_available = 0` reads OUT OF STOCK; one with maintenance against it reads UNDER REPAIR; one with reservations but stock left reads PARTIALLY RESERVED; otherwise AVAILABLE. No badge contradicts its own row's numbers. | 🟠 |
+| TC-TSD-004 | AC3 — scheduled maintenance is listed from real records | Seed applied | Read the "Scheduled maintenance" panel | — | Exactly **2** records, **oldest first**: PA Systems (15 Oct 08:00–13:00) then 4K Projector (15 Oct 12:00–18:00). Each shows equipment name, the Singapore-time span, and its reason. | 🔴 |
+| TC-TSD-005 | AC3 — maintenance status is derived from the clock | Seed applied; system date before 15 Oct 2026 | Read the status badge on each maintenance record | — | Both read **SCHEDULED**. A record whose window has started but not ended reads IN_PROGRESS; one wholly in the past reads COMPLETED. The badge is computed at request time, never stored. | 🟠 |
+| TC-TSD-006 | AC3 — past maintenance is not hidden (known behaviour) | Seed applied; system date after 15 Oct 2026, or a record backdated | Read the maintenance panel | — | Finished records still appear, marked COMPLETED — `get_equipment_maintenance` applies no date filter. Pinning current behaviour: if the team decides the panel should show upcoming work only, this case changes with it. | 🟡 |
+| TC-TSD-007 | AC2 — active requests are honestly empty, not faked | Seed applied | Read the "Active requests" panel | — | An empty state reads "No request workflow yet" and explains requests appear once SCRUM-24 lands. The strings "Marcus Lim", "Olivia Tan", "PENDING", "Approve" and "Reject" do **not** appear anywhere on the page. | 🔴 |
+| TC-TSD-008 | No fabricated data remains (regression, PROJECT_REVIEW D8) | Seed applied | Read every number and label on the dashboard | — | Every figure traces to an API response. No hardcoded request cards, and no count that cannot be reproduced from `/equipment/inventory` or `/equipment/maintenance`. | 🔴 |
+| TC-TSD-009 | Both endpoints are gated on the session's active role | An account holding `tech_support` but signed in as another role | `curl` `/api/v1/equipment/inventory` and `/api/v1/equipment/maintenance` with that token; then switch the nav dropdown to Technical Support and retry | that account's token | First calls **403**, after the switch **200**. Confirms the guard reads the active role, not roles held (SCRUM-76). | 🔴 |
+| TC-TSD-010 | Another role cannot reach the page by URL | Signed in as `coordinator@connectsphere.dev`, active role Event Coordinator | Navigate to `/dashboard/tech-support` | — | Redirected to `/dashboard/coordinator`; the equipment data never renders. | 🔴 |
+| TC-TSD-011 | A server failure is surfaced, not shown as an empty inventory | Stop the backend, or point it at a stub answering 503 | Reload the dashboard | — | An error message names the failure. The page does **not** render an empty equipment table or an empty maintenance list as though both were genuinely empty. | 🔴 |
+| TC-TSD-012 | Figures are withheld until the first load settles | Throttle the network (DevTools → Slow 3G) | Reload and watch the panels while the requests are in flight | — | The maintenance panel shows "Loading maintenance" rather than "No maintenance records scheduled". A false empty state must never appear before the answer is known. | 🟠 |
+
+### 12.1 Traceability — SCRUM-73
+
+| Acceptance criterion / rule | Covered by |
+|---|---|
+| AC1 "I want to see the entire list of equipment" | TC-TSD-001, TC-TSD-002, TC-TSD-003 |
+| AC2 "the list of active requests being sent to me" | TC-TSD-007 (empty state — the workflow itself is SCRUM-24) |
+| AC3 "the list of equipment scheduled for maintenance" | TC-TSD-004, TC-TSD-005, TC-TSD-006 |
+| REQUIREMENTS §6.21 "build a widget only when its data exists" | TC-TSD-007, TC-TSD-012 |
+| PROJECT_REVIEW D8 (no fabricated dashboard data) | TC-TSD-007, TC-TSD-008 |
+| SCRUM-76 (guards read the session's active role) | TC-TSD-009 |
+| RBAC (technical support only) | TC-TSD-010 |
+| REQUIREMENTS §4 (stored UTC, displayed Asia/Singapore) | TC-TSD-004 |
+
+**Automated coverage today.** `backend/tests/test_active_role_access.py` covers the server half of TC-TSD-009 and TC-TSD-010 for both endpoints — it enumerates every registered route, so `/equipment/maintenance` and `/equipment/inventory` are both parametrised into it automatically. Everything else in this section is **manual only**: `get_equipment_maintenance` has no functional test, and there is no `TechSupportDashboard` component spec, so TC-TSD-001 through 008, 011 and 012 have no automated equivalent yet. That gap is the first thing to close if this dashboard gains more logic.
