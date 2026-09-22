@@ -464,13 +464,23 @@ TC-VSD-031–034 cover the venue-list filter, its scrolling and the tile jump. `
 
 Like §10 and unlike §9, these run against real data: `equipment`, `equipment_unavailability` and `equipment_reservations` all exist and are seeded.
 
-**Expected seeded figures** (from `supabase/seed.sql`): **4 equipment types** — 4K Projector (4), Wireless Mics (12), PA Systems (3), Stage Lighting (8) — and **2 maintenance records**, both on 15 Oct 2026: PA Systems 08:00–13:00 UTC ("Amplifier inspection and battery replacement") and 4K Projector 12:00–18:00 UTC ("Scheduled maintenance and lens calibration"). Two `confirmed` reservations also exist on 15 Oct: 2 × 4K Projector (09:00–17:00) and 8 × Wireless Mics (10:00–14:00). If the inventory shows fewer than four rows, the database predates this story's seed — re-run it.
+**Expected seeded figures** (from `supabase/seed.sql`, verified against the live project): **5 equipment types** — 4K Projector (4), HDMI Switchers (6), PA Systems (3), Stage Lighting (8), Wireless Mics (12) — **2 maintenance records** and **3 reservations**, all on 15 Oct 2026. With no window applied the inventory reads:
+
+| Equipment | Total | Reserved | Maintenance | Net available |
+|---|---|---|---|---|
+| 4K Projector | 4 | 2 | 1 | 1 |
+| HDMI Switchers | 6 | 0 | 0 | 6 |
+| PA Systems | 3 | 2 | 1 | 0 |
+| Stage Lighting | 8 | 0 | 0 | 8 |
+| Wireless Mics | 12 | 8 | 0 | 4 |
+
+The two maintenance records are PA Systems 08:00–13:00 UTC ("Amplifier inspection and battery replacement") and 4K Projector 12:00–18:00 UTC ("Scheduled maintenance and lens calibration"). If the inventory shows fewer than five rows, the database predates this story's seed — re-run it.
 
 | ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
 |----|-------|----------------|------------|-------------|------------------|----------|
-| TC-TSD-001 | AC1 — the whole equipment list is shown | Seed applied | Open the dashboard and read the inventory table | — | All **4** seeded types are listed with name, total, reserved, in-maintenance and net-available figures. Every figure matches `GET /api/v1/equipment/inventory`. | 🔴 |
-| TC-TSD-002 | AC1 — the list can be searched by name | Seed applied | Type `mic` into the inventory search box | `mic` | Only "Wireless Mics" remains. Clearing the box restores all four rows. The filter is case-insensitive. | 🟠 |
-| TC-TSD-003 | AC1 — status badges reflect real stock, not a guess | Seed applied | Read each row's status badge | — | A row with `net_available = 0` reads OUT OF STOCK; one with maintenance against it reads UNDER REPAIR; one with reservations but stock left reads PARTIALLY RESERVED; otherwise AVAILABLE. No badge contradicts its own row's numbers. | 🟠 |
+| TC-TSD-001 | AC1 — the whole equipment list is shown | Seed applied | Open the dashboard and read the inventory table | — | All **5** seeded types are listed, alphabetically, with name, total, reserved, in-maintenance and net-available figures matching the table above. Every figure matches `GET /api/v1/equipment/inventory`. | 🔴 |
+| TC-TSD-002 | AC1 — the list can be searched by name | Seed applied | Type `mic` into the inventory search box | `mic` | Only "Wireless Mics" remains. Clearing the box restores all five rows. The filter is case-insensitive. | 🟠 |
+| TC-TSD-003 | AC1 — status badges reflect real stock, not a guess | Seed applied | Read each row's status badge | — | Against the seeded figures: **PA Systems** reads OUT OF STOCK (net 0), **4K Projector** reads UNDER REPAIR (1 in maintenance, net 1), **Wireless Mics** reads PARTIALLY RESERVED (8 of 12 reserved), and **HDMI Switchers** and **Stage Lighting** read AVAILABLE. Precedence is out-of-stock → under-repair → partially-reserved → available, so no badge contradicts its own row's numbers. | 🟠 |
 | TC-TSD-004 | AC3 — scheduled maintenance is listed from real records | Seed applied | Read the "Scheduled maintenance" panel | — | Exactly **2** records, **oldest first**: PA Systems (15 Oct 08:00–13:00) then 4K Projector (15 Oct 12:00–18:00). Each shows equipment name, the Singapore-time span, and its reason. | 🔴 |
 | TC-TSD-005 | AC3 — maintenance status is derived from the clock | Seed applied; system date before 15 Oct 2026 | Read the status badge on each maintenance record | — | Both read **SCHEDULED**. A record whose window has started but not ended reads IN_PROGRESS; one wholly in the past reads COMPLETED. The badge is computed at request time, never stored. | 🟠 |
 | TC-TSD-006 | AC3 — past maintenance is not hidden (known behaviour) | Seed applied; system date after 15 Oct 2026, or a record backdated | Read the maintenance panel | — | Finished records still appear, marked COMPLETED — `get_equipment_maintenance` applies no date filter. Pinning current behaviour: if the team decides the panel should show upcoming work only, this case changes with it. | 🟡 |
