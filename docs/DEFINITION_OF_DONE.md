@@ -14,7 +14,7 @@ It covers **both** halves of the work: what an AI agent or a developer does whil
 
 Agents never push, open PRs, or change Jira unless the developer asks (root `AGENTS.md`, "Git workflow"). Phase 4 is therefore where the work is handed back to a person — an agent that stops after Phase 3 has done its job, but the *story* is not done.
 
-_Last updated: 2026-09-22 — first version, consolidating the checklist in root `AGENTS.md` and the Sprint 2 proposal in `docs/PROJECT_REVIEW.md` §C4._
+_Last updated: 2026-09-22 — "CI is green on the PR" moved from "Not yet enforceable" into Phase 4, now that `.github/workflows/ci.yml` exists. First version (same day) consolidated the checklist in root `AGENTS.md` and the Sprint 2 proposal in `docs/PROJECT_REVIEW.md` §C4._
 
 ---
 
@@ -55,6 +55,7 @@ _Last updated: 2026-09-22 — first version, consolidating the checklist in root
 This phase is human-owned. An agent does these steps only when the developer explicitly asks.
 
 - [ ] **[D]** A pull request is opened against `main`, linking the Jira issue, and describing security issues by *class* — never as step-by-step exploits.
+- [ ] **[D]** **CI is green on the PR.** The `CI` workflow (`.github/workflows/ci.yml`) runs the backend suite, the frontend suite, and the frontend build on every pull request into `main`. A red run blocks the merge; do not merge on the strength of a local green run alone.
 - [ ] **[D]** **At least one teammate has reviewed and approved the PR.** Self-merging an unreviewed PR does not clear this checklist.
 - [ ] **[D]** Review comments are resolved, or captured as follow-up issues rather than silently dropped.
 - [ ] **[D]** Migrations reach the shared Supabase project **through the merged PR**, never applied by hand.
@@ -71,16 +72,16 @@ These were agreed as targets in `docs/PROJECT_REVIEW.md` §C4 but **cannot be ch
 
 | Target | Blocked on | Move up when |
 |---|---|---|
-| "CI is green on the PR" | There is no CI. No `.github/workflows/`, and no linter or formatter in either stack. | A workflow runs `pytest` and `npm test` on every PR. |
-| "New domain code is at 100% line coverage (or the exclusion is justified)" | No coverage tooling is configured (`pytest-cov` is not wired up, and Vitest runs without a coverage reporter). | Coverage is reported on the PR and a threshold is agreed. |
+| "New domain code is at 100% line coverage (or the exclusion is justified)" | No coverage tooling is configured: `pytest-cov` is not in `backend/requirements.txt`, and Vitest runs without a coverage reporter. | Coverage is reported on the PR and a threshold is agreed. |
 | "Each acceptance criterion has an automated test named or tagged with the Jira key" | Partly practised, not consistent — tests are grouped in classes without Jira keys in their names. | The team agrees on a naming or marker convention and backfills it. |
 
-Until then, Phase 2's "full suite passes" and "verified against the real system" are what actually gate a merge, and the reviewer in Phase 4 is the check that they happened.
+Until then, Phase 2's "full suite passes" and "verified against the real system" are what actually gate a merge. CI now enforces the first of those automatically on every PR; the reviewer in Phase 4 remains the check that the real-system verification actually happened, since no workflow can prove it.
 
 ---
 
 ## Related
 
+- `docs/CI.md` — what the automated checks cover, what they deliberately do not, and the two targets below that are waiting on tooling described there.
 - Root `AGENTS.md` — the working rules this checklist enforces (git workflow, TDD, security baseline, scope discipline).
 - `docs/PROJECT_REVIEW.md` §C4 — the sprint plan and the Scrum evidence to capture alongside it.
 - `docs/IMPLEMENTATION_MAP.md` — what exists right now, to check before building and to update after.

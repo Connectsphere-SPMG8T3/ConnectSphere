@@ -1,0 +1,73 @@
+# ConnectSphere CI — runs the backend and frontend suites on every pull
+# request into main, and on main itself after a merge.
+#
+# Neither job needs repository secrets. The backend suite injects fake
+# Supabase credentials in backend/tests/conftest.py, and the frontend build
+# reads the committed non-secret placeholders in frontend/.env.example. The
+# Supabase secret key must never reach a workflow, a VITE_* variable, or a
+# build log (root AGENTS.md, "Security baseline").
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A new push to the same PR cancels the run still in flight, so three pushes
+# in a row bill for one run rather than three.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      # 3.11 matches backend/Dockerfile.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest
+
+  frontend:
+    name: Frontend (vitest + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      # 20 matches the node image in docker-compose.yml.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      # Vite reads .env at build time; the example file holds placeholders
+      # only (the project URL and publishable key are not secrets).
+      - name: Build
+        run: |
+          cp .env.example .env
+          npm run build

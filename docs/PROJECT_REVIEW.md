@@ -53,14 +53,15 @@ The rubric's "Excellent" system-design descriptor is *"well-justified trade-offs
 6. **Make business rules configurable rather than hard-coded:** field classification (ordinary vs significant), suitability rules as pluggable classes (Strategy pattern, §6.11), the coordinator assignment policy, and status display labels. Session 1 already showed why: turnaround time was dropped (QA-28), and the customer reconciled "approved" vs "confirmed" (QA-18, QA-56). Each change should touch one file.
    - **Never auto-un-book.** The customer's rule is "the system detects and notifies; staff decide" (QA-2, QA-26, QA-117). Implement significant changes as a `re_review` state on bookings and equipment lines, not as releases (REQUIREMENTS §7).
 7. **Maintain a single source of truth for enums.** Roles and statuses are currently duplicated in SQL, Python strings, and JavaScript. Generate them from the database (`supabase gen types`) or keep one `constants` module per side, with a test asserting that both sides match.
-8. **Restructure the frontend around features** (`src/features/events|venues|equipment|registrations|notifications`, each with views, a store, and a service), mirroring the backend modules. Dashboards then only *compose* widgets from those features (REQUIREMENTS §3.4). The frontend currently has **no tests at all**; add Vitest plus Vue Test Utils for stores and key components, and one Playwright end-to-end run of the reference workflow.
-9. **Add CI now, not in Sprint 4.** CI is graded ("basic CI pipeline used *during* development"), and there is no `.github/` directory yet. A GitHub Actions workflow on every PR should run:
-   - `ruff`
-   - `pytest --cov` with a coverage report
-   - `npm ci && npm run build`
-   - Vitest, once it exists
+8. **Restructure the frontend around features** (`src/features/events|venues|equipment|registrations|notifications`, each with views, a store, and a service), mirroring the backend modules. Dashboards then only *compose* widgets from those features (REQUIREMENTS §3.4). *(Update: the `src/features/` restructure is under way, and the "no tests at all" state this review recorded no longer holds — Vitest is configured and 312 specs pass across 23 files. Still outstanding: one Playwright end-to-end run of the reference workflow.)*
+9. **Add CI now, not in Sprint 4.** CI is graded ("basic CI pipeline used *during* development"). **Largely done** on `chore/ci-pipeline` — `.github/workflows/ci.yml` runs on every PR into `main` and on `main` after a merge:
+   - `pytest` (backend) — **done**
+   - Vitest via `npm test` (frontend) — **done**; the suite the original recommendation assumed did not exist now has 312 specs
+   - `npm ci && npm run build` — **done**
+   - `ruff` — **not done**, deliberately deferred: it has never run over this codebase, so turning it on blocking would have held the pipeline red on an unbounded cleanup. Its own chore branch.
+   - `pytest --cov` coverage reporting — **not done**; `pytest-cov` is still unpinned, and no threshold has been agreed (see `DEFINITION_OF_DONE.md`, "Not yet enforceable").
 
-   The badge and run history are free evidence.
+   The run history is free evidence.
 10. **Stop migrating the live project directly.** Six people applying migrations to one shared database will collide. Use the Supabase CLI locally (`supabase start`) or Supabase branching per PR. Only merged migrations go to the shared project, and seeds must be idempotent.
 11. **Add a `client_organisations` table now.** "Organisers must not see other clients' events" and the Client Management feature both depend on it. Adding it before `events` exists costs almost nothing; retrofitting it later costs a migration plus backfill.
 
@@ -201,7 +202,7 @@ SCRUM-48 is done, so **Jie Ching has spare capacity** for the rest of the sprint
 1. **Move SCRUM-48 to Done.** Add a comment linking PR #1 and noting the email-vs-username decision.
 2. **Fix D1 to D3 and D6** in one PR: a per-request auth client, correct logout, a trigger that accepts only `event_organiser`/`attendee` from sign-up (QA-3, QA-4), the `current_user_role()` helper that removes the RLS recursion, and `search_path` fixes. Add regression tests. Log it as a Sprint 1 bug with sub-tasks.
 3. **Update the 11 contradicted stories in B2a** and comment on each with its QA citation. This takes about 30 minutes and is high-value evidence.
-4. **Add a CI pipeline** (GitHub Actions: ruff, pytest with coverage, frontend build).
+4. ~~**Add a CI pipeline** (GitHub Actions: ruff, pytest with coverage, frontend build).~~ **Done** on `chore/ci-pipeline` — `.github/workflows/ci.yml` runs pytest, Vitest and the frontend build on every PR. Ruff and coverage reporting were deferred; see Part A item 9.
 5. **Draft the core schema migration** (`client_organisations`, `events`, `event_status_history`, `amendment_requests`, `change_requests`, `venues` with layouts and facilities, `venue_bookings` with the exclusion constraint over held/approved/re_review, `venue_blocks`, `equipment_types`, `equipment_outages`, `equipment_requests`, `equipment_reservations`, `registrations`, `notifications`, `change_history`) per REQUIREMENTS §4. **Review it with the whole team at stand-up before merging.**
 6. Add the domain event dispatcher skeleton (`core/events.py`) and a per-module `repository.py` pattern to the `auth` module, so others copy the pattern rather than invent one.
 7. Bring REQUIREMENTS §9 (9 remaining open questions, including the approved-vs-confirmed contradiction) to the next customer Q&A.

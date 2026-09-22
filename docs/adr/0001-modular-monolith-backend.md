@@ -17,7 +17,7 @@ The customer briefing (`SCENARIO.md` §2.3) sets two non-functional requirements
 Three further constraints applied when the decision was made:
 
 1. **The tech stack was left to us** (QA-73, QA-74). No customer preference to satisfy.
-2. **Team and horizon:** six developers, four sprints, no dedicated ops capacity, no CI at the time (still none — `DEFINITION_OF_DONE.md`, "Not yet enforceable").
+2. **Team and horizon:** six developers, four sprints, no dedicated ops capacity, and no CI at the time the decision was taken (CI was added afterwards on `chore/ci-pipeline`; see `.github/workflows/ci.yml`).
 3. **The domains are coupled by one workflow, not independent.** The event lifecycle (`SCENARIO.md` §2.2) runs draft → submit → assign → review → venue booking → equipment → registration → confirmation, crossing every domain and all five roles in a single business transaction. The release is graded on *coherent end-to-end workflows* (W4), not on isolated features.
 
 The customer also requires that double-booking be **impossible** — first-come-first-served, no staff override (QA-10, QA-113) — and that pending requests hold a venue exclusively (QA-6).
@@ -36,7 +36,7 @@ Two rules make the boundaries real rather than cosmetic:
 | Option | Why not |
 |---|---|
 | **Modular monolith** *(chosen)* | One build, one deploy, in-process calls, explicit module boundaries. A module can be extracted later if growth demands it. |
-| **Microservices** (per domain, or per role) | Costs more in operations than it returns at this scale (`REQUIREMENTS.md` §3.2). With no CI, no ops capacity and a four-sprint horizon, per-service deploys and inter-service contracts would consume the schedule. It would also turn the integrity guarantees below into a distributed-transaction problem. |
+| **Microservices** (per domain, or per role) | Costs more in operations than it returns at this scale (`REQUIREMENTS.md` §3.2). With no CI at the time, no ops capacity and a four-sprint horizon, per-service deploys and inter-service contracts would consume the schedule. It would also turn the integrity guarantees below into a distributed-transaction problem. |
 | **Unstructured monolith** (layered by kind — all routers together, all services together) | Cheapest to start, but the maintainability NFR is about adding *domains*, not adding layers. Features 2–20 each land in one domain; a layered split means every new feature edits every layer package, and nothing stops a new module bypassing the access control built for feature 1. |
 
 ## Consequences
@@ -65,7 +65,7 @@ A change conforms to this ADR when:
 2. No module imports another module's `router.py` or `schemas.py`; cross-module reads go through the other module's `service.py`.
 3. No module imports `app.core.security` directly — it goes through `app.modules.auth.dependencies`.
 
-None of these are automated. They are review checks until a CI pipeline exists (see `DEFINITION_OF_DONE.md`).
+None of these three are automated. CI (`.github/workflows/ci.yml`) runs the test suites and the frontend build, which does not detect a boundary violation: a module importing another module's `router.py` compiles and tests green. They stay review checks until an import-boundary lint rule enforces them.
 
 ## Notes
 
