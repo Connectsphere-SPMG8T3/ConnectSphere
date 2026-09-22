@@ -4,7 +4,7 @@
 
 This file is the single reference for ConnectSphere's automated checks. It sits apart from `DEFINITION_OF_DONE.md` (which says what *a task* must clear) because CI is a standing property of the repository that changes on its own schedule.
 
-_Last updated: 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25)._
+_Last updated: 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
 
 ---
 
@@ -103,7 +103,32 @@ Two known limits, so nobody is surprised:
 - Endpoints needing a real row to be interesting (`GET /venues/{venue_id}`) just 404 on a random UUID. Register seeded ids in a small map keyed by path parameter — about four entries covers today's 14 endpoints, and it grows per *kind of resource*, not per endpoint.
 - Write endpoints mostly answer 422 on an empty body. That still proves the route is wired, validation runs and the database is reachable, but it is not deep coverage. Depth is item 4.
 
-**Use the ephemeral local stack, never the hosted project.** Six developers' test runs writing to one shared database is the collision `PROJECT_REVIEW.md` item 10 warns about for migrations, and tests are designed to write. Supabase's Branching feature gives a real per-PR database but is not on the Free plan (Pro at $25/month plus $0.01344 per branch-hour) and buys nothing the local stack does not.
+**Use the ephemeral local stack, never the hosted project.** The reasoning is below, because this gets proposed regularly.
+
+#### Why not the hosted Supabase project — [Team decision]
+
+Supabase's own CI guidance uses the local stack: the example in [Local development → testing](https://supabase.com/docs/guides/local-development/testing/overview) runs `supabase start` and then the tests, with no hosted connection. It also warns that application tests should not depend on a clean database state, because that "makes tests difficult to parallelize".
+
+This project's situation makes the case stronger. Checked live on 2026-09-22:
+
+| | |
+|---|---|
+| Organisation plan | **free** |
+| Projects | **exactly one** — `ConnectSphere` (`vuiryrzzyfecjqftwicj`), ap-southeast-1, `ACTIVE_HEALTHY` |
+
+**There is no staging environment.** The hosted project is simultaneously the development database, the demo database, and the graded evidence. Pointing CI at it would mean:
+
+1. **Tests write, and the demo is what they write to.** The database shown at the Sprint 4 showcase would be whatever the last CI run happened to leave behind.
+2. **It invalidates the manual test evidence.** `TEST_CASES.md` §10 and §12 trace explicitly "against real seeded data". Those cases assume a stable seed; CI churning it breaks the trace from test case to result.
+3. **It forces the secret key into CI.** The backend cannot reach Postgres without it, and that key **bypasses RLS** (root `AGENTS.md`, "Security baseline"). This repository has already failed GitGuardian twice over generated secrets (PRs #4 and #6 — `IMPLEMENTATION_MAP.md` §5). CI currently needs **zero** secrets; that is a property to keep, not to trade away.
+4. **Free projects pause after about a week of inactivity.** CI would then go red across a quiet recess week for reasons unrelated to any code — directly undermining "reliably" in the grading rubric.
+5. **Concurrent runs collide.** Six developers with overlapping pull requests against one mutable database produces flaky tests: the same collision `PROJECT_REVIEW.md` item 10 warns about for migrations, and tests write far more often than migrations do.
+
+**The one honest counter-argument** is configuration drift. A local stack has its own configuration and cannot catch the hosted project's settings changing underneath the code — which is exactly what bit SCRUM-48, recorded in `SCENARIO.md` §191: a green mocked run *"does not prove the code is compatible with ... the actual live project's configuration (key format, JWT signing scheme, exception types)"*.
+
+**If that recurs, the defensible response is narrow:** a **read-only** health check running **after merge to `main`**, signing in as a seeded account and calling one endpoint, asserting 200. No writes, no schema changes. It needs only the *publishable* key and a seed password already committed in `supabase/seed.sql`, so it introduces no secret that is not already public in this repository. That is the only hosted-project check worth having, and it belongs outside the test suite.
+
+**On Supabase Branching** (a real per-PR database, ephemeral, deleted when the PR closes): the pricing page lists it as a paid line item — Pro at $25/month plus $0.01344 per branch-hour — while the branching documentation says deploying from GitHub works "on any plan". Those do not obviously agree, so check the billing page before assuming either. It is moot regardless: the local stack covers the same bug class for nothing.
 
 ### 4. One real-database test per database-backed story — ~10 minutes each, during Sprint 3
 
