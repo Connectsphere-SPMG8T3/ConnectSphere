@@ -53,7 +53,7 @@ This is a **subset**, not a competing proposal. The full migration should absorb
 - [ ] Renamed to `supabase/migrations/<timestamp>_core_events_schema.sql`
 - [ ] Applied through a PR, not by hand on the shared project (§A3.10)
 - [ ] `supabase db push` runs clean on a local or branch database first
-- [ ] Supabase advisors show **no new** security or performance findings (Definition of Done)
+- [ ] Supabase advisors show **no new** security or performance findings ([Definition of Done](../DEFINITION_OF_DONE.md), Phase 2)
 - [ ] Verification SQL added under `supabase/verification/`, in the style of `auth_security_checks.sql`, covering: drafts invisible to staff (DR-R2), an organiser cannot see another organiser's event (AUTH-R1), the single-open-change-request index (CR-R1)
 - [ ] Seed data extended with a few events per status, so the dashboards have something to demo
 

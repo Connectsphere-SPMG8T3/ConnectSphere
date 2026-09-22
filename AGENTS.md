@@ -44,6 +44,7 @@ Read, in this order:
 4. `docs/SETUP.md` — how to run everything locally.
 5. `docs/PROJECT_REVIEW.md` — known defects (D1, D2, …), design decisions, and the sprint plan.
 6. `docs/TEST_CASES.md` — existing manual test cases.
+7. `docs/DEFINITION_OF_DONE.md` — the checklist this task has to clear before it counts as done.
 
 Customer rules take precedence in this order: session Q&A answers (`QA-<row>`), then the Week 4 core features, then the Week 1 briefing.
 
@@ -130,6 +131,8 @@ Run the full test suite (`pytest` from `backend/`) before declaring done, not on
 
 ## Definition of done (every task)
 
+**`docs/DEFINITION_OF_DONE.md` is the full checklist** — for humans and agents both, across all four phases (before coding → code complete → paper trail → review, merge, Jira). Read it there; it is the source of truth, and this section is only the agent-facing summary of its Phases 1–3.
+
 - [ ] For a story: every acceptance criterion from Jira (or as supplied by the developer) is met and traced to a test or verification step.
 - [ ] Behaviour matches `docs/REQUIREMENTS.md`, or any deviation is recorded there.
 - [ ] Reusable pieces were extended or extracted rather than duplicated, and `docs/IMPLEMENTATION_MAP.md` reflects the new state.
@@ -138,3 +141,5 @@ Run the full test suite (`pytest` from `backend/`) before declaring done, not on
 - [ ] Database changes show no new security or performance advisories.
 - [ ] Docs are updated per "Keep the paper trail current" above. The work is on a non-`main` branch, committed with a *why*-focused message.
 - [ ] The final report covers: what changed, how it was verified, what wasn't verified, and follow-ups.
+
+Stopping here is correct for an agent: **Phase 4 (PR, teammate review, merge, moving the Jira issue to Done) is the developer's**, and an agent only does it when asked. Say so in the final report, so the story is not left merged with its ticket still In Progress.

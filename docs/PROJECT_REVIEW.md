@@ -249,14 +249,7 @@ SCRUM-48 is done, so **Jie Ching has spare capacity** for the rest of the sprint
 - Manual test cases TC-EVT-0xx in TEST_CASES.md, linked to the Jira key.
 - SCENARIO.md log entry.
 
-**Definition of Done** (agree on it at planning, then paste it into the Jira board description):
-- [ ] Acceptance criteria are in Given/When/Then form, and each has at least one automated test named or tagged with the Jira key.
-- [ ] Unit tests cover normal, boundary, and failure cases; new domain code is at 100% line coverage (or the exclusion is justified).
-- [ ] Authorisation checks are in place: role **and** relationship, with a negative test.
-- [ ] CI is green on the PR. At least one teammate reviewed the PR.
-- [ ] Migrations are applied through a PR (not by hand on the shared project), and Supabase advisors show no new warnings.
-- [ ] Manual test cases are added to TEST_CASES.md. A SCENARIO.md entry records any customer clarification or deviation.
-- [ ] The Jira issue is moved to Done and the PR is linked.
+**Definition of Done** — the checklist this review proposed now lives in [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md), consolidated with the one in root `AGENTS.md` so the project has a single version. Agree on it at planning and paste it into the Jira board description. Two items from this review are parked in that file's "Not yet enforceable" table until the tooling exists: **CI green on the PR** (there is no CI) and **100% line coverage on new domain code** (no coverage tooling). Everything else applies as written, including the two this review added and `AGENTS.md` never had: **a teammate review on every PR**, and **moving the Jira issue to Done with the PR linked**.
 
 **Sprint 2 risks:**
 - The notification centre (item 6) touches every module. Build the dispatcher contract on day 1 so other stories can publish events before the UI is ready.

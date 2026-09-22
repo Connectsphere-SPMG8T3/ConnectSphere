@@ -764,4 +764,5 @@ This design system is a project-specific/team choice (matching the customer brie
 | "What's in scope for the whole first release?" | §3 of this document (20 features) |
 | "What's out of scope entirely (for now)?" | Anything in the customer briefing not listed in §3 — e.g. client management, recurring events, waiting lists, venue/registration reports |
 | "What's next?" | The next-highest-priority story in the product backlog under whichever epic is next up — check the backlog/Jira board, not this document, for current priority |
+| "When is a story actually done? What do I do after merging?" | `docs/DEFINITION_OF_DONE.md` — the four-phase checklist, including the human steps (teammate review, merge, Jira → Done) |
 | "I just finished a story — what do I update here?" | Add a new `###` entry to §4 using its template; update the "as of the most recent entry..." sentence at the end of §3 if the story changes what's implemented for one of the 20 features |
