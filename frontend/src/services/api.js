@@ -100,4 +100,25 @@ export const eventsApi = {
   },
 };
 
+export const equipmentApi = {
+  checkEquipmentAvailability(payload, token) {
+    return request("/equipment/availability/check", {
+      method: "POST",
+      body: payload,
+      token,
+    });
+  },
+  inventory(startAt, endAt, token) {
+    const params = new URLSearchParams();
+    if (startAt) params.set("start_at", startAt);
+    if (endAt) params.set("end_at", endAt);
+    const query = params.toString();
+    return request(`/equipment/inventory${query ? `?${query}` : ""}`, { token });
+  },
+};
+
+export function checkEquipmentAvailability(payload, token) {
+  return equipmentApi.checkEquipmentAvailability(payload, token);
+}
+
 export { ApiError };
