@@ -6,6 +6,7 @@ Manual test-case suite for the features implemented so far:
 - **§8 — SCRUM-39: Venue catalogue, search and availability**.
 - **§9 — SCRUM-72: Event Coordinator dashboard**: the prioritised action list, the active-event status overview, and their empty states.
 - **§10 — SCRUM-70: Venue Staff dashboard**: the four work-queue tiles, the month calendar, the pending-request list and the venue list — all against real seeded data.
+- **§10 — SCRUM-71: Event Organiser dashboard**: owned-event presentation, filtering, sorting, attention states, and navigation into existing request/detail flows.
 - **§12 — SCRUM-73: Technical Support dashboard**: the equipment inventory, the scheduled-maintenance list, and the active-requests empty state — against real seeded data.
 
 See [docs/SCENARIO.md](SCENARIO.md) for the full requirement context and [docs/SETUP.md](SETUP.md) for environment setup.
@@ -18,6 +19,10 @@ Every test case traces back to either the SCRUM-48 acceptance criteria, a custom
 - **Also in scope (§8):** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, the `/venues` search page and `/venues/:id` detail page (SCRUM-39).
 - **Also in scope (§9):** the Event Coordinator dashboard's presentation logic (SCRUM-72) — rendering, ordering, and empty states, plus organiser event drafts and event request submission (SCRUM-8).
 - **Also in scope (§10):** `GET /api/v1/venues/dashboard/venue-staff`, the `/dashboard/venue-staff` page and the `/bookings/:id` placeholder (SCRUM-70). Unlike §9 this runs against real data, since the venue tables exist and are seeded.
+- **Out of scope:** everything under the `events` and `equipment` **backend** modules — empty stub packages with no logic to test yet. §9 therefore tests the coordinator dashboard's rendering and empty states only.
+ **Also in scope (§9):** the Event Coordinator dashboard's presentation logic (SCRUM-72) — rendering, ordering, and empty states, plus organiser event drafts and event request submission (SCRUM-8).
+ **Also in scope (§10):** the Event Organiser dashboard's frontend presentation logic (SCRUM-71), using the existing owned-events response and request/detail routes. This includes honest loading, error, and empty states, responsive filter controls, and coordinator-assignment display. Organisation-wide read-only events, inline editing, and change/cancellation workflows are deferred.
+ **Out of scope:** coordinator assignment and reassignment (SCRUM-12 / SCRUM-68), and the equipment module.
 - **Also in scope (§12):** `GET /api/v1/equipment/inventory` and `GET /api/v1/equipment/maintenance`, and the `/dashboard/tech-support` page (SCRUM-73). Like §10 this runs against real data, since the equipment tables exist and are seeded.
 - **Out of scope:** the equipment **reservation workflow** (SCRUM-24) — organisers cannot yet raise equipment requests, so the dashboard's "Active requests" panel has no data source and is tested as an empty state only.
 - **Out of scope:** coordinator assignment and reassignment (SCRUM-12 / SCRUM-68).
@@ -457,6 +462,36 @@ Automated equivalents live in `frontend/src/features/venues/__tests__/` and `bac
 TC-VSD-023–030 were added when SCRUM-70's user story was restated, to pin the acceptance criteria's own wording rather than only the widgets built for it. Their automated equivalents, where they exist: `backend/tests/test_venue_dashboard.py::TestCrossVenueReads` covers TC-VSD-025's cut-off (blocks are filtered on an open-ended range in Postgres, so a finished one never leaves the database) and TC-VSD-026's server half (every row names its venue); `dashboard.spec.js::venueStatuses` covers TC-VSD-024's and TC-VSD-028's status transitions, including a block that ends exactly now. TC-VSD-023 (login through to a settled queue), TC-VSD-027 (no creator column to filter on), TC-VSD-029 (deep link) and TC-VSD-030 (the re-review gap) are end-to-end or documentary and remain manual.
 
 TC-VSD-031–034 cover the venue-list filter, its scrolling and the tile jump. `dashboard.spec.js::venueStatusFilterOptions` and `::filterVenueStatuses` cover the pure half — the option order and counts, that an absent status is never offered, and that an unknown key falls back to every row rather than to none — and `views/__tests__/venueStaffDashboard.spec.js` covers the wiring: the controls' labels and counts, narrowing and restoring the list, the capped scrolling container, and the tile's `#pending-requests` anchor with a target that clears the sticky bar. What stays manual is what only a browser shows: that the scrollbar is reachable and the shadows are not clipped (TC-VSD-033), and that the jump lands with the heading visible (TC-VSD-034).
+## 11. Event Organiser dashboard (SCRUM-71)
+
+**Preconditions for every case:** logged in as `organiser@connectsphere.dev` / `Cs1234`, with owned drafts and requests available, on `/dashboard/organiser`.
+
+| ID | Title | Test Steps | Expected Result | Priority |
+|---|---|---|---|---|
+| TC-ORG-001 | Owned events are separated into drafts and requests | Open the organiser dashboard and inspect both sections | Only the organiser's owned events are shown; drafts appear under **Drafts**, all other lifecycle statuses under **Requests**; no organisation-wide events are mixed in. | 🔴 |
+| TC-ORG-002 | Event cards show decision-useful details | Inspect a draft and a submitted request | Each card shows its name, status, schedule or missing schedule, attendance, venue or unassigned state, and any required attention message. No fabricated counts or metrics appear. | 🔴 |
+| TC-ORG-003 | Status and name filters apply without another request | Select a status, then enter part of an event name; inspect the network panel | Only matching cards remain, and no additional events request is sent. **Clear filters** restores the complete owned collection. | 🔴 |
+| TC-ORG-004 | Sorting is deterministic and client-side | Sort by event date, name, and status in ascending and descending order | Visible cards reorder according to the selected field and direction; the loaded collection is unchanged and no additional request is sent. | 🟠 |
+| TC-ORG-005 | Dashboard actions use the existing event flows | Click **Edit draft**, **Amend and resubmit**, **View event**, and **New event request** as applicable | Drafts open `/events/new` with the draft id; returned/submitted requests open `/events/:id`; new requests open `/events/new`. No inline mutation occurs on the dashboard. | 🔴 |
+| TC-ORG-006 | Server failure is not presented as an empty success state | Stop the backend or stub the events request with HTTP 503, then reload | A clear error banner is shown and normal event content is not presented as an empty successful dashboard; the session remains signed in. | 🔴 |
+| TC-ORG-007 | Dashboard remains usable on a mobile viewport | Set the viewport to 390 × 844 and inspect the page and controls | Filters stack without horizontal scrolling, card text and actions remain readable, and no controls overlap. | 🟠 |
+| TC-ORG-008 | Loading is distinct from empty data | Delay the owned-events response, then inspect the dashboard before it resolves; resolve it with no events | A loading state is shown while the request is pending; Drafts/Requests empty states are not shown until the successful empty response arrives. | 🔴 |
+| TC-ORG-009 | Coordinator assignment state is clear and non-duplicated | Inspect an unassigned submitted/under-review request and an assigned request | The unassigned request shows **Awaiting assignment** once, while an assigned request shows **Coordinator assigned**. | 🟠 |
+
+### 11.1 Traceability — SCRUM-71
+
+| Requirement | Covered by |
+|---|---|
+| Owned events are the primary dashboard list; organisation-wide view is deferred | TC-ORG-001 |
+| Event details and honest attention states | TC-ORG-002 |
+| Frontend filtering and sorting | TC-ORG-003, TC-ORG-004 |
+| Mutations occur through existing request/detail flows, not inline dashboard editing | TC-ORG-005 |
+| Outages show an error rather than false emptiness | TC-ORG-006 |
+| Desktop/mobile usability (NFR-U1) | TC-ORG-007 |
+| Loading, empty, and error states are distinguished | TC-ORG-006, TC-ORG-008 |
+| Coordinator assignment state is visible | TC-ORG-002, TC-ORG-009 |
+
+Automated equivalents live in `frontend/src/features/events/__tests__/organiserDashboard.spec.js` and `frontend/src/views/__tests__/OrganiserDashboard.spec.js`; together they cover the pure selectors, rendering, filtering, sorting, attention states, action routing, and server-error state. TC-ORG-007 remains a manual browser check.
 
 ## 12. Technical Support dashboard (SCRUM-73)
 

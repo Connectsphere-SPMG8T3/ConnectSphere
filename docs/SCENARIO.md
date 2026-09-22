@@ -701,6 +701,26 @@ Not a Jira story; two loose ends left by SCRUM-76 (§4.11), done on `chore/timez
 
 1. **Timezone data.** 14 tests in `test_events_api.py` failed on Windows with `event_timezone must be a valid IANA timezone`. `events/schemas.py` validates with `zoneinfo.ZoneInfo`, which reads the operating system's timezone database, and Windows has none. `tzdata` was neither installed nor in `requirements.txt`, so every Windows developer hit it. It is now pinned in `backend/requirements.txt` (`tzdata==2026.4`) and `pytest` passes in full (182). Linux and the Docker image already had system data, so nothing there changes.
 2. **RLS denial through a real token.** SCRUM-76's own verification left one gap: `active_role_checks.sql` simulates JWT claims, and no seeded account holds a staff role while acting as a non-staff one. A throwaway account (`venue_staff` default, also `attendee`) was created on the live project, logged in through the real API, and queried through PostgREST with its own access token: **8 venues** un-switched, **0 venues and a 403 from the API** after switching to `attendee` through `POST /auth/active-role`, **8 and 200** after switching back. The account was then deleted and every table it touched checked empty. Recorded as **TC-DATA-014** so it can be repeated.
+### 4.13. SCRUM-71 — Event Organiser dashboard
+
+SCRUM-71 is implemented in the frontend using the existing organiser-owned events response and SCRUM-8 request/detail flows. The dashboard presents owned events across their lifecycle, separates drafts from requests, and keeps filtering and sorting client-side after the initial load. Overview and Events are side-navigation views matching the coordinator dashboard pattern. Dashboard actions edit a draft, amend a returned request, or open the event detail flow; inline editing, change/cancellation workflows, and the future organisation-wide read-only view remain out of scope as recorded in `REQUIREMENTS.md` §6.21.2.
+
+What was actually built:
+
+1. **Dashboard presentation** — `frontend/src/views/dashboards/OrganiserDashboard.vue` renders overview counts, every owned lifecycle status, external-safe event details, status-aware attention states, loading/error/empty states, responsive filters, and status-specific actions.
+2. **Pure dashboard logic** — `frontend/src/features/events/organiserDashboard.js` owns filtering, sorting, draft/request grouping, overview grouping, attention detection, and status-specific action metadata.
+3. **Flow navigation** — draft actions route to `event-new` with the draft id; returned, submitted, and other requests route to `event-detail`; the new-request action uses the existing request flow.
+4. **Reusable controls and accessibility** — compact `BauhausInput` and `BauhausSelect` controls support the 50px filter layout, status multi-select, custom sort dropdown, direction icons, and explicit aria labels.
+5. **Honest data states** — loading and API-error states suppress fabricated counts and empty sections; successful empty results use the existing empty-state component.
+
+#### Verification
+
+- `npm test`: 116 passing across 15 frontend files, including SCRUM-71 selector/view tests.
+- `npm run build`: passed.
+- `python -m pytest` from `backend/`: 114 passing.
+- Editor diagnostics: passed; `git diff --check`: passed.
+- Manual browser checks completed for desktop and 390 × 844 mobile filter layout, including the mobile header Clear action and inline Sort direction control.
+- **Not verified:** rejection/cancellation reasons are not currently exposed by the events API, so the dashboard cannot display those optional fields until the backend response contract provides them.
 
 ## 5. Architecture: modular monolith
 
