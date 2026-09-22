@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import { ApiError, checkEquipmentAvailability, equipmentApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
@@ -35,7 +36,9 @@ const inventorySearch = ref("");
 const inventoryFilter = ref("all");
 const inventoryLoading = ref(false);
 const inventoryError = ref("");
-
+const maintenanceItems = ref([]);
+const maintenanceLoading = ref(false);
+const maintenanceError = ref("");
 const statusLabel = computed(() => (results.value?.sufficient ? "SUFFICIENT" : "INSUFFICIENT"));
 
 function inventoryStatus(item) {
@@ -112,25 +115,46 @@ async function checkAvailability() {
 async function loadInventory() {
   if (inventoryLoading.value) return;
   inventoryError.value = "";
+  maintenanceError.value = "";
   inventoryLoading.value = true;
+  maintenanceLoading.value = true;
   try {
-    inventoryItems.value = (await authStore.withSession((token) => equipmentApi.inventory(
-      new Date(startAt.value).toISOString(),
-      new Date(endAt.value).toISOString(),
-      token,
-    ))).items;
+    const response = await authStore.withSession(async (token) => {
+      const [inventory, maintenance] = await Promise.all([
+        equipmentApi.inventory(
+          new Date(startAt.value).toISOString(),
+          new Date(endAt.value).toISOString(),
+          token,
+        ),
+        equipmentApi.maintenance(token),
+      ]);
+      return { inventory, maintenance };
+    });
+    inventoryItems.value = response.inventory.items;
+    maintenanceItems.value = response.maintenance.items;
   } catch (error) {
-    inventoryError.value = error instanceof ApiError
+    const message = error instanceof ApiError
       ? error.message
-      : "Unable to load the equipment inventory. Please try again.";
+      : "Unable to load equipment status. Please try again.";
+    inventoryError.value = message;
+    maintenanceError.value = message;
   } finally {
     inventoryLoading.value = false;
+    maintenanceLoading.value = false;
   }
 }
 
 function selectTab(tab) {
   activeTab.value = tab;
   if (tab === "inventory" && inventoryItems.value.length === 0) loadInventory();
+}
+
+function formatDate(value) {
+  return new Intl.DateTimeFormat("en-SG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }).format(new Date(value));
 }
 </script>
 
@@ -270,6 +294,43 @@ function selectTab(tab) {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <section class="border-2 border-ink bg-canvas p-5" aria-labelledby="incoming-requests-heading">
+            <div class="mb-5">
+              <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Not yet available</p>
+              <h3 id="incoming-requests-heading" class="mt-2 text-xl font-black uppercase tracking-tight">Active requests</h3>
+            </div>
+
+            <BauhausEmptyState
+              title="No request workflow yet"
+              detail="Equipment requests appear here once organisers can raise them and tech support can reserve or reject them (SCRUM-24)."
+            />
+          </section>
+
+          <section class="border-2 border-ink bg-canvas p-5" aria-labelledby="maintenance-heading">
+            <div class="mb-5">
+              <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Live equipment records</p>
+              <h3 id="maintenance-heading" class="mt-2 text-xl font-black uppercase tracking-tight">Scheduled maintenance</h3>
+            </div>
+            <p v-if="maintenanceError" class="border-2 border-bauhaus-red bg-bauhaus-red/10 p-4 text-sm font-bold text-bauhaus-red" role="alert">{{ maintenanceError }}</p>
+            <div v-if="maintenanceLoading" class="flex items-center gap-3 border-2 border-ink bg-bauhaus-yellow p-4 text-sm font-black uppercase tracking-wide" role="status">
+              <span class="h-5 w-5 animate-spin rounded-full border-2 border-ink border-t-transparent" aria-hidden="true"></span>
+              Loading maintenance
+            </div>
+            <div v-else-if="maintenanceItems.length" class="flex flex-col gap-4">
+              <article v-for="item in maintenanceItems" :key="item.maintenance_id" class="border-2 border-ink p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <p class="font-black">{{ item.equipment_name }}</p>
+                  <span class="border-2 border-ink px-2 py-1 text-xs font-black" :class="item.status === 'SCHEDULED' ? 'bg-bauhaus-yellow text-ink' : item.status === 'IN_PROGRESS' ? 'bg-orange-400 text-ink' : 'bg-green-500 text-ink'">{{ item.status }}</span>
+                </div>
+                <p class="mt-2 text-xs font-bold uppercase tracking-wide">{{ formatDate(item.start_at) }} – {{ formatDate(item.end_at) }}</p>
+                <p class="mt-2 text-sm font-medium">{{ item.reason || "No reason provided" }}</p>
+              </article>
+            </div>
+            <p v-else class="border-2 border-ink p-4 text-sm font-bold uppercase tracking-wide">No maintenance records scheduled.</p>
+          </section>
         </div>
       </div>
     </BauhausCard>
