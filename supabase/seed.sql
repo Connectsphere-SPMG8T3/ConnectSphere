@@ -325,3 +325,137 @@ values
      'b0000000-0000-4000-8000-000000000004', tstzrange('2026-10-12 09:00+08', '2026-10-12 12:00+08', '[)'),
      're_review', '2026-09-10 11:45+08')
 on conflict (id) do nothing;
+-- Equipment availability fixtures
+-- These records support local API checks for overlapping reservations and
+-- maintenance windows. Example test window: 2026-10-15 09:00-17:00 UTC.
+-- =============================================================================
+
+truncate table
+    public.equipment_reservations,
+    public.equipment_unavailability,
+    public.equipment
+restart identity cascade;
+
+insert into public.equipment (
+    id,
+    name,
+    equipment_type,
+    description,
+    total_quantity,
+    status,
+    specifications
+)
+values
+    (
+        'b0000000-0000-4000-8000-000000000001',
+        '4K Projector',
+        'projector',
+        'High-brightness 4K laser projector for conference halls and auditoriums.',
+        4,
+        'active',
+        '{"resolution": "3840x2160", "brightness_lumens": 7000}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-000000000002',
+        'Wireless Mics',
+        'microphone',
+        'Digital handheld wireless microphones with receivers.',
+        12,
+        'active',
+        '{"channels": 2, "frequency_band": "UHF"}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-000000000003',
+        'PA Systems',
+        'audio',
+        'Portable public-address speaker systems with mixers and stands.',
+        3,
+        'active',
+        '{"power_watts": 2000, "includes_mixer": true}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-000000000004',
+        'Stage Lighting',
+        'lighting',
+        'LED stage-lighting kits for presentations, performances, and ceremonies.',
+        8,
+        'active',
+        '{"fixture_type": "LED", "control": "DMX"}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-000000000005',
+        'HDMI Switchers',
+        'video',
+        'Multi-input HDMI switchers for hybrid event production.',
+        6,
+        'active',
+        '{"inputs": 4, "outputs": 2, "max_resolution": "4K60"}'::jsonb
+    );
+
+insert into public.equipment_unavailability (
+    id,
+    equipment_id,
+    quantity,
+    start_at,
+    end_at,
+    reason
+)
+values
+    (
+        'b1000000-0000-4000-8000-000000000001',
+        'b0000000-0000-4000-8000-000000000001',
+        1,
+        '2026-10-15 12:00:00+00',
+        '2026-10-15 18:00:00+00',
+        'Scheduled maintenance and lens calibration'
+    ),
+    (
+        'b1000000-0000-4000-8000-000000000002',
+        'b0000000-0000-4000-8000-000000000003',
+        1,
+        '2026-10-15 08:00:00+00',
+        '2026-10-15 13:00:00+00',
+        'Amplifier inspection and battery replacement'
+    );
+
+insert into public.equipment_reservations (
+    id,
+    equipment_id,
+    event_id,
+    quantity,
+    start_at,
+    end_at,
+    status,
+    notes
+)
+values
+    (
+        'b2000000-0000-4000-8000-000000000001',
+        'b0000000-0000-4000-8000-000000000001',
+        'c0000000-0000-4000-8000-000000000001',
+        2,
+        '2026-10-15 09:00:00+00',
+        '2026-10-15 17:00:00+00',
+        'confirmed',
+        'Conference A main hall projection'
+    ),
+    (
+        'b2000000-0000-4000-8000-000000000002',
+        'b0000000-0000-4000-8000-000000000002',
+        'c0000000-0000-4000-8000-000000000002',
+        8,
+        '2026-10-15 10:00:00+00',
+        '2026-10-15 14:00:00+00',
+        'confirmed',
+        'Panel discussion microphones'
+    ),
+    (
+        'b2000000-0000-4000-8000-000000000003',
+        'b0000000-0000-4000-8000-000000000003',
+        'c0000000-0000-4000-8000-000000000003',
+        2,
+        '2026-10-15 14:00:00+00',
+        '2026-10-15 20:00:00+00',
+        'confirmed',
+        'Evening awards ceremony audio'
+    );
