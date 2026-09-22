@@ -9,7 +9,7 @@ This file describes the **current state** of the codebase, so a developer (or AI
 
 **Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current").
 
-_Last updated: 2026-09-21 — SCRUM-23 equipment availability recorded as integrated on its branch (§6), with its migration renamed to `20260921150000`. Previous audit 2026-09-20 against the tree, the live Supabase project, and `git`. Reflects `main` at `521563c`: SCRUM-39/48/70/72/8/67/74/75/76/78 all merged, the events module included. Unmerged branches are in §6._
+_Last updated: 2026-09-22 — CI added (`.github/workflows/ci.yml`, branch `chore/ci-pipeline`): pytest, Vitest and the frontend build now run on every PR into `main`; see §5. Previously 2026-09-21 — SCRUM-23 equipment availability recorded as integrated on its branch (§6), with its migration renamed to `20260921150000`. Previous audit 2026-09-20 against the tree, the live Supabase project, and `git`. Reflects `main` at `521563c`: SCRUM-39/48/70/72/8/67/74/75/76/78 all merged, the events module included. Unmerged branches are in §6._
 
 ---
 
@@ -170,6 +170,8 @@ All eleven migration files are applied to the live project, and `supabase migrat
 ## 5. Know before you build
 
 **Architecture and conventions**
+
+- **CI runs on every PR into `main`** — `.github/workflows/ci.yml`, two parallel jobs: `backend` (Python 3.11, `pip install -r backend/requirements.txt`, `pytest`) and `frontend` (Node 20, `npm ci`, `npm test`, then `cp .env.example .env && npm run build`). Locally these are ~14s and ~46s respectively. **It needs no repository secrets**, and must stay that way: the backend suite injects fake Supabase credentials in `backend/tests/conftest.py`, and the build reads the committed placeholders in `frontend/.env.example`. If you add a test that needs real Supabase credentials, it will pass locally and fail in CI — put it behind a marker rather than adding a secret. What CI does *not* check: `ruff` (never run over this codebase), coverage, the ADR structural rules, and anything requiring a real database or browser.
 
 - **Data access is through the Supabase client only** — settled, see [ADR-0002](adr/0002-supabase-client-only-data-access.md). No ORM and no direct Postgres connection: modules read through their `repository.py`, which uses the factories in `app/db/supabase.py`. `app/db/session.py` is now just a re-export of those factories, not a seam for direct SQL. `DATABASE_URL` is an operator convenience for `psql`, seeding and the verification scripts; no application code reads it. This is not a ban on SQL — the integrity guarantees (`DB-1`, and `register_attendee`/`reserve_equipment` for `DB-3`/`DB-4`) belong in the database, and the app will reach the latter two through `.rpc()` when they are built.
 - **Occupied periods are half-open `[starts_at, ends_at)`.** A booking ending at 12:00 doesn't conflict with one starting at 12:00. Double-booking is prevented in the database by `venue_bookings_no_overlap`, not by application checks. Terms like Hold, Block, Availability, and Suitability are defined in `CONTEXT.md`.

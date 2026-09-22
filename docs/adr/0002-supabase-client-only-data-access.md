@@ -75,7 +75,7 @@ A change conforms when:
 2. Data access goes through the module's `repository.py`, which imports from `app.db.supabase`.
 3. No application module reads `DATABASE_URL`.
 
-None are automated; they are review checks until CI exists.
+None are automated. CI (`.github/workflows/ci.yml`) runs the test suites and the frontend build; it does not grep `requirements.txt` for an ORM or check where `DATABASE_URL` is read. These stay review checks until a dependency or lint check enforces them.
 
 ## Follow-ups this ADR creates
 
