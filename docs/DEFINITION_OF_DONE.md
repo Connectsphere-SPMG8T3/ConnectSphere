@@ -81,6 +81,7 @@ Until then, Phase 2's "full suite passes" and "verified against the real system"
 
 ## Related
 
+- `docs/CI.md` — what the automated checks cover, what they deliberately do not, and the two targets below that are waiting on tooling described there.
 - Root `AGENTS.md` — the working rules this checklist enforces (git workflow, TDD, security baseline, scope discipline).
 - `docs/PROJECT_REVIEW.md` §C4 — the sprint plan and the Scrum evidence to capture alongside it.
 - `docs/IMPLEMENTATION_MAP.md` — what exists right now, to check before building and to update after.
