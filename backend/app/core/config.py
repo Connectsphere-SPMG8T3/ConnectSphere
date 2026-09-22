@@ -24,7 +24,6 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_publishable_key: str
     supabase_secret_key: str
-    database_url: str | None = None
 
     # API
     api_v1_prefix: str = "/api/v1"
