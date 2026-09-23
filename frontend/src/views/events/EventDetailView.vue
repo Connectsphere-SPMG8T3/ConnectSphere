@@ -4,14 +4,20 @@ import { useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
 import { STATUS_LABELS } from "@/features/events/dashboard";
+import { useEventReviewStore } from "@/features/events/eventReviewStore";
 import { useEventsStore } from "@/stores/events";
 
 const route = useRoute();
 const router = useRouter();
 const eventsStore = useEventsStore();
+const review = useEventReviewStore();
 const event = computed(() => eventsStore.events.find((storedEvent) => storedEvent.id === route.params.id));
 const statusLabel = computed(() => STATUS_LABELS[event.value?.status] ?? event.value?.status.replaceAll("_", " "));
+const rejection = computed(() =>
+  event.value?.status === "rejected" ? review.history.find((entry) => entry.to_status === "rejected") ?? null : null,
+);
 
 function displayDate(value, timeZone) {
   if (!value) return "Not provided";
@@ -35,6 +41,11 @@ onMounted(async () => {
     await eventsStore.get(route.params.id);
   } catch {
     return;
+  }
+  try {
+    await review.loadHistory(route.params.id);
+  } catch {
+    // History is supplementary; the request details still render without it.
   }
 });
 </script>
@@ -65,6 +76,12 @@ onMounted(async () => {
             {{ statusLabel }}
           </p>
         </div>
+      </BauhausCard>
+
+      <BauhausCard v-if="event.status === 'rejected'" background="red" accent="none" class="mb-8" data-testid="rejection-notice">
+        <h2 class="text-2xl font-black uppercase tracking-tight">This request was rejected</h2>
+        <p v-if="rejection?.reason" class="mt-3 whitespace-pre-wrap font-medium">{{ rejection.reason }}</p>
+        <p class="mt-3 text-sm font-bold">It is closed and can't be resubmitted. Start a new request if your plans change.</p>
       </BauhausCard>
 
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
@@ -98,6 +115,10 @@ onMounted(async () => {
             <h2 class="text-2xl font-black uppercase tracking-tight">Planning status</h2>
             <p class="mt-3 text-sm font-medium">Your request is currently <strong class="uppercase">{{ statusLabel }}</strong>.</p>
             <p class="mt-3 text-sm font-medium">Coordinator: {{ event.coordinatorId || "To be assigned" }}</p>
+          </BauhausCard>
+          <BauhausCard background="white" accent="none">
+            <h2 class="mb-6 text-2xl font-black uppercase tracking-tight">History</h2>
+            <EventStatusHistory :entries="review.history" />
           </BauhausCard>
         </aside>
       </div>
