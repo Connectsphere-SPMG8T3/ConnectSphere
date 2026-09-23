@@ -98,6 +98,16 @@ export const eventsApi = {
   submit(eventId, payload, token) {
     return request(`/events/${encodeURIComponent(eventId)}/submit`, { method: "POST", body: payload, token });
   },
+  // SCRUM-34/52: the assigned coordinator's decisions, and the history they leave.
+  approve(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/approve`, { method: "POST", token });
+  },
+  reject(eventId, reason, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/reject`, { method: "POST", body: { reason }, token });
+  },
+  history(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/history`, { token });
+  },
 };
 
 export const equipmentApi = {
