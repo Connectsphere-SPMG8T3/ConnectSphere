@@ -128,3 +128,16 @@ def transition_event(
     )
     rows = response.data or [] if response else []
     return rows[0] if rows else None
+
+
+def list_status_history(event_id: str) -> list[dict]:
+    """Newest first. The actor is embedded through the FK named in the migration."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_status_history")
+        .select("id, from_status, to_status, reason, at, actor:profiles!event_status_history_actor_id_fkey(id, full_name)")
+        .eq("event_id", event_id)
+        .order("at", desc=True)
+        .execute()
+    )
+    return response.data or []

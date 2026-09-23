@@ -115,3 +115,21 @@ class EventRejectRequest(BaseModel):
         if not stripped:
             raise ValueError("A rejection reason is required.")
         return stripped
+
+
+class HistoryActor(BaseModel):
+    id: str
+    full_name: str
+
+
+class EventHistoryEntry(BaseModel):
+    id: str
+    from_status: EventStatus | None = None
+    to_status: EventStatus
+    actor: HistoryActor | None = None
+    reason: str | None = None
+    at: datetime
+
+
+class EventHistoryResponse(BaseModel):
+    entries: list[EventHistoryEntry]

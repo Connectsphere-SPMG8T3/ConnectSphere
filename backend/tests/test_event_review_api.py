@@ -226,3 +226,81 @@ def test_a_coordinator_acting_as_venue_staff_is_forbidden(client, auth_headers, 
 
     assert response.status_code == 403
     assert events["calls"] == []
+
+
+HISTORY_ROWS = [
+    {"id": "h2", "from_status": "under_review", "to_status": "rejected", "reason": "Venue unavailable",
+     "at": "2026-09-24T03:00:00+00:00", "actor": {"id": COORDINATOR_ID, "full_name": "Marcus Lim"}},
+    {"id": "h1", "from_status": "submitted", "to_status": "under_review", "reason": None,
+     "at": "2026-09-23T03:00:00+00:00", "actor": None},
+]
+
+
+@pytest.fixture()
+def history(monkeypatch, events):
+    monkeypatch.setattr(repository, "list_status_history", lambda event_id: deepcopy(HISTORY_ROWS))
+
+
+class TestHistory:
+    def test_the_owner_sees_the_history_newest_first(self, client, auth_headers, act_as, history):
+        act_as("event_organiser", user_id=ORGANISER_ID)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers)
+
+        assert response.status_code == 200
+        entries = response.json()["entries"]
+        assert [entry["id"] for entry in entries] == ["h2", "h1"]
+        assert entries[0]["reason"] == "Venue unavailable"
+        assert entries[0]["actor"] == {"id": COORDINATOR_ID, "full_name": "Marcus Lim"}
+        assert entries[1]["actor"] is None
+
+    def test_the_assigned_coordinator_sees_the_history(self, client, auth_headers, act_as, history):
+        act_as("event_coordinator")
+
+        assert client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers).status_code == 200
+
+    def test_another_organiser_gets_not_found(self, client, auth_headers, act_as, history):
+        act_as("event_organiser", user_id="a0000000-0000-4000-8000-0000000000aa")
+
+        assert client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers).status_code == 404
+
+    def test_an_unassigned_coordinator_is_forbidden(self, client, auth_headers, act_as, history):
+        act_as("event_coordinator", user_id=OTHER_COORDINATOR_ID)
+
+        assert client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers).status_code == 403
+
+    @pytest.mark.parametrize("role", ["venue_staff", "tech_support", "attendee"])
+    def test_other_roles_are_forbidden(self, client, auth_headers, act_as, history, role):
+        act_as(role)
+
+        assert client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers).status_code == 403
+
+
+class TestCoordinatorRead:
+    def test_the_assigned_coordinator_can_read_the_event(self, client, auth_headers, act_as, events):
+        act_as("event_coordinator")
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["id"] == EVENT_ID
+
+    def test_an_unassigned_coordinator_is_forbidden(self, client, auth_headers, act_as, events):
+        act_as("event_coordinator", user_id=OTHER_COORDINATOR_ID)
+
+        assert client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers).status_code == 403
+
+    def test_the_owner_can_still_read_the_event(self, client, auth_headers, act_as, events):
+        act_as("event_organiser", user_id=ORGANISER_ID)
+
+        assert client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers).status_code == 200
+
+
+def test_a_rejected_event_cannot_be_edited_by_its_organiser(client, auth_headers, act_as, events):
+    """SCRUM-52: a rejected request is closed (QA-34, QA-95)."""
+    events["store"][EVENT_ID]["status"] = "rejected"
+    act_as("event_organiser", user_id=ORGANISER_ID)
+
+    response = client.patch(f"/api/v1/events/{EVENT_ID}", json={"name": "Try again"}, headers=auth_headers)
+
+    assert response.status_code == 409

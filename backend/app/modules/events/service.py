@@ -6,7 +6,13 @@ from fastapi import HTTPException, status
 
 from app.core.exceptions import NotAssignedCoordinatorError
 from app.modules.events import lifecycle, repository
-from app.modules.events.schemas import EventCreateRequest, EventRejectRequest, EventResponse, EventUpdateRequest
+from app.modules.events.schemas import (
+    EventCreateRequest,
+    EventHistoryEntry,
+    EventHistoryResponse,
+    EventResponse,
+    EventUpdateRequest,
+)
 
 DEFAULT_EVENT_TIMEZONE = "Asia/Singapore"
 
@@ -150,8 +156,23 @@ def list_owned(organiser_id: str) -> list[EventResponse]:
     return [_to_response(row) for row in repository.list_events(organiser_id)]
 
 
-def read(event_id: str, organiser_id: str) -> EventResponse:
-    return _to_response(_owned_event(event_id, organiser_id))
+def _visible_event(event_id: str, user_id: str, role: str) -> dict:
+    """Organisers see their own events (404 otherwise); coordinators see the events
+    assigned to them (403 otherwise). The router's role gate admits no one else."""
+    if role == "event_coordinator":
+        return _assigned_event(event_id, user_id)
+    return _owned_event(event_id, user_id)
+
+
+def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
+    return _to_response(_visible_event(event_id, user_id, role))
+
+
+def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
+    _visible_event(event_id, user_id, role)
+    return EventHistoryResponse(
+        entries=[EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
+    )
 
 
 def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventResponse:

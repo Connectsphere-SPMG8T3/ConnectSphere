@@ -5,11 +5,18 @@ from fastapi import APIRouter, Depends, Response, status
 
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.events import service
-from app.modules.events.schemas import EventCreateRequest, EventRejectRequest, EventResponse, EventUpdateRequest
+from app.modules.events.schemas import (
+    EventCreateRequest,
+    EventHistoryResponse,
+    EventRejectRequest,
+    EventResponse,
+    EventUpdateRequest,
+)
 
 router = APIRouter(prefix="/events", tags=["events"])
 EventOrganiser = Annotated[CurrentUser, Depends(require_roles(["event_organiser"]))]
 EventCoordinator = Annotated[CurrentUser, Depends(require_roles(["event_coordinator"]))]
+EventParticipant = Annotated[CurrentUser, Depends(require_roles(["event_organiser", "event_coordinator"]))]
 
 
 @router.post("", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
@@ -23,8 +30,13 @@ def list_events(current_user: EventOrganiser) -> list[EventResponse]:
 
 
 @router.get("/{event_id}", response_model=EventResponse)
-def read_event(event_id: UUID, current_user: EventOrganiser) -> EventResponse:
-    return service.read(str(event_id), current_user.id)
+def read_event(event_id: UUID, current_user: EventParticipant) -> EventResponse:
+    return service.read(str(event_id), current_user.id, current_user.role)
+
+
+@router.get("/{event_id}/history", response_model=EventHistoryResponse)
+def read_event_history(event_id: UUID, current_user: EventParticipant) -> EventHistoryResponse:
+    return service.history(str(event_id), current_user.id, current_user.role)
 
 
 @router.patch("/{event_id}", response_model=EventResponse)
