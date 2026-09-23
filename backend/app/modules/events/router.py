@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, Response, status
 
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.events import service
-from app.modules.events.schemas import EventCreateRequest, EventResponse, EventUpdateRequest
+from app.modules.events.schemas import EventCreateRequest, EventRejectRequest, EventResponse, EventUpdateRequest
 
 router = APIRouter(prefix="/events", tags=["events"])
 EventOrganiser = Annotated[CurrentUser, Depends(require_roles(["event_organiser"]))]
+EventCoordinator = Annotated[CurrentUser, Depends(require_roles(["event_coordinator"]))]
 
 
 @router.post("", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
@@ -44,3 +45,13 @@ def submit_event(
     body: EventUpdateRequest | None = None,
 ) -> EventResponse:
     return service.submit(str(event_id), current_user.id, body)
+
+
+@router.post("/{event_id}/approve", response_model=EventResponse)
+def approve_event(event_id: UUID, current_user: EventCoordinator) -> EventResponse:
+    return service.approve(str(event_id), current_user.id)
+
+
+@router.post("/{event_id}/reject", response_model=EventResponse)
+def reject_event(event_id: UUID, body: EventRejectRequest, current_user: EventCoordinator) -> EventResponse:
+    return service.reject(str(event_id), current_user.id, body.reason)

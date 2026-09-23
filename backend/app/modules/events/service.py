@@ -4,8 +4,9 @@ from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 
-from app.modules.events import repository
-from app.modules.events.schemas import EventCreateRequest, EventResponse, EventUpdateRequest
+from app.core.exceptions import NotAssignedCoordinatorError
+from app.modules.events import lifecycle, repository
+from app.modules.events.schemas import EventCreateRequest, EventRejectRequest, EventResponse, EventUpdateRequest
 
 DEFAULT_EVENT_TIMEZONE = "Asia/Singapore"
 
@@ -42,6 +43,50 @@ def _owned_event(event_id: str, organiser_id: str) -> dict:
     if not row or row.get("organiser_id") != organiser_id:
         raise EventNotFoundError()
     return row
+
+
+STALE_EVENT_MESSAGE = "This event was updated by someone else. Reload."
+
+
+def _assigned_event(event_id: str, coordinator_id: str) -> dict:
+    """The event, if the caller is its assigned coordinator. Unlike `_owned_event`,
+    a coordinator who isn't assigned gets 403, not 404: coordinators may already
+    search every non-draft event (QA-87), so the 403 confirms nothing new, and
+    SCRUM-34/52 name the case Forbidden."""
+    row = repository.get_event(event_id)
+    if not row:
+        raise EventNotFoundError()
+    if row.get("coordinator_id") != coordinator_id:
+        raise NotAssignedCoordinatorError()
+    return row
+
+
+def _transition(row: dict, actor_id: str, action: str, *, reason: str | None,
+                notify_type: str, notify_message: str) -> EventResponse:
+    to_status = lifecycle.target(action, row["status"])
+    updated = repository.transition_event(
+        row["id"], actor_id, lifecycle.allowed_from(action), to_status.value, row["version"],
+        reason=reason, notify_type=notify_type, notify_message=notify_message,
+    )
+    if not updated:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return _to_response(updated)
+
+
+def approve(event_id: str, coordinator_id: str) -> EventResponse:
+    row = _assigned_event(event_id, coordinator_id)
+    return _transition(
+        row, coordinator_id, "approve", reason=None, notify_type="event_approved",
+        notify_message=f'Your event "{row["name"]}" passed its initial review and is now in planning.',
+    )
+
+
+def reject(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
+    row = _assigned_event(event_id, coordinator_id)
+    return _transition(
+        row, coordinator_id, "reject", reason=reason, notify_type="event_rejected",
+        notify_message=f'Your event "{row["name"]}" was rejected: {reason}',
+    )
 
 
 def _validate_submission(row: dict) -> None:

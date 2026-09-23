@@ -100,3 +100,18 @@ class EventResponse(EventFields):
 
 class EventListResponse(BaseModel):
     events: list[EventResponse]
+
+
+REJECT_REASON_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; no customer limit given
+
+
+class EventRejectRequest(BaseModel):
+    reason: str = Field(max_length=REJECT_REASON_MAX_LENGTH)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_is_not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("A rejection reason is required.")
+        return stripped
