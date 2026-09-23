@@ -722,6 +722,37 @@ What was actually built:
 - Manual browser checks completed for desktop and 390 × 844 mobile filter layout, including the mobile header Clear action and inline Sort direction control.
 - **Not verified:** rejection/cancellation reasons are not currently exposed by the events API, so the dashboard cannot display those optional fields until the backend response contract provides them.
 
+### 4.14. Bug fix — "Approved – planning" label contradicted the customer's status model
+
+Not a Jira story; a fix on `fix/planning-status-label`, prompted by re-reading the Session 1 and 2 answers while refining SCRUM-34.
+
+The UI labelled `planning` as **"Approved – planning"**, a reading taken from QA-56 ("Approved (initial check passed)"). Session 2 settled the term the other way: "Confirmed/Approved" is **one final status**, reached when the essential venue and technical arrangements are approved (QA2-8, consistent with QA-18). So an organiser whose request had only passed initial review saw "Approved", then later "Confirmed", which is the exact confusion the customer briefing lists (organisers "unsure whether an event … has been approved or confirmed", W1 §2).
+
+- `planning` is now labelled **"Planning"**, and its description reads "Passed initial review — venue and equipment being arranged." (`frontend/src/features/events/dashboard.js`). The coordinator and organiser dashboards both read these labels, so both change.
+- Two tests in `features/events/__tests__/dashboard.spec.js` pin the rule: `planning` is labelled "Planning", and no label or description except `confirmed`'s says "approved".
+- REQUIREMENTS §5 and §6.6 record it as a **[Team decision]**; TEST_CASES TC-DASH-010 expects the new label.
+- In Jira, SCRUM-34 now moves an event to Planning, and final confirmation became its own backlog story, **SCRUM-82**, blocked by SCRUM-19, 36, 45 and 24.
+
+#### Verification
+
+- Both new tests failed first on the old label, then passed after the change.
+- `npm test`: 314 passing across 23 frontend files. `npm run build`: passed.
+- **Not verified:** no backend change, so `pytest` wasn't re-run, and the dashboards weren't checked in a browser. The change is two strings read through `STATUS_LABELS`/`STATUS_DESCRIPTIONS`.
+
+#### Review follow-up (same PR)
+
+The PR review raised three non-blocking points, all fixed before merge:
+
+1. **The organiser's event page showed the raw status.** `EventDetailView.vue` rendered `event.status.replaceAll("_", " ")`, so a submitted request read "SUBMITTED" there but "Awaiting assignment" on the dashboard. The badge and the "Planning status" line now read `STATUS_LABELS`, and fall back to the raw status only for an unknown value. This predates the label fix.
+2. **Organiser group labels were typed out separately.** `groupOrganiserActiveEvents` now takes "Planning", "Confirmed" and "Completed" from `STATUS_LABELS`. "Under review" keeps its own label because that group also holds `submitted`. The organiser **descriptions stay separate on purpose**: `STATUS_DESCRIPTIONS` is written for coordinators ("Waiting on your approval…"), so sharing it would show organisers the wrong wording.
+3. **The "approved" test only covered the coordinator maps.** `organiserDashboard.spec.js` now checks that the single-status group labels match `STATUS_LABELS`, and that no organiser group except confirmed says "approved".
+
+Verification for the follow-up:
+- A new `views/__tests__/EventDetailView.spec.js` failed first, because the page showed the raw status where "Awaiting assignment" was expected, and passes after the fix. The two organiser tests guard a refactor that kept the same wording, so they passed both before and after.
+- `npm test`: 318 passing across 24 files. `npm run build`: passed.
+- **In the browser**, signed in as `organiser@connectsphere.dev` against the live project: the event page for a `planning` event shows "Planning" in the badge and the status line. The dashboard's status groups read Under review / Planning / Confirmed / Completed. The only console error was a missing `favicon.ico`.
+- **Not verified in the browser:** "Awaiting assignment" on the event page, because the organiser account has no `submitted` event. The view test covers it.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.

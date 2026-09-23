@@ -527,7 +527,7 @@ erDiagram
 
 ## 5. Event lifecycle
 
-**Status set.** The answers conflict. QA-18 says "approved" and "confirmed" refer to the same thing, with process statuses requested / planning / confirmed / completed. QA-56 lists Approved as "initial check passed" and Confirmed as "venue/tech ready". QA-21 lists *approve* and *confirm* as separate coordinator actions. **We reconcile them** by treating *approve* as the action that moves an event into **`planning`**, which the UI labels "Approved – planning". *Confirm* moves `planning` → `confirmed`. That gives two distinct actions (QA-21), a distinct "initial check passed" stage (QA-56), and no separate `approved` status (QA-18). **Session 2 confirmed this model** (QA2-8): the customer's status list is Under Review (coordinator evaluating or seeking clarification), Planning (feasibility check passed, venue and equipment planning underway), Confirmed/Approved as one status (essential venue and technical arrangements fully approved), Completed (event date/time passed), Rejected (venue or equipment unavailable, or a suitability issue), and Cancelled (organiser request, or the coordinator cancelled it). §9 Q1 is closed.
+**Status set.** The answers conflict. QA-18 says "approved" and "confirmed" refer to the same thing, with process statuses requested / planning / confirmed / completed. QA-56 lists Approved as "initial check passed" and Confirmed as "venue/tech ready". QA-21 lists *approve* and *confirm* as separate coordinator actions. **We reconcile them** by treating *approve* as the action that moves an event into **`planning`**, which the UI labels "Planning". *Confirm* moves `planning` → `confirmed`. That gives two distinct actions (QA-21), a distinct "initial check passed" stage (QA-56), and no separate `approved` status (QA-18). **Session 2 confirmed this model** (QA2-8): the customer's status list is Under Review (coordinator evaluating or seeking clarification), Planning (feasibility check passed, venue and equipment planning underway), Confirmed/Approved as one status (essential venue and technical arrangements fully approved), Completed (event date/time passed), Rejected (venue or equipment unavailable, or a suitability issue), and Cancelled (organiser request, or the coordinator cancelled it). §9 Q1 is closed. **[Team decision]** Because the customer's "Approved" now means the final Confirmed status (QA2-8), no status other than `confirmed` is labelled or described as "approved" in the UI. `planning` was previously labelled "Approved – planning", which told organisers their event was settled before any venue or equipment was secured (the confusion W1 §2 lists: organisers "unsure whether an event … has been approved or confirmed"). Confirmation is tracked as its own story, SCRUM-82.
 
 ```mermaid
 stateDiagram-v2
@@ -688,7 +688,7 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 See §5 for the state machine.
 
 **User-facing behaviour**
-- A status badge with a plain-language explanation, for example "Approved – planning: your coordinator is arranging venue and equipment" (W1 §7).
+- A status badge with a plain-language explanation, for example "Planning: your coordinator is arranging venue and equipment" (W1 §7). Only `confirmed` may read as "approved" (§5, QA2-8).
 - A **status timeline** from `event_status_history`.
 - Action buttons derived from the transitions allowed for *this user*.
 

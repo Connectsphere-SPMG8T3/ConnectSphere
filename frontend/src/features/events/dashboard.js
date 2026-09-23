@@ -10,13 +10,17 @@
  * Event statuses, labelled in one place so renaming a status is a one-line
  * change (REQUIREMENTS §5, LC-R3). The plain-language descriptions are what
  * REQUIREMENTS §6.6 asks the UI to show next to a status badge.
+ *
+ * "Approved" appears on no status except confirmed: the customer uses
+ * "Confirmed/Approved" for one final status (QA-18, QA2-8), so calling planning
+ * "approved" would tell an organiser their event is settled before it is.
  */
 export const STATUS_LABELS = {
   draft: "Draft",
   submitted: "Awaiting assignment",
   under_review: "Under review",
   returned: "Returned for amendment",
-  planning: "Approved – planning",
+  planning: "Planning",
   confirmed: "Confirmed",
   rejected: "Rejected",
   cancelled: "Cancelled",
@@ -26,7 +30,7 @@ export const STATUS_LABELS = {
 export const STATUS_DESCRIPTIONS = {
   under_review: "Waiting on your approval or rejection.",
   returned: "With the organiser for amendment.",
-  planning: "Approved — venue and equipment being arranged.",
+  planning: "Passed initial review — venue and equipment being arranged.",
   confirmed: "All blocking arrangements are in place.",
 };
 

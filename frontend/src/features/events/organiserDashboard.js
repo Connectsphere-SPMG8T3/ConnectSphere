@@ -1,3 +1,5 @@
+import { STATUS_LABELS } from "@/features/events/dashboard";
+
 const STATUS_ORDER = [
   "draft",
   "submitted",
@@ -83,11 +85,14 @@ export function summariseOrganiserEvents(events = []) {
 }
 
 export function groupOrganiserActiveEvents(events = []) {
+  // Single-status labels come from STATUS_LABELS (LC-R3). "Under review" is its
+  // own label because it also holds `submitted`. Descriptions stay here: they
+  // are written for the organiser, while STATUS_DESCRIPTIONS speaks to coordinators.
   const groups = [
     { status: "under_review", label: "Under review", description: "Requests awaiting review or clarification." },
-    { status: "planning", label: "Planning", description: "Events being arranged with ConnectSphere." },
-    { status: "confirmed", label: "Confirmed", description: "Events with confirmed arrangements." },
-    { status: "completed", label: "Completed", description: "Events that have finished." },
+    { status: "planning", label: STATUS_LABELS.planning, description: "Events being arranged with ConnectSphere." },
+    { status: "confirmed", label: STATUS_LABELS.confirmed, description: "Events with confirmed arrangements." },
+    { status: "completed", label: STATUS_LABELS.completed, description: "Events that have finished." },
   ];
 
   return groups.map((group) => ({
