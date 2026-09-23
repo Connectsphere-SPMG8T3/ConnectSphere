@@ -722,6 +722,23 @@ What was actually built:
 - Manual browser checks completed for desktop and 390 × 844 mobile filter layout, including the mobile header Clear action and inline Sort direction control.
 - **Not verified:** rejection/cancellation reasons are not currently exposed by the events API, so the dashboard cannot display those optional fields until the backend response contract provides them.
 
+### 4.14. Bug fix — "Approved – planning" label contradicted the customer's status model
+
+Not a Jira story; a fix on `fix/planning-status-label`, prompted by re-reading the Session 1 and 2 answers while refining SCRUM-34.
+
+The UI labelled `planning` as **"Approved – planning"**, a reading taken from QA-56 ("Approved (initial check passed)"). Session 2 settled the term the other way: "Confirmed/Approved" is **one final status**, reached when the essential venue and technical arrangements are approved (QA2-8, consistent with QA-18). So an organiser whose request had only passed initial review saw "Approved", then later "Confirmed", which is the exact confusion the customer briefing lists (organisers "unsure whether an event … has been approved or confirmed", W1 §2).
+
+- `planning` is now labelled **"Planning"**, and its description reads "Passed initial review — venue and equipment being arranged." (`frontend/src/features/events/dashboard.js`). The coordinator and organiser dashboards both read these labels, so both change.
+- Two tests in `features/events/__tests__/dashboard.spec.js` pin the rule: `planning` is labelled "Planning", and no label or description except `confirmed`'s says "approved".
+- REQUIREMENTS §5 and §6.6 record it as a **[Team decision]**; TEST_CASES TC-DASH-010 expects the new label.
+- In Jira, SCRUM-34 now moves an event to Planning, and final confirmation became its own backlog story, **SCRUM-82**, blocked by SCRUM-19, 36, 45 and 24.
+
+#### Verification
+
+- Both new tests failed first on the old label, then passed after the change.
+- `npm test`: 314 passing across 23 frontend files. `npm run build`: passed.
+- **Not verified:** no backend change, so `pytest` wasn't re-run, and the dashboards weren't checked in a browser. The change is two strings read through `STATUS_LABELS`/`STATUS_DESCRIPTIONS`.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.

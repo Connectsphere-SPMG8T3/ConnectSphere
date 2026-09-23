@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ACTION_KINDS,
   ACTIVE_COORDINATOR_STATUSES,
+  STATUS_DESCRIPTIONS,
   STATUS_LABELS,
   countByStatus,
   groupActiveEventsByStatus,
@@ -190,6 +191,18 @@ describe("active event status overview (SCRUM-72 AC2)", () => {
     ACTIVE_COORDINATOR_STATUSES.forEach((status) => {
       expect(STATUS_LABELS[status]).toBeTruthy();
     });
+  });
+
+  it("calls planning 'Planning', not 'Approved' (QA-18, QA2-8)", () => {
+    expect(STATUS_LABELS.planning).toBe("Planning");
+  });
+
+  it("reserves 'approved' for no status but confirmed, which the customer treats as the same thing (QA2-8)", () => {
+    [...Object.entries(STATUS_LABELS), ...Object.entries(STATUS_DESCRIPTIONS)]
+      .filter(([status]) => status !== "confirmed")
+      .forEach(([, text]) => {
+        expect(text).not.toMatch(/\bapproved\b/i);
+      });
   });
 });
 
