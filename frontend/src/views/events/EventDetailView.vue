@@ -4,12 +4,14 @@ import { useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import { STATUS_LABELS } from "@/features/events/dashboard";
 import { useEventsStore } from "@/stores/events";
 
 const route = useRoute();
 const router = useRouter();
 const eventsStore = useEventsStore();
 const event = computed(() => eventsStore.events.find((storedEvent) => storedEvent.id === route.params.id));
+const statusLabel = computed(() => STATUS_LABELS[event.value?.status] ?? event.value?.status.replaceAll("_", " "));
 
 function displayDate(value, timeZone) {
   if (!value) return "Not provided";
@@ -60,7 +62,7 @@ onMounted(async () => {
             <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">{{ event.name }}</h1>
           </div>
           <p class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard">
-            {{ event.status.replaceAll("_", " ") }}
+            {{ statusLabel }}
           </p>
         </div>
       </BauhausCard>
@@ -94,7 +96,7 @@ onMounted(async () => {
           </BauhausCard>
           <BauhausCard background="white" accent="none">
             <h2 class="text-2xl font-black uppercase tracking-tight">Planning status</h2>
-            <p class="mt-3 text-sm font-medium">Your request is currently <strong class="uppercase">{{ event.status.replaceAll("_", " ") }}</strong>.</p>
+            <p class="mt-3 text-sm font-medium">Your request is currently <strong class="uppercase">{{ statusLabel }}</strong>.</p>
             <p class="mt-3 text-sm font-medium">Coordinator: {{ event.coordinatorId || "To be assigned" }}</p>
           </BauhausCard>
         </aside>

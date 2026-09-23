@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { STATUS_LABELS } from "@/features/events/dashboard";
 import {
   filterOrganiserEvents,
   getOrganiserAction,
@@ -128,6 +129,22 @@ describe("organiser dashboard grouping and actions", () => {
     ]);
     expect(groups[0].events.map((item) => item.id)).toEqual(["submitted", "review"]);
     expect(groups[3].events.map((item) => item.id)).toEqual(["completed"]);
+  });
+
+  it("takes single-status group labels from STATUS_LABELS so a rename is one change (LC-R3)", () => {
+    groupOrganiserActiveEvents([])
+      .filter((group) => group.status !== "under_review")
+      .forEach((group) => {
+        expect(group.label).toBe(STATUS_LABELS[group.status]);
+      });
+  });
+
+  it("never calls a group other than confirmed 'approved' (QA2-8)", () => {
+    groupOrganiserActiveEvents([])
+      .filter((group) => group.status !== "confirmed")
+      .forEach((group) => {
+        expect(`${group.label} ${group.description}`).not.toMatch(/\bapproved\b/i);
+      });
   });
 
   it("summarises overview counts into action and lifecycle groups", () => {
