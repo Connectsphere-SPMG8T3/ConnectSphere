@@ -46,6 +46,14 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["event_coordinator"] },
   },
   {
+    // SCRUM-34/52: the assigned coordinator's review page. SCRUM-49 extends it
+    // with the full review details; the API enforces "assigned" (403 otherwise).
+    path: "/coordinator/events/:id",
+    name: "coordinator-event",
+    component: () => import("@/views/events/CoordinatorEventView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["event_coordinator"] },
+  },
+  {
     path: "/dashboard/venue-staff",
     name: "dashboard-venue-staff",
     component: () => import("@/views/dashboards/VenueStaffDashboard.vue"),
