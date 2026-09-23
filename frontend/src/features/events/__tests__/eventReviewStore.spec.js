@@ -130,4 +130,34 @@ describe("useEventReviewStore", () => {
     expect(store.event).toBeNull();
     expect(store.error).toBe("Only the event's assigned coordinator can do this.");
   });
+
+  it("does not leak one event's history onto another when the new event's fetch fails (SCRUM-52)", async () => {
+    eventsApi.history.mockResolvedValueOnce({ entries: [ENTRY] });
+    const store = useEventReviewStore();
+    await store.loadHistory("event-A");
+    expect(store.history).toEqual([ENTRY]);
+
+    eventsApi.history.mockRejectedValueOnce(new ApiError("Unable to reach the server. Please try again.", 500));
+
+    await expect(store.loadHistory("event-B")).rejects.toThrow();
+    expect(store.history).toEqual([]);
+  });
+
+  it("clears history for the new event before its fetch resolves, not after (SCRUM-52)", async () => {
+    eventsApi.history.mockResolvedValueOnce({ entries: [ENTRY] });
+    const store = useEventReviewStore();
+    await store.loadHistory("event-A");
+    expect(store.history).toEqual([ENTRY]);
+
+    let resolveHistory;
+    eventsApi.history.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveHistory = resolve; }),
+    );
+    const pending = store.loadHistory("event-B");
+
+    expect(store.history).toEqual([]);
+
+    resolveHistory({ entries: [] });
+    await pending;
+  });
 });

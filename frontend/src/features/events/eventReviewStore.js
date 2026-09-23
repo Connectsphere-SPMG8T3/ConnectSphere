@@ -21,7 +21,11 @@ export function canReject(status) {
  * status history. `loadHistory` is also used by the organiser's event page.
  */
 export const useEventReviewStore = defineStore("eventReview", {
-  state: () => ({ event: null, history: [], isLoading: false, isActing: false, error: null }),
+  // `historyEventId` tracks which event `history` belongs to. The store is a
+  // singleton, so without this, navigating from one event's page to another's
+  // can show the previous event's history — either while the new event's
+  // fetch is still pending, or permanently if that fetch fails (SCRUM-52).
+  state: () => ({ event: null, history: [], historyEventId: null, isLoading: false, isActing: false, error: null }),
 
   actions: {
     async load(eventId) {
@@ -35,9 +39,11 @@ export const useEventReviewStore = defineStore("eventReview", {
         ]);
         this.event = event;
         this.history = history?.entries ?? [];
+        this.historyEventId = eventId;
       } catch (error) {
         this.event = null;
         this.history = [];
+        this.historyEventId = null;
         this.error = error.message;
       } finally {
         this.isLoading = false;
@@ -46,6 +52,15 @@ export const useEventReviewStore = defineStore("eventReview", {
 
     async loadHistory(eventId) {
       const auth = useAuthStore();
+      // Switching to a different event: clear the previous event's entries
+      // before fetching, synchronously, so they never show for the new event
+      // — not while this fetch is pending, and not if it fails. A refresh for
+      // the *same* event (the post-decision reload in `act()`) keeps the
+      // current history in place until the new entries arrive.
+      if (this.historyEventId !== eventId) {
+        this.history = [];
+        this.historyEventId = eventId;
+      }
       const response = await auth.withSession((token) => eventsApi.history(eventId, token));
       this.history = response?.entries ?? [];
       return this.history;
