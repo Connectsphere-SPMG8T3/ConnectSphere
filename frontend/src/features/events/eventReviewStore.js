@@ -65,14 +65,20 @@ export const useEventReviewStore = defineStore("eventReview", {
       this.error = null;
       try {
         this.event = await auth.withSession(call);
-        await this.loadHistory(this.event.id);
-        return this.event;
       } catch (error) {
         this.error = error.message;
         throw error;
       } finally {
         this.isActing = false;
       }
+      // The decision already succeeded above; a history refresh failing here
+      // must not report it as failed or invite a retry that would 409.
+      try {
+        await this.loadHistory(this.event.id);
+      } catch {
+        // Previous history stays as-is until the next successful load.
+      }
+      return this.event;
     },
   },
 });

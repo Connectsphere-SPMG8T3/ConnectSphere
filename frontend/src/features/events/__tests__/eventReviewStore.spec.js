@@ -76,6 +76,23 @@ describe("useEventReviewStore", () => {
     expect(store.isActing).toBe(false);
   });
 
+  it("keeps a completed decision even when the history refresh afterward fails (SCRUM-34/52)", async () => {
+    eventsApi.get.mockResolvedValue(EVENT);
+    eventsApi.history.mockResolvedValueOnce({ entries: [ENTRY] });
+    const store = useEventReviewStore();
+    await store.load("event-1");
+    const previousHistory = store.history;
+    eventsApi.approve.mockResolvedValue({ ...EVENT, status: "planning", version: 4 });
+    eventsApi.history.mockRejectedValueOnce(new ApiError("Unable to reach the server. Please try again.", 500));
+
+    await expect(store.approve()).resolves.toEqual({ ...EVENT, status: "planning", version: 4 });
+
+    expect(store.event.status).toBe("planning");
+    expect(store.error).toBeNull();
+    expect(store.isActing).toBe(false);
+    expect(store.history).toEqual(previousHistory);
+  });
+
   it("sends a trimmed reason when rejecting", async () => {
     eventsApi.get.mockResolvedValue(EVENT);
     eventsApi.history.mockResolvedValue({ entries: [] });
