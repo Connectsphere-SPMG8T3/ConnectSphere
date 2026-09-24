@@ -50,3 +50,14 @@ def test_the_blocked_message_names_the_status_in_words():
         lifecycle.target("approve", "returned")
 
     assert raised.value.detail == "Cannot approve an event that is returned"
+
+
+def test_submit_moves_draft_to_under_review():
+    """Submission is a lifecycle transition so it reaches event_status_history."""
+    assert lifecycle.target("submit", "draft") == EventStatus.under_review
+
+
+@pytest.mark.parametrize("status", [s for s in ALL_STATUSES if s != "draft"])
+def test_submit_is_blocked_from_every_other_status(status):
+    with pytest.raises(EventTransitionError):
+        lifecycle.target("submit", status)

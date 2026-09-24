@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
@@ -207,7 +207,10 @@ def submit(event_id: str, organiser_id: str, body: EventUpdateRequest | None = N
         if not updated:
             raise EventConflictError()
         row = updated
-    updated = repository.submit_event(event_id, row["version"], datetime.now(timezone.utc))
+    updated = repository.transition_event(
+        event_id, organiser_id, lifecycle.allowed_from("submit"),
+        lifecycle.target("submit", row["status"]).value, row["version"],
+    )
     if not updated:
         raise EventConflictError()
     return _to_response(updated)

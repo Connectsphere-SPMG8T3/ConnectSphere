@@ -94,11 +94,19 @@ def mock_event_repository(monkeypatch, request):
     def delete_event(event_id):
         store.pop(event_id, None)
 
-    def submit_event(event_id, version, submitted_at):
+    transition_calls = []
+
+    def transition_event(event_id, actor_id, from_statuses, to_status, expected_version,
+                         reason=None, notify_type=None, notify_message=None):
+        transition_calls.append({
+            "event_id": event_id, "actor_id": actor_id, "from_statuses": from_statuses,
+            "to_status": to_status, "expected_version": expected_version,
+            "reason": reason, "notify_type": notify_type, "notify_message": notify_message,
+        })
         row = store.get(event_id)
-        if row is None or row["version"] != version:
+        if row is None or row["version"] != expected_version or row["status"] not in from_statuses:
             return None
-        row.update(status="under_review", submitted_at=submitted_at.isoformat(), version=version + 1)
+        row.update(status=to_status, submitted_at=now, version=expected_version + 1)
         return deepcopy(row)
 
     monkeypatch.setattr(repository, "list_events", list_events)
@@ -106,7 +114,8 @@ def mock_event_repository(monkeypatch, request):
     monkeypatch.setattr(repository, "create_event", create_event)
     monkeypatch.setattr(repository, "update_event", update_event)
     monkeypatch.setattr(repository, "delete_event", delete_event)
-    monkeypatch.setattr(repository, "submit_event", submit_event)
+    monkeypatch.setattr(repository, "transition_event", transition_event)
+    return {"transition_calls": transition_calls}
 
 
 class TestEventDrafts:
@@ -254,6 +263,24 @@ class TestEventSubmission:
         body = response.json()
         assert body["id"] == EVENT_ID
         assert body["status"] == "under_review"
+
+    def test_valid_draft_can_be_submitted_without_coordinator_assignment_through_transition_event(
+        self, client, auth_headers, authenticate_as, mock_event_repository
+    ):
+        """Submission writes event_status_history (draft -> under_review) with the
+        organiser as actor, so it must go through transition_event, the one path
+        that records history."""
+        organiser = authenticate_as("event_organiser")
+
+        response = client.post(f"/api/v1/events/{EVENT_ID}/submit", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["submitted_at"]
+        assert mock_event_repository["transition_calls"] == [{
+            "event_id": EVENT_ID, "actor_id": organiser["id"], "from_statuses": ["draft"],
+            "to_status": "under_review", "expected_version": 1,
+            "reason": None, "notify_type": None, "notify_message": None,
+        }]
 
     def test_submission_returns_all_missing_required_field_errors(
         self, client, auth_headers, authenticate_as

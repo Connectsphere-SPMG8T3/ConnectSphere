@@ -18,8 +18,8 @@
 --   - event e0000000-0000-4000-8000-000000000201 (reset to under_review)
 --   - event e0000000-0000-4000-8000-000000000202 (reset to planning)
 --   - venue booking d0000000-0000-4000-8000-000000000201 (reset to held)
---   - event_status_history / notifications rows whose event_id is one of the
---     two fixture events above
+--   - event_status_history rows (other than creation and submission) and
+--     notifications rows whose event_id is one of the two fixture events above
 --
 -- Idempotent: safe to run with nothing to clean up (the deletes and updates
 -- are no-ops), and safe to run more than once in a row.
@@ -40,11 +40,15 @@ delete from public.notifications
      'e0000000-0000-4000-8000-000000000202'
  );
 
+-- Keep each fixture's creation and submission rows (the events_record_created
+-- trigger and the backfill in 20260924120000); only review decisions are drift.
 delete from public.event_status_history
  where event_id in (
      'e0000000-0000-4000-8000-000000000201',
      'e0000000-0000-4000-8000-000000000202'
- );
+ )
+   and from_status is not null
+   and from_status <> 'draft';
 
 update public.events
    set status = 'under_review'
@@ -69,7 +73,7 @@ union all
 select 'booking ...0201 status', status::text
   from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000000201'
 union all
-select 'event_status_history rows left for the fixtures', count(*)::text
+select 'event_status_history rows left for the fixtures (creation + submission, expect 4)', count(*)::text
   from public.event_status_history
  where event_id in ('e0000000-0000-4000-8000-000000000201', 'e0000000-0000-4000-8000-000000000202')
 union all

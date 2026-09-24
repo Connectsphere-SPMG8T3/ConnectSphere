@@ -862,6 +862,30 @@ What was actually built:
 - **Visual finding, not a regression of this story's own code:** before commit `92f1b97`, the rejection card was confirmed in the browser to be only a thin accent stripe rather than a clearly red notice (see the bug-fix note above) — fixed on this branch before being reported done.
 - **Not verified:** equipment-reservation release (no reservation flow exists yet, SCRUM-24); the notifications bell (SCRUM-27); a live re-run of the transient `httpx.RemoteProtocolError`/CORS-looking failure Task 9 hit once on this page (see IMPLEMENTATION_MAP §5 "Still open") — it resolved on retry and wasn't deliberately reproduced.
 
+### 4.17. Bug fix — event history skipped creation and submission (PROJECT_REVIEW D11)
+
+Not a Jira story; a fix on `fix/event-history-on-create`, branched from `feature/scrum-34-52-approve-reject` because `event_status_history` exists only there. Reported by the developer: "when an event is created there is no history log."
+
+**Symptom.** An organiser's History panel read "No status changes recorded yet." for a new draft, and still did after submission. The first entry appeared only when a coordinator approved or rejected. LC-R2 and QA-70 require every transition to be recorded and visible.
+
+**Reproduction (live project, before the fix).** A query over `events` showed none of the 15 events had a creation row (`from_status is null`), and all 9 in `draft`/`under_review` had no history at all. A rolled-back check (`supabase/verification/event_history_checks.sql`) that inserts an event and submits it through `transition_event` failed on "creating an event records (none -> draft)" and "submission stamps submitted_at".
+
+**Root cause.** `public.transition_event` is the only writer of `event_status_history`. Creation (`repository.create_event`) and submission (`repository.submit_event`) both wrote `events` directly, and SCRUM-8 built them before the RPC existed. The submission gap was already recorded as a known exception in IMPLEMENTATION_MAP §5; the creation gap wasn't recorded anywhere. **Why tests missed it:** the SCRUM-34/52 history tests start from events that already exist, and the SCRUM-8 tests mock the repository, so nothing asserted that creating or submitting leaves a history trace.
+
+**Fix.**
+- **Creation:** trigger `events_record_created` (`after insert on events`, `private.record_event_created()`) writes `(null → new.status)` with the organiser as actor, at `created_at`, in the same transaction as the insert. It's a trigger rather than a new RPC (a team decision on this fix) so every insert path is covered, seed and fixtures included.
+- **Submission:** `lifecycle.TRANSITIONS["submit"] = ({draft}, under_review)`, and `service.submit` calls `repository.transition_event` with the organiser as actor and no notification. `transition_event` now stamps `submitted_at = now()` when an event leaves `draft`, so the RPC's signature and grants are unchanged. `repository.submit_event` is deleted. The "Only draft events can be submitted." 409 is kept, so the API contract is unchanged.
+- **Data:** migration `20260924120000` backfilled a `(null → draft)` row for every existing event and a `(draft → under_review)` row at `submitted_at` for every submitted one.
+- **Found while verifying in the browser:** one backfilled event listed "Draft" above "Under review". Its old `submitted_at` came from the API server's clock, about 2 seconds behind the database clock that sets `created_at`, so "submission" preceded "creation". Migration `20260924130000` moves such rows up to `created_at`. New submissions can't recur this, because `submitted_at` now comes from the database. `list_status_history` also breaks timestamp ties with the creation row last, since seeded fixtures set both times to the same `now()`.
+- `supabase/verification/event_review_fixture_reset.sql` now keeps each fixture's creation and submission rows and deletes only review-decision rows.
+
+#### Verification
+
+- **Written red first:** `test_event_lifecycle.py::test_submit_moves_draft_to_under_review` (and the blocked-from-every-other-status cases), `test_events_api.py::…_through_transition_event` (no `transition_event` call recorded), `test_events_repository.py::test_status_history_puts_the_creation_entry_last_when_timestamps_tie`, and `event_history_checks.sql` against the live schema all failed for the expected reason before the change.
+- `pytest` (full suite): **300 passed**.
+- **Real system:** both migrations were first run with their checks in a rolled-back transaction, then applied. `event_history_checks.sql` passes all six checks. Every live event now has a creation row, and every submitted event has a submission row. Through the running API as `organiser@connectsphere.dev`: create → history `[(none → draft) by Olivia Tan]`; submit → `200`, `submitted_at` set, history `[(draft → under_review), (none → draft)]`; resubmit → `409`. The throwaway event was then deleted. In the browser, the organiser's page for a real approved event lists Planning, Under review, Draft, and fixture `…0201` lists Under review, Draft, with no console errors. `get_advisors` security findings are unchanged: only the pre-existing leaked-password toggle.
+- **Not verified:** no frontend code changed, so `npm test` wasn't re-run. The creation entry reads "Draft · by <organiser>", with no separate "Created" wording. That's `EventStatusHistory`'s existing label, left as is.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.

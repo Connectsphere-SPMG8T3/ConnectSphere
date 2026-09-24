@@ -571,7 +571,7 @@ stateDiagram-v2
 
 - **LC-R1:** Any transition not in the table returns `409 Conflict` with the message `"Cannot <action> an event that is <status>"`.
 - **LC-R2:** Every transition writes `event_status_history` and a `change_history` entry, both **visible in the UI** (QA-70).
-  - **Status (SCRUM-34/52):** transitions currently write `event_status_history` only, through `public.transition_event`. `change_history` isn't built yet (SCRUM-62) — see §3.3's status note for the fuller picture.
+  - **Status (SCRUM-34/52, D11):** transitions currently write `event_status_history` only: creation through the `events_record_created` trigger, and submission, approval and rejection through `public.transition_event`. `change_history` isn't built yet (SCRUM-62) — see §3.3's status note for the fuller picture.
 - **LC-R3:** Status display labels live in one mapping, so renaming "planning" is a one-line change.
 - **LC-R4:** There are no SLA timers or forced review deadlines on any status (QA-55, QA-68, QA2-26).
 - **LC-R5:** **Rejection and cancellation are different.** Rejection is for requirements that cannot be met *before* the event is confirmed; cancellation applies to events already in planning or confirmed, either on the organiser's request or by the coordinator directly (QA2-6). The customer set **no time boundary** on coordinator cancellation and asked us to choose one with a rationale (QA2-5). **[Team decision]** A coordinator can cancel until the event's start time; once it has started there is nothing left to release, so the event runs to `completed`.
