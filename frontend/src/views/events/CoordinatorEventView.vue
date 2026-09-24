@@ -5,11 +5,13 @@ import { useRoute, useRouter } from "vue-router";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
+import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
 import RejectEventModal from "@/components/events/RejectEventModal.vue";
+import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import { showToast } from "@/composables/useToast";
 import { STATUS_LABELS } from "@/features/events/dashboard";
-import { canApprove, canReject, useEventReviewStore } from "@/features/events/eventReviewStore";
+import { canApprove, canReject, canReturn, useEventReviewStore } from "@/features/events/eventReviewStore";
 
 const route = useRoute();
 const router = useRouter();
@@ -17,11 +19,13 @@ const review = useEventReviewStore();
 
 const isApproveOpen = ref(false);
 const isRejectOpen = ref(false);
+const isReturnOpen = ref(false);
 
 const event = computed(() => review.event);
 const statusLabel = computed(() => STATUS_LABELS[event.value?.status] ?? event.value?.status);
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
+const showReturn = computed(() => canReturn(event.value?.status));
 
 function displayDateTime(value, timeZone) {
   if (!value) return "Not provided";
@@ -52,6 +56,16 @@ async function confirmReject(reason) {
   }
 }
 
+async function confirmReturn({ message, flaggedFields }) {
+  try {
+    await review.returnForAmendment(message, flaggedFields);
+    isReturnOpen.value = false;
+    showToast("Returned to organiser");
+  } catch {
+    // Kept open so the coordinator sees the error beside their message.
+  }
+}
+
 watch(
   () => route.params.id,
   (id) => {
@@ -69,7 +83,7 @@ watch(
     </div>
 
     <p
-      v-if="review.error && !isRejectOpen"
+      v-if="review.error && !isRejectOpen && !isReturnOpen"
       role="alert"
       class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
     >
@@ -85,7 +99,7 @@ watch(
           </div>
           <p class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard">{{ statusLabel }}</p>
         </div>
-        <div v-if="showApprove || showReject" class="mt-6 flex flex-wrap gap-3">
+        <div v-if="showApprove || showReject || showReturn" class="mt-6 flex flex-wrap gap-3">
           <BauhausButton
             v-if="showApprove"
             variant="secondary"
@@ -94,6 +108,15 @@ watch(
             @click="review.error = null; isApproveOpen = true"
           >
             Approve
+          </BauhausButton>
+          <BauhausButton
+            v-if="showReturn"
+            variant="yellow"
+            aria-label="Open return dialog"
+            :disabled="review.isActing"
+            @click="review.error = null; isReturnOpen = true"
+          >
+            Return for amendment
           </BauhausButton>
           <BauhausButton
             v-if="showReject"
@@ -106,6 +129,13 @@ watch(
           </BauhausButton>
         </div>
       </BauhausCard>
+
+      <AmendmentBanner
+        v-if="event.status === 'returned' && event.amendment"
+        :amendment="event.amendment"
+        audience="coordinator"
+        class="mb-8"
+      />
 
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         <BauhausCard background="white" accent="none">
@@ -149,6 +179,15 @@ watch(
       :error="isRejectOpen ? review.error : null"
       @confirm="confirmReject"
       @cancel="isRejectOpen = false"
+    />
+    <ReturnEventModal
+      v-if="event"
+      :open="isReturnOpen"
+      :event-name="event.name"
+      :busy="review.isActing"
+      :error="isReturnOpen ? review.error : null"
+      @confirm="confirmReturn"
+      @cancel="isReturnOpen = false"
     />
   </main>
 </template>

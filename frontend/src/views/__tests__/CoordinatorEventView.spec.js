@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn() },
+  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn() },
 }));
 
 function eventResponse(overrides = {}) {
@@ -82,8 +82,47 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
 
       expect(button("Approve request")).toBeNull();
       expect(button("Open reject dialog")).toBeNull();
+      expect(button("Open return dialog")).toBeNull();
     },
   );
+
+  it("offers return for a request under review, and not while planning", async () => {
+    await mountView(eventResponse());
+    expect(button("Open return dialog")).not.toBeNull();
+
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+    await mountView(eventResponse({ status: "planning" }));
+    expect(button("Open return dialog")).toBeNull();
+  });
+
+  it("returns the request with the message and flagged fields, then shows it waiting on the organiser", async () => {
+    const el = await mountView(eventResponse());
+    eventsApi.returnForAmendment.mockResolvedValue(eventResponse({
+      status: "returned", version: 4,
+      amendment: { id: "a1", message: "Confirm attendance", flagged_fields: ["expected_attendance"], returned_at: "2026-09-24T03:00:00Z" },
+    }));
+
+    button("Open return dialog").click();
+    await nextTick();
+    const textarea = document.querySelector("textarea");
+    textarea.value = "Confirm attendance";
+    textarea.dispatchEvent(new Event("input"));
+    const box = [...document.querySelectorAll('input[type="checkbox"]')]
+      .find((input) => input.closest("label").textContent.includes("Expected attendance"));
+    box.checked = true;
+    box.dispatchEvent(new Event("change"));
+    await nextTick();
+    button("Return request").click();
+
+    await vi.waitFor(() => expect(eventsApi.returnForAmendment).toHaveBeenCalledWith(
+      "event-1", { message: "Confirm attendance", flagged_fields: ["expected_attendance"] }, "access",
+    ));
+    await vi.waitFor(() => expect(el.textContent).toContain("Waiting for the organiser to amend"));
+    expect(el.textContent).toContain("Returned for amendment");
+    expect(button("Approve request")).toBeNull();
+    expect(button("Open return dialog")).toBeNull();
+  });
 
   it("approves after confirmation and shows Planning", async () => {
     const el = await mountView(eventResponse());
