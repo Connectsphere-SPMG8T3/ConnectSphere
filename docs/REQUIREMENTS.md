@@ -571,6 +571,7 @@ stateDiagram-v2
 
 - **LC-R1:** Any transition not in the table returns `409 Conflict` with the message `"Cannot <action> an event that is <status>"`.
 - **LC-R2:** Every transition writes `event_status_history` and a `change_history` entry, both **visible in the UI** (QA-70).
+  - **Status (SCRUM-34/52):** transitions currently write `event_status_history` only, through `public.transition_event`. `change_history` isn't built yet (SCRUM-62) — see §3.3's status note for the fuller picture.
 - **LC-R3:** Status display labels live in one mapping, so renaming "planning" is a one-line change.
 - **LC-R4:** There are no SLA timers or forced review deadlines on any status (QA-55, QA-68, QA2-26).
 - **LC-R5:** **Rejection and cancellation are different.** Rejection is for requirements that cannot be met *before* the event is confirmed; cancellation applies to events already in planning or confirmed, either on the organiser's request or by the coordinator directly (QA2-6). The customer set **no time boundary** on coordinator cancellation and asked us to choose one with a rationale (QA2-5). **[Team decision]** A coordinator can cancel until the event's start time; once it has started there is nothing left to release, so the event runs to `completed`.
@@ -730,6 +731,7 @@ See §5 for the state machine.
 
 **Change history** is visible in the UI (QA-70, W1 §8f):
 - **IM-R1:** Every create, update, status change, decision, and preparation update writes `change_history` with actor, timestamp, and before/after values.
+  - **Status (SCRUM-34/52):** status-change decisions (approve/reject) currently write `event_status_history` only, through `public.transition_event`. `change_history` isn't built yet (SCRUM-62) — see §3.3's status note for the fuller picture.
 - **IM-R2:** A **History tab** on each event lists entries newest first, filterable by field and by actor. External users see only entries marked `external` (status changes, their own edits, decisions with reasons). Staff see everything (AUTH-R2).
 - **IM-R3:** Concurrent edits use optimistic locking (DB-5). A stale write returns `409` with "This event was updated by someone else. Reload."
 
