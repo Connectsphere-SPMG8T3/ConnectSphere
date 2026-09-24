@@ -43,7 +43,7 @@ function confirm() {
   <Teleport to="body">
     <div
       v-if="props.open"
-      class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-ink/60 px-4 py-6"
+      class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/60 px-4 py-6"
       role="presentation"
       @click.self="emit('cancel')"
     >
@@ -51,7 +51,7 @@ function confirm() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="return-modal-title"
-        class="w-full max-w-2xl border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
+        class="my-auto w-full max-w-2xl border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
       >
         <h2 id="return-modal-title" class="text-2xl font-black uppercase leading-tight tracking-tight">Return for amendment?</h2>
         <p class="mt-4 text-base font-medium">

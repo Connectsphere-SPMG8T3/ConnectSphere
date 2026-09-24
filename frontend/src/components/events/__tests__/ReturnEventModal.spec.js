@@ -94,6 +94,18 @@ describe("ReturnEventModal (SCRUM-33)", () => {
     expect(document.querySelector('[role="alert"]').textContent).toContain("Cannot return an event that is planning");
   });
 
+  it("keeps its top reachable when taller than a phone screen", async () => {
+    // A scrolling flex overlay that centres its child pushes an over-tall child
+    // above the scroll origin, where it can't be scrolled to (found at 375x812).
+    // jsdom has no layout, so pin the alignment that avoids it.
+    await mountModal();
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog.parentElement.className).toContain("items-start");
+    expect(dialog.parentElement.className).not.toMatch(/(^|\s)items-center(\s|$)/);
+    expect(dialog.className).toContain("my-auto");
+  });
+
   it("emits cancel", async () => {
     const { onCancel } = await mountModal();
 
