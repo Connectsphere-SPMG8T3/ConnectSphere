@@ -652,7 +652,7 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 - The assigned coordinator sees every field, the organiser's profile and organisation, and the organiser's past events.
 - **Criteria:** the coordinator evaluates feasibility from attendance, date and time, venue, and equipment availability (QA-23). Valid rejection grounds are venue or equipment unavailability and suitability issues (QA2-8). The review screen shows a venue-availability summary and an equipment-availability summary for the requested date to support that decision.
 - **Return for amendment:** the coordinator writes a message and optionally flags fields. The status becomes `returned`. The organiser sees the message with the flagged fields highlighted, **edits the existing request (any field)**, adds a resubmission note, and resubmits. The status goes back to `under_review` with the **same coordinator** (QA-22, QA-34, QA-77).
-- **Planning continues only after all requirements are gathered** (QA-22). While an event is `returned`, no venue booking or equipment request can be created.
+- **Planning continues only after all requirements are gathered** (QA-22). While an event is `returned`, no venue booking or equipment request can be created. *(SCRUM-33 shipped return and resubmission before any booking-creation endpoint existed, so this guard is enforced by the story that builds booking creation — see IMPLEMENTATION_MAP §5.)*
 - **Approve** moves `under_review` → `planning`.
 - **Reject** requires a reason, closes the request permanently (`rejected`), and can't be resubmitted (QA-34, QA-95). The organiser sees the reason. Rejection is only available before confirmation; a confirmed event is cancelled instead (QA2-6, LC-R5). **[Assumption]** The reason is capped at **1000 characters** (checked on the raw value, before whitespace is stripped). Jira sets no bound; something has to stop an unbounded value reaching `event_status_history.reason` and the organiser's notification message, and 1000 characters is generous for a rejection reason while still bounding both. See §9.
 
@@ -1283,6 +1283,7 @@ These are the Week 1 features outside the core 20. They stay in Jira at `priorit
 11. **Coordinator cancellation boundary:** is "until the event's start time" (LC-R5) an acceptable rule, given the customer asked us to choose one with a rationale (QA2-5)?
 12. **Comments:** Session 2 named event comments as the organiser–coordinator channel (QA2-27) but also allowed it to happen offline. Is the comments thread (§8, SCRUM-61) expected in release 1?
 13. **Rejection reason length (SCRUM-52):** Jira sets no maximum. We capped it at 1000 characters (§6.4) as a reasonable bound for a free-text field feeding both the history table and a notification message. Is a different limit expected?
+14. **Return message and resubmission note length (SCRUM-33):** **[Assumption]** Both are capped at 1000 characters, checked after trimming, exactly as the API checks a rejection reason (`EventRejectRequest`; the §6.4 wording "checked on the raw value" doesn't match the code, which strips first). Jira sets no bound; both values reach `event_status_history.reason` and a notification message. Is a different limit expected?
 
 ---
 

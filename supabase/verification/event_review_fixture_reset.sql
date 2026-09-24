@@ -18,8 +18,9 @@
 --   - event e0000000-0000-4000-8000-000000000201 (reset to under_review)
 --   - event e0000000-0000-4000-8000-000000000202 (reset to planning)
 --   - venue booking d0000000-0000-4000-8000-000000000201 (reset to held)
---   - event_status_history rows (other than creation and submission) and
---     notifications rows whose event_id is one of the two fixture events above
+--   - event_status_history rows (other than creation and submission),
+--     notifications rows and amendment_requests rows (SCRUM-33) whose event_id
+--     is one of the two fixture events above
 --
 -- Idempotent: safe to run with nothing to clean up (the deletes and updates
 -- are no-ops), and safe to run more than once in a row.
@@ -33,6 +34,14 @@
 -- =============================================================================
 
 begin;
+
+-- A leftover open amendment would make the next real return fail the
+-- one-open-amendment-per-event index (SCRUM-33).
+delete from public.amendment_requests
+ where event_id in (
+     'e0000000-0000-4000-8000-000000000201',
+     'e0000000-0000-4000-8000-000000000202'
+ );
 
 delete from public.notifications
  where event_id in (
@@ -84,6 +93,10 @@ select 'event_status_history review-decision rows left for the fixtures (expect 
 union all
 select 'notifications rows left for the fixtures', count(*)::text
   from public.notifications
+ where event_id in ('e0000000-0000-4000-8000-000000000201', 'e0000000-0000-4000-8000-000000000202')
+union all
+select 'amendment_requests rows left for the fixtures (expect 0)', count(*)::text
+  from public.amendment_requests
  where event_id in ('e0000000-0000-4000-8000-000000000201', 'e0000000-0000-4000-8000-000000000202');
 
 commit;
