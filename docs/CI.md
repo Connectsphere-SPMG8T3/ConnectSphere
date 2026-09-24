@@ -119,7 +119,7 @@ This project's situation makes the case stronger. Checked live on 2026-09-22:
 **There is no staging environment.** The hosted project is simultaneously the development database, the demo database, and the graded evidence. Pointing CI at it would mean:
 
 1. **Tests write, and the demo is what they write to.** The database shown at the Sprint 4 showcase would be whatever the last CI run happened to leave behind.
-2. **It invalidates the manual test evidence.** `TEST_CASES.md` §10 and §12 trace explicitly "against real seeded data". Those cases assume a stable seed; CI churning it breaks the trace from test case to result.
+2. **It invalidates the manual test evidence.** The Venue Staff and Technical Support dashboard cases in `docs/test-cases/dashboards.md` trace explicitly "against real seeded data". Those cases assume a stable seed; CI churning it breaks the trace from test case to result.
 3. **It forces the secret key into CI.** The backend cannot reach Postgres without it, and that key **bypasses RLS** (root `AGENTS.md`, "Security baseline"). This repository has already failed GitGuardian twice over generated secrets (PRs #4 and #6 — `IMPLEMENTATION_MAP.md` §5). CI currently needs **zero** secrets; that is a property to keep, not to trade away.
 4. **Free projects pause after about a week of inactivity.** CI would then go red across a quiet recess week for reasons unrelated to any code — directly undermining "reliably" in the grading rubric.
 5. **Concurrent runs collide.** Six developers with overlapping pull requests against one mutable database produces flaky tests: the same collision `PROJECT_REVIEW.md` item 10 warns about for migrations, and tests write far more often than migrations do.

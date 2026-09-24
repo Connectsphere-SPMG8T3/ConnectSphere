@@ -43,7 +43,7 @@ Read, in this order:
 3. `docs/SCENARIO.md` — project context and the append-only log of what each story actually built.
 4. `docs/SETUP.md` — how to run everything locally.
 5. `docs/PROJECT_REVIEW.md` — known defects (D1, D2, …), design decisions, and the sprint plan.
-6. `docs/TEST_CASES.md` — existing manual test cases.
+6. `docs/test-cases/` — existing manual test cases, one file per area (start at its `README.md`).
 7. `docs/DEFINITION_OF_DONE.md` — the checklist this task has to clear before it counts as done.
 
 Customer rules take precedence in this order: session Q&A answers (`QA-<row>`), then the Week 4 core features, then the Week 1 briefing.
@@ -99,7 +99,7 @@ Write the test before the implementation, for any new feature or bugfix:
 3. Write the minimum code to make it pass.
 4. Refactor with the test suite green.
 
-This applies at whatever layer the change lives in — `pytest` in `backend/tests/` for backend/API behaviour, component/unit tests for frontend logic, and `docs/TEST_CASES.md` entries for user-facing behaviour that needs a manual trace to a Jira key. Don't write the implementation first and backfill tests afterward — that's covered by "Definition of done" below but the order matters, not just the coverage.
+This applies at whatever layer the change lives in — `pytest` in `backend/tests/` for backend/API behaviour, component/unit tests for frontend logic, and `docs/test-cases/` entries for user-facing behaviour that needs a manual trace to a Jira key. Don't write the implementation first and backfill tests afterward — that's covered by "Definition of done" below but the order matters, not just the coverage.
 
 ## Verification: "it imports" is not "it works"
 
@@ -115,7 +115,7 @@ Run the full test suite (`pytest` from `backend/`) before declaring done, not on
 
 - `docs/IMPLEMENTATION_MAP.md`: **after implementing anything that changes what exists**, update the map in the same branch. That includes a story or fix, a module, endpoint, table, or migration, a reusable component, store, or helper, or a changed contract (request/response shape, guard, enum). Unlike `SCENARIO.md`, this file is edited in place: update the status table, add the new pieces to the reuse tables, remove what no longer exists, and record any "know before you build" notes the next developer needs. Update the "Last updated" line as well.
 - `docs/SCENARIO.md` §4: append an entry for each completed story or bug fix, following the existing template. Never rewrite past entries.
-- `docs/TEST_CASES.md`: add manual cases for new behaviour, traced to Jira keys and acceptance criteria.
+- `docs/test-cases/<area>.md`: add manual cases for new behaviour, traced to Jira keys and acceptance criteria.
 - `docs/REQUIREMENTS.md`: update it when a rule, assumption, or design decision changes.
 - `docs/PROJECT_REVIEW.md`: mark defects fixed, with the branch or commit.
 
