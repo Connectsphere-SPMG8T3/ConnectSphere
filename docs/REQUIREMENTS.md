@@ -581,7 +581,7 @@ stateDiagram-v2
 
 ## 6. Core feature behaviour specifications
 
-Format: behaviour, business rules (with sources), edge cases, then acceptance criteria written as Given/When/Then. The acceptance criteria are meant to be copied into Jira and traced to tests (`TC-<AREA>-nnn` in `docs/TEST_CASES.md`).
+Format: behaviour, business rules (with sources), edge cases, then acceptance criteria written as Given/When/Then. The acceptance criteria are meant to be copied into Jira and traced to tests (`TC-<AREA>-nnn` in `docs/test-cases/`).
 
 ### 6.1 User authorisation and authentication *(SCRUM-7; partly done by SCRUM-48)*
 

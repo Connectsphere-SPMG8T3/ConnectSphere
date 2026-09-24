@@ -57,7 +57,7 @@ psql "$DATABASE_URL" -f supabase/verification/venue_schema_checks.sql    # expec
 
 Without `DATABASE_URL`, the linked Supabase CLI runs the same scripts: `supabase db query --linked -f supabase/verification/venue_schema_checks.sql`.
 
-The seed also loads 8 venues with a few blocks and bookings around 10 Oct 2026, so a venue search for that afternoon shows every exclusion reason (TEST_CASES §8).
+The seed also loads 8 venues with a few blocks and bookings around 10 Oct 2026, so a venue search for that afternoon shows every exclusion reason (`docs/test-cases/venues.md`).
 
 ### Seeded test accounts
 

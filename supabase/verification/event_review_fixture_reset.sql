@@ -1,7 +1,7 @@
 -- =============================================================================
 -- ConnectSphere - Event review fixture reset (SCRUM-34, SCRUM-52)
 --
--- What this is for: manual TC-REV-* runs (docs/TEST_CASES.md §13) and the
+-- What this is for: manual TC-REV-* runs (docs/test-cases/events.md, "Event review — approve and reject") and the
 -- verification in supabase/verification/event_review_checks.sql both assume
 -- the two SCRUM-34/52 fixture events start from a known status. Real
 -- approve/reject calls (through transition_event) move them away from that

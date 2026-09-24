@@ -249,7 +249,7 @@ SCRUM-48 is done, so **Jie Ching has spare capacity** for the rest of the sprint
 - Unit tests for validation boundaries (attendance 0/1, `ends_at` = `starts_at`, past start).
 - Integration test for submit, including a second submit returning `409`.
 - Vue: request form submit, a field error summary, and a status badge.
-- Manual test cases TC-EVT-0xx in TEST_CASES.md, linked to the Jira key.
+- Manual test cases TC-EVT-0xx in `docs/test-cases/events.md`, linked to the Jira key.
 - SCENARIO.md log entry.
 
 **Definition of Done** — the checklist this review proposed now lives in [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md), consolidated with the one in root `AGENTS.md` so the project has a single version. Agree on it at planning and paste it into the Jira board description. Two items from this review are parked in that file's "Not yet enforceable" table until the tooling exists: **CI green on the PR** (there is no CI) and **100% line coverage on new domain code** (no coverage tooling). Everything else applies as written, including the two this review added and `AGENTS.md` never had: **a teammate review on every PR**, and **moving the Jira issue to Done with the PR linked**.

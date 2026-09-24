@@ -44,7 +44,7 @@ _Last updated: 2026-09-22 — "CI is green on the PR" moved from "Not yet enforc
 
 - [ ] **[A]** `docs/IMPLEMENTATION_MAP.md` — updated **in place** in the same branch: status table, reuse tables, anything removed, "know before you build" notes, and the "Last updated" line.
 - [ ] **[A]** `docs/SCENARIO.md` §4 — a new entry **appended** using the existing template. Never rewrite past entries.
-- [ ] **[A]** `docs/TEST_CASES.md` — manual cases for new user-facing behaviour, traced to the Jira key and its acceptance criteria.
+- [ ] **[A]** `docs/test-cases/<area>.md` — manual cases for new user-facing behaviour, traced to the Jira key and its acceptance criteria.
 - [ ] **[A]** `docs/REQUIREMENTS.md` — updated when a rule, assumption, or design decision changed, citing the `QA-<row>` behind it.
 - [ ] **[A]** `docs/PROJECT_REVIEW.md` — defects marked fixed, with the branch or commit.
 - [ ] **[A]** Committed on a non-`main` branch, staged **by file name**, with an imperative summary (`feat(events): …`) and a body explaining *why*, carrying the Jira key or defect ID.
