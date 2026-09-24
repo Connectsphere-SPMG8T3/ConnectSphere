@@ -110,7 +110,9 @@ class EventField(str, Enum):
 class AmendmentRequest(BaseModel):
     id: str
     message: str
-    flagged_fields: list[EventField]
+    # Plain strings on the way out: EventReturnRequest validates names on the way
+    # in, and a stored name that later leaves EventField must not break reads.
+    flagged_fields: list[str]
     returned_at: datetime
 
 

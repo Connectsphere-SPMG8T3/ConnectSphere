@@ -410,6 +410,18 @@ class TestAmendmentOnResponses:
         assert response.status_code == 200
         assert response.json()["amendment"] is None
 
+    def test_a_stored_flag_the_api_no_longer_knows_still_reads(self, client, auth_headers, act_as, events):
+        """Only the request validates flag names. A stored name that has since left
+        EventField must not turn every read of the returned event into a 500."""
+        returned(events)
+        events["amendment"]["flagged_fields"] = ["expected_attendance", "venue_notes"]
+        act_as("event_organiser", ORGANISER_ID)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["amendment"]["flagged_fields"] == ["expected_attendance", "venue_notes"]
+
     def test_saving_changes_on_a_returned_request_keeps_the_amendment(self, client, auth_headers, act_as, events):
         """Review focus: the PATCH response feeds the form; losing `amendment` would drop the banner."""
         returned(events)
