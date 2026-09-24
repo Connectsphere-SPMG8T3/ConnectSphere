@@ -8,7 +8,7 @@ import { emptyEvent, eventToPayload, useEventsStore } from "@/stores/events";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn() },
+  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn(), resubmit: vi.fn() },
 }));
 
 function signedInStore() {
@@ -112,6 +112,30 @@ describe("event store", () => {
     await expect(store.submit("e1", { ...emptyEvent(), name: "Planning workshop" })).rejects.toThrow();
 
     expect(store.error).toBe("Purpose is required.");
+    expect(store.isSaving).toBe(false);
+  });
+
+  it("resubmits a returned request with the form's fields and a trimmed note (SCRUM-33)", async () => {
+    const store = signedInStore();
+    eventsApi.resubmit.mockResolvedValue({ id: "e1", name: "Planning workshop", status: "under_review", amendment: null });
+    const form = { ...emptyEvent(), name: "Planning workshop", expectedAttendance: "40" };
+
+    const result = await store.resubmit("e1", form, "  Attendance is now 40  ");
+
+    expect(eventsApi.resubmit).toHaveBeenCalledWith(
+      "e1", { ...eventToPayload(form), resubmission_note: "Attendance is now 40" }, "access",
+    );
+    expect(result.status).toBe("under_review");
+    expect(store.events.find((event) => event.id === "e1").status).toBe("under_review");
+  });
+
+  it("keeps the API's error when a resubmission is refused", async () => {
+    const store = signedInStore();
+    eventsApi.resubmit.mockRejectedValue(new ApiError("Cannot resubmit an event that is under review", 409));
+
+    await expect(store.resubmit("e1", { ...emptyEvent(), name: "Planning workshop" }, "note")).rejects.toThrow();
+
+    expect(store.error).toBe("Cannot resubmit an event that is under review");
     expect(store.isSaving).toBe(false);
   });
 

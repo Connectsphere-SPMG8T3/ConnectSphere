@@ -146,6 +146,14 @@ export const useEventsStore = defineStore("events", {
       return this.save((token) => eventsApi.submit(eventId, eventToPayload(event), token));
     },
 
+    // SCRUM-33: send a returned request back to its coordinator with the form's
+    // edits and the organiser's note, in one request (like submit).
+    async resubmit(eventId, event, note) {
+      return this.save((token) =>
+        eventsApi.resubmit(eventId, { ...eventToPayload(event), resubmission_note: note.trim() }, token),
+      );
+    },
+
     async createAndSubmit(event) {
       const draft = await this.saveDraft(event);
       return this.submit(draft.id, event);
