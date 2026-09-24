@@ -24,7 +24,7 @@ Agreed with the developer on 2026-09-24. **The Jira description still shows the 
 **Rules carried from REQUIREMENTS:**
 - The resubmission note is required: the §5 transition table lists it as the guard on `returned → under_review`.
 - A resubmitted request must still pass submission validation ("basic info still complete", §5).
-- **[Assumption]** The return message and the resubmission note are each capped at **1000 characters**, checked on the raw value, the same as the rejection reason. Recorded in REQUIREMENTS §9.
+- **[Assumption]** The return message and the resubmission note are each capped at **1000 characters**, checked after trimming, exactly like the rejection reason (`EventRejectRequest`). Recorded in REQUIREMENTS §9.
 
 **Moved out of this story:** §6.4 also says no venue booking can be created while `returned` ("Requirements are still being amended."). No booking-creation endpoint exists yet, so this guard belongs to the story that builds booking creation. It is recorded in REQUIREMENTS §6.4 and IMPLEMENTATION_MAP.
 
@@ -88,7 +88,7 @@ Approve (`under_review` only) and reject (`under_review`, `planning`) already ex
 
 - **`EventField`** (str enum): the 15 fields of `EventUpdateRequest`, from `name` through `registration_closes_at`.
 - **`AMENDMENT_TEXT_MAX_LENGTH = 1000`**.
-- **`EventReturnRequest`**: `message: str` (non-blank, trimmed, max length checked on the raw value, same validator shape as `EventRejectRequest.reason`) and `flagged_fields: list[EventField] = []` (duplicates removed, order kept).
+- **`EventReturnRequest`**: `message: str` (non-blank, trimmed, then length-checked, the same validator shape as `EventRejectRequest.reason`) and `flagged_fields: list[EventField] = []` (duplicates removed, order kept).
 - **`EventResubmitRequest(EventUpdateRequest)`**: adds `resubmission_note: str` with the same rules as `message`.
 - **`AmendmentRequest`**: `id`, `message`, `flagged_fields: list[EventField]`, `returned_at`.
 - **`EventResponse`** gains `amendment: AmendmentRequest | None = None`.
@@ -115,7 +115,7 @@ Approve (`under_review` only) and reject (`under_review`, `planning`) already ex
   5. It calls `repository.resubmit_event(...)`. An empty result gives 409.
 
   This mirrors `submit`.
-- **`read`** fills `amendment` from `repository.get_open_amendment(event_id)` when the status is `returned`. List responses leave it `null`.
+- **`read`**, **`update`** and **`return_for_amendment`** fill `amendment` from `repository.get_open_amendment(event_id)` when the status is `returned`, so saving changes on a returned request keeps its banner. List responses leave it `null`.
 - **Notification text:**
   - Return: `'Your event "<name>" was returned for amendment: <message>'`
   - Resubmit: `'"<name>" was amended and resubmitted: <note>'`
@@ -152,7 +152,7 @@ It is separate from `error`: a flag is a request to review the field, not a vali
 
 - `eventsApi.returnForAmendment(id, {message, flagged_fields}, token)` and `eventsApi.resubmit(id, payload, token)`.
 - `eventReviewStore.returnForAmendment(message, flaggedFields)` runs through the existing `act()`, which reloads the history afterwards.
-- The organiser store (`stores/events.js`) gets `resubmit(id, form, note)` and `loadOne(id)`, which fetches `GET /events/{id}` so the amendment is available.
+- The organiser store (`stores/events.js`) gets `resubmit(id, form, note)`. Its existing `get(id)` fetches `GET /events/{id}`, so the amendment is available.
 
 ### Coordinator: `views/events/CoordinatorEventView.vue`
 
@@ -166,7 +166,7 @@ It is separate from `error`: a flag is a request to review the field, not a vali
 ### Organiser
 
 - **Dashboard:** the `amend` action routes to `event-new` with `query.id`, the same as `continue_draft`.
-- **`EventRequestView`** also opens `returned` events, loaded through `loadOne`. In returned mode:
+- **`EventRequestView`** also opens `returned` events, loaded through the store's existing `get`. In returned mode:
   - The heading reads "Amend your request".
   - A new **`components/events/AmendmentBanner.vue`** shows when the request was returned, the message and the flagged fields as a list. It doesn't name the coordinator: `EventResponse` carries only `coordinator_id`, and the history panel already shows who returned it.
   - Flagged inputs get the `flag` prop.
@@ -206,7 +206,7 @@ Test-driven: each test is written first and seen failing for the right reason.
 - `ReturnEventModal.spec.js` and `ResubmitEventModal.spec.js`: required text, the counter, the payload.
 - `amendment.spec.js`: the labels and the field-to-input mapping.
 - `eventReviewStore.spec.js`: `returnForAmendment`.
-- `stores/events` spec: `resubmit`, `loadOne`.
+- `stores/events` spec: `resubmit`.
 - `CoordinatorEventView.spec.js`: the Return button only when `under_review`.
 - `EventDetailView.spec.js`: banner and amend button when `returned`.
 - A new `EventRequestView` returned-mode spec: heading, banner, flags, Resubmit flow.
