@@ -160,4 +160,57 @@ describe("useEventReviewStore", () => {
     resolveHistory({ entries: [] });
     await pending;
   });
+
+  it("ignores a stale loadHistory response that resolves after a newer request (SCRUM-52)", async () => {
+    let resolveA;
+    let resolveB;
+    eventsApi.history
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveB = resolve; }));
+    const store = useEventReviewStore();
+
+    const pendingA = store.loadHistory("event-A");
+    const pendingB = store.loadHistory("event-B");
+
+    // B (the newer request) resolves first...
+    resolveB({ entries: [{ ...ENTRY, id: "h-b" }] });
+    await pendingB;
+    // ...then A (the older, now-stale request) resolves last.
+    resolveA({ entries: [{ ...ENTRY, id: "h-a" }] });
+    await pendingA;
+
+    expect(store.historyEventId).toBe("event-B");
+    expect(store.history).toEqual([{ ...ENTRY, id: "h-b" }]);
+  });
+
+  it("ignores a stale load response that resolves after a newer request", async () => {
+    let resolveGetA;
+    let resolveHistoryA;
+    let resolveGetB;
+    let resolveHistoryB;
+    eventsApi.get
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveGetA = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveGetB = resolve; }));
+    eventsApi.history
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveHistoryA = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveHistoryB = resolve; }));
+    const store = useEventReviewStore();
+    const EVENT_B = { ...EVENT, id: "event-B", name: "Year-End Dinner" };
+
+    const pendingA = store.load("event-A");
+    const pendingB = store.load("event-B");
+
+    // B (the newer request) resolves first...
+    resolveGetB(EVENT_B);
+    resolveHistoryB({ entries: [] });
+    await pendingB;
+    // ...then A (the older, now-stale request) resolves last.
+    resolveGetA(EVENT);
+    resolveHistoryA({ entries: [ENTRY] });
+    await pendingA;
+
+    expect(store.event).toEqual(EVENT_B);
+    expect(store.history).toEqual([]);
+    expect(store.error).toBeNull();
+  });
 });

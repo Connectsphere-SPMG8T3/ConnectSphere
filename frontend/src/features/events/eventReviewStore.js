@@ -21,15 +21,20 @@ export function canReject(status) {
  * status history. `loadHistory` is also used by the organiser's event page.
  */
 export const useEventReviewStore = defineStore("eventReview", {
-  // `historyEventId` tracks which event `history` belongs to. The store is a
-  // singleton, so without this, navigating from one event's page to another's
-  // can show the previous event's history — either while the new event's
-  // fetch is still pending, or permanently if that fetch fails (SCRUM-52).
+  // `historyEventId` tracks which event `history` belongs to, and doubles as
+  // the "current request" marker for both `load` and `loadHistory`: each
+  // request captures the id it's fetching for, and checks it again after
+  // every await before writing state. The store is a singleton, so without
+  // this two problems can occur — either while a fetch is still pending, or
+  // permanently if it fails (SCRUM-52) or resolves out of order (SCRUM-34/52):
+  // the previous event's history can show on the new event's page, or an
+  // older, slower request can overwrite a newer one's result after the fact.
   state: () => ({ event: null, history: [], historyEventId: null, isLoading: false, isActing: false, error: null }),
 
   actions: {
     async load(eventId) {
       const auth = useAuthStore();
+      this.historyEventId = eventId;
       this.isLoading = true;
       this.error = null;
       try {
@@ -37,16 +42,19 @@ export const useEventReviewStore = defineStore("eventReview", {
           auth.withSession((token) => eventsApi.get(eventId, token)),
           auth.withSession((token) => eventsApi.history(eventId, token)),
         ]);
+        // A newer `load`/`loadHistory` call started while this one was in
+        // flight and resolved first: this response is stale, so don't let it
+        // clobber the newer state (SCRUM-34/52).
+        if (this.historyEventId !== eventId) return;
         this.event = event;
         this.history = history?.entries ?? [];
-        this.historyEventId = eventId;
       } catch (error) {
+        if (this.historyEventId !== eventId) return;
         this.event = null;
         this.history = [];
-        this.historyEventId = null;
         this.error = error.message;
       } finally {
-        this.isLoading = false;
+        if (this.historyEventId === eventId) this.isLoading = false;
       }
     },
 
@@ -61,9 +69,17 @@ export const useEventReviewStore = defineStore("eventReview", {
         this.history = [];
         this.historyEventId = eventId;
       }
-      const response = await auth.withSession((token) => eventsApi.history(eventId, token));
-      this.history = response?.entries ?? [];
-      return this.history;
+      try {
+        const response = await auth.withSession((token) => eventsApi.history(eventId, token));
+        // A newer request for a different event superseded this one while it
+        // was in flight: stale, so leave the (already newer) history alone.
+        if (this.historyEventId !== eventId) return this.history;
+        this.history = response?.entries ?? [];
+        return this.history;
+      } catch (error) {
+        if (this.historyEventId !== eventId) return this.history;
+        throw error;
+      }
     },
 
     async approve() {
