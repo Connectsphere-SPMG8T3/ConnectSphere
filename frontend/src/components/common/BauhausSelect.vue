@@ -43,6 +43,11 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  // A request to review this field (SCRUM-33), not a validation failure.
+  flag: {
+    type: String,
+    default: "",
+  },
 });
 
 const emit = defineEmits(["update:modelValue"]);
@@ -55,6 +60,8 @@ const selectedValues = computed(() => {
   return props.modelValue ? [props.modelValue] : [];
 });
 const usesMenu = computed(() => props.multiple || props.dropdown);
+const hasFlag = computed(() => Boolean(props.flag));
+const flagId = `${selectId}-flag`;
 const selectionLabel = computed(() => {
   if (!selectedValues.value.length) return props.placeholder;
   if (selectedValues.value.length === 1) {
@@ -95,8 +102,10 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
         :aria-label="ariaLabel || undefined"
         :aria-expanded="isOpen"
         aria-haspopup="listbox"
+        :aria-describedby="hasFlag ? flagId : undefined"
+        :data-flagged="hasFlag || undefined"
         class="flex w-full items-center justify-between border-2 border-ink bg-canvas px-4 py-3 text-left text-base font-medium text-ink outline-none transition-colors focus:bg-bauhaus-yellow/20"
-        :class="compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4'"
+        :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasFlag ? 'bg-bauhaus-yellow/30' : '']"
         @click.stop="isOpen = !isOpen"
       >
         <span class="truncate">{{ selectionLabel }}</span>
@@ -137,8 +146,10 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
       :value="modelValue"
       :aria-required="required"
       :aria-label="ariaLabel || undefined"
+      :aria-describedby="hasFlag ? flagId : undefined"
+      :data-flagged="hasFlag || undefined"
       class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium text-ink outline-none transition-colors focus:bg-bauhaus-yellow/20"
-      :class="compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4'"
+      :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasFlag ? 'bg-bauhaus-yellow/30' : '']"
       @change="$emit('update:modelValue', $event.target.value)"
     >
       <option v-if="showPlaceholder" value="">{{ placeholder }}</option>
@@ -146,5 +157,8 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
         {{ option.label }}
       </option>
     </select>
+    <p v-if="hasFlag" :id="flagId" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold uppercase tracking-wide text-ink">
+      {{ flag }}
+    </p>
   </div>
 </template>
