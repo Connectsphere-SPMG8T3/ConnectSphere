@@ -26,5 +26,8 @@ Thumbs.db
 docs/prompts/
 CLAUDE.md
 
+# Tooling / MCP artifacts
+.playwright-mcp/
+
 # Customer Q&A exports kept locally for reference; REQUIREMENTS.md cites them as QA-<row> / QA2-<n>
 docs/Session * - Clarification Answers*
