@@ -939,10 +939,12 @@ What was actually built:
 
 **Bug found and fixed during real-system verification:** at 375×812 the return dialog (fifteen checkboxes) is taller than the screen, and its centred scrolling overlay pushed the heading 161px above the scroll origin, where it could not be reached. Fixed by aligning to the top and centring with `my-auto` (commit `7b34d7c`), with a regression test.
 
+**Fixed after the whole-branch review:** (1) flagged inputs, selects and the description box carried both `bg-canvas` and the yellow tint, and `bg-canvas` wins in the built stylesheet, so a flagged field stayed white with only its caption — the fill is now one or the other (`e4fa4d5`); (2) the response model validated stored flag names against `EventField`, so a field later renamed or removed would have made every read of a returned event a 500 — responses now pass names through as strings, and only the return request validates them (`f91a573`). Both were written red first.
+
 #### Verification
 
 - **Written red first:** `test_event_lifecycle.py` return/resubmit cases (`KeyError`), `test_events_repository.py` wrappers (`AttributeError`), `test_event_amendment_api.py` (routes 404 before they existed, `amendment` missing), the Vitest specs for `amendment.js`, the review store, the `flag` prop, both modals, `AmendmentBanner`, `CoordinatorEventView`, `EventRequestView`, `EventDetailView` and the organiser dashboard, and `supabase/verification/event_amendment_checks.sql` against the live schema (function missing) all failed for the expected reason first.
-- `pytest` (full suite): **384 passed**. `npm test` (full suite): **410 passed** across 34 files. `npm run build` succeeds.
+- `pytest` (full suite): **385 passed**. `npm test` (full suite): **413 passed** across 34 files. `npm run build` succeeds.
 - **Database:** the migration applied to the live project (ledger row renamed to `20260924140000`); `event_amendment_checks.sql` prints `AMENDMENT CHECKS PASSED` (return → resubmit → return, one-open rule, blank-message check, stale version changes nothing, notifications to the right party only, functions not executable by `authenticated`, RLS: owner and assigned coordinator read, venue staff and `anon` read nothing). `get_advisors` unchanged (security: the pre-existing leaked-password toggle only).
 - **Real system, in the browser with the live project** (the developer signed in; fixture `…0201`):
   - As the coordinator: returned it with a message, flagging *Expected attendance* and *Proposed date and start time* → `POST /return 200`, banner and new history entry shown, toast "Returned to organiser". Database: `returned`, same coordinator, one open amendment `[starts_at, expected_attendance]`, history reason = the message, one `event_returned` notification to the organiser.
@@ -951,7 +953,7 @@ What was actually built:
   - At 375×812: the return dialog bug above, fixed and re-checked (heading at +52px, confirm button reachable).
   - Console: the only error is the pre-existing 404 on `GET /events/dashboard/coordinator` (SCRUM-72's endpoint, not built; TC-DASH-001).
   - The fixture was reset afterwards (attendance back to 12, no amendment rows or notifications).
-- **Not verified:** raw `curl` requests as each role against the live API — they need a sign-in with a password, which the agent doesn't enter; the 403/409 denial paths are covered by `pytest` and `test_active_role_access.py` instead. The notification bell (SCRUM-27) doesn't exist, so notifications were checked in the table only. Keyboard focus handling in the new dialogs (same known gap as `RejectEventModal`, IMPLEMENTATION_MAP §5).
+- **Not verified:** raw `curl` requests as each role against the live API — they need a sign-in with a password, which the agent doesn't enter; the 403/409 denial paths are covered by `pytest` and `test_active_role_access.py` instead. The notification bell (SCRUM-27) doesn't exist, so notifications were checked in the table only. Keyboard focus handling in the new dialogs (same known gap as `RejectEventModal`, IMPLEMENTATION_MAP §5). The flag tint fix (`e4fa4d5`) is covered by tests but was not re-checked in the browser, since that needs the organiser signed in on a returned request.
 
 ## 5. Architecture: modular monolith
 
