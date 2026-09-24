@@ -10,6 +10,8 @@ from app.modules.events.schemas import (
     EventHistoryResponse,
     EventRejectRequest,
     EventResponse,
+    EventResubmitRequest,
+    EventReturnRequest,
     EventUpdateRequest,
 )
 
@@ -67,3 +69,13 @@ def approve_event(event_id: UUID, current_user: EventCoordinator) -> EventRespon
 @router.post("/{event_id}/reject", response_model=EventResponse)
 def reject_event(event_id: UUID, body: EventRejectRequest, current_user: EventCoordinator) -> EventResponse:
     return service.reject(str(event_id), current_user.id, body.reason)
+
+
+@router.post("/{event_id}/return", response_model=EventResponse)
+def return_event(event_id: UUID, body: EventReturnRequest, current_user: EventCoordinator) -> EventResponse:
+    return service.return_for_amendment(str(event_id), current_user.id, body)
+
+
+@router.post("/{event_id}/resubmit", response_model=EventResponse)
+def resubmit_event(event_id: UUID, body: EventResubmitRequest, current_user: EventOrganiser) -> EventResponse:
+    return service.resubmit(str(event_id), current_user.id, body)
