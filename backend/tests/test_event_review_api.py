@@ -190,6 +190,11 @@ class TestReject:
         assert reject(client, auth_headers, reason="x" * 1001).status_code == 422
         assert reject(client, auth_headers, reason="x" * 1000).status_code == 200
 
+    def test_a_reason_with_padding_whitespace_is_stripped_before_length_validation(self, client, auth_headers, act_as, events):
+        act_as("event_coordinator")
+
+        assert reject(client, auth_headers, reason="   " + ("x" * 1000) + "   ").status_code == 200
+
     def test_a_coordinator_who_is_not_assigned_is_forbidden(self, client, auth_headers, act_as, events):
         act_as("event_coordinator", user_id=OTHER_COORDINATOR_ID)
 
@@ -259,6 +264,12 @@ class TestHistory:
 
         assert client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers).status_code == 200
 
+    def test_a_coordinator_cannot_read_draft_history(self, client, auth_headers, act_as, events, history):
+        events["store"][EVENT_ID]["status"] = "draft"
+        act_as("event_coordinator")
+
+        assert client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers).status_code == 404
+
     def test_another_organiser_gets_not_found(self, client, auth_headers, act_as, history):
         act_as("event_organiser", user_id="a0000000-0000-4000-8000-0000000000aa")
 
@@ -294,6 +305,19 @@ class TestCoordinatorRead:
         act_as("event_organiser", user_id=ORGANISER_ID)
 
         assert client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers).status_code == 200
+
+    def test_a_coordinator_cannot_read_a_draft_event(self, client, auth_headers, act_as, events):
+        """Drafts stay private to their owner (DR-R2, QA-87). Internal staff cannot see drafts."""
+        events["store"][EVENT_ID]["status"] = "draft"
+        act_as("event_coordinator")
+
+        assert client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers).status_code == 404
+
+    def test_an_unassigned_coordinator_cannot_probe_draft_event_existence(self, client, auth_headers, act_as, events):
+        events["store"][EVENT_ID]["status"] = "draft"
+        act_as("event_coordinator", user_id=OTHER_COORDINATOR_ID)
+
+        assert client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers).status_code == 404
 
 
 def test_a_rejected_event_cannot_be_edited_by_its_organiser(client, auth_headers, act_as, events):

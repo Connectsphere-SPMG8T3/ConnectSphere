@@ -108,9 +108,11 @@ REJECT_REASON_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; no customer li
 class EventRejectRequest(BaseModel):
     reason: str = Field(max_length=REJECT_REASON_MAX_LENGTH)
 
-    @field_validator("reason")
+    @field_validator("reason", mode="before")
     @classmethod
     def reason_is_not_blank(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("A rejection reason is required.")
         stripped = value.strip()
         if not stripped:
             raise ValueError("A rejection reason is required.")

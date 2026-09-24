@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
@@ -52,7 +52,13 @@ async function confirmReject(reason) {
   }
 }
 
-onMounted(() => review.load(route.params.id));
+watch(
+  () => route.params.id,
+  (id) => {
+    if (id) review.load(id);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -85,7 +91,7 @@ onMounted(() => review.load(route.params.id));
             variant="secondary"
             aria-label="Approve request"
             :disabled="review.isActing"
-            @click="isApproveOpen = true"
+            @click="review.error = null; isApproveOpen = true"
           >
             Approve
           </BauhausButton>

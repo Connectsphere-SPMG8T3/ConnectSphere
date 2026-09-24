@@ -157,10 +157,16 @@ def list_owned(organiser_id: str) -> list[EventResponse]:
 
 
 def _visible_event(event_id: str, user_id: str, role: str) -> dict:
-    """Organisers see their own events (404 otherwise); coordinators see the events
-    assigned to them (403 otherwise). The router's role gate admits no one else."""
+    """Organisers see their own events (404 otherwise); coordinators see the non-draft
+    events assigned to them (403 if unassigned, 404 if draft or missing). The router's
+    role gate admits no one else."""
     if role == "event_coordinator":
-        return _assigned_event(event_id, user_id)
+        row = repository.get_event(event_id)
+        if not row or row.get("status") == "draft":
+            raise EventNotFoundError()
+        if row.get("coordinator_id") != user_id:
+            raise NotAssignedCoordinatorError()
+        return row
     return _owned_event(event_id, user_id)
 
 

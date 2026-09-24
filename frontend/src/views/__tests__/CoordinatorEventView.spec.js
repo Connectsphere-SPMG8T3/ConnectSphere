@@ -135,4 +135,15 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
 
     await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent).toContain("assigned coordinator"));
   });
+
+  it("reloads when the route param id changes", async () => {
+    const el = await mountView(eventResponse({ id: "event-1", name: "First Event" }));
+    eventsApi.get.mockResolvedValue(eventResponse({ id: "event-2", name: "Second Event" }));
+
+    const { default: router } = await import("@/router");
+    await router.push({ name: "coordinator-event", params: { id: "event-2" } });
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Second Event"));
+  });
 });
+
