@@ -1,7 +1,12 @@
 -- SCRUM-34 / SCRUM-52: status history, notifications and transition_event.
 -- Run with the Supabase MCP execute_sql or `psql "$DATABASE_URL" -f`. Every row
--- should read `ok = true`. The behavioural block runs inside a transaction that
--- is rolled back, so it leaves no trace.
+-- should read `ok = true`. This script only checks that the objects and grants
+-- exist — it makes no calls to transition_event, so it never touches fixture
+-- data. For a behavioural check that actually calls transition_event, see the
+-- plan's Task 1 Step 6 query (`docs/superpowers/plans/2026-09-23-approve-reject-event.md`),
+-- which wraps the call in `begin; ... rollback;` so it leaves no trace; to
+-- repair drift a real (non-rolled-back) approve/reject already left behind,
+-- run `supabase/verification/event_review_fixture_reset.sql` instead.
 
 select 'event_status_history exists' as check, to_regclass('public.event_status_history') is not null as ok
 union all
