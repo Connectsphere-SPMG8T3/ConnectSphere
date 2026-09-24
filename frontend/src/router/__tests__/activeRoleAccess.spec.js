@@ -61,6 +61,7 @@ describe("route access follows the active role (SCRUM-76)", () => {
     expect(withoutRoles).toEqual([]);
   });
 
+  // Extended timeout: it re-imports the router once per role x held-role combination.
   it("opens each route only for the role the session is acting as, even when the account holds all of them", async () => {
     const routes = await protectedRoutes();
 
@@ -74,7 +75,7 @@ describe("route access follows the active role (SCRUM-76)", () => {
         expect(opened, `${route.name} while acting as ${activeRole}`).toBe(route.allowedRoles.includes(activeRole));
       }
     }
-  });
+  }, 20_000);
 
   it("sends a session acting as another role to its own dashboard", async () => {
     // An organiser who also holds the coordinator role, currently acting as the organiser.

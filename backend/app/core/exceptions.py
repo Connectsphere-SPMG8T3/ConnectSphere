@@ -57,3 +57,21 @@ class RoleNotAssignedError(HTTPException):
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"You do not hold the '{role}' role.",
         )
+
+
+class EventTransitionError(HTTPException):
+    """A lifecycle action the event's current status does not allow (LC-R1)."""
+
+    def __init__(self, action: str, current_status: str) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot {action} an event that is {current_status.replace('_', ' ')}",
+        )
+
+
+class NotAssignedCoordinatorError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the event's assigned coordinator can do this.",
+        )

@@ -100,3 +100,38 @@ class EventResponse(EventFields):
 
 class EventListResponse(BaseModel):
     events: list[EventResponse]
+
+
+REJECT_REASON_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; no customer limit given
+
+
+class EventRejectRequest(BaseModel):
+    reason: str = Field(max_length=REJECT_REASON_MAX_LENGTH)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def reason_is_not_blank(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("A rejection reason is required.")
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("A rejection reason is required.")
+        return stripped
+
+
+class HistoryActor(BaseModel):
+    id: str
+    full_name: str
+
+
+class EventHistoryEntry(BaseModel):
+    id: str
+    from_status: EventStatus | None = None
+    to_status: EventStatus
+    actor: HistoryActor | None = None
+    reason: str | None = None
+    at: datetime
+
+
+class EventHistoryResponse(BaseModel):
+    entries: list[EventHistoryEntry]

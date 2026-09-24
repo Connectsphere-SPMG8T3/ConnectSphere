@@ -93,7 +93,7 @@ The customer briefing describes far more functionality (client management, recur
 
 The instructions are explicit that these 20 features are **not isolated** — the release should demonstrate coherent end-to-end workflows across them (matching the lifecycle in §2.2), and design/tests should reflect the relationships between features (e.g. an attendance change should be able to affect venue suitability).
 
-As of the most recent entries in §4's implementation log, features #1 (User Authorisation and Authentication), #2 (Event Request Creation), #3 (Draft Event Requests), and #8 (Venue Catalogue) have implementation. The remaining feature packages may still be reserved for future sprints — do not assume their domain logic exists until a log entry below says otherwise. **When a story lands for one of features 2–20, add a log entry in §4 and update this sentence and the stub-package note.**
+As of the most recent entries in §4's implementation log, features #1 (User Authorisation and Authentication), #2 (Event Request Creation), #3 (Draft Event Requests), #8 (Venue Catalogue), and #4 (Event Review and Approval — **partial**: approve and reject, SCRUM-34/52; clarification/amendment via return-for-amendment, SCRUM-33, is not yet built) have implementation. The remaining feature packages may still be reserved for future sprints — do not assume their domain logic exists until a log entry below says otherwise. **When a story lands for one of features 2–20, add a log entry in §4 and update this sentence and the stub-package note.**
 
 `frontend/src/features/events/` contains coordinator-dashboard presentation logic, while the SCRUM-8 request implementation lives in `backend/app/modules/events/` and `frontend/src/stores/events.js` / `frontend/src/views/events/`. Coordinator assignment, reassignment, and submission notifications remain separate SCRUM-12 / SCRUM-68 scope.
 
@@ -752,6 +752,115 @@ Verification for the follow-up:
 - `npm test`: 318 passing across 24 files. `npm run build`: passed.
 - **In the browser**, signed in as `organiser@connectsphere.dev` against the live project: the event page for a `planning` event shows "Planning" in the badge and the status line. The dashboard's status groups read Under review / Planning / Confirmed / Completed. The only console error was a missing `favicon.ico`.
 - **Not verified in the browser:** "Awaiting assignment" on the event page, because the organiser account has no `submitted` event. The view test covers it.
+
+### 4.15. SCRUM-34 — Approve event request to start planning (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-34` |
+| Summary | Approve event request to start planning |
+| Issue type | Story |
+| Status | In Progress (at time of writing this entry) |
+| Parent epic | `SCRUM-11` — Event Review and Approval |
+| Sprint | SCRUM Sprint 2 |
+| Story point estimate | 1 |
+| Priority | Medium |
+
+**User story (verbatim):**
+
+> As an Event Coordinator, I want to approve a submitted request once its requirements are clear, so that venue and equipment planning can begin.
+
+**Acceptance criteria (verbatim from Jira):**
+
+> * **Given** an event in _Under review_ that is assigned to me, **when** I approve it, **then** its status becomes **Planning**. Approval is the initial feasibility decision (W1 Step 5, QA-23, QA2-8). It is **not** confirmation.
+> * Approve is available **only** when the status is _Under review_. Approving an event that is Returned, Submitted, Planning, Confirmed, Rejected, Cancelled or Completed is blocked with "Cannot approve an event that is <status>" (QA-22).
+> * Only the **assigned** coordinator can approve. Any other coordinator, any other role, and a user who holds the coordinator role but is currently acting as a different role all get _Forbidden_.
+> * The organiser is notified of the approval. The coordinator isn't notified of their own action.
+> * The approval, who made it, and when are recorded in the event history and visible in the UI (QA-70).
+> * Approving does not book a venue or reserve equipment. Confirming the event is a separate, later step.
+
+#### How the implementation maps to the ticket
+
+The ticket's "Forbidden" cases are one line ("any other coordinator, any other role, and a user who holds the coordinator role but is currently acting as a different role"); the implementation splits this into two different HTTP shapes that the ticket doesn't itself distinguish. A coordinator who isn't the *assigned* one gets **403**, not the organiser-endpoint's "404, not 403" pattern (§2, `_owned_event`) — deliberate, because coordinators can already search every non-draft event (QA-87), so a 403 tells them nothing a 404 would have hidden. A coordinator-holding account acting as a different active role gets 403 through the existing `require_roles`/active-role machinery (SCRUM-76), proved with a dedicated test rather than assumed.
+
+"Recorded in the event history and visible in the UI" (QA-70) is new schema, not a field on `events`: a rejection reason especially has nowhere else to live without duplicating it per-status, so `event_status_history` (one append-only table, reused by SCRUM-52) is the single home for every transition, `from_status`/`to_status`/`actor_id`/`reason`/`at`. "Approving does not book a venue or reserve equipment" is enforced by omission: `transition_event`'s only conditional side effect is releasing venue bookings, and only on a `rejected` outcome — approve never touches `venue_bookings` or equipment.
+
+The ticket is silent on *how* a decision reaches the organiser. The generic `transition_event` RPC (built to be reused by SCRUM-12 and SCRUM-33 too, per the design doc) writes a `notifications` row for the organiser whenever `p_notify_type` is set and the organiser isn't the actor — satisfying "the organiser is notified... the coordinator isn't notified of their own action" without a second code path. There is deliberately no read API or bell for it yet (SCRUM-27); the row exists so that story doesn't have to change this one's write path later.
+
+What was actually built:
+
+1. **The transition rule** — `backend/app/modules/events/lifecycle.py`: `TRANSITIONS["approve"] = ({under_review}, planning)`; `target()` raises `EventTransitionError("Cannot approve an event that is <status with spaces>")` for anything else.
+2. **The endpoint** — `POST /events/{event_id}/approve` in `backend/app/modules/events/router.py`, guarded by `require_roles(["event_coordinator"])`, plus an explicit assigned-coordinator check (`NotAssignedCoordinatorError`, 403) before calling the lifecycle and the RPC.
+3. **The data layer** — migration `20260923120000_event_review_history_and_notifications.sql`: `event_status_history`, `notifications`, and `public.transition_event(...)` (`security definer`, executable only by `service_role`); `backend/app/modules/events/repository.py::transition_event` calls it via `.rpc()`.
+4. **The UI** — `frontend/src/views/events/CoordinatorEventView.vue`: an Approve button (shown only while `under_review`) behind the existing `ConfirmModal`, confirmation copy "Approve this request? It moves to Planning so venue and equipment planning can begin. This does not confirm the event." On success the toast reads **"Request moved to Planning"** — never "approved" — consistent with REQUIREMENTS §5's rule that only `confirmed` is described that way (QA2-8).
+5. **The store** — `frontend/src/features/events/eventReviewStore.js::approve()`, which calls the endpoint, applies the returned event, then reloads history in a way that can't turn a successful approval into a reported failure (see the reject entry below for the shared detail).
+
+#### Verification
+
+- **Written red first:** `backend/tests/test_event_lifecycle.py::test_approve_moves_under_review_to_planning` and `test_approve_is_blocked_from_every_other_status` failed on import before `lifecycle.py` existed; `backend/tests/test_event_review_api.py::TestApprove` failed the same way before the router changes.
+- `pytest` (full suite, backend): **283 passed**.
+- `npm test` (full suite, frontend): **357 passed** across 28 files, including `CoordinatorEventView.spec.js::"approves after confirmation and shows Planning"` and the `eventReviewStore` and `RejectEventModal`/`EventStatusHistory` specs.
+- **Real system (Task 9):** `POST /events/{id}/approve` on a seeded `under_review` event returned `200` with `"status":"planning"`; repeating it returned `409 "Cannot approve an event that is planning"`; a `venue_staff`-acting coordinator and the organiser both got `403`; the organiser's `notifications` row (`type: event_approved`) was written with no matching row for the coordinator; `transition_event` refused execution as `authenticated` with `permission denied for function transition_event`; the Playwright browser flow showed the Approve button disappear and a new "Planning · by Marcus Lim" history entry appear after confirming.
+- **Not verified:** the notification is written but has no read API or bell (SCRUM-27), so "the organiser is notified" is checked at the database row, not by an organiser seeing anything in the app.
+
+### 4.16. SCRUM-52 — Reject Event Request (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-52` |
+| Summary | Reject Event Request |
+| Issue type | Story |
+| Status | In Progress (at time of writing this entry) |
+| Parent epic | `SCRUM-11` — Event Review and Approval |
+| Sprint | SCRUM Sprint 2 |
+| Story point estimate | 2 |
+| Priority | Medium |
+
+**User story (verbatim):**
+
+> As an Event Coordinator, I want to reject an unfeasible event request with a mandatory reason, so that ConnectSphere does not commit resources to unviable events.
+
+**Acceptance criteria (verbatim from Jira):**
+
+> * **Given** an event in _Under review_ or _Planning_ that is assigned to me, **when** I reject it with a reason, **then** its status becomes **Rejected**. Valid grounds are venue or equipment unavailability, or a suitability issue (QA-23, QA-83, QA2-8).
+> * A reason is **required**. An empty or whitespace-only reason is blocked before the action is confirmed.
+> * Reject is available **only** before confirmation, from _Under review_ or _Planning_. Rejecting an event that is Submitted, Returned, Confirmed, Rejected, Cancelled or Completed is blocked with "Cannot reject an event that is <status>". A confirmed event is cancelled instead (QA2-6).
+> * Only the **assigned** coordinator can reject. Any other coordinator, any other role, and a user who holds the coordinator role but is currently acting as a different role all get _Forbidden_.
+> * A rejected request is closed. It can't be edited or resubmitted (QA-34, QA-95).
+> * Rejecting an event in _Planning_ releases its tentative venue hold (QA2-13).
+> * The organiser is notified of the rejection with the reason. The coordinator isn't notified of their own action.
+> * The rejection, its reason, who made it, and when are recorded in the event history and visible in the UI to the organiser and the assigned coordinator (QA-70).
+
+*This description already reflects the settled rules (the design doc calls it "the settled rules, which the Jira rewrite carries"); it was not edited again for this entry.*
+
+#### How the implementation maps to the ticket
+
+"An empty or whitespace-only reason is blocked **before the action is confirmed**" is a client-side requirement, not just a server one: `RejectEventModal.vue` disables its confirm button while the trimmed reason is empty, and the server independently rejects a blank/whitespace/**or over-1000-character** reason with 422 — the 1000-character cap is not in the ticket at all; it's recorded as an **[Assumption]** in REQUIREMENTS §6.4 and §9, because Jira sets no bound and something has to stop an unbounded `text` column reaching the history table and the notification message.
+
+"A rejected request is closed. It can't be edited or resubmitted" is enforced where editing already lives, not as new code: `events.service._validate_submission`/the PATCH guard already blocks anything outside `draft`/`returned`, and `rejected` was never one of those statuses, so this AC needed only a regression test (`test_a_rejected_event_cannot_be_edited_by_its_organiser`), not a new rule.
+
+"Releases its tentative venue hold" from `planning` is read broadly as `held`, `approved` **and** `re_review` bookings (not only `held`) — `re_review` is a settled booking reopened by a significant change (§6.7/VC-R6), and leaving it occupying the venue after the event itself is rejected would contradict "does not commit resources to unviable events" in the user story. Equipment reservations get the same treatment only as a documented hook in `transition_event`, because SCRUM-24's reservation flow isn't built yet — recorded as a known gap, not silently skipped.
+
+"Visible in the UI to the organiser and the assigned coordinator" reuses `EventStatusHistory.vue` on both `CoordinatorEventView` (new, this story) and the organiser's existing `EventDetailView` (SCRUM-8), rather than building two components — the same component, same data shape, same `GET /events/{id}/history` endpoint, gated by the same "owner or assigned coordinator" rule as the event read itself.
+
+What was actually built:
+
+1. **The transition rule** — `lifecycle.py`: `TRANSITIONS["reject"] = ({under_review, planning}, rejected)`.
+2. **The endpoint** — `POST /events/{event_id}/reject` (body `EventRejectRequest {reason}`, stripped, required, `max_length=1000`); `GET /events/{event_id}/history` (owner or assigned coordinator, newest first, actor embedded as `{id, full_name}`); `GET /events/{event_id}` broadened so the assigned coordinator can read it too (previously organiser-only).
+3. **The data layer** — the same migration and `transition_event` RPC as SCRUM-34: on a `rejected` outcome it additionally sets matching `venue_bookings.status` to `released` and writes the organiser's notification with the reason, in the same transaction as the history insert.
+4. **The reject UI** — `components/events/RejectEventModal.vue`: required reason textarea, a 1000-character counter, confirm disabled while blank/whitespace, wired into `CoordinatorEventView.vue`'s Reject button (shown from both `under_review` and `planning`).
+5. **The organiser's rejection notice** — `EventDetailView.vue`: a solid red block (the page's own alert tokens, not `BauhausCard background="red"` — see the note below) headed "THIS REQUEST WAS REJECTED", showing the reason and "It is closed and can't be resubmitted."
+6. **History isolation** — `eventReviewStore.js` tags its loaded `history` with the event id it belongs to and clears it before loading a different event's data, so a Pinia singleton shared by the coordinator and organiser pages never shows one event's history (or rejection reason) while another event's page is still rendering the previous load.
+
+**Bug fix folded into this story (found in review, fixed before the branch was reported done):** `BauhausCard background="red"` renders in the browser as a plain white card with only a ~4px red accent stripe on one edge (confirmed visually in Task 9) — nowhere near "unmistakably rejected." `EventDetailView`'s rejection notice was rewritten to use a dedicated solid-red block instead of that prop, in commit `92f1b97`. `components/common/BauhausCard` itself is unchanged; this is a usage fix, not a design-system change, since other screens use `background="red"` for a lighter accent on purpose.
+
+#### Verification
+
+- **Written red first:** `test_event_lifecycle.py::test_reject_is_allowed_before_confirmation`/`test_reject_is_blocked_from_every_other_status`, `test_event_review_api.py::TestReject` (including `test_a_blank_reason_is_rejected`, `test_a_missing_reason_is_rejected`, `test_a_reason_over_1000_characters_is_rejected`), and `RejectEventModal.spec.js` (`"cannot be confirmed without a reason"`, `"cannot be confirmed with a whitespace-only reason"`) all failed for the expected reason before their implementation existed.
+- `pytest` (full suite): **283 passed**. `npm test` (full suite): **357 passed** across 28 files.
+- **Real system (Task 9):** rejecting a whitespace reason returned `422`; rejecting event `…0202` (`planning`, with a `held` booking) with `"Venue unavailable"` returned `200` `"status":"rejected"`, and the matching `venue_bookings` row moved to `released`; `GET /events/{id}/history` showed the reason and actor to both the organiser and the assigned coordinator; the organiser's `notifications` row read `"...was rejected: Venue unavailable"` with no row for the coordinator. In the browser: the reject modal kept its confirm button disabled for a 3-character whitespace-only reason (counter still moved, `3 / 1000`), then rejected successfully once a real reason was typed; the organiser's event page showed the rejection card and both rejection entries (the HTTP one and the browser one) in history, correctly attributed.
+- **Visual finding, not a regression of this story's own code:** before commit `92f1b97`, the rejection card was confirmed in the browser to be only a thin accent stripe rather than a clearly red notice (see the bug-fix note above) — fixed on this branch before being reported done.
+- **Not verified:** equipment-reservation release (no reservation flow exists yet, SCRUM-24); the notifications bell (SCRUM-27); a live re-run of the transient `httpx.RemoteProtocolError`/CORS-looking failure Task 9 hit once on this page (see IMPLEMENTATION_MAP §5 "Still open") — it resolved on retry and wasn't deliberately reproduced.
 
 ## 5. Architecture: modular monolith
 

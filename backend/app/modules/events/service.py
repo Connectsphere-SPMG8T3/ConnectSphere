@@ -4,8 +4,15 @@ from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 
-from app.modules.events import repository
-from app.modules.events.schemas import EventCreateRequest, EventResponse, EventUpdateRequest
+from app.core.exceptions import NotAssignedCoordinatorError
+from app.modules.events import lifecycle, repository
+from app.modules.events.schemas import (
+    EventCreateRequest,
+    EventHistoryEntry,
+    EventHistoryResponse,
+    EventResponse,
+    EventUpdateRequest,
+)
 
 DEFAULT_EVENT_TIMEZONE = "Asia/Singapore"
 
@@ -42,6 +49,51 @@ def _owned_event(event_id: str, organiser_id: str) -> dict:
     if not row or row.get("organiser_id") != organiser_id:
         raise EventNotFoundError()
     return row
+
+
+STALE_EVENT_MESSAGE = "This event was updated by someone else. Reload."
+
+
+def _assigned_event(event_id: str, coordinator_id: str) -> dict:
+    """The event, if the caller is its assigned coordinator. Unlike `_owned_event`,
+    a coordinator who isn't assigned gets 403, not 404: coordinators may already
+    search every non-draft event (QA-87), so the 403 confirms nothing new, and
+    SCRUM-34/52 name the case Forbidden. A draft answers 404 to every coordinator,
+    assigned or not: drafts are private to their organiser (DR-R2)."""
+    row = repository.get_event(event_id)
+    if not row or row.get("status") == "draft":
+        raise EventNotFoundError()
+    if row.get("coordinator_id") != coordinator_id:
+        raise NotAssignedCoordinatorError()
+    return row
+
+
+def _transition(row: dict, actor_id: str, action: str, *, reason: str | None,
+                notify_type: str, notify_message: str) -> EventResponse:
+    to_status = lifecycle.target(action, row["status"])
+    updated = repository.transition_event(
+        row["id"], actor_id, lifecycle.allowed_from(action), to_status.value, row["version"],
+        reason=reason, notify_type=notify_type, notify_message=notify_message,
+    )
+    if not updated:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return _to_response(updated)
+
+
+def approve(event_id: str, coordinator_id: str) -> EventResponse:
+    row = _assigned_event(event_id, coordinator_id)
+    return _transition(
+        row, coordinator_id, "approve", reason=None, notify_type="event_approved",
+        notify_message=f'Your event "{row["name"]}" passed its initial review and is now in planning.',
+    )
+
+
+def reject(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
+    row = _assigned_event(event_id, coordinator_id)
+    return _transition(
+        row, coordinator_id, "reject", reason=reason, notify_type="event_rejected",
+        notify_message=f'Your event "{row["name"]}" was rejected: {reason}',
+    )
 
 
 def _validate_submission(row: dict) -> None:
@@ -105,8 +157,24 @@ def list_owned(organiser_id: str) -> list[EventResponse]:
     return [_to_response(row) for row in repository.list_events(organiser_id)]
 
 
-def read(event_id: str, organiser_id: str) -> EventResponse:
-    return _to_response(_owned_event(event_id, organiser_id))
+def _visible_event(event_id: str, user_id: str, role: str) -> dict:
+    """Organisers see their own events (404 otherwise); coordinators see the non-draft
+    events assigned to them (403 if unassigned, 404 if draft or missing). The router's
+    role gate admits no one else."""
+    if role == "event_coordinator":
+        return _assigned_event(event_id, user_id)
+    return _owned_event(event_id, user_id)
+
+
+def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
+    return _to_response(_visible_event(event_id, user_id, role))
+
+
+def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
+    _visible_event(event_id, user_id, role)
+    return EventHistoryResponse(
+        entries=[EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
+    )
 
 
 def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventResponse:

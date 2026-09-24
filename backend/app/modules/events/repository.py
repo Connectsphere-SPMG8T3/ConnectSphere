@@ -94,3 +94,50 @@ def submit_event(event_id: str, version: int, submitted_at: datetime) -> dict | 
     if not response or not response.data:
         return None
     return response.data[0] if isinstance(response.data, list) else response.data
+
+
+def transition_event(
+    event_id: str,
+    actor_id: str,
+    from_statuses: list[str],
+    to_status: str,
+    expected_version: int,
+    reason: str | None = None,
+    notify_type: str | None = None,
+    notify_message: str | None = None,
+) -> dict | None:
+    """Run `public.transition_event`: status, history, hold release and notification in
+    one transaction. Returns the updated row, or None when the event had moved on
+    (another version or status), which the service reports as 409."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "transition_event",
+            {
+                "p_event_id": event_id,
+                "p_actor_id": actor_id,
+                "p_from_statuses": from_statuses,
+                "p_to_status": to_status,
+                "p_expected_version": expected_version,
+                "p_reason": reason,
+                "p_notify_type": notify_type,
+                "p_notify_message": notify_message,
+            },
+        )
+        .execute()
+    )
+    rows = response.data or [] if response else []
+    return rows[0] if rows else None
+
+
+def list_status_history(event_id: str) -> list[dict]:
+    """Newest first. The actor is embedded through the FK named in the migration."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_status_history")
+        .select("id, from_status, to_status, reason, at, actor:profiles!event_status_history_actor_id_fkey(id, full_name)")
+        .eq("event_id", event_id)
+        .order("at", desc=True)
+        .execute()
+    )
+    return response.data or []
