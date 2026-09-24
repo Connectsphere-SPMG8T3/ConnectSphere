@@ -58,9 +58,10 @@ def _assigned_event(event_id: str, coordinator_id: str) -> dict:
     """The event, if the caller is its assigned coordinator. Unlike `_owned_event`,
     a coordinator who isn't assigned gets 403, not 404: coordinators may already
     search every non-draft event (QA-87), so the 403 confirms nothing new, and
-    SCRUM-34/52 name the case Forbidden."""
+    SCRUM-34/52 name the case Forbidden. A draft answers 404 to every coordinator,
+    assigned or not: drafts are private to their organiser (DR-R2)."""
     row = repository.get_event(event_id)
-    if not row:
+    if not row or row.get("status") == "draft":
         raise EventNotFoundError()
     if row.get("coordinator_id") != coordinator_id:
         raise NotAssignedCoordinatorError()
@@ -161,12 +162,7 @@ def _visible_event(event_id: str, user_id: str, role: str) -> dict:
     events assigned to them (403 if unassigned, 404 if draft or missing). The router's
     role gate admits no one else."""
     if role == "event_coordinator":
-        row = repository.get_event(event_id)
-        if not row or row.get("status") == "draft":
-            raise EventNotFoundError()
-        if row.get("coordinator_id") != user_id:
-            raise NotAssignedCoordinatorError()
-        return row
+        return _assigned_event(event_id, user_id)
     return _owned_event(event_id, user_id)
 
 

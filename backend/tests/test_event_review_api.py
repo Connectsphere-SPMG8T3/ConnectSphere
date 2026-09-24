@@ -100,7 +100,7 @@ class TestApprove:
         assert call["notify_type"] == "event_approved"
         assert call["notify_message"] == 'Your event "Partner Summit" passed its initial review and is now in planning.'
 
-    @pytest.mark.parametrize("status", [s for s in ALL_STATUSES if s != "under_review"])
+    @pytest.mark.parametrize("status", [s for s in ALL_STATUSES if s not in ("under_review", "draft")])
     def test_approve_is_blocked_unless_under_review(self, client, auth_headers, act_as, events, status):
         events["store"][EVENT_ID]["status"] = status
         act_as("event_coordinator")
@@ -158,7 +158,7 @@ class TestReject:
         assert call["notify_type"] == "event_rejected"
         assert call["notify_message"] == 'Your event "Partner Summit" was rejected: Venue unavailable on that date'
 
-    @pytest.mark.parametrize("status", [s for s in ALL_STATUSES if s not in ("under_review", "planning")])
+    @pytest.mark.parametrize("status", [s for s in ALL_STATUSES if s not in ("under_review", "planning", "draft")])
     def test_reject_is_blocked_outside_under_review_and_planning(self, client, auth_headers, act_as, events, status):
         events["store"][EVENT_ID]["status"] = status
         act_as("event_coordinator")
@@ -208,6 +208,19 @@ class TestReject:
         assert reject(client, auth_headers).status_code == 403
         assert events["calls"] == []
 
+
+
+@pytest.mark.parametrize("action", ["approve", "reject"])
+@pytest.mark.parametrize("coordinator_id", [COORDINATOR_ID, OTHER_COORDINATOR_ID])
+def test_a_draft_is_not_found_for_any_coordinator_action(client, auth_headers, act_as, events, action, coordinator_id):
+    """Drafts are private to their organiser (DR-R2), so approve/reject answer 404 like the reads do."""
+    events["store"][EVENT_ID]["status"] = "draft"
+    act_as("event_coordinator", user_id=coordinator_id)
+
+    response = client.post(f"/api/v1/events/{EVENT_ID}/{action}", json={"reason": "No venue"}, headers=auth_headers)
+
+    assert response.status_code == 404
+    assert events["calls"] == []
 
 @pytest.mark.parametrize("action", ["approve", "reject"])
 def test_a_coordinator_acting_as_venue_staff_is_forbidden(client, auth_headers, monkeypatch, events, action):
