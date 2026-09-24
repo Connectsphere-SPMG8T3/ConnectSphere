@@ -78,11 +78,15 @@ onMounted(async () => {
         </div>
       </BauhausCard>
 
-      <BauhausCard v-if="event.status === 'rejected'" background="red" accent="none" class="mb-8" data-testid="rejection-notice">
+      <section
+        v-if="event.status === 'rejected'"
+        data-testid="rejection-notice"
+        class="mb-8 border-4 border-ink bg-bauhaus-red p-6 text-canvas shadow-hard sm:p-8"
+      >
         <h2 class="text-2xl font-black uppercase tracking-tight">This request was rejected</h2>
         <p v-if="rejection?.reason" class="mt-3 whitespace-pre-wrap font-medium">{{ rejection.reason }}</p>
         <p class="mt-3 text-sm font-bold">It is closed and can't be resubmitted. Start a new request if your plans change.</p>
-      </BauhausCard>
+      </section>
 
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         <BauhausCard background="white" accent="none">

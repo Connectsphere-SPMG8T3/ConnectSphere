@@ -102,6 +102,14 @@ describe("EventDetailView decision and history (SCRUM-34, SCRUM-52)", () => {
     expect(notice.textContent).toContain("can't be resubmitted");
   });
 
+  it("renders the rejection notice as a solid red block, not a faint accent stripe", async () => {
+    const el = await mountDetail(eventResponse({ status: "rejected" }), { entries: [rejection] });
+
+    await vi.waitFor(() => expect(el.querySelector('[data-testid="rejection-notice"]')).not.toBeNull());
+    const notice = el.querySelector('[data-testid="rejection-notice"]');
+    expect(notice.classList.contains("bg-bauhaus-red")).toBe(true);
+  });
+
   it("offers no resubmit or edit action on a rejected request", async () => {
     const el = await mountDetail(eventResponse({ status: "rejected" }), { entries: [rejection] });
 
