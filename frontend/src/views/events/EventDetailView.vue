@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { useEventReviewStore } from "@/features/events/eventReviewStore";
@@ -77,6 +78,10 @@ onMounted(async () => {
           </p>
         </div>
       </BauhausCard>
+
+      <AmendmentBanner v-if="event.status === 'returned' && event.amendment" :amendment="event.amendment" class="mb-8">
+        <BauhausButton variant="primary" @click="router.push({ name: 'event-new', query: { id: event.id } })">Amend and resubmit</BauhausButton>
+      </AmendmentBanner>
 
       <section
         v-if="event.status === 'rejected'"

@@ -382,6 +382,16 @@ describe("OrganiserDashboard", () => {
     expect(router.currentRoute.value.name).toBe("event-new");
   });
 
+  it("opens a returned request on the request form to amend and resubmit (SCRUM-33)", async () => {
+    const { el, router } = await mountDashboard();
+    await openEvents(el);
+
+    buttonByText(el, "Amend and resubmit").click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
+    expect(router.currentRoute.value.query.id).toBe("returned-1");
+  });
+
   it("distinguishes loading from an empty successful dashboard", async () => {
     let resolveEvents;
     eventsApi.list.mockImplementation(() => new Promise((resolve) => {
