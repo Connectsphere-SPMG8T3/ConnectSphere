@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-from datetime import datetime
 
 from app.db.supabase import get_supabase_admin_client
 
@@ -81,21 +80,6 @@ def delete_event(event_id: str) -> None:
     get_supabase_admin_client().table("events").delete().eq("id", event_id).execute()
 
 
-def submit_event(event_id: str, version: int, submitted_at: datetime) -> dict | None:
-    response = (
-        get_supabase_admin_client()
-        .table("events")
-        .update({"status": "under_review", "submitted_at": submitted_at.isoformat(), "version": version + 1})
-        .eq("id", event_id)
-        .eq("version", version)
-        .select(_EVENT_COLUMNS)
-        .execute()
-    )
-    if not response or not response.data:
-        return None
-    return response.data[0] if isinstance(response.data, list) else response.data
-
-
 def transition_event(
     event_id: str,
     actor_id: str,
@@ -131,13 +115,16 @@ def transition_event(
 
 
 def list_status_history(event_id: str) -> list[dict]:
-    """Newest first. The actor is embedded through the FK named in the migration."""
+    """Newest first. The actor is embedded through the FK named in the migration.
+    On a timestamp tie the creation row (no from_status) sorts last, since
+    nothing can precede an event's creation."""
     response = (
         get_supabase_admin_client()
         .table("event_status_history")
         .select("id, from_status, to_status, reason, at, actor:profiles!event_status_history_actor_id_fkey(id, full_name)")
         .eq("event_id", event_id)
         .order("at", desc=True)
+        .order("from_status", desc=True, nullsfirst=False)
         .execute()
     )
     return response.data or []
