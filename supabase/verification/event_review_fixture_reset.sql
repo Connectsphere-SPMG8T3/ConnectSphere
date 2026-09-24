@@ -73,9 +73,14 @@ union all
 select 'booking ...0201 status', status::text
   from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000000201'
 union all
-select 'event_status_history rows left for the fixtures (creation + submission, expect 4)', count(*)::text
+-- How many creation/submission rows remain depends on how the database was
+-- built (the live backfill gave each fixture two; seeding after the migrations
+-- gives one), so only the review-decision rows have a fixed expectation.
+select 'event_status_history review-decision rows left for the fixtures (expect 0)', count(*)::text
   from public.event_status_history
  where event_id in ('e0000000-0000-4000-8000-000000000201', 'e0000000-0000-4000-8000-000000000202')
+   and from_status is not null
+   and from_status <> 'draft'
 union all
 select 'notifications rows left for the fixtures', count(*)::text
   from public.notifications
