@@ -104,8 +104,8 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
         aria-haspopup="listbox"
         :aria-describedby="hasFlag ? flagId : undefined"
         :data-flagged="hasFlag || undefined"
-        class="flex w-full items-center justify-between border-2 border-ink bg-canvas px-4 py-3 text-left text-base font-medium text-ink outline-none transition-colors focus:bg-bauhaus-yellow/20"
-        :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasFlag ? 'bg-bauhaus-yellow/30' : '']"
+        class="flex w-full items-center justify-between border-2 border-ink px-4 py-3 text-left text-base font-medium text-ink outline-none transition-colors focus:bg-bauhaus-yellow/20"
+        :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasFlag ? 'bg-bauhaus-yellow/30' : 'bg-canvas']"
         @click.stop="isOpen = !isOpen"
       >
         <span class="truncate">{{ selectionLabel }}</span>
@@ -148,8 +148,8 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
       :aria-label="ariaLabel || undefined"
       :aria-describedby="hasFlag ? flagId : undefined"
       :data-flagged="hasFlag || undefined"
-      class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium text-ink outline-none transition-colors focus:bg-bauhaus-yellow/20"
-      :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasFlag ? 'bg-bauhaus-yellow/30' : '']"
+      class="border-2 border-ink px-4 py-3 text-base font-medium text-ink outline-none transition-colors focus:bg-bauhaus-yellow/20"
+      :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasFlag ? 'bg-bauhaus-yellow/30' : 'bg-canvas']"
       @change="$emit('update:modelValue', $event.target.value)"
     >
       <option v-if="showPlaceholder" value="">{{ placeholder }}</option>

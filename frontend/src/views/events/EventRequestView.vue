@@ -241,7 +241,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
           </div>
           <div class="sm:col-span-2 flex flex-col gap-2">
             <label for="event-description" class="text-xs font-bold uppercase tracking-widest">Description</label>
-            <textarea id="event-description" v-model="form.description" rows="4" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" :class="flagFor('description') ? 'bg-bauhaus-yellow/30' : ''" :aria-describedby="flagFor('description') ? 'event-description-flag' : undefined" :data-flagged="flagFor('description') ? 'true' : undefined" placeholder="Add useful context for the planning team."></textarea>
+            <textarea id="event-description" v-model="form.description" rows="4" class="border-2 border-ink px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" :class="flagFor('description') ? 'bg-bauhaus-yellow/30' : 'bg-canvas'" :aria-describedby="flagFor('description') ? 'event-description-flag' : undefined" :data-flagged="flagFor('description') ? 'true' : undefined" placeholder="Add useful context for the planning team."></textarea>
             <p v-if="flagFor('description')" id="event-description-flag" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold uppercase tracking-wide text-ink">{{ FLAG_TEXT }}</p>
           </div>
           <BauhausInput v-model="form.date" label="Proposed event date" type="date" required :min="earliestEventDate" :error="fieldErrors.date" :flag="flagFor('date')" />

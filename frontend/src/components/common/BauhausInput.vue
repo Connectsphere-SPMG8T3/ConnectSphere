@@ -76,8 +76,8 @@ const describedBy = computed(
       :aria-invalid="hasError"
       :aria-describedby="describedBy"
       :data-flagged="hasFlag || undefined"
-      class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium text-ink outline-none transition-colors placeholder:text-ink/40 focus:bg-bauhaus-yellow/20"
-      :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasError ? 'border-bauhaus-red' : 'border-ink', hasFlag ? 'bg-bauhaus-yellow/30' : '']"
+      class="border-2 border-ink px-4 py-3 text-base font-medium text-ink outline-none transition-colors placeholder:text-ink/40 focus:bg-bauhaus-yellow/20"
+      :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasError ? 'border-bauhaus-red' : 'border-ink', hasFlag ? 'bg-bauhaus-yellow/30' : 'bg-canvas']"
       @input="$emit('update:modelValue', $event.target.value)"
     />
     <p v-if="hasError" :id="`${inputId}-error`" class="text-xs font-bold uppercase tracking-wide text-bauhaus-red">

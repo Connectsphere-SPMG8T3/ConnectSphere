@@ -52,6 +52,20 @@ describe("flag prop on common inputs (SCRUM-33)", () => {
     expect(el.textContent).not.toContain("Flagged");
   });
 
+  it.each([
+    ["BauhausInput", BauhausInput, { label: "Purpose", modelValue: "" }, "input"],
+    ["BauhausSelect", BauhausSelect, { label: "Layout", options: OPTIONS }, "select"],
+  ])("%s swaps its white fill for the flag tint rather than stacking both", async (_name, component, props, selector) => {
+    // Both are single-class utilities of equal specificity; the later one in the
+    // stylesheet wins, and bg-canvas comes later, so the tint never showed.
+    const flagged = (await mount(component, { ...props, flag: "Flagged by coordinator" })).querySelector(selector);
+    const plain = (await mount(component, props)).querySelector(selector);
+
+    expect(flagged.classList.contains("bg-bauhaus-yellow/30")).toBe(true);
+    expect(flagged.classList.contains("bg-canvas")).toBe(false);
+    expect(plain.classList.contains("bg-canvas")).toBe(true);
+  });
+
   it("describes an input by both its error and its flag", async () => {
     const el = await mount(BauhausInput, { label: "Purpose", modelValue: "", error: "Enter the event purpose.", flag: "Flagged by coordinator" });
 

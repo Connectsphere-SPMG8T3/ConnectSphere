@@ -88,6 +88,18 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     expect(controlFor(el, "Proposed end time").dataset.flagged).toBeUndefined();
   });
 
+  it("tints a flagged description box instead of leaving it white", async () => {
+    const { el } = await mountForm(
+      [returnedEvent({ amendment: null })],
+      returnedEvent({ amendment: { ...AMENDMENT, flagged_fields: ["description"] } }),
+    );
+
+    const description = el.querySelector("#event-description");
+    expect(description.dataset.flagged).toBe("true");
+    expect(description.classList.contains("bg-bauhaus-yellow/30")).toBe(true);
+    expect(description.classList.contains("bg-canvas")).toBe(false);
+  });
+
   it("offers Resubmit and Save changes instead of Submit request and Save draft", async () => {
     const { el } = await mountForm([returnedEvent({ amendment: null })], returnedEvent());
 
