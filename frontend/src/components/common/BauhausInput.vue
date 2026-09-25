@@ -2,8 +2,9 @@
 import { computed } from "vue";
 
 const props = defineProps({
+  // Number too: the event form binds numeric fields straight from the API.
   modelValue: {
-    type: String,
+    type: [String, Number],
     default: "",
   },
   label: {

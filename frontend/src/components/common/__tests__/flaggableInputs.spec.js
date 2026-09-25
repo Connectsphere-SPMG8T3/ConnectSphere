@@ -1,5 +1,5 @@
 import { createApp, h, nextTick } from "vue";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import BauhausCheckboxGroup from "@/components/common/BauhausCheckboxGroup.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
@@ -64,6 +64,17 @@ describe("flag prop on common inputs (SCRUM-33)", () => {
     expect(flagged.classList.contains("bg-bauhaus-yellow/30")).toBe(true);
     expect(flagged.classList.contains("bg-canvas")).toBe(false);
     expect(plain.classList.contains("bg-canvas")).toBe(true);
+  });
+
+  it("accepts a number as its value without a prop-type warning", async () => {
+    // The event form binds numeric fields (attendance, capacity) straight from the API.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const el = await mount(BauhausInput, { label: "Expected attendance", type: "number", modelValue: 40 });
+
+    expect(el.querySelector("input").value).toBe("40");
+    expect(warn.mock.calls.flat().join(" ")).not.toContain('Invalid prop: type check failed for prop "modelValue"');
+    warn.mockRestore();
   });
 
   it("describes an input by both its error and its flag", async () => {
