@@ -1,13 +1,13 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { canApprove, canReject, REJECT_REASON_MAX_LENGTH, useEventReviewStore } from "@/features/events/eventReviewStore";
+import { canApprove, canReject, canReturn, REJECT_REASON_MAX_LENGTH, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { ApiError, eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn() },
+  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn() },
 }));
 
 const EVENT = { id: "event-1", name: "Partner Summit", status: "under_review", version: 3 };
@@ -35,6 +35,13 @@ describe("canApprove / canReject", () => {
     }
   });
 
+  it("allows return only from under_review (SCRUM-33)", () => {
+    expect(canReturn("under_review")).toBe(true);
+    for (const status of ["draft", "submitted", "returned", "planning", "confirmed", "rejected", "cancelled", "completed"]) {
+      expect(canReturn(status)).toBe(false);
+    }
+  });
+
   it("caps the reason at the API's 1000 characters", () => {
     expect(REJECT_REASON_MAX_LENGTH).toBe(1000);
   });
@@ -45,6 +52,25 @@ describe("useEventReviewStore", () => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
     signedInCoordinator();
+  });
+
+  it("returns the request with a trimmed message and the flagged fields, then refreshes history", async () => {
+    const store = useEventReviewStore();
+    store.event = { ...EVENT };
+    store.historyEventId = EVENT.id;
+    const returnedEvent = { ...EVENT, status: "returned", version: 4,
+      amendment: { id: "a1", message: "Confirm attendance", flagged_fields: ["expected_attendance"], returned_at: "2026-09-24T03:00:00Z" } };
+    eventsApi.returnForAmendment.mockResolvedValue(returnedEvent);
+    eventsApi.history.mockResolvedValue({ entries: [ENTRY] });
+
+    await store.returnForAmendment("  Confirm attendance  ", ["expected_attendance"]);
+
+    expect(eventsApi.returnForAmendment).toHaveBeenCalledWith(
+      "event-1", { message: "Confirm attendance", flagged_fields: ["expected_attendance"] }, "access-token",
+    );
+    expect(store.event.status).toBe("returned");
+    expect(store.event.amendment.flagged_fields).toEqual(["expected_attendance"]);
+    expect(eventsApi.history).toHaveBeenCalledWith("event-1", "access-token");
   });
 
   it("loads the event and its history", async () => {

@@ -165,7 +165,8 @@ function eventActionHoverClass(status) {
 
 function eventAction(event) {
   const action = getOrganiserAction(event);
-  if (action.kind === "continue_draft") {
+  // Drafts and returned requests are both edited on the request form (SCRUM-33).
+  if (action.kind === "continue_draft" || action.kind === "amend") {
     router.push({ name: "event-new", query: { id: event.id } });
     return;
   }

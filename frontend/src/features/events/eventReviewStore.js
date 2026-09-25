@@ -16,8 +16,12 @@ export function canReject(status) {
   return status === "under_review" || status === "planning";
 }
 
+export function canReturn(status) {
+  return status === "under_review";
+}
+
 /**
- * The event a coordinator is reviewing (SCRUM-34 approve, SCRUM-52 reject) and its
+ * The event a coordinator is reviewing (SCRUM-34 approve, SCRUM-52 reject, SCRUM-33 return) and its
  * status history. `loadHistory` is also used by the organiser's event page.
  */
 export const useEventReviewStore = defineStore("eventReview", {
@@ -88,6 +92,12 @@ export const useEventReviewStore = defineStore("eventReview", {
 
     async reject(reason) {
       return this.act((token) => eventsApi.reject(this.event.id, reason.trim(), token));
+    },
+
+    async returnForAmendment(message, flaggedFields) {
+      return this.act((token) =>
+        eventsApi.returnForAmendment(this.event.id, { message: message.trim(), flagged_fields: flaggedFields }, token),
+      );
     },
 
     async act(call) {

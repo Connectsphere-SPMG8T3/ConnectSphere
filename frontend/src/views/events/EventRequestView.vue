@@ -9,7 +9,10 @@ import BauhausCheckboxGroup from "@/components/common/BauhausCheckboxGroup.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
+import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
+import ResubmitEventModal from "@/components/events/ResubmitEventModal.vue";
 import { showToast } from "@/composables/useToast";
+import { FLAG_TEXT, flaggedFormKeys } from "@/features/events/amendment";
 import { getEarliestEventDate, getRegistrationClosingError, getRegistrationOpeningError, getSingaporeDateString, isEventDateAfterToday } from "@/features/events/dateValidation";
 import { EVENT_TIMEZONES } from "@/features/events/timezones";
 import { FACILITIES, LAYOUTS, emptyEvent, useEventsStore } from "@/stores/events";
@@ -21,6 +24,15 @@ const form = reactive(emptyEvent());
 const fieldErrors = ref({});
 const intent = ref("draft");
 const isNew = computed(() => !form.id);
+// SCRUM-33: a returned request is amended here and resubmitted to its coordinator.
+const isReturned = computed(() => form.status === "returned");
+const flaggedKeys = computed(() => flaggedFormKeys(form.amendment?.flagged_fields));
+const isResubmitModalOpen = ref(false);
+
+function flagFor(key) {
+  return flaggedKeys.value.has(key) ? FLAG_TEXT : "";
+}
+
 const earliestEventDate = computed(() => getEarliestEventDate(form.eventTimezone));
 const earliestRegistrationDateTime = computed(() => `${earliestEventDate.value}T00:00`);
 const isLeaveModalOpen = ref(false);
@@ -58,12 +70,26 @@ function stayOnPage() {
 
 function requestSubmit() {
   intent.value = "submit";
-  if (validateSubmission()) isSubmitModalOpen.value = true;
+  if (!validateSubmission()) return;
+  if (isReturned.value) isResubmitModalOpen.value = true;
+  else isSubmitModalOpen.value = true;
 }
 
 function confirmSubmit() {
   isSubmitModalOpen.value = false;
   save();
+}
+
+async function confirmResubmit(note) {
+  try {
+    await eventsStore.resubmit(form.id, form, note);
+  } catch {
+    return; // The modal stays open and shows the API's message.
+  }
+  isResubmitModalOpen.value = false;
+  pristineSnapshot.value = serializeForm(form);
+  showToast("Request resubmitted");
+  await router.push({ name: "dashboard-organiser" });
 }
 
 function handleBeforeUnload(event) {
@@ -130,7 +156,7 @@ async function save() {
       showToast("Request submitted");
       await router.push({ name: "dashboard-organiser" });
     } else {
-      showToast("Draft saved");
+      showToast(isReturned.value ? "Changes saved" : "Draft saved");
       Object.assign(form, event);
       pristineSnapshot.value = serializeForm(form);
       fieldErrors.value = {};
@@ -157,13 +183,23 @@ onBeforeRouteLeave((to) => {
 });
 
 onMounted(async () => {
-  try {
-    if (!eventsStore.events.length) await eventsStore.load();
-  } catch {
-    return;
+  if (route.query.id) {
+    // Always read the event itself: a cached list can hold a stale status (and
+    // omits the amendment), and trusting it left a blank form whose Save draft
+    // would create a duplicate event.
+    let event;
+    try {
+      event = await eventsStore.get(route.query.id);
+    } catch {
+      return; // eventsStore.error is shown in the page alert.
+    }
+    if (!["draft", "returned"].includes(event.status)) {
+      allowNavigation.value = true;
+      await router.replace({ name: "event-detail", params: { id: event.id } });
+      return;
+    }
+    Object.assign(form, event);
   }
-  const draft = eventsStore.events.find((event) => event.id === route.query.id && event.status === "draft");
-  if (draft) Object.assign(form, draft);
   pristineSnapshot.value = serializeForm(form);
 });
 
@@ -176,15 +212,17 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
     <BauhausCard background="yellow" accent="square" accent-color="bauhaus-red" class="mb-10">
       <p class="text-xs font-bold uppercase tracking-widest opacity-80">Event request</p>
       <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">
-        {{ isNew ? "Start an event" : "Edit your draft" }}
+        {{ isNew ? "Start an event" : isReturned ? "Amend your request" : "Edit your draft" }}
       </h1>
       <p class="mt-3 max-w-xl text-sm font-medium">
         Save the request as a draft while details are taking shape, or submit it once the required planning information is ready.
       </p>
     </BauhausCard>
 
+    <AmendmentBanner v-if="isReturned && form.amendment" :amendment="form.amendment" class="mb-10" />
+
     <p
-      v-if="eventsStore.error"
+      v-if="eventsStore.error && !isResubmitModalOpen"
       role="alert"
       class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
     >
@@ -195,36 +233,37 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
       <BauhausCard background="white" accent="none">
         <div class="grid gap-6 sm:grid-cols-2">
           <div class="sm:col-span-2">
-            <BauhausInput v-model="form.name" label="Event title" required :error="fieldErrors.name" placeholder="Regional planning workshop" />
+            <BauhausInput v-model="form.name" label="Event title" required :error="fieldErrors.name" :flag="flagFor('name')" placeholder="Regional planning workshop" />
           </div>
           <div class="sm:col-span-2">
-            <BauhausInput v-model="form.purpose" label="Purpose" required :error="fieldErrors.purpose" placeholder="What is this event for?" />
+            <BauhausInput v-model="form.purpose" label="Purpose" required :error="fieldErrors.purpose" :flag="flagFor('purpose')" placeholder="What is this event for?" />
           </div>
           <div class="sm:col-span-2 flex flex-col gap-2">
             <label for="event-description" class="text-xs font-bold uppercase tracking-widest">Description</label>
-            <textarea id="event-description" v-model="form.description" rows="4" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" placeholder="Add useful context for the planning team."></textarea>
+            <textarea id="event-description" v-model="form.description" rows="4" class="border-2 border-ink px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" :class="flagFor('description') ? 'bg-bauhaus-yellow/30' : 'bg-canvas'" :aria-describedby="flagFor('description') ? 'event-description-flag' : undefined" :data-flagged="flagFor('description') ? 'true' : undefined" placeholder="Add useful context for the planning team."></textarea>
+            <p v-if="flagFor('description')" id="event-description-flag" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold uppercase tracking-wide text-ink">{{ FLAG_TEXT }}</p>
           </div>
-          <BauhausInput v-model="form.date" label="Proposed event date" type="date" required :min="earliestEventDate" :error="fieldErrors.date" />
-          <BauhausSelect v-model="form.eventTimezone" label="Event timezone" required :options="EVENT_TIMEZONES" />
+          <BauhausInput v-model="form.date" label="Proposed event date" type="date" required :min="earliestEventDate" :error="fieldErrors.date" :flag="flagFor('date')" />
+          <BauhausSelect v-model="form.eventTimezone" label="Event timezone" required :options="EVENT_TIMEZONES" :flag="flagFor('eventTimezone')" />
           <div class="sm:col-span-2 grid gap-6 sm:grid-cols-2">
-            <BauhausInput v-model="form.startTime" label="Proposed start time" type="time" required :error="fieldErrors.startTime" />
-            <BauhausInput v-model="form.endTime" label="Proposed end time" type="time" required :error="fieldErrors.endTime" />
+            <BauhausInput v-model="form.startTime" label="Proposed start time" type="time" required :error="fieldErrors.startTime" :flag="flagFor('startTime')" />
+            <BauhausInput v-model="form.endTime" label="Proposed end time" type="time" required :error="fieldErrors.endTime" :flag="flagFor('endTime')" />
           </div>
           <div class="sm:col-span-2 grid gap-6 sm:grid-cols-2">
-            <BauhausInput v-model="form.expectedAttendance" label="Expected attendance" type="number" required :error="fieldErrors.expectedAttendance" />
+            <BauhausInput v-model="form.expectedAttendance" label="Expected attendance" type="number" required :error="fieldErrors.expectedAttendance" :flag="flagFor('expectedAttendance')" />
             <div>
-              <BauhausSelect v-model="form.layoutPreference" label="Preferred layout" required :options="LAYOUTS" placeholder="Choose a layout" />
+              <BauhausSelect v-model="form.layoutPreference" label="Preferred layout" required :options="LAYOUTS" placeholder="Choose a layout" :flag="flagFor('layoutPreference')" />
               <p v-if="fieldErrors.layoutPreference" class="mt-2 text-xs font-bold uppercase tracking-wide text-bauhaus-red">{{ fieldErrors.layoutPreference }}</p>
             </div>
           </div>
           <div class="sm:col-span-2">
-            <BauhausCheckboxGroup v-model="form.facilitiesRequired" label="Facilities required" :options="FACILITIES" />
+            <BauhausCheckboxGroup v-model="form.facilitiesRequired" label="Facilities required" :options="FACILITIES" :flag="flagFor('facilitiesRequired')" />
           </div>
           <div class="sm:col-span-2">
-            <BauhausInput v-model="form.accessibilityNeeds" label="Accessibility needs" placeholder="Step-free access, hearing loop, etc." />
+            <BauhausInput v-model="form.accessibilityNeeds" label="Accessibility needs" :flag="flagFor('accessibilityNeeds')" placeholder="Step-free access, hearing loop, etc." />
           </div>
           <div class="sm:col-span-2">
-            <BauhausInput v-model="form.preliminaryEquipmentNeeds" label="Preliminary equipment needs" placeholder="Wireless microphones, projector, etc." />
+            <BauhausInput v-model="form.preliminaryEquipmentNeeds" label="Preliminary equipment needs" :flag="flagFor('preliminaryEquipmentNeeds')" placeholder="Wireless microphones, projector, etc." />
           </div>
         </div>
       </BauhausCard>
@@ -236,10 +275,11 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
             <input v-model="form.registrationEnabled" type="checkbox" class="h-5 w-5 accent-bauhaus-yellow" />
             Enable attendee registration
           </label>
+          <p v-if="flagFor('registrationEnabled')" class="mt-2 border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold uppercase tracking-wide">{{ FLAG_TEXT }}</p>
           <div v-if="form.registrationEnabled" class="mt-5 flex flex-col gap-5">
-            <BauhausInput v-model="form.registrationCapacity" label="Registration capacity" required type="number" :error="fieldErrors.registrationCapacity" />
-            <BauhausInput v-model="form.registrationOpensAt" label="Registration opens" required type="datetime-local" :min="earliestRegistrationDateTime" :error="fieldErrors.registrationOpensAt" />
-            <BauhausInput v-model="form.registrationClosesAt" label="Registration closes" required type="datetime-local" :min="earliestRegistrationDateTime" :error="fieldErrors.registrationClosesAt" />
+            <BauhausInput v-model="form.registrationCapacity" label="Registration capacity" required type="number" :error="fieldErrors.registrationCapacity" :flag="flagFor('registrationCapacity')" />
+            <BauhausInput v-model="form.registrationOpensAt" label="Registration opens" required type="datetime-local" :min="earliestRegistrationDateTime" :error="fieldErrors.registrationOpensAt" :flag="flagFor('registrationOpensAt')" />
+            <BauhausInput v-model="form.registrationClosesAt" label="Registration closes" required type="datetime-local" :min="earliestRegistrationDateTime" :error="fieldErrors.registrationClosesAt" :flag="flagFor('registrationClosesAt')" />
           </div>
         </BauhausCard>
 
@@ -248,9 +288,9 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
           <p class="mt-2 text-sm font-medium">Drafts stay private to you. Submission sends a complete request for coordinator review.</p>
           <div class="mt-6 flex flex-col gap-3">
             <BauhausButton type="button" variant="yellow" :disabled="eventsStore.isSaving" @click="chooseIntent('draft')">
-              {{ eventsStore.isSaving ? "Saving..." : "Save draft" }}
+              {{ eventsStore.isSaving ? "Saving..." : isReturned ? "Save changes" : "Save draft" }}
             </BauhausButton>
-            <BauhausButton type="submit" variant="primary" :disabled="eventsStore.isSaving">Submit request</BauhausButton>
+            <BauhausButton type="submit" variant="primary" :disabled="eventsStore.isSaving">{{ isReturned ? "Resubmit" : "Submit request" }}</BauhausButton>
             <BauhausButton type="button" variant="outline" :disabled="eventsStore.isSaving" @click="requestLeave({ name: 'dashboard-organiser' })">Cancel</BauhausButton>
           </div>
         </BauhausCard>
@@ -265,6 +305,14 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
       cancel-label="Review request"
       @confirm="confirmSubmit"
       @stay="isSubmitModalOpen = false"
+    />
+    <ResubmitEventModal
+      :open="isResubmitModalOpen"
+      :event-name="form.name"
+      :busy="eventsStore.isSaving"
+      :error="isResubmitModalOpen ? eventsStore.error : null"
+      @confirm="confirmResubmit"
+      @cancel="isResubmitModalOpen = false"
     />
   </main>
 </template>

@@ -105,6 +105,13 @@ export const eventsApi = {
   reject(eventId, reason, token) {
     return request(`/events/${encodeURIComponent(eventId)}/reject`, { method: "POST", body: { reason }, token });
   },
+  // SCRUM-33: the coordinator returns a request; the organiser resubmits it.
+  returnForAmendment(eventId, payload, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/return`, { method: "POST", body: payload, token });
+  },
+  resubmit(eventId, payload, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/resubmit`, { method: "POST", body: payload, token });
+  },
   history(eventId, token) {
     return request(`/events/${encodeURIComponent(eventId)}/history`, { token });
   },

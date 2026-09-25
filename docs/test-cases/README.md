@@ -11,7 +11,7 @@ See [SCENARIO.md](../SCENARIO.md) for requirement context and [SETUP.md](../SETU
 | [auth.md](auth.md) | SCRUM-48 login, session, logout | TC-AUTH |
 | [roles-and-access.md](roles-and-access.md) | SCRUM-48 routing and data-layer security; SCRUM-74/75/76/78 role switching | TC-RBAC, TC-ROLE, TC-DATA |
 | [venues.md](venues.md) | SCRUM-39 venue search, SCRUM-67 venue profile | TC-VENUE |
-| [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject | TC-EVENT, TC-REV |
+| [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment | TC-EVENT, TC-REV, TC-AMD |
 | [dashboards.md](dashboards.md) | SCRUM-72 coordinator, SCRUM-70 venue staff, SCRUM-71 organiser, SCRUM-73 technical support | TC-DASH, TC-VSD, TC-ORG, TC-TSD |
 
 ## Environment

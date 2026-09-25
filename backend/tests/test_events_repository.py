@@ -59,3 +59,116 @@ def test_status_history_puts_the_creation_entry_last_when_timestamps_tie(monkeyp
     repository.list_status_history("event-1")
 
     assert orders == [("at", True, None), ("from_status", True, False)]
+
+
+class RpcClient:
+    """Records the RPC name and parameters; answers with the rows given."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.calls = []
+
+    def rpc(self, name, params):
+        self.calls.append((name, params))
+        return self
+
+    def execute(self):
+        return SimpleNamespace(data=self.rows)
+
+
+def test_return_event_calls_the_return_function_with_every_parameter(monkeypatch):
+    client = RpcClient([{"id": "event-1", "status": "returned"}])
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    row = repository.return_event(
+        "event-1", "coordinator-1", ["under_review"], "returned", 3,
+        message="Confirm attendance", flagged_fields=["expected_attendance"], notify_message="msg",
+    )
+
+    assert row == {"id": "event-1", "status": "returned"}
+    assert client.calls == [("return_event_for_amendment", {
+        "p_event_id": "event-1", "p_actor_id": "coordinator-1", "p_from_statuses": ["under_review"],
+        "p_to_status": "returned", "p_expected_version": 3, "p_message": "Confirm attendance",
+        "p_flagged_fields": ["expected_attendance"], "p_notify_message": "msg",
+    })]
+
+
+def test_resubmit_event_calls_the_resubmit_function_with_every_parameter(monkeypatch):
+    client = RpcClient([{"id": "event-1", "status": "under_review"}])
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    row = repository.resubmit_event(
+        "event-1", "organiser-1", ["returned"], "under_review", 4, note="Now 40", notify_message="msg",
+    )
+
+    assert row == {"id": "event-1", "status": "under_review"}
+    assert client.calls == [("resubmit_event", {
+        "p_event_id": "event-1", "p_actor_id": "organiser-1", "p_from_statuses": ["returned"],
+        "p_to_status": "under_review", "p_expected_version": 4, "p_note": "Now 40", "p_notify_message": "msg",
+    })]
+
+
+def test_a_stale_return_or_resubmit_comes_back_as_none(monkeypatch):
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: RpcClient([]))
+
+    assert repository.return_event("e", "c", ["under_review"], "returned", 1,
+                                   message="m", flagged_fields=[], notify_message="n") is None
+    assert repository.resubmit_event("e", "o", ["returned"], "under_review", 1, note="n", notify_message="n") is None
+
+
+def test_get_open_amendment_reads_only_the_unresubmitted_row(monkeypatch):
+    filters = []
+    open_row = {"id": "a1", "message": "Confirm attendance", "flagged_fields": ["expected_attendance"],
+                "returned_at": "2026-09-24T03:00:00+00:00"}
+
+    class AmendmentQuery:
+        def select(self, columns):
+            filters.append(("select", columns))
+            return self
+
+        def eq(self, field, value):
+            filters.append(("eq", field, value))
+            return self
+
+        def is_(self, field, value):
+            filters.append(("is", field, value))
+            return self
+
+        def maybe_single(self):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=open_row)
+
+    class AdminClient:
+        def table(self, name):
+            filters.append(("table", name))
+            return AmendmentQuery()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    assert repository.get_open_amendment("event-1") == open_row
+    assert filters == [
+        ("table", "amendment_requests"),
+        ("select", "id, message, flagged_fields, returned_at"),
+        ("eq", "event_id", "event-1"),
+        ("is", "resubmitted_at", "null"),
+    ]
+
+
+def test_get_open_amendment_is_none_when_nothing_is_open(monkeypatch):
+    """supabase-py returns no response object at all for maybe_single() with no row."""
+
+    class EmptyQuery:
+        def select(self, columns): return self
+        def eq(self, field, value): return self
+        def is_(self, field, value): return self
+        def maybe_single(self): return self
+        def execute(self): return None
+
+    class AdminClient:
+        def table(self, name): return EmptyQuery()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    assert repository.get_open_amendment("event-1") is None

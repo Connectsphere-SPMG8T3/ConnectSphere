@@ -131,4 +131,23 @@ describe("EventDetailView decision and history (SCRUM-34, SCRUM-52)", () => {
 
     expect(el.querySelector('[data-testid="rejection-notice"]')).toBeNull();
   });
+  it("shows the coordinator's amendment request and a way to amend it (SCRUM-33)", async () => {
+    const el = await mountDetail(eventResponse({
+      status: "returned",
+      amendment: { id: "a1", message: "Please confirm the attendance", flagged_fields: ["expected_attendance"], returned_at: "2026-09-24T03:00:00Z" },
+    }));
+
+    const banner = el.querySelector('[data-testid="amendment-banner"]');
+    expect(banner.textContent).toContain("Please confirm the attendance");
+    const { default: router } = await import("@/router");
+    [...banner.querySelectorAll("button")].find((node) => node.textContent.trim() === "Amend and resubmit").click();
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
+    expect(router.currentRoute.value.query.id).toBe("event-1");
+  });
+
+  it("shows no amendment banner for a request that isn't returned", async () => {
+    const el = await mountDetail(eventResponse({ status: "under_review" }));
+
+    expect(el.querySelector('[data-testid="amendment-banner"]')).toBeNull();
+  });
 });

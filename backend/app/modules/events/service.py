@@ -7,10 +7,14 @@ from fastapi import HTTPException, status
 from app.core.exceptions import NotAssignedCoordinatorError
 from app.modules.events import lifecycle, repository
 from app.modules.events.schemas import (
+    AmendmentRequest,
     EventCreateRequest,
     EventHistoryEntry,
     EventHistoryResponse,
     EventResponse,
+    EventResubmitRequest,
+    EventReturnRequest,
+    EventStatus,
     EventUpdateRequest,
 )
 
@@ -42,6 +46,16 @@ def names_by_id(event_ids: Iterable[str]) -> dict[str, str]:
 
 def _to_response(row: dict) -> EventResponse:
     return EventResponse(**row)
+
+
+def _with_amendment(row: dict) -> EventResponse:
+    """A single event, carrying its open amendment while it is returned (SCRUM-33)."""
+    response = _to_response(row)
+    if response.status == EventStatus.returned:
+        amendment = repository.get_open_amendment(row["id"])
+        if amendment:
+            response.amendment = AmendmentRequest(**amendment)
+    return response
 
 
 def _owned_event(event_id: str, organiser_id: str) -> dict:
@@ -94,6 +108,43 @@ def reject(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
         row, coordinator_id, "reject", reason=reason, notify_type="event_rejected",
         notify_message=f'Your event "{row["name"]}" was rejected: {reason}',
     )
+
+
+def return_for_amendment(event_id: str, coordinator_id: str, body: EventReturnRequest) -> EventResponse:
+    row = _assigned_event(event_id, coordinator_id)
+    to_status = lifecycle.target("return", row["status"])
+    updated = repository.return_event(
+        row["id"], coordinator_id, lifecycle.allowed_from("return"), to_status.value, row["version"],
+        message=body.message,
+        flagged_fields=[field.value for field in body.flagged_fields],
+        notify_message=f'Your event "{row["name"]}" was returned for amendment: {body.message}',
+    )
+    if not updated:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return _with_amendment(updated)
+
+
+def resubmit(event_id: str, organiser_id: str, body: EventResubmitRequest) -> EventResponse:
+    """Like `submit`: apply the form's edits, check the request is still complete, then
+    move it back to its coordinator. Edits that land before a lost race stay saved; the
+    event stays returned and the organiser is told to reload."""
+    row = _owned_event(event_id, organiser_id)
+    to_status = lifecycle.target("resubmit", row["status"])
+    values = body.model_dump(mode="json", exclude_unset=True, exclude={"resubmission_note"})
+    _validate_submission({**row, **values})
+    if values:
+        updated = repository.update_event(event_id, values, row["version"])
+        if not updated:
+            raise EventConflictError(STALE_EVENT_MESSAGE)
+        row = updated
+    updated = repository.resubmit_event(
+        event_id, organiser_id, lifecycle.allowed_from("resubmit"), to_status.value, row["version"],
+        note=body.resubmission_note,
+        notify_message=f'"{row["name"]}" was amended and resubmitted: {body.resubmission_note}',
+    )
+    if not updated:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return _to_response(updated)
 
 
 def _validate_submission(row: dict) -> None:
@@ -167,7 +218,7 @@ def _visible_event(event_id: str, user_id: str, role: str) -> dict:
 
 
 def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
-    return _to_response(_visible_event(event_id, user_id, role))
+    return _with_amendment(_visible_event(event_id, user_id, role))
 
 
 def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
@@ -185,7 +236,7 @@ def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventR
     updated = repository.update_event(event_id, values, row["version"])
     if not updated:
         raise EventConflictError()
-    return _to_response(updated)
+    return _with_amendment(updated)
 
 
 def discard(event_id: str, organiser_id: str) -> None:

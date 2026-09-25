@@ -886,6 +886,78 @@ Not a Jira story; a fix on `fix/event-history-on-create`, branched from `feature
 - **Real system:** both migrations were first run with their checks in a rolled-back transaction, then applied. `event_history_checks.sql` passes all six checks. Every live event now has a creation row, and every submitted event has a submission row. Through the running API as `organiser@connectsphere.dev`: create → history `[(none → draft) by Olivia Tan]`; submit → `200`, `submitted_at` set, history `[(draft → under_review), (none → draft)]`; resubmit → `409`. The throwaway event was then deleted. In the browser, the organiser's page for a real approved event lists Planning, Under review, Draft, and fixture `…0201` lists Under review, Draft, with no console errors. `get_advisors` security findings are unchanged: only the pre-existing leaked-password toggle.
 - **Not verified:** no frontend code changed, so `npm test` wasn't re-run. The creation entry reads "Draft · by <organiser>", with no separate "Created" wording. That's `EventStatusHistory`'s existing label, left as is.
 
+### 4.18. SCRUM-33 — Return event request for amendment (Jira record, and the criteria it was built to)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-33` |
+| Summary | Request Clarification for Event (title unchanged in Jira; the work is "return for amendment") |
+| Issue type | Story |
+| Status | In Progress (at time of writing this entry) |
+| Parent epic | `SCRUM-11` — Event Review and Approval |
+| Sprint | SCRUM Sprint 2 |
+| Story point estimate | 3 |
+| Priority | Medium |
+
+**User story and criteria as they stood in Jira (verbatim):**
+
+> As an Event Coordinator, I want to send clarification queries to Event Organisers so that I can obtain clear requirements before deciding whether planning should proceed.
+>
+> * Can highlight specific ambiguous fields (e.g. room layout, attendee count) and give comments asking for additional information.
+> * Submitting clarification queries sends a notification to the Event Organiser.
+> * Clarification requests and responses are tracked in the event history.
+> * The coordinator can mark the clarifications as resolved once adequate information is provided.
+
+**Why it was not built as written.** The customer's model is *return for amendment*: the organiser edits the same request and resubmits it (QA-22, QA-77), not a clarification thread the coordinator marks resolved. PROJECT_REVIEW §B2a had already listed SCRUM-33 as contradicted. The criteria below were agreed with the developer on 2026-09-24 and are the ones implemented; **the Jira description still needs updating to them**, with a comment citing QA-22 and QA-77.
+
+**Acceptance criteria (as agreed):**
+
+> 1. **Given** an under-review event assigned to me, **when** I return it with a message and flag fields (e.g. expected attendance), **then** the status is `returned` and the organiser is notified.
+> 2. The organiser sees my message, with the flagged fields highlighted on their request.
+> 3. **Given** a returned request, **when** the organiser edits any field and resubmits with a note, **then** the status goes back to `under_review` with the **same coordinator**, and I'm notified.
+> 4. Every return and resubmission is recorded in the event history. A request can be returned more than once.
+> 5. The return message is required: an empty or whitespace-only message is blocked.
+> 6. Only the assigned coordinator can return, and only the owning organiser can resubmit. Others get 403/404.
+> 7. Approve or reject while `returned` → 409.
+
+The "no venue booking while returned" rule in REQUIREMENTS §6.4 was left out: no booking-creation endpoint exists yet, so the story that builds booking creation owns that guard (IMPLEMENTATION_MAP §5).
+
+#### How the implementation maps to the ticket
+
+"Highlight specific fields" (the old wording) and AC2 are one mechanism: the coordinator ticks fields from `EVENT_FIELD_LABELS`, the API stores their names (`EventField`, the 15 editable fields) in `amendment_requests.flagged_fields`, and the organiser's form highlights every input behind each one — `starts_at` covers both the date and the start-time inputs, because the form splits it. The highlight is a new `flag` prop on the common inputs rather than reusing `error`: a flag asks for review, it isn't a validation failure, and both can show at once.
+
+The return and resubmission each run as **one** database transaction (`return_event_for_amendment`, `resubmit_event`), wrapping the existing `transition_event` so status, history, the amendment row and the notification can't disagree. `transition_event` itself was not changed, so approve, reject and submit are untouched; the resubmit function notifies the coordinator itself because `transition_event` can only notify the organiser.
+
+Resubmission re-runs the full submission validation (the §5 guard "basic info still complete"). The resubmission note is required (also a §5 guard). Message and note are capped at 1000 characters after trimming — an **[Assumption]** (REQUIREMENTS §9), the same cap as a rejection reason.
+
+What was actually built:
+
+1. **Data** — migration `20260924140000`: `amendment_requests` (one row per return, at most one open per event), select-only RLS matching `event_status_history`, and the two functions (`service_role` only).
+2. **API** — `lifecycle.TRANSITIONS` rows `return`/`resubmit`; `POST /events/{id}/return` (assigned coordinator), `POST /events/{id}/resubmit` (owning organiser); `GET` and `PATCH /events/{id}` carry the open `amendment` while `returned`, so saving changes keeps the organiser's banner.
+3. **Coordinator UI** — "Return for amendment" beside Approve/Reject on `CoordinatorEventView`, via `ReturnEventModal`; afterwards `AmendmentBanner` ("Waiting for the organiser to amend") and no decision buttons.
+4. **Organiser UI** — "Amend and resubmit" on the dashboard and on `EventDetailView` opens `EventRequestView` in amend mode: "Amend your request", the coordinator's banner, highlighted inputs, "Save changes", and "Resubmit" through `ResubmitEventModal` (required note).
+
+**Bug found and fixed during real-system verification:** at 375×812 the return dialog (fifteen checkboxes) is taller than the screen, and its centred scrolling overlay pushed the heading 161px above the scroll origin, where it could not be reached. Fixed by aligning to the top and centring with `my-auto` (commit `7b34d7c`), with a regression test.
+
+**Fixed after the whole-branch review:** (1) flagged inputs, selects and the description box carried both `bg-canvas` and the yellow tint, and `bg-canvas` wins in the built stylesheet, so a flagged field stayed white with only its caption — the fill is now one or the other (`e4fa4d5`); (2) the response model validated stored flag names against `EventField`, so a field later renamed or removed would have made every read of a returned event a 500 — responses now pass names through as strings, and only the return request validates them (`f91a573`). Both were written red first.
+
+**Fixed after the PR #30 review (Gemini), all written red first:** (1) `EventRequestView` looked the `?id=` event up in the organiser store's cached list, so a stale list left a blank form whose Save draft would create a duplicate event — it now always reads the event with `get`, and a non-editable one redirects to its detail page (`79eefde`); (2) emptying an optional field didn't clear it, because `eventToPayload` left it out of the body — edits now send `null` (`56ba0f1`, PROJECT_REVIEW D12, a bug dating from SCRUM-8 that broke AC3 here); (3) `BauhausInput` warned on numeric values (`c0b00f2`); (4) migration `20260925100000` makes the table refuse a blank resubmission note, applied live (`4294fc2`). The review's point that resubmission is two steps (edits, then the database function) was declined: the spec chose it to match `submit`, and a test pins that a lost race leaves the edits saved and the request `returned`.
+
+#### Verification
+
+- **Written red first:** `test_event_lifecycle.py` return/resubmit cases (`KeyError`), `test_events_repository.py` wrappers (`AttributeError`), `test_event_amendment_api.py` (routes 404 before they existed, `amendment` missing), the Vitest specs for `amendment.js`, the review store, the `flag` prop, both modals, `AmendmentBanner`, `CoordinatorEventView`, `EventRequestView`, `EventDetailView` and the organiser dashboard, and `supabase/verification/event_amendment_checks.sql` against the live schema (function missing) all failed for the expected reason first.
+- `pytest` (full suite): **386 passed**. `npm test` (full suite): **419 passed** across 34 files. `npm run build` succeeds.
+- **Database:** the migration applied to the live project (ledger row renamed to `20260924140000`); `event_amendment_checks.sql` prints `AMENDMENT CHECKS PASSED` (return → resubmit → return, one-open rule, blank-message check, stale version changes nothing, notifications to the right party only, functions not executable by `authenticated`, RLS: owner and assigned coordinator read, venue staff and `anon` read nothing). `get_advisors` unchanged (security: the pre-existing leaked-password toggle only).
+- **Real system, in the browser with the live project** (the developer signed in; fixture `…0201`):
+  - As the coordinator: returned it with a message, flagging *Expected attendance* and *Proposed date and start time* → `POST /return 200`, banner and new history entry shown, toast "Returned to organiser". Database: `returned`, same coordinator, one open amendment `[starts_at, expected_attendance]`, history reason = the message, one `event_returned` notification to the organiser.
+  - As the organiser: the dashboard's **Amend and resubmit** opened `/events/new?id=…0201` headed "Amend your request"; exactly the date, start-time and attendance inputs were flagged. **Save changes** (attendance 12 → 40, `PATCH 200`) kept the banner and all three flags; the event stayed `returned`. **Resubmit** with a note → `POST /resubmit 200`, back on the dashboard. Database: `under_review`, same coordinator, amendment closed with the note, history `returned → under_review` by the organiser with the note, one `event_resubmitted` notification to the coordinator.
+  - As the coordinator again: Under review, both history entries, Approve offered again; a second return with no flags → two amendment rows, one open, and a banner without a field list.
+  - At 375×812: the return dialog bug above, fixed and re-checked (heading at +52px, confirm button reachable).
+  - Console: the only error is the pre-existing 404 on `GET /events/dashboard/coordinator` (SCRUM-72's endpoint, not built; TC-DASH-001).
+  - The fixture was reset afterwards (attendance back to 12, no amendment rows or notifications).
+- **Review fixes, in the browser with the live project (25 Sep, organiser signed in; returns done through `return_event_for_amendment` in SQL):** `/events/new?id=…0201` while under review redirected to `/events/…0201`, and the organiser's event count stayed 15 (no duplicate draft); with the dashboard's cached list still saying `under_review`, in-app navigation to the form opened the returned event in amend mode with its banner and flagged field; emptying the flagged equipment note and pressing **Save changes** (`PATCH 200`) left it `NULL` in the database, still `returned`; after the note was put back directly, **Resubmit** with the field empty left it `NULL`, `under_review`, same coordinator, one `event_resubmitted` notification; flagged input, select and description box computed a yellow 30% background, an unflagged input white. No console errors. Fixture reset afterwards.
+- **Not verified:** raw `curl` requests as each role against the live API — they need a sign-in with a password, which the agent doesn't enter; the 403/409 denial paths are covered by `pytest` and `test_active_role_access.py` instead. The notification bell (SCRUM-27) doesn't exist, so notifications were checked in the table only. Keyboard focus handling in the new dialogs (same known gap as `RejectEventModal`, IMPLEMENTATION_MAP §5).
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.

@@ -128,3 +128,88 @@ def list_status_history(event_id: str) -> list[dict]:
         .execute()
     )
     return response.data or []
+
+
+def _first_row(response) -> dict | None:
+    rows = (response.data or []) if response else []
+    return rows[0] if rows else None
+
+
+def return_event(
+    event_id: str,
+    actor_id: str,
+    from_statuses: list[str],
+    to_status: str,
+    expected_version: int,
+    *,
+    message: str,
+    flagged_fields: list[str],
+    notify_message: str,
+) -> dict | None:
+    """Run `public.return_event_for_amendment` (SCRUM-33): the transition, its history
+    row, the organiser's notification and the amendment row in one transaction.
+    None when the event had moved on, which the service reports as 409."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "return_event_for_amendment",
+            {
+                "p_event_id": event_id,
+                "p_actor_id": actor_id,
+                "p_from_statuses": from_statuses,
+                "p_to_status": to_status,
+                "p_expected_version": expected_version,
+                "p_message": message,
+                "p_flagged_fields": flagged_fields,
+                "p_notify_message": notify_message,
+            },
+        )
+        .execute()
+    )
+    return _first_row(response)
+
+
+def resubmit_event(
+    event_id: str,
+    actor_id: str,
+    from_statuses: list[str],
+    to_status: str,
+    expected_version: int,
+    *,
+    note: str,
+    notify_message: str,
+) -> dict | None:
+    """Run `public.resubmit_event` (SCRUM-33): back to the same coordinator, the open
+    amendment closed with the note, the coordinator notified. None when stale."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "resubmit_event",
+            {
+                "p_event_id": event_id,
+                "p_actor_id": actor_id,
+                "p_from_statuses": from_statuses,
+                "p_to_status": to_status,
+                "p_expected_version": expected_version,
+                "p_note": note,
+                "p_notify_message": notify_message,
+            },
+        )
+        .execute()
+    )
+    return _first_row(response)
+
+
+def get_open_amendment(event_id: str) -> dict | None:
+    """The amendment the organiser still has to answer, if any. At most one is open
+    per event (partial unique index in the migration)."""
+    response = (
+        get_supabase_admin_client()
+        .table("amendment_requests")
+        .select("id, message, flagged_fields, returned_at")
+        .eq("event_id", event_id)
+        .is_("resubmitted_at", "null")
+        .maybe_single()
+        .execute()
+    )
+    return response.data if response else None
