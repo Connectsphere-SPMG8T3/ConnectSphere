@@ -183,23 +183,22 @@ onBeforeRouteLeave((to) => {
 });
 
 onMounted(async () => {
-  try {
-    if (!eventsStore.events.length) await eventsStore.load();
-  } catch {
-    return;
-  }
-  const stored = eventsStore.events.find(
-    (event) => event.id === route.query.id && ["draft", "returned"].includes(event.status),
-  );
-  if (stored?.status === "returned") {
-    // The list omits the amendment; the single-event read carries it.
+  if (route.query.id) {
+    // Always read the event itself: a cached list can hold a stale status (and
+    // omits the amendment), and trusting it left a blank form whose Save draft
+    // would create a duplicate event.
+    let event;
     try {
-      Object.assign(form, await eventsStore.get(stored.id));
+      event = await eventsStore.get(route.query.id);
     } catch {
+      return; // eventsStore.error is shown in the page alert.
+    }
+    if (!["draft", "returned"].includes(event.status)) {
+      allowNavigation.value = true;
+      await router.replace({ name: "event-detail", params: { id: event.id } });
       return;
     }
-  } else if (stored) {
-    Object.assign(form, stored);
+    Object.assign(form, event);
   }
   pristineSnapshot.value = serializeForm(form);
 });

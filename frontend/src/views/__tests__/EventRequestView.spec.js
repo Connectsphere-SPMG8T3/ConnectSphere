@@ -158,6 +158,39 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     expect(buttonByText(el, "Resubmit")).toBeTruthy();
   });
 
+  it("opens the request fresh even when the cached list is out of date", async () => {
+    // The list still says under review; the event itself has since been returned.
+    const { el } = await mountForm([returnedEvent({ status: "under_review", amendment: null })], returnedEvent());
+
+    expect(el.textContent).toContain("Amend your request");
+    expect(el.querySelector('[data-testid="amendment-banner"]')).not.toBeNull();
+  });
+
+  it("sends a request that can no longer be edited to its detail page, not a blank form", async () => {
+    const underReview = returnedEvent({ status: "under_review", amendment: null });
+    eventsApi.list.mockResolvedValue([underReview]);
+    eventsApi.get.mockResolvedValue(underReview);
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const auth = useAuthStore();
+    auth.token = "access";
+    auth.refreshToken = "refresh";
+    auth.profile = { id: "organiser-1", full_name: "Priya Nair", role: "event_organiser" };
+    auth.sessionVerified = true;
+    const { default: router } = await import("@/router");
+    await router.push({ name: "event-new", query: { id: underReview.id } });
+    const { default: View } = await import("@/views/events/EventRequestView.vue");
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const app = createApp(View).use(pinia).use(router);
+    app.mount(el);
+    mountedApps.push(app);
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-detail"));
+    expect(router.currentRoute.value.params.id).toBe(underReview.id);
+    expect(eventsApi.create).not.toHaveBeenCalled();
+  });
+
   it("leaves a draft in draft mode", async () => {
     const draft = returnedEvent({ id: "draft-1", status: "draft", amendment: null });
     const { el } = await mountForm([draft], draft);
