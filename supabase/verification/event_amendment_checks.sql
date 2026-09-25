@@ -77,6 +77,14 @@ begin
      where event_id = v_event and resubmitted_at is not null and resubmission_note = 'Attendance is now 40';
     if v_rows <> 1 then raise exception 'AMENDMENT FAIL: resubmit did not close the amendment with its note'; end if;
 
+    -- A blank resubmission note is refused by the table itself.
+    begin
+        update public.amendment_requests set resubmission_note = '   '
+         where event_id = v_event and resubmitted_at is not null;
+        raise exception 'AMENDMENT FAIL: a blank resubmission note was accepted';
+    exception when check_violation then null;
+    end;
+
     select count(*) into v_rows from public.event_status_history
      where event_id = v_event and from_status = 'returned' and to_status = 'under_review'
        and actor_id = v_organiser and reason = 'Attendance is now 40';
