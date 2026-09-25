@@ -54,6 +54,28 @@ describe("event store", () => {
     });
   });
 
+  it("sends null for cleared optional fields when editing an existing event, so the API clears them", () => {
+    const event = { ...emptyEvent(), name: "Planning workshop", expectedAttendance: "", accessibilityNeeds: "  " };
+
+    const payload = eventToPayload(event, { clearing: true });
+
+    expect(payload).toMatchObject({
+      purpose: null,
+      description: null,
+      expected_attendance: null,
+      layout_preference: null,
+      accessibility_needs: null,
+      preliminary_equipment_needs: null,
+      registration_capacity: null,
+      registration_opens_at: null,
+      registration_closes_at: null,
+    });
+    // The pair is constrained to be both set or both empty, and required to submit,
+    // so an incomplete time is left out rather than half-cleared.
+    expect(payload).not.toHaveProperty("starts_at");
+    expect(payload).not.toHaveProperty("ends_at");
+  });
+
   it("creates a draft through the authenticated session", async () => {
     const store = signedInStore();
     const event = { ...emptyEvent(), name: "Planning workshop" };
@@ -97,11 +119,8 @@ describe("event store", () => {
       { name: event.name, event_timezone: "Asia/Singapore", facilities_required: [], registration_enabled: false },
       "access",
     );
-    expect(eventsApi.submit).toHaveBeenCalledWith(
-      "e1",
-      { name: event.name, event_timezone: "Asia/Singapore", facilities_required: [], registration_enabled: false },
-      "access",
-    );
+    // Submitting edits the draft the create call just made, so empty fields go as null.
+    expect(eventsApi.submit).toHaveBeenCalledWith("e1", eventToPayload(event, { clearing: true }), "access");
     expect(result.status).toBe("under_review");
   });
 
@@ -123,10 +142,29 @@ describe("event store", () => {
     const result = await store.resubmit("e1", form, "  Attendance is now 40  ");
 
     expect(eventsApi.resubmit).toHaveBeenCalledWith(
-      "e1", { ...eventToPayload(form), resubmission_note: "Attendance is now 40" }, "access",
+      "e1", { ...eventToPayload(form, { clearing: true }), resubmission_note: "Attendance is now 40" }, "access",
     );
     expect(result.status).toBe("under_review");
     expect(store.events.find((event) => event.id === "e1").status).toBe("under_review");
+  });
+
+  it("clears a field the organiser emptied when resubmitting (SCRUM-33 AC3)", async () => {
+    const store = signedInStore();
+    eventsApi.resubmit.mockResolvedValue({ id: "e1", name: "Planning workshop", status: "under_review", amendment: null });
+    const form = { ...emptyEvent(), name: "Planning workshop", preliminaryEquipmentNeeds: "" };
+
+    await store.resubmit("e1", form, "Removed the equipment note");
+
+    expect(eventsApi.resubmit.mock.calls[0][1].preliminary_equipment_needs).toBeNull();
+  });
+
+  it("clears a field the organiser emptied when saving changes", async () => {
+    const store = signedInStore();
+    eventsApi.update.mockResolvedValue({ id: "e1", name: "Planning workshop", status: "returned" });
+
+    await store.updateDraft("e1", { ...emptyEvent(), name: "Planning workshop", description: "" });
+
+    expect(eventsApi.update.mock.calls[0][1].description).toBeNull();
   });
 
   it("keeps the API's error when a resubmission is refused", async () => {

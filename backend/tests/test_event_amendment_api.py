@@ -273,6 +273,19 @@ class TestResubmit:
         assert call["note"] == "Attendance is now 40"
         assert call["notify_message"] == '"Partner Summit" was amended and resubmitted: Attendance is now 40'
 
+    def test_an_emptied_optional_field_is_cleared_on_resubmit(self, client, auth_headers, act_as, events):
+        """AC3 "edits any field": clearing a field is an edit. The SPA sends null for
+        it, and the API must apply that rather than keep the old value."""
+        returned(events)
+        events["store"][EVENT_ID]["preliminary_equipment_needs"] = "Two projectors"
+        act_as("event_organiser", ORGANISER_ID)
+
+        response = resubmit_request(client, auth_headers, preliminary_equipment_needs=None)
+
+        assert response.status_code == 200
+        assert events["updates"] == [{"preliminary_equipment_needs": None}]
+        assert response.json()["preliminary_equipment_needs"] is None
+
     def test_resubmitting_without_edits_skips_the_update(self, client, auth_headers, act_as, events):
         returned(events)
         act_as("event_organiser", ORGANISER_ID)

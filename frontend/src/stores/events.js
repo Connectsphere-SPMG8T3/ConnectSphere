@@ -32,22 +32,30 @@ export function emptyEvent() {
   };
 }
 
-export function eventToPayload(event) {
+// `clearing`: the payload edits an existing event, so a field the organiser
+// emptied is sent as null (the API only changes fields present in the body).
+// A new event just leaves it out. The start/end pair is never cleared here:
+// the database needs both or neither, and submission requires them anyway.
+export function eventToPayload(event, { clearing = false } = {}) {
+  const blank = clearing ? null : undefined;
   const payload = {
     name: (event.name ?? "").trim(),
     event_timezone: event.eventTimezone || DEFAULT_EVENT_TIMEZONE,
-    purpose: (event.purpose ?? "").trim() || undefined,
-    description: (event.description ?? "").trim() || undefined,
-    expected_attendance: event.expectedAttendance === "" ? undefined : Number(event.expectedAttendance),
-    layout_preference: event.layoutPreference || undefined,
+    purpose: (event.purpose ?? "").trim() || blank,
+    description: (event.description ?? "").trim() || blank,
+    expected_attendance: event.expectedAttendance === "" || event.expectedAttendance == null ? blank : Number(event.expectedAttendance),
+    layout_preference: event.layoutPreference || blank,
     facilities_required: [...event.facilitiesRequired],
-    accessibility_needs: (event.accessibilityNeeds ?? "").trim() || undefined,
-    preliminary_equipment_needs: (event.preliminaryEquipmentNeeds ?? "").trim() || undefined,
+    accessibility_needs: (event.accessibilityNeeds ?? "").trim() || blank,
+    preliminary_equipment_needs: (event.preliminaryEquipmentNeeds ?? "").trim() || blank,
     registration_enabled: event.registrationEnabled,
+    registration_capacity: blank,
+    registration_opens_at: blank,
+    registration_closes_at: blank,
   };
   if (event.date && event.startTime) payload.starts_at = toZonedIso(event.date, event.startTime, payload.event_timezone);
   if (event.date && event.endTime) payload.ends_at = toZonedIso(event.date, event.endTime, payload.event_timezone);
-  if (event.registrationCapacity !== "") payload.registration_capacity = Number(event.registrationCapacity);
+  if (event.registrationCapacity !== "" && event.registrationCapacity != null) payload.registration_capacity = Number(event.registrationCapacity);
   if (event.registrationOpensAt) {
     const [registrationOpensDate, registrationOpensTime] = event.registrationOpensAt.split("T");
     if (registrationOpensDate && registrationOpensTime) {
@@ -139,18 +147,18 @@ export const useEventsStore = defineStore("events", {
     },
 
     async updateDraft(eventId, event) {
-      return this.save((token) => eventsApi.update(eventId, eventToPayload(event), token));
+      return this.save((token) => eventsApi.update(eventId, eventToPayload(event, { clearing: true }), token));
     },
 
     async submit(eventId, event) {
-      return this.save((token) => eventsApi.submit(eventId, eventToPayload(event), token));
+      return this.save((token) => eventsApi.submit(eventId, eventToPayload(event, { clearing: true }), token));
     },
 
     // SCRUM-33: send a returned request back to its coordinator with the form's
     // edits and the organiser's note, in one request (like submit).
     async resubmit(eventId, event, note) {
       return this.save((token) =>
-        eventsApi.resubmit(eventId, { ...eventToPayload(event), resubmission_note: note.trim() }, token),
+        eventsApi.resubmit(eventId, { ...eventToPayload(event, { clearing: true }), resubmission_note: note.trim() }, token),
       );
     },
 
