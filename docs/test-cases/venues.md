@@ -24,6 +24,7 @@ Environment as in the [README](README.md#environment) plus the SCRUM-39 migratio
 | TC-VENUE-010 | Venue staff can search; organisers, attendees and tech support cannot | Logged in as each role | Visit `/venues` directly | — | Venue Staff: page renders (button also on their dashboard). Organiser / Attendee / Tech Support: router redirects to their own dashboard; `curl` with their token → `403 This action requires one of the following roles: event_coordinator, venue_staff.` | 🔴 |
 | TC-VENUE-011 | Unknown or malformed venue id | Coordinator token | `GET /api/v1/venues/b0000000-0000-4000-8000-0000000000ff` and `GET /api/v1/venues/not-a-uuid` | — | 404 `Venue not found.` and 422 respectively. `/venues/not-a-uuid` in the browser shows the error banner. | 🟢 |
 | TC-VENUE-012 | API outage keeps previous results on screen | Results shown; stop the backend | Click **Search venues** again | — | Red banner with the error message; the previous result cards remain; the session is not ended. | 🟢 |
+| TC-VENUE-055 | Pressing Enter in a search field runs the search (regression, PROJECT_REVIEW D13) | Logged in as Event Coordinator; on `/venues` | Type a value in the minimum capacity field and press **Enter** without clicking **Search venues** | `minimum capacity: 50` | The same as clicking **Search venues**: `GET /api/v1/venues` is sent with that criterion and the results update. Before the fix, Enter did nothing, because the card around the form cancelled it. | 🟢 |
 
 ### API contract (`curl` with a coordinator token)
 

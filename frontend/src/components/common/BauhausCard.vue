@@ -33,6 +33,9 @@ const props = defineProps({
 
 const emit = defineEmits(["click"]);
 
+// Enter activates the card only when pressed on the card itself (`.self` in the
+// template). An Enter bubbling up from a field inside the card must reach the
+// browser, which submits the form or starts a new line in a textarea.
 function activate() {
   if (props.clickable) emit("click");
 }
@@ -80,7 +83,7 @@ const accentBorderClass = computed(
     :role="clickable ? 'button' : undefined"
     :tabindex="clickable ? 0 : undefined"
     @click="activate"
-    @keydown.enter.prevent="activate"
+    @keydown.enter.self.prevent="activate"
   >
     <span v-if="toneClass" class="absolute inset-y-0 left-0 w-1.5" :class="toneClass" aria-hidden="true" />
     <!-- Marks stay small: on a paper surface they read as a mark, where the
