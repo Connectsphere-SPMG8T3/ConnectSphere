@@ -1053,7 +1053,7 @@ What was actually built:
 - `pytest` (full suite): **417 passed**. `npm test` (full suite): **441 passed** across 36 files. `npm run build` succeeds. `router/__tests__/activeRoleAccess.spec.js` failed until `signup` joined its list of routes that need no role list. That test exists to catch exactly this, a new route without `allowedRoles`.
 - **Real system, run by the developer on 2026-09-27** against the live project, who reported that everything worked. The checklist: sign up as an organiser in the browser; confirm the new `profiles` row (`event_organiser`, organisation and phone) and `user_roles` row; try the same email again (409 under Email) and a weak password; log in with the new account and reach event-request creation.
 - **Not covered by automated tests:** `services/api.js` putting a 422's `detail` on `ApiError`, because the view tests mock the whole module (the live check exercised it).
-- **Cleanup pending:** the test account made during the live check still exists. Delete it from Supabase Auth, which cascades to `profiles`, `user_roles` and `session_active_roles`. Any event it created must be deleted first, because `events.organiser_id` is `on delete restrict`.
+- **Cleanup:** the developer deleted the test account made during the live check.
 
 ## 5. Architecture: modular monolith
 
