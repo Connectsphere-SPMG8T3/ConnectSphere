@@ -3,6 +3,7 @@ from supabase_auth.errors import AuthApiError, AuthError, AuthRetryableError
 
 from app.core.exceptions import (
     AuthServiceUnavailableError,
+    EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     InvalidOrExpiredTokenError,
     RoleNotAssignedError,
@@ -16,7 +17,13 @@ from app.core.security import (
 
 _FOREIGN_KEY_VIOLATION = "23503"
 from app.db.supabase import create_auth_client, get_supabase_admin_client, get_supabase_anon_client
-from app.modules.auth.schemas import ProfileResponse, TokenResponse, UserLoginRequest, UserResponse
+from app.modules.auth.schemas import (
+    ProfileResponse,
+    SignupRequest,
+    TokenResponse,
+    UserLoginRequest,
+    UserResponse,
+)
 
 
 def get_roles(profile_id: str) -> list[str]:
@@ -73,6 +80,47 @@ def login(credentials: UserLoginRequest) -> TokenResponse:
         raise InvalidCredentialsError()
 
     return _token_response(auth_response.session, auth_response.user)
+
+
+def signup(request: SignupRequest) -> ProfileResponse:
+    """Create a confirmed account for an external user (SCRUM-80, ADR-0003).
+
+    Goes through the admin API rather than GoTrue sign-up so the account can
+    log in immediately and a duplicate email surfaces as an error. The
+    business role rides in `user_metadata` for `handle_new_user()`, which
+    creates the `profiles` and `user_roles` rows in the same transaction.
+    """
+    admin_client = get_supabase_admin_client()
+    try:
+        created = admin_client.auth.admin.create_user(
+            {
+                "email": request.email,
+                "password": request.password,
+                "email_confirm": True,
+                "user_metadata": {
+                    "role": request.role,
+                    "full_name": request.full_name,
+                    "organisation_name": request.organisation_name,
+                    "phone_number": request.phone_number,
+                },
+            }
+        )
+    except AuthRetryableError as exc:
+        raise AuthServiceUnavailableError() from exc
+    except AuthApiError as exc:
+        # Matched on GoTrue's error code, not its message text.
+        if exc.code == "email_exists":
+            raise EmailAlreadyRegisteredError() from exc
+        raise
+    user_id = created.user.id
+    profile = (
+        admin_client.table("profiles")
+        .select("id, email, full_name, role, organisation_name, department, phone_number")
+        .eq("id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    return ProfileResponse(**profile.data, roles=get_roles(user_id))
 
 
 def refresh(refresh_token: str) -> TokenResponse:

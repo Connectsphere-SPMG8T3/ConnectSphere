@@ -27,6 +27,14 @@ class AuthServiceUnavailableError(HTTPException):
         )
 
 
+class EmailAlreadyRegisteredError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists.",
+        )
+
+
 class ProfileNotFoundError(HTTPException):
     def __init__(self) -> None:
         super().__init__(
