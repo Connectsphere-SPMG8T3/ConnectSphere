@@ -1070,6 +1070,26 @@ Left for the team: AC1's "select" an Event Organiser. The page has no role picke
 
 After the fixes: `pytest` **421 passed**, `npm test` **442 passed**, `npm run build` succeeds.
 
+### 4.21. UI fix — Tech support dashboard navigation and colours
+
+Not a Jira story; a fix on `fix/ui-TechSupportDashboard`. Requested by the developer: make the tech support dashboard follow the other dashboards' colour scheme, and put its tabs in the sidebar.
+
+**Before.** The dashboard switched between its two views with its own tab bar at the top of the page (blue when selected, yellow on hover), and the sidebar showed a single **Dashboard** link. Its status badges used raw Tailwind colours outside the design tokens (`orange-400`, `green-500`, `green-700`). Errors showed as pale red boxes, loading states as yellow bars, and the availability result card turned solid yellow when stock was sufficient. The result card also stayed visible after switching to the inventory view.
+
+**Change.**
+- `Nav.vue` shows **Availability** and **Inventory** in place of **Dashboard** when the active role is `tech_support`. They link to `/dashboard/tech-support?tab=availability|inventory`, the same pattern as the organiser's Overview/Events. The check uses the active role, so an account acting as another role doesn't see them.
+- `TechSupportDashboard.vue` reads the view from `route.query.tab` and has no tab bar of its own. It loads the inventory the first time that view opens, including a direct link or reload on `?tab=inventory`.
+- Badges use the venue-staff dashboard's colours: red for out of stock and insufficient, yellow for under repair and in-progress maintenance, blue for partially reserved, `bauhaus-green` for available and sufficient, white for scheduled maintenance, and muted for completed maintenance. Green now has a second use beyond the venue-staff ACTIVE badge, with the same meaning: this needs nothing from you. Errors use the solid red banner the venue-staff and organiser dashboards use, loading states are neutral, **Refresh inventory** is an outline `BauhausButton`, and the result card is white and shows only on the Availability view.
+
+#### Verification
+
+- **Written red first:** `views/__tests__/techSupportDashboard.spec.js` (4 cases: no in-page tab bar, `?tab=inventory` renders and loads, a sidebar switch loads, token green and no raw colours), plus two `Nav.spec.js` cases (tech support sees both links; another active role holding `tech_support` doesn't). Five failed on the old code for the expected reasons. The sixth, the denial case, passed before the change as a guard.
+- `npm test`: **37 files, 448 passed**. `npm run build`: passed. No backend code changed.
+- **In a browser** (headless Chrome against the Vite dev server, with a stored tech-support session and no backend running): both views render with the right sidebar item highlighted at 1440px and 390px. With no backend, the error banners showed in the new style. No console errors.
+- **Not verified:** the pages with real data. No `.env` was available locally, so I didn't check the inventory table, badges, or availability result against the live project (TC-TSD-013–015 cover them manually).
+
+**Noticed, not fixed (out of scope; recorded as PROJECT_REVIEW D15).** When the inventory fails to load, the table still shows "No equipment matches this filter" and the maintenance panel shows "No maintenance records scheduled" under the error. That is what TC-TSD-011 says must not happen. The equipment picker on the availability form is still a hardcoded list of five seeded IDs, not the inventory endpoint.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.

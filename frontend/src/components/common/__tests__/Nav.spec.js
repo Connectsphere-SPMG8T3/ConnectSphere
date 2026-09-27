@@ -70,6 +70,29 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
     expect(el.textContent).toContain("Events");
   });
 
+  it("shows the tech support availability and inventory views in the side navigation", async () => {
+    const { el } = await mountNav({
+      id: "u1",
+      role: "tech_support",
+      roles: ["tech_support"],
+    });
+
+    expect(el.querySelector('a[href="/dashboard/tech-support?tab=availability"]')).toBeTruthy();
+    expect(el.querySelector('a[href="/dashboard/tech-support?tab=inventory"]')).toBeTruthy();
+    expect(el.textContent).toContain("Availability");
+    expect(el.textContent).toContain("Inventory");
+  });
+
+  it("does not show the tech support views to another role", async () => {
+    const { el } = await mountNav({
+      id: "u1",
+      role: "event_coordinator",
+      roles: ["event_coordinator", "tech_support"],
+    });
+
+    expect(el.querySelector('a[href^="/dashboard/tech-support"]')).toBeNull();
+  });
+
   it("lists every held role with a human-readable label for a multi-role profile", async () => {
     const { el } = await mountNav({
       id: "u1",

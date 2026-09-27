@@ -1,5 +1,6 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
@@ -8,7 +9,9 @@ import { ApiError, checkEquipmentAvailability, equipmentApi } from "@/services/a
 import { useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
-const activeTab = ref("availability");
+const route = useRoute();
+// The tabs live in the sidebar (Nav.vue), which links here with ?tab=.
+const activeTab = computed(() => (route.query.tab === "inventory" ? "inventory" : "availability"));
 
 function localDateTime(hour) {
   const date = new Date();
@@ -41,11 +44,32 @@ const maintenanceLoading = ref(false);
 const maintenanceError = ref("");
 const statusLabel = computed(() => (results.value?.sufficient ? "SUFFICIENT" : "INSUFFICIENT"));
 
+// Status badges use the venue-staff dashboard's vocabulary: red is a problem,
+// yellow wants attention, blue is informational, and green (the one colour
+// outside the primaries) means the item needs nothing from you.
+const pillClasses = {
+  red: "bg-bauhaus-red text-canvas",
+  yellow: "bg-bauhaus-yellow text-ink",
+  blue: "bg-bauhaus-blue text-canvas",
+  green: "bg-bauhaus-green text-canvas",
+  plain: "bg-canvas text-ink",
+  muted: "bg-muted text-ink/70",
+};
+
 function inventoryStatus(item) {
-  if (item.net_available === 0) return { label: "OUT OF STOCK", filter: "out-of-stock", classes: "bg-bauhaus-red text-canvas" };
-  if (item.maintenance_quantity > 0) return { label: "UNDER REPAIR", filter: "maintenance", classes: "bg-orange-400 text-ink" };
-  if (item.reserved_quantity > 0) return { label: "PARTIALLY RESERVED", filter: "partial", classes: "bg-bauhaus-yellow text-ink" };
-  return { label: "AVAILABLE", filter: "available", classes: "bg-green-500 text-ink" };
+  if (item.net_available === 0) return { label: "OUT OF STOCK", filter: "out-of-stock", classes: pillClasses.red };
+  if (item.maintenance_quantity > 0) return { label: "UNDER REPAIR", filter: "maintenance", classes: pillClasses.yellow };
+  if (item.reserved_quantity > 0) return { label: "PARTIALLY RESERVED", filter: "partial", classes: pillClasses.blue };
+  return { label: "AVAILABLE", filter: "available", classes: pillClasses.green };
+}
+
+const maintenanceStatusClasses = {
+  SCHEDULED: pillClasses.plain,
+  IN_PROGRESS: pillClasses.yellow,
+};
+
+function maintenanceStatusClass(status) {
+  return maintenanceStatusClasses[status] ?? pillClasses.muted;
 }
 
 const filteredInventory = computed(() => {
@@ -144,10 +168,13 @@ async function loadInventory() {
   }
 }
 
-function selectTab(tab) {
-  activeTab.value = tab;
-  if (tab === "inventory" && inventoryItems.value.length === 0) loadInventory();
-}
+watch(
+  activeTab,
+  (tab) => {
+    if (tab === "inventory" && inventoryItems.value.length === 0) loadInventory();
+  },
+  { immediate: true },
+);
 
 function formatDate(value) {
   return new Intl.DateTimeFormat("en-SG", {
@@ -162,22 +189,13 @@ function formatDate(value) {
   <main class="py-12">
     <BauhausCard background="yellow" accent="none" class="mb-10">
       <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Technical Support Dashboard</p>
-      <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">
+      <h1 class="mt-2 text-3xl font-black uppercase leading-none tracking-tighter sm:text-4xl">
         Welcome, {{ authStore.profile?.full_name }}
       </h1>
       <p class="mt-3 max-w-xl text-sm font-medium">
         Check functional equipment against existing reservations and unavailable stock for a specific event window.
       </p>
     </BauhausCard>
-
-    <nav class="mb-8 grid grid-cols-1 border-4 border-ink sm:grid-cols-2" aria-label="Technical support views">
-      <button type="button" class="border-b-2 border-ink px-5 py-4 text-left text-sm font-black uppercase tracking-widest transition-colors sm:border-b-0 sm:border-r-2" :class="activeTab === 'availability' ? 'bg-bauhaus-blue text-canvas' : 'bg-canvas hover:bg-bauhaus-yellow'" :aria-selected="activeTab === 'availability'" @click="selectTab('availability')">
-        Check availability
-      </button>
-      <button type="button" class="px-5 py-4 text-left text-sm font-black uppercase tracking-widest transition-colors" :class="activeTab === 'inventory' ? 'bg-bauhaus-blue text-canvas' : 'bg-canvas hover:bg-bauhaus-yellow'" :aria-selected="activeTab === 'inventory'" @click="selectTab('inventory')">
-        Inventory &amp; status overview
-      </button>
-    </nav>
 
     <BauhausCard v-if="activeTab === 'availability'" background="white" accent="square" accent-color="bauhaus-red">
       <div class="flex flex-col gap-6">
@@ -225,8 +243,8 @@ function formatDate(value) {
           </div>
         </div>
 
-        <p v-if="validationMessage" class="border-2 border-bauhaus-red bg-bauhaus-red/10 p-4 text-sm font-bold text-bauhaus-red" role="alert">{{ validationMessage }}</p>
-        <p v-if="errorMessage" class="border-2 border-bauhaus-red bg-bauhaus-red/10 p-4 text-sm font-bold text-bauhaus-red" role="alert">{{ errorMessage }}</p>
+        <p v-if="validationMessage" class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4" role="alert">{{ validationMessage }}</p>
+        <p v-if="errorMessage" class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4" role="alert">{{ errorMessage }}</p>
 
         <BauhausButton type="button" variant="secondary" full-width :disabled="isLoading" @click="checkAvailability">
           <span v-if="isLoading" class="h-4 w-4 animate-spin rounded-full border-2 border-canvas border-t-transparent" aria-hidden="true"></span>
@@ -242,9 +260,9 @@ function formatDate(value) {
             <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Master equipment records</p>
             <h2 class="mt-2 text-2xl font-black uppercase tracking-tight">Inventory &amp; status overview</h2>
           </div>
-          <button type="button" class="border-2 border-ink px-4 py-2 text-xs font-black uppercase tracking-widest hover:bg-bauhaus-yellow disabled:cursor-not-allowed disabled:opacity-50" :disabled="inventoryLoading" @click="loadInventory">
+          <BauhausButton type="button" variant="outline" :disabled="inventoryLoading" @click="loadInventory">
             Refresh inventory
-          </button>
+          </BauhausButton>
         </div>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_14rem]">
@@ -263,8 +281,8 @@ function formatDate(value) {
           </label>
         </div>
 
-        <p v-if="inventoryError" class="border-2 border-bauhaus-red bg-bauhaus-red/10 p-4 text-sm font-bold text-bauhaus-red" role="alert">{{ inventoryError }}</p>
-        <div v-if="inventoryLoading" class="flex items-center gap-3 border-2 border-ink bg-bauhaus-yellow p-4 text-sm font-black uppercase tracking-widest" role="status">
+        <p v-if="inventoryError" class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4" role="alert">{{ inventoryError }}</p>
+        <div v-if="inventoryLoading" class="flex items-center gap-3 border-2 border-ink bg-canvas p-4 text-sm font-bold uppercase tracking-widest text-ink/70" role="status">
           <span class="h-5 w-5 animate-spin rounded-full border-2 border-ink border-t-transparent" aria-hidden="true"></span>
           Loading inventory
         </div>
@@ -287,7 +305,7 @@ function formatDate(value) {
                 <td class="px-4 py-4">{{ item.reserved_quantity }}</td>
                 <td class="px-4 py-4">{{ item.maintenance_quantity }}</td>
                 <td class="px-4 py-4 font-black">{{ item.net_available }}</td>
-                <td class="px-4 py-4"><span class="inline-block border-2 border-ink px-3 py-1 text-xs font-black tracking-wide" :class="inventoryStatus(item).classes">{{ inventoryStatus(item).label }}</span></td>
+                <td class="px-4 py-4"><span class="inline-block border-2 border-ink px-3 py-1 text-[10px] font-bold uppercase tracking-widest" :class="inventoryStatus(item).classes">{{ inventoryStatus(item).label }}</span></td>
               </tr>
               <tr v-if="filteredInventory.length === 0">
                 <td colspan="6" class="px-4 py-8 text-center text-sm font-bold uppercase tracking-widest">No equipment matches this filter.</td>
@@ -314,8 +332,8 @@ function formatDate(value) {
               <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Live equipment records</p>
               <h3 id="maintenance-heading" class="mt-2 text-xl font-black uppercase tracking-tight">Scheduled maintenance</h3>
             </div>
-            <p v-if="maintenanceError" class="border-2 border-bauhaus-red bg-bauhaus-red/10 p-4 text-sm font-bold text-bauhaus-red" role="alert">{{ maintenanceError }}</p>
-            <div v-if="maintenanceLoading" class="flex items-center gap-3 border-2 border-ink bg-bauhaus-yellow p-4 text-sm font-black uppercase tracking-wide" role="status">
+            <p v-if="maintenanceError" class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4" role="alert">{{ maintenanceError }}</p>
+            <div v-if="maintenanceLoading" class="flex items-center gap-3 border-2 border-ink bg-canvas p-4 text-sm font-bold uppercase tracking-widest text-ink/70" role="status">
               <span class="h-5 w-5 animate-spin rounded-full border-2 border-ink border-t-transparent" aria-hidden="true"></span>
               Loading maintenance
             </div>
@@ -323,7 +341,7 @@ function formatDate(value) {
               <article v-for="item in maintenanceItems" :key="item.maintenance_id" class="border-2 border-ink p-4">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <p class="font-black">{{ item.equipment_name }}</p>
-                  <span class="border-2 border-ink px-2 py-1 text-xs font-black" :class="item.status === 'SCHEDULED' ? 'bg-bauhaus-yellow text-ink' : item.status === 'IN_PROGRESS' ? 'bg-orange-400 text-ink' : 'bg-green-500 text-ink'">{{ item.status }}</span>
+                  <span class="border-2 border-ink px-2 py-1 text-[10px] font-bold uppercase tracking-widest" :class="maintenanceStatusClass(item.status)">{{ item.status }}</span>
                 </div>
                 <p class="mt-2 text-xs font-bold uppercase tracking-wide">{{ formatDate(item.start_at) }} – {{ formatDate(item.end_at) }}</p>
                 <p class="mt-2 text-sm font-medium">{{ item.reason || "No reason provided" }}</p>
@@ -335,14 +353,14 @@ function formatDate(value) {
       </div>
     </BauhausCard>
 
-    <BauhausCard v-if="results" :background="results.sufficient ? 'yellow' : 'white'" accent="triangle" :accent-color="results.sufficient ? 'ink' : 'bauhaus-red'" class="mt-8">
+    <BauhausCard v-if="activeTab === 'availability' && results" background="white" accent="triangle" :accent-color="results.sufficient ? 'ink' : 'bauhaus-red'" class="mt-8">
       <div class="flex flex-col gap-6">
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Live result</p>
             <h2 class="mt-2 text-2xl font-black uppercase tracking-tight">Equipment status</h2>
           </div>
-          <span class="border-2 border-ink px-4 py-2 text-sm font-black tracking-widest" :class="results.sufficient ? 'bg-green-500 text-ink' : 'bg-bauhaus-red text-canvas'">{{ statusLabel }}</span>
+          <span class="border-2 border-ink px-4 py-2 text-xs font-bold uppercase tracking-widest" :class="results.sufficient ? pillClasses.green : pillClasses.red">{{ statusLabel }}</span>
         </div>
 
         <div class="overflow-x-auto border-2 border-ink">
@@ -360,7 +378,7 @@ function formatDate(value) {
                 <td class="px-4 py-4 font-bold">{{ item.name }}</td>
                 <td class="px-4 py-4">{{ item.quantity_needed }}</td>
                 <td class="px-4 py-4">{{ item.quantity_available }}</td>
-                <td class="px-4 py-4 font-black uppercase" :class="item.sufficient ? 'text-green-700' : 'text-bauhaus-red'">{{ item.sufficient ? "Sufficient" : "Insufficient" }}</td>
+                <td class="px-4 py-4 font-black uppercase" :class="item.sufficient ? 'text-bauhaus-green' : 'text-bauhaus-red'">{{ item.sufficient ? "Sufficient" : "Insufficient" }}</td>
               </tr>
             </tbody>
           </table>
