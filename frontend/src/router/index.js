@@ -16,6 +16,12 @@ const routes = [
     meta: { requiresAuth: false },
   },
   {
+    path: "/signup",
+    name: "signup",
+    component: () => import("@/views/SignupView.vue"),
+    meta: { requiresAuth: false },
+  },
+  {
     path: "/profile/me",
     name: "profile",
     component: () => import("@/views/ProfileView.vue"),
@@ -127,7 +133,8 @@ router.beforeEach(async (to) => {
     return to.name === "login" ? true : { name: "login" };
   }
 
-  if (to.name === "login" && isAuthenticated) {
+  // Signing in or up again makes no sense with a live session.
+  if ((to.name === "login" || to.name === "signup") && isAuthenticated) {
     return authStore.dashboardPath;
   }
 

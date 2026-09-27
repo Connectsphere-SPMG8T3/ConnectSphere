@@ -1,13 +1,16 @@
 <script setup>
 import { ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import { useAuthStore } from "@/stores/auth";
 
-const email = ref("");
+// Set by SignupView after a successful sign-up (SCRUM-80).
+const signedUpEmail = window.history.state?.signedUpEmail ?? "";
+
+const email = ref(signedUpEmail);
 const password = ref("");
 const fieldErrors = ref({ email: "", password: "" });
 
@@ -63,6 +66,14 @@ async function handleSubmit() {
           <h2 class="text-2xl font-black uppercase tracking-tight">Sign In</h2>
 
           <div
+            v-if="signedUpEmail && !authStore.error"
+            role="status"
+            class="border-2 border-ink bg-bauhaus-yellow px-4 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-hard sm:border-4"
+          >
+            Account created. Please sign in.
+          </div>
+
+          <div
             v-if="authStore.error"
             role="alert"
             class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
@@ -90,6 +101,13 @@ async function handleSubmit() {
           <BauhausButton type="submit" variant="primary" full-width :disabled="authStore.isLoading">
             {{ authStore.isLoading ? "Signing In…" : "Sign In" }}
           </BauhausButton>
+
+          <p class="text-center text-sm font-medium text-ink/70">
+            New Event Organiser?
+            <RouterLink to="/signup" class="font-bold uppercase tracking-wide text-bauhaus-blue underline">
+              Create an account
+            </RouterLink>
+          </p>
         </form>
       </BauhausCard>
     </div>
