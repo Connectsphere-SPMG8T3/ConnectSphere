@@ -4,10 +4,11 @@ from types import SimpleNamespace
 from typing import Annotated
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.testclient import TestClient
 from postgrest.exceptions import APIError
-from supabase_auth.errors import AuthApiError, AuthInvalidJwtError, AuthRetryableError
+from supabase_auth.errors import AuthApiError, AuthInvalidJwtError, AuthRetryableError, AuthWeakPasswordError
 
 from app.main import app
 from app.modules.auth import service as auth_service_module
@@ -617,3 +618,217 @@ class TestActiveRole:
         )
 
         assert response.status_code == 403
+
+
+NEW_ORGANISER_ID = "33333333-3333-3333-3333-333333333333"
+NEW_ORGANISER_EMAIL = "organiser.new@connectsphere.dev"
+
+VALID_SIGNUP = {
+    "role": "event_organiser",
+    "full_name": "Olivia Organiser",
+    "email": NEW_ORGANISER_EMAIL,
+    "password": "Secure123",
+    "organisation_name": "SMU Events Club",
+    "phone_number": "+65 9123 4567",
+}
+
+NEW_ORGANISER_PROFILE_ROW = {
+    "id": NEW_ORGANISER_ID,
+    "email": NEW_ORGANISER_EMAIL,
+    "full_name": "Olivia Organiser",
+    "role": "event_organiser",
+    "organisation_name": "SMU Events Club",
+    "department": None,
+    "phone_number": "+65 9123 4567",
+}
+
+
+def _admin_client_for_signup(
+    monkeypatch,
+    *,
+    create_user_raises: Exception | None = None,
+    profile_row: dict | None = NEW_ORGANISER_PROFILE_ROW,
+) -> MagicMock:
+    """The admin client as sign-up sees it: `auth.admin.create_user` plus the
+    `profiles` / `user_roles` rows `handle_new_user()` would have written."""
+    admin_client = _make_table_mock(profile_row, user_roles=[{"role": "event_organiser"}])
+    if create_user_raises is not None:
+        admin_client.auth.admin.create_user.side_effect = create_user_raises
+    else:
+        admin_client.auth.admin.create_user.return_value = SimpleNamespace(
+            user=SimpleNamespace(id=NEW_ORGANISER_ID, email=NEW_ORGANISER_EMAIL)
+        )
+    monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
+    return admin_client
+
+
+class TestSignup:
+    def test_organiser_signup_creates_a_confirmed_account_and_returns_the_profile(self, client, monkeypatch):
+        admin_client = _admin_client_for_signup(monkeypatch)
+
+        response = client.post("/api/v1/auth/signup", json=VALID_SIGNUP)
+
+        assert response.status_code == 201
+        assert response.json() == {**NEW_ORGANISER_PROFILE_ROW, "roles": ["event_organiser"]}
+        # The business role travels in user_metadata for handle_new_user();
+        # a top-level "role" would set the Postgres role instead.
+        admin_client.auth.admin.create_user.assert_called_once_with(
+            {
+                "email": NEW_ORGANISER_EMAIL,
+                "password": "Secure123",
+                "email_confirm": True,
+                "user_metadata": {
+                    "role": "event_organiser",
+                    "full_name": "Olivia Organiser",
+                    "organisation_name": "SMU Events Club",
+                    "phone_number": "+65 9123 4567",
+                },
+            }
+        )
+
+    def test_signup_with_an_already_registered_email_returns_409(self, client, monkeypatch):
+        _admin_client_for_signup(
+            monkeypatch,
+            create_user_raises=AuthApiError(
+                "A user with this email address has already been registered", 422, "email_exists"
+            ),
+        )
+
+        response = client.post("/api/v1/auth/signup", json=VALID_SIGNUP)
+
+        assert response.status_code == 409
+        assert response.json() == {"detail": "An account with this email already exists."}
+
+    def test_signup_when_supabase_is_unavailable_returns_503(self, client, monkeypatch):
+        _admin_client_for_signup(monkeypatch, create_user_raises=SUPABASE_GATEWAY_UNAVAILABLE)
+
+        response = client.post("/api/v1/auth/signup", json=VALID_SIGNUP)
+
+        assert response.status_code == 503
+
+    def test_signup_with_a_password_supabase_rejects_returns_422_on_the_password_field(self, client, monkeypatch):
+        # supabase-auth raises AuthWeakPasswordError, which is not an AuthApiError.
+        _admin_client_for_signup(
+            monkeypatch,
+            create_user_raises=AuthWeakPasswordError(
+                "Password is known to be weak and easy to guess, please choose a different one.", 422, ["pwned"]
+            ),
+        )
+
+        response = client.post("/api/v1/auth/signup", json=VALID_SIGNUP)
+
+        assert response.status_code == 422
+        assert response.json() == {
+            "detail": [
+                {
+                    "loc": ["body", "password"],
+                    "msg": "Password is known to be weak and easy to guess, please choose a different one.",
+                    "type": "weak_password",
+                }
+            ]
+        }
+
+    def test_signup_that_supabase_refuses_for_another_reason_returns_503_not_500(self, client, monkeypatch):
+        _admin_client_for_signup(
+            monkeypatch,
+            create_user_raises=AuthApiError("Request rate limit reached", 429, "over_request_rate_limit"),
+        )
+
+        response = client.post("/api/v1/auth/signup", json=VALID_SIGNUP)
+
+        assert response.status_code == 503
+
+    def test_signup_when_the_trigger_wrote_no_profile_returns_404_not_500(self, client, monkeypatch):
+        _admin_client_for_signup(monkeypatch, profile_row=None)
+
+        response = client.post("/api/v1/auth/signup", json=VALID_SIGNUP)
+
+        assert response.status_code == 404
+        assert response.json() == {"detail": "User profile not found."}
+
+    @pytest.mark.parametrize(
+        "role",
+        # Staff roles are system defaults (ACC-R3); attendee sign-up is SCRUM-83.
+        ["event_coordinator", "venue_staff", "tech_support", "attendee"],
+    )
+    def test_signup_for_any_role_but_event_organiser_is_rejected_before_reaching_supabase(
+        self, client, monkeypatch, role
+    ):
+        admin_client = _admin_client_for_signup(monkeypatch)
+
+        response = client.post("/api/v1/auth/signup", json={**VALID_SIGNUP, "role": role})
+
+        assert response.status_code == 422
+        admin_client.auth.admin.create_user.assert_not_called()
+
+    @pytest.mark.parametrize("field", ["full_name", "email", "password", "organisation_name"])
+    @pytest.mark.parametrize("value", [None, "", "   "], ids=["missing", "empty", "blank"])
+    def test_signup_with_a_required_field_left_empty_returns_422_naming_the_field(
+        self, client, monkeypatch, field, value
+    ):
+        admin_client = _admin_client_for_signup(monkeypatch)
+        body = {**VALID_SIGNUP, field: value}
+        if value is None:
+            del body[field]
+
+        response = client.post("/api/v1/auth/signup", json=body)
+
+        assert response.status_code == 422
+        assert [error["loc"] for error in response.json()["detail"]] == [["body", field]]
+        admin_client.auth.admin.create_user.assert_not_called()
+
+    @pytest.mark.parametrize("email", ["not-an-email", "olivia@", "@connectsphere.dev", "olivia connectsphere.dev"])
+    def test_signup_with_an_invalid_email_format_returns_422(self, client, monkeypatch, email):
+        admin_client = _admin_client_for_signup(monkeypatch)
+
+        response = client.post("/api/v1/auth/signup", json={**VALID_SIGNUP, "email": email})
+
+        assert response.status_code == 422
+        assert [error["loc"] for error in response.json()["detail"]] == [["body", "email"]]
+        admin_client.auth.admin.create_user.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "password",
+        # Built from their parts: password-like literals trip GitGuardian.
+        ["a" * 6 + "1", "a" * 8, "1" * 8, " " * 8, "a" * 7 + "\u00b2"],
+        ids=["seven-characters", "no-digit", "no-letter", "only-spaces", "superscript-is-not-a-digit"],
+    )
+    def test_signup_with_a_password_that_breaks_the_rule_returns_422_explaining_it(
+        self, client, monkeypatch, password
+    ):
+        admin_client = _admin_client_for_signup(monkeypatch)
+
+        response = client.post("/api/v1/auth/signup", json={**VALID_SIGNUP, "password": password})
+
+        assert response.status_code == 422
+        [error] = response.json()["detail"]
+        assert error["loc"] == ["body", "password"]
+        assert error["msg"] == "Password must be at least 8 characters and include at least one letter and one digit."
+        admin_client.auth.admin.create_user.assert_not_called()
+
+    def test_signup_accepts_a_password_of_exactly_eight_characters_with_a_letter_and_a_digit(
+        self, client, monkeypatch
+    ):
+        _admin_client_for_signup(monkeypatch)
+        # Built from its parts, not written out: the boundary is the point,
+        # and a password-like literal trips GitGuardian's generic detector.
+        seven_letters_and_a_digit = "a" * 7 + "1"
+
+        response = client.post("/api/v1/auth/signup", json={**VALID_SIGNUP, "password": seven_letters_and_a_digit})
+
+        assert response.status_code == 201
+
+    @pytest.mark.parametrize("phone_number", [None, "", "   "], ids=["missing", "empty", "blank"])
+    def test_signup_without_a_phone_number_creates_the_account_with_no_phone(
+        self, client, monkeypatch, phone_number
+    ):
+        admin_client = _admin_client_for_signup(monkeypatch)
+        body = {**VALID_SIGNUP, "phone_number": phone_number}
+        if phone_number is None:
+            del body["phone_number"]
+
+        response = client.post("/api/v1/auth/signup", json=body)
+
+        assert response.status_code == 201
+        [attributes], _ = admin_client.auth.admin.create_user.call_args
+        assert attributes["user_metadata"]["phone_number"] is None

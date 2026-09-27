@@ -8,6 +8,7 @@ from app.modules.auth.schemas import (
     ProfileResponse,
     RefreshTokenRequest,
     SetActiveRoleRequest,
+    SignupRequest,
     TokenResponse,
     UserLoginRequest,
 )
@@ -16,6 +17,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Endpoints are plain `def`: the supabase-py client is synchronous, and FastAPI
 # runs sync endpoints in its threadpool instead of blocking the event loop.
+
+
+@router.post("/signup", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED)
+def signup(body: SignupRequest) -> ProfileResponse:
+    """Create an Event Organiser account that can log in straight away (SCRUM-80)."""
+    return service.signup(body)
 
 
 @router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)

@@ -1,10 +1,13 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
 
 class ApiError extends Error {
-  constructor(message, status) {
+  // `detail` is the response's raw `detail`, so a form can place a 422's
+  // per-field errors (`detail[].loc`) under the fields they name.
+  constructor(message, status, detail = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -27,13 +30,16 @@ async function request(path, { method = "GET", body, token } = {}) {
     const message = Array.isArray(detail)
       ? detail.map((entry) => entry.msg).join(", ")
       : detail || "An unexpected error occurred. Please try again.";
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, detail ?? null);
   }
 
   return payload;
 }
 
 export const authApi = {
+  signup(details) {
+    return request("/auth/signup", { method: "POST", body: details });
+  },
   login(email, password) {
     return request("/auth/login", { method: "POST", body: { email, password } });
   },

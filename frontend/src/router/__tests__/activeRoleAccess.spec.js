@@ -15,8 +15,9 @@ vi.mock("@/services/api", async (importOriginal) => ({
 
 const STORAGE_KEY = "connectsphere.session";
 const ROLES = ["event_organiser", "event_coordinator", "venue_staff", "tech_support", "attendee"];
-// Routes any signed-in role may open, so they need no allowedRoles.
-const OPEN_TO_ANY_ROLE = ["login", "profile"];
+// Routes that need no allowedRoles: the public sign-in and sign-up pages
+// (a signed-in session is sent to its dashboard) and the shared profile.
+const OPEN_TO_ANY_ROLE = ["login", "signup", "profile"];
 
 async function loadAppActingAs(activeRole, heldRoles = ROLES) {
   localStorage.setItem(

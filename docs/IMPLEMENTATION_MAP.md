@@ -18,6 +18,7 @@ _Last updated: 2026-09-25 — `fix/card-enter-key` (PROJECT_REVIEW **D13**): `Ba
 | Story | Status | Backend | Frontend | Database |
 |---|---|---|---|---|
 | SCRUM-48 Basic user authentication | Done | `modules/auth` | `LoginView`, `stores/auth.js`, router guards | `profiles` |
+| SCRUM-80 Event organiser signup | On `feature/scrum-80-organiser-signup`, not yet merged. Verified against the live project | `POST /auth/signup` (`service.signup`, `SignupRequest`); accounts created confirmed through the admin API (ADR-0003) | `SignupView` at `/signup`; `LoginView` shows the sign-up confirmation and links to `/signup` | none new (the existing `handle_new_user()` trigger writes `profiles` and `user_roles`) |
 | SCRUM-50 See my own profile | Done in Jira; see open defect D7 in §5 | `GET /auth/me` | `ProfileView` (also lists every held role for a multi-role account — see SCRUM-78 below) | `profiles` |
 | SCRUM-74 View assigned roles in nav dropdown, SCRUM-75 Select active role from nav dropdown | Done (merged in PR #12) (ACC-R4) | `POST /auth/active-role`, `roles` on `ProfileResponse`, session-scoped active role in `get_current_user` | Role switcher in `Nav.vue`, `roles`/`hasMultipleRoles`/`setActiveRole` in `stores/auth.js` | `user_roles`, `session_active_roles` |
 | SCRUM-78 View all assigned roles on profile page | Done (merged with SCRUM-74/75) (ACC-R4); implemented ahead of ticket creation during SCRUM-74/75's code review, ticket opened retroactively for traceability | none (reuses `roles` on `ProfileResponse`) | "All Roles" section in `ProfileView.vue`, shown only via `authStore.hasMultipleRoles` | none (reuses `user_roles`) |
@@ -40,6 +41,7 @@ _Last updated: 2026-09-25 — `fix/card-enter-key` (PROJECT_REVIEW **D13**): `Ba
 
 | Method and path | Guard | What it does |
 |---|---|---|
+| `POST /auth/signup` | public | Creates an Event Organiser account that can log in immediately (SCRUM-80). 201 with the profile; 409 if the email has an account; 422 per field, including any role but `event_organiser` (SCRUM-83 adds `attendee`) |
 | `POST /auth/login` | public | Signs in and returns tokens and profile (`role` = this session's active role, `roles` = every role the account holds) |
 | `POST /auth/refresh` | public (refresh token) | Rotates the session |
 | `GET /auth/me` | authenticated | Returns the current user's profile, including `roles` |
@@ -96,7 +98,8 @@ _Last updated: 2026-09-25 — `fix/card-enter-key` (PROJECT_REVIEW **D13**): `Ba
 
 | Path | Allowed roles | View |
 |---|---|---|
-| `/login` | public | `LoginView` |
+| `/login` | public (a signed-in user goes to their dashboard) | `LoginView`; shows "Account created" and pre-fills the email when arriving from sign-up (history state `signedUpEmail`) |
+| `/signup` | public (a signed-in user goes to their dashboard) | `SignupView` (SCRUM-80) |
 | `/profile/me` | any signed-in user | `ProfileView` |
 | `/dashboard/organiser`, `/coordinator`, `/venue-staff`, `/tech-support`, `/attendee` | that role (`meta.allowedRoles`) | `views/dashboards/*Dashboard.vue` |
 | `/events/new`, `/events/:id` | `event_organiser` | `EventRequestView`, `EventDetailView`; organiser dashboard actions navigate here |
@@ -128,7 +131,7 @@ _Last updated: 2026-09-25 — `fix/card-enter-key` (PROJECT_REVIEW **D13**): `Ba
 | Sidebar collapse (desktop, persisted) and drawer open/close (mobile) | `useSidebarState()` → `isCollapsed`, `isMobileOpen` | `composables/useSidebarState.js` |
 | Friendly date for headers ("8th May 2025") | `formatFriendlyDate(date)`, `ordinalSuffix(day)` | `components/common/dateFormat.js` |
 | Venue search form and result card | `VenueCriteriaForm` (`criteria`, `errors`; emits `submit`, `reset`), `VenueResultCard` (`result`) | `components/venues/` |
-| API calls | `authApi`, `venuesApi`, `eventsApi`, `ApiError` | `services/api.js` |
+| API calls | `authApi`, `venuesApi`, `eventsApi`, `ApiError` (`message`, `status`, and `detail`, the response's raw `detail`, so a form can show a 422's errors under the fields its `detail[].loc` names — see `SignupView`) | `services/api.js` |
 | Session, current user, role → dashboard route, role labels, role switching | `useAuthStore` (`roles`, `hasMultipleRoles`, `setActiveRole(role)`), `ROLE_DASHBOARD_ROUTES`, `ROLE_LABELS` | `stores/auth.js` |
 | Venue option lists and search state | `LAYOUTS`, `FACILITIES`, `ACCESSIBILITY_FEATURES`, `emptyCriteria()`, `criteriaToParams(criteria)`, `useVenuesStore` | `features/venues/venueSearchStore.js` |
 | Singapore-time arithmetic (deciding *which day* an instant falls on) | `singaporeDayKey(instant)`, `startOfSingaporeDayUtc(key)`, `toSingaporeIso(date, time)`, `SINGAPORE_OFFSET_MS` | `features/venues/singaporeTime.js` |
@@ -163,7 +166,7 @@ Vitest specs live in `__tests__/` folders next to the code (21 spec files at the
 - `features/events/` — dashboard logic, date validation, coordinator dashboard store
 - `components/common/` — `Nav`, `TopBar`, `dateFormat`; `components/venues/` — `VenueLayoutDiagram`
 - `composables/` — `useToast`
-- `views/` — `ProfileView`, `venueStaffDashboard`, and `venueSearch.spec.js`, which holds the specs for **both** venue views and the `mountView` harness they share
+- `views/` — `ProfileView`, `SignupView` (the whole sign-up → login flow through the real router), `venueStaffDashboard`, and `venueSearch.spec.js`, which holds the specs for **both** venue views and the `mountView` harness they share
 
 There is no spec for `BookingRequestView`. `EventRequestView.spec.js` (SCRUM-33 amend mode) and `EventDetailView.spec.js` exist.
 

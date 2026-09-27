@@ -27,6 +27,28 @@ class AuthServiceUnavailableError(HTTPException):
         )
 
 
+class EmailAlreadyRegisteredError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists.",
+        )
+
+
+class SupabasePasswordRejectedError(HTTPException):
+    """Supabase's own password policy refused a password our rule accepted.
+
+    Shaped like a validation error on `password`, so the SPA shows GoTrue's
+    reason under the field as it does for the API's own checks (SCRUM-80).
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[{"loc": ["body", "password"], "msg": message, "type": "weak_password"}],
+        )
+
+
 class ProfileNotFoundError(HTTPException):
     def __init__(self) -> None:
         super().__init__(
