@@ -122,6 +122,21 @@ npm test
 
 Unit tests use Vitest with a jsdom environment and live in `__tests__/` folders next to the code they cover (e.g. `src/stores/__tests__/`). They mock `@/services/api`, so no backend is needed.
 
+### Live checks against the real system
+
+These run against running servers and the live Supabase project, so start the backend and frontend first. They only read shared data.
+
+```bash
+cd frontend
+npx playwright install chromium   # once, downloads the browser
+npm run test:e2e                  # Playwright specs in frontend/e2e/
+
+cd ../backend                     # virtualenv active; `supabase login` done once
+python scripts/verify_live.py     # API cases + rolled-back supabase/verification/ scripts
+```
+
+Add `--record` (script) or use `npm run test:e2e:record` to write a run log to `docs/test-cases/runs/`. That folder's README covers other ports, rate limits, and the manual-check template.
+
 ## 6. Docker Compose (optional)
 
 `docker-compose.yml` at the repo root runs both services against a shared `.env`:

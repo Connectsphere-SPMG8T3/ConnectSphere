@@ -14,7 +14,7 @@ It covers **both** halves of the work: what an AI agent or a developer does whil
 
 Agents never push, open PRs, or change Jira unless the developer asks (root `AGENTS.md`, "Git workflow"). Phase 4 is therefore where the work is handed back to a person — an agent that stops after Phase 3 has done its job, but the *story* is not done.
 
-_Last updated: 2026-09-22 — "CI is green on the PR" moved from "Not yet enforceable" into Phase 4, now that `.github/workflows/ci.yml` exists. First version (same day) consolidated the checklist in root `AGENTS.md` and the Sprint 2 proposal in `docs/PROJECT_REVIEW.md` §C4._
+_Last updated: 2026-09-27 — Phase 2 adds recorded live checks and the developer's manual browser pass; Phase 3 adds the run logs in `docs/test-cases/runs/` (`chore/automated-live-checks`). 2026-09-22 — "CI is green on the PR" moved from "Not yet enforceable" into Phase 4, now that `.github/workflows/ci.yml` exists. First version (same day) consolidated the checklist in root `AGENTS.md` and the Sprint 2 proposal in `docs/PROJECT_REVIEW.md` §C4._
 
 ---
 
@@ -35,6 +35,8 @@ _Last updated: 2026-09-22 — "CI is green on the PR" moved from "Not yet enforc
 - [ ] **[A]** Authorisation is checked as **role *and* relationship to the resource**, gated on the session's **active** role, with a negative test proving a user holding another role gets 403 (SCRUM-76).
 - [ ] **[A]** The **full** suite passes, not only the new tests: `pytest` from `backend/`, `npm test` from `frontend/`.
 - [ ] **[A]** Anything crossing an integration boundary (Supabase Auth, PostgREST, RLS, the browser) is verified against the **real system**, not only against mocks. "It imports" is not "it works".
+- [ ] **[A]** The live checks were run with recording on (`backend/scripts/verify_live.py --record`, `npm run test:e2e:record`), and the story's new cases were automated where their outcome can be checked by a request or a browser assertion (root `AGENTS.md`, "Live checks and the manual browser pass").
+- [ ] **[D]** The developer ran the manual browser pass for the cases that need human judgement (layout, phone width, wording, feel) when the agent asked, and the results are recorded in `docs/test-cases/runs/`.
 - [ ] **[A]** Database changes: `supabase db push` runs clean, Supabase advisors show **no new** security or performance findings, and verification SQL is added under `supabase/verification/` in the style of `auth_security_checks.sql`.
 - [ ] **[A]** Behaviour matches `docs/REQUIREMENTS.md`, or the deviation is recorded there as **[Assumption]** or **[Team decision]** with its reason.
 - [ ] **[A]** Reusable pieces were extended or extracted rather than duplicated.
@@ -45,6 +47,7 @@ _Last updated: 2026-09-22 — "CI is green on the PR" moved from "Not yet enforc
 - [ ] **[A]** `docs/IMPLEMENTATION_MAP.md` — updated **in place** in the same branch: status table, reuse tables, anything removed, "know before you build" notes, and the "Last updated" line.
 - [ ] **[A]** `docs/SCENARIO.md` §4 — a new entry **appended** using the existing template. Never rewrite past entries.
 - [ ] **[A]** `docs/test-cases/<area>.md` — manual cases for new user-facing behaviour, traced to the Jira key and its acceptance criteria.
+- [ ] **[A]** `docs/test-cases/runs/` — this story's run logs (automated and manual) committed on the branch.
 - [ ] **[A]** `docs/REQUIREMENTS.md` — updated when a rule, assumption, or design decision changed, citing the `QA-<row>` behind it.
 - [ ] **[A]** `docs/PROJECT_REVIEW.md` — defects marked fixed, with the branch or commit.
 - [ ] **[A]** Committed on a non-`main` branch, staged **by file name**, with an imperative summary (`feat(events): …`) and a body explaining *why*, carrying the Jira key or defect ID.

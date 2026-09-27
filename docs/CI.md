@@ -4,7 +4,7 @@
 
 This file is the single reference for ConnectSphere's automated checks. It sits apart from `DEFINITION_OF_DONE.md` (which says what *a task* must clear) because CI is a standing property of the repository that changes on its own schedule.
 
-_Last updated: 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
+_Last updated: 2026-09-27 — §3: Playwright specs and a live-check script now exist, run locally rather than in CI (`chore/automated-live-checks`). 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
 
 ---
 
@@ -66,7 +66,7 @@ Each of these was considered when the pipeline was built and left out for a stat
 | `ruff` (lint) | Has never run over this codebase. Blocking on it would have held the first pipeline red pending an open-ended cleanup, delaying the evidence that CI exists at all. | ~half a day including the first cleanup |
 | Coverage reporting | Needs `pytest-cov` (not in `requirements.txt`) and a threshold the team agrees on. | ~1 hour to report; the threshold is a team decision |
 | Integration tests against a real database | The largest item, and better placed before Sprint 3's database-heavy stories than bolted on after. See §4. | ~half a day |
-| End-to-end browser tests | No Playwright or Cypress installed. `PROJECT_REVIEW.md` §194 parks the end-to-end workflow test in Sprint 4. | ~half a day for one journey |
+| End-to-end browser tests | Playwright is installed, and `frontend/e2e/` runs sign-in, session, logout, route-guard and role-switch specs, but **locally, against the live project**, next to `backend/scripts/verify_live.py` (`docs/test-cases/runs/README.md`). They need running servers and real credentials, and item 3 below keeps the hosted project out of CI. Running them in CI waits on the local stack from item 3. | ~2 hours once item 3 exists |
 | Branch protection | Not part of CI at all — a repository setting, needing admin rights. See §4 item 1. | ~5 minutes |
 
 ---

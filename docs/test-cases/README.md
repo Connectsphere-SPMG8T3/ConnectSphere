@@ -34,11 +34,18 @@ See [SCENARIO.md](../SCENARIO.md) for requirement context and [SETUP.md](../SETU
 
 **Priority key:** 🔴 High (blocks core AC) · 🟠 Medium (important edge case) · 🟢 Low (nice-to-have / defensive).
 
+## Running the cases and recording results
+
+Many cases are also automated against the real system: API and database cases by `backend/scripts/verify_live.py`, and browser cases by the Playwright specs in `frontend/e2e/`. Each automated check starts with the ID of the case it runs, so `grep -rn "<case ID>" backend/scripts frontend/e2e` shows whether a case is automated. The rest, mostly ones that need a person to judge layout, wording or feel, are run by hand.
+
+Every run, automated or manual, is recorded in [runs/](runs/README.md). That folder explains when to record a run, the commands, and the template for a manual run.
+
 ## Adding cases for a new story
 
 1. Put the story in the file for its area. Start a new file only for a new area, and add it to the table above.
 2. Give it a `## <Story name> (SCRUM-<n>)` section: preconditions, then the case table, then `### Traceability — SCRUM-<n>`, then a short note naming the automated tests that cover each case.
 3. Continue the area's ID prefix and numbering. Never renumber or reuse an existing ID; other docs and tests cite them.
+4. Where a case's outcome can be checked by a request or a browser assertion without changing shared data, add an automated check for it, named with its ID (root `AGENTS.md`, "Live checks and the manual browser pass").
 
 Case table columns:
 
