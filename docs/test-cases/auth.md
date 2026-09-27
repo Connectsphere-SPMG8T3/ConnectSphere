@@ -97,6 +97,7 @@ Each case that creates an account needs an email no other account uses (e.g. `or
 | TC-AUTH-045 | A Supabase outage during sign-up is reported as an outage | Backend pointed at a server that answers 503, as in TC-AUTH-034; on `/signup` | Submit a valid form | a new email | `POST /auth/signup` returns 503 `"The authentication service is temporarily unavailable. Please try again."`, shown in the banner above the form. Every typed value is still there. With the backend stopped entirely, the banner reads "Could not create your account. Please try again." | 🟠 |
 | TC-AUTH-046 | The sign-up page is reachable only while logged out | Logged in as any seeded account | 1. Type `/signup` in the address bar. 2. Log out and open `/login`. | — | Step 1: redirected to the signed-in role's dashboard. Step 2: the login page shows "New Event Organiser? Create an account", which opens `/signup`. | 🟢 |
 | TC-AUTH-047 | Email with leading or trailing spaces | Logged out; on `/signup` | 1. Submit a valid form with the email padded with spaces. 2. On `/login`, enter the password without touching the pre-filled email, and sign in. 3. Send the padded email straight to the API (`curl`) with a new address. | `"  olivia.pad@connectsphere.dev  "` | Step 1: the request body carries `olivia.pad@connectsphere.dev` without the spaces. The email field is `type="email"`, whose value the browser strips of surrounding whitespace (HTML value sanitisation). Step 2: the login page shows the trimmed email and sign-in succeeds. Step 3: 201, account stored trimmed, because `EmailStr` trims too. `SignupView.spec.js` fails if the field stops being `type="email"`. | 🟢 |
+| TC-AUTH-048 | A password Supabase refuses is explained under Password | Supabase dashboard → Auth → minimum password length temporarily raised to 10; on `/signup` | Submit a valid form with a 9-character password that passes ACC-R8 | `"a" × 8 + "1"`, a new email | `POST /auth/signup` returns 422 with GoTrue's reason on `loc: ["body", "password"]`, shown under Password, not a 500 or a banner. No account is created. Set the minimum length back to 8 afterwards. | 🟠 |
 
 ## Traceability — SCRUM-80
 
@@ -105,11 +106,11 @@ Each case that creates an account needs an email no other account uses (e.g. `or
 | 1. Registration form: a sign-up page; name, email and password required; register as an Event Organiser | TC-AUTH-037, TC-AUTH-046 (organiser-only: TC-AUTH-043) |
 | 2. Valid registration creates the account, with the role stored as Event Organiser | TC-AUTH-037 |
 | 3. Email validation: invalid format rejected; already-registered email rejected | TC-AUTH-040, TC-AUTH-042 |
-| 4. Password requirements enforced, with an appropriate message | TC-AUTH-041 |
+| 4. Password requirements enforced, with an appropriate message | TC-AUTH-041, TC-AUTH-048 |
 | 5. Required fields: registration blocked, and the user shown which fields to complete | TC-AUTH-039 |
 | 6. Successful signup: user informed; can log in; has organiser functionality including creating event requests | TC-AUTH-037, TC-AUTH-038, TC-AUTH-047 |
 | Security: sign-up can't grant a staff role (ACC-R3, AUTH-R3) | TC-AUTH-043 |
 | Reliability NFR: an outage is reported as such | TC-AUTH-045 |
 | ACC-R5 fields: organisation name required, phone optional | TC-AUTH-037, TC-AUTH-039, TC-AUTH-044 |
 
-The automated equivalents: `backend/tests/test_auth.py::TestSignup` covers the API side of TC-AUTH-037 and TC-AUTH-039 to TC-AUTH-045. `frontend/src/views/__tests__/SignupView.spec.js` covers the SPA side of TC-AUTH-037, TC-AUTH-039 to TC-AUTH-042, TC-AUTH-044 to TC-AUTH-047, and the server-422 field mapping. TC-AUTH-038 (a real login) and the database checks in TC-AUTH-037 and TC-AUTH-044 are manual only.
+The automated equivalents: `backend/tests/test_auth.py::TestSignup` covers the API side of TC-AUTH-037, TC-AUTH-039 to TC-AUTH-045 and TC-AUTH-048. `frontend/src/views/__tests__/SignupView.spec.js` covers the SPA side of TC-AUTH-037, TC-AUTH-039 to TC-AUTH-042, TC-AUTH-044 to TC-AUTH-047, and the server-422 field mapping. TC-AUTH-038 (a real login) and the database checks in TC-AUTH-037 and TC-AUTH-044 are manual only.

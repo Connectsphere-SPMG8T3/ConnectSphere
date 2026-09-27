@@ -1055,6 +1055,21 @@ What was actually built:
 - **Not covered by automated tests:** `services/api.js` putting a 422's `detail` on `ApiError`, because the view tests mock the whole module (the live check exercised it).
 - **Cleanup:** the developer deleted the test account made during the live check.
 
+#### Review follow-ups (PR #32)
+
+A two-axis review (coding standards; SCRUM-80 spec) found these, fixed on the same branch, each test seen failing first:
+
+- **A password Supabase refuses returned 500.** supabase-auth raises `AuthWeakPasswordError` for GoTrue's `weak_password`, and it is not an `AuthApiError`, so `signup()` never caught it. It is now `SupabasePasswordRejectedError`: 422 with GoTrue's reason on `loc: ["body", "password"]`, which the page already shows under Password (AC4; TC-AUTH-048).
+- **Any other `AuthApiError` returned 500.** Rate limits and disabled sign-ups are nothing the user can fix in the form, so they now return 503 like an outage.
+- **A missing `profiles` row returned 500.** Sign-up now reads the row through `core.security.load_profile`, the same guarded query `get_current_user` uses, and returns 404 `ProfileNotFoundError` when `handle_new_user()` wrote none.
+- **The two password checks disagreed on "digit".** The API used `str.isdigit`, which accepts "²"; the page uses `\p{Nd}`, which does not. The API now uses `str.isdecimal` (ACC-R8 note).
+- **Duplicated markup.** The login and sign-up pages share `components/common/AuthPageLayout.vue` for the backdrop and wordmark. The red error banner stays inline: the same markup is already repeated in ten views, which is a wider refactor than this story.
+- **Housekeeping.** The sign-up page names `PASSWORD_MIN_LENGTH`. The rule-breaking test passwords are built from their parts.
+
+Left for the team: AC1's "select" an Event Organiser. The page has no role picker, only the organiser subtitle, and SCRUM-83 adds the second option. Whether AC1 needs a picker now is the Product Owner's call.
+
+After the fixes: `pytest` **421 passed**, `npm test` **442 passed**, `npm run build` succeeds.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.

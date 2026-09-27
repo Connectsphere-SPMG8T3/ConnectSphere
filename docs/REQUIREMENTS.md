@@ -74,7 +74,7 @@ The release is judged on **coherent end-to-end workflows** (W4). This is the ref
 | **ACC-R5:** An Organiser records an organisation name at sign-up, which links them to a client profile. ConnectSphere maintains client profiles. **[Assumption]** Until a client-profile story exists, sign-up (SCRUM-80) requires the organisation name and stores it as plain text on `profiles.organisation_name`, with an optional phone number. Nothing links it to a client record yet. | QA-90 |
 | **ACC-R6:** The authentication mechanism is a team choice. We use Supabase Auth with email and password. | QA-50 |
 | **ACC-R7:** A signed-up account can log in immediately. The email address is **not** verified, and an email that already has an account is refused. **[Team decision]** Sign-up creates the account through the Supabase admin API, already confirmed ([ADR-0003](adr/0003-signup-via-admin-api-without-email-confirmation.md)). | SCRUM-80 AC3, AC6 |
-| **ACC-R8:** A password has at least 8 characters, including at least one letter and one digit. **[Team decision]** Checked by the API (`SignupRequest`) and the sign-up page, and matched by Supabase's minimum password length (8). | SCRUM-80 AC4 |
+| **ACC-R8:** A password has at least 8 characters, including at least one letter and one digit. **[Team decision]** Checked by the API (`SignupRequest`) and the sign-up page, and matched by Supabase's minimum password length (8). "Digit" means a decimal digit (`str.isdecimal`, `\p{Nd}`), the same on both sides. If Supabase's own policy is ever stricter, its reason is returned as a 422 on `password`. | SCRUM-80 AC4 |
 
 ### 2.2 Access matrix
 
