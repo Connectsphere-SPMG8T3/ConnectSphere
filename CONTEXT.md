@@ -51,3 +51,13 @@ _Avoid_: Filters, query, preferences
 **Excluded venue**:
 A venue left out of default search results because it is inactive, fails a search criterion, or is unavailable. Each exclusion carries a reason and can be revealed on request.
 _Avoid_: Hidden, filtered out, unsuitable (suitability is only one cause of exclusion)
+
+### Accounts
+
+**Sign-up**:
+An external person creating their own ConnectSphere account as either an Event Organiser or an Attendee. Internal staff never sign up; their accounts are system defaults.
+_Avoid_: Registration, register, account creation, onboarding
+
+**Registration**:
+An attendee's place on a specific event, in one of the statuses registered, waitlisted, invited, withdrawn or cancelled. Never used for creating an account.
+_Avoid_: Sign-up, booking, RSVP, enrolment
