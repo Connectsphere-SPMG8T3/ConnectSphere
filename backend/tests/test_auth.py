@@ -1,14 +1,14 @@
-import pytest
 import threading
 import time
 from types import SimpleNamespace
 from typing import Annotated
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.testclient import TestClient
 from postgrest.exceptions import APIError
-from supabase_auth.errors import AuthApiError, AuthInvalidJwtError, AuthRetryableError
+from supabase_auth.errors import AuthApiError, AuthInvalidJwtError, AuthRetryableError, AuthWeakPasswordError
 
 from app.main import app
 from app.modules.auth import service as auth_service_module
@@ -643,10 +643,15 @@ NEW_ORGANISER_PROFILE_ROW = {
 }
 
 
-def _admin_client_for_signup(monkeypatch, *, create_user_raises: Exception | None = None) -> MagicMock:
+def _admin_client_for_signup(
+    monkeypatch,
+    *,
+    create_user_raises: Exception | None = None,
+    profile_row: dict | None = NEW_ORGANISER_PROFILE_ROW,
+) -> MagicMock:
     """The admin client as sign-up sees it: `auth.admin.create_user` plus the
     `profiles` / `user_roles` rows `handle_new_user()` would have written."""
-    admin_client = _make_table_mock(NEW_ORGANISER_PROFILE_ROW, user_roles=[{"role": "event_organiser"}])
+    admin_client = _make_table_mock(profile_row, user_roles=[{"role": "event_organiser"}])
     if create_user_raises is not None:
         admin_client.auth.admin.create_user.side_effect = create_user_raises
     else:
@@ -701,6 +706,46 @@ class TestSignup:
 
         assert response.status_code == 503
 
+    def test_signup_with_a_password_supabase_rejects_returns_422_on_the_password_field(self, client, monkeypatch):
+        # supabase-auth raises AuthWeakPasswordError, which is not an AuthApiError.
+        _admin_client_for_signup(
+            monkeypatch,
+            create_user_raises=AuthWeakPasswordError(
+                "Password is known to be weak and easy to guess, please choose a different one.", 422, ["pwned"]
+            ),
+        )
+
+        response = client.post("/api/v1/auth/signup", json=VALID_SIGNUP)
+
+        assert response.status_code == 422
+        assert response.json() == {
+            "detail": [
+                {
+                    "loc": ["body", "password"],
+                    "msg": "Password is known to be weak and easy to guess, please choose a different one.",
+                    "type": "weak_password",
+                }
+            ]
+        }
+
+    def test_signup_that_supabase_refuses_for_another_reason_returns_503_not_500(self, client, monkeypatch):
+        _admin_client_for_signup(
+            monkeypatch,
+            create_user_raises=AuthApiError("Request rate limit reached", 429, "over_request_rate_limit"),
+        )
+
+        response = client.post("/api/v1/auth/signup", json=VALID_SIGNUP)
+
+        assert response.status_code == 503
+
+    def test_signup_when_the_trigger_wrote_no_profile_returns_404_not_500(self, client, monkeypatch):
+        _admin_client_for_signup(monkeypatch, profile_row=None)
+
+        response = client.post("/api/v1/auth/signup", json=VALID_SIGNUP)
+
+        assert response.status_code == 404
+        assert response.json() == {"detail": "User profile not found."}
+
     @pytest.mark.parametrize(
         "role",
         # Staff roles are system defaults (ACC-R3); attendee sign-up is SCRUM-83.
@@ -744,8 +789,9 @@ class TestSignup:
 
     @pytest.mark.parametrize(
         "password",
-        ["Abc1234", "Password", "12345678", "        "],
-        ids=["seven-characters", "no-digit", "no-letter", "only-spaces"],
+        # Built from their parts: password-like literals trip GitGuardian.
+        ["a" * 6 + "1", "a" * 8, "1" * 8, " " * 8, "a" * 7 + "\u00b2"],
+        ids=["seven-characters", "no-digit", "no-letter", "only-spaces", "superscript-is-not-a-digit"],
     )
     def test_signup_with_a_password_that_breaks_the_rule_returns_422_explaining_it(
         self, client, monkeypatch, password

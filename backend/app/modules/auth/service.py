@@ -1,5 +1,5 @@
 from postgrest.exceptions import APIError
-from supabase_auth.errors import AuthApiError, AuthError, AuthRetryableError
+from supabase_auth.errors import AuthApiError, AuthError, AuthRetryableError, AuthWeakPasswordError
 
 from app.core.exceptions import (
     AuthServiceUnavailableError,
@@ -7,10 +7,12 @@ from app.core.exceptions import (
     InvalidCredentialsError,
     InvalidOrExpiredTokenError,
     RoleNotAssignedError,
+    SupabasePasswordRejectedError,
 )
 from app.core.security import (
     CurrentUser,
     decode_access_token,
+    load_profile,
     load_profile_with_active_role,
     resolve_active_role,
 )
@@ -107,20 +109,20 @@ def signup(request: SignupRequest) -> ProfileResponse:
         )
     except AuthRetryableError as exc:
         raise AuthServiceUnavailableError() from exc
+    except AuthWeakPasswordError as exc:
+        # Not an AuthApiError subclass. Raised when Supabase's password
+        # policy is stricter than ACC-R8, e.g. leaked-password protection.
+        raise SupabasePasswordRejectedError(exc.message) from exc
     except AuthApiError as exc:
         # Matched on GoTrue's error code, not its message text.
         if exc.code == "email_exists":
             raise EmailAlreadyRegisteredError() from exc
-        raise
+        # Anything else (rate limit, sign-ups disabled) is nothing the user
+        # can fix in the form, so it reads as "try again", not a 500.
+        raise AuthServiceUnavailableError() from exc
     user_id = created.user.id
-    profile = (
-        admin_client.table("profiles")
-        .select("id, email, full_name, role, organisation_name, department, phone_number")
-        .eq("id", user_id)
-        .maybe_single()
-        .execute()
-    )
-    return ProfileResponse(**profile.data, roles=get_roles(user_id))
+    profile = load_profile(admin_client, user_id)
+    return ProfileResponse(**profile, roles=get_roles(user_id))
 
 
 def refresh(refresh_token: str) -> TokenResponse:

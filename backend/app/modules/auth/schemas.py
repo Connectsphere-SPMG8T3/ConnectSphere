@@ -34,7 +34,9 @@ class SignupRequest(BaseModel):
         if (
             len(password) < PASSWORD_MIN_LENGTH
             or not any(char.isalpha() for char in password)
-            or not any(char.isdigit() for char in password)
+            # isdecimal, not isdigit: "²" is a digit but not a decimal
+            # digit, and the SPA's \p{Nd} check rejects it.
+            or not any(char.isdecimal() for char in password)
         ):
             raise PydanticCustomError("password_rule", PASSWORD_RULE)
         return password

@@ -87,11 +87,9 @@ def resolve_active_role(admin_client, user_id: str, session_id: str, default_rol
     return row["role"] if row else default_role
 
 
-def load_profile_with_active_role(admin_client, user_id: str, session_id: str) -> dict:
-    """Fetch `user_id`'s profile row, with `role` overridden to whatever
-    `session_id` is currently acting as (SCRUM-75). Shared by `get_current_user`
-    (the per-request auth dependency) and `auth.service._fetch_profile` (login/
-    refresh/active-role responses), so active-role resolution only lives once.
+def load_profile(admin_client, user_id: str) -> dict:
+    """Fetch `user_id`'s profile row as stored, or raise `ProfileNotFoundError`.
+    Sign-up uses it directly, since a new account has no session yet (SCRUM-80).
     """
     response = (
         admin_client.table("profiles")
@@ -103,7 +101,16 @@ def load_profile_with_active_role(admin_client, user_id: str, session_id: str) -
     profile = response.data if response else None
     if not profile:
         raise ProfileNotFoundError()
+    return profile
 
+
+def load_profile_with_active_role(admin_client, user_id: str, session_id: str) -> dict:
+    """Fetch `user_id`'s profile row, with `role` overridden to whatever
+    `session_id` is currently acting as (SCRUM-75). Shared by `get_current_user`
+    (the per-request auth dependency) and `auth.service._fetch_profile` (login/
+    refresh/active-role responses), so active-role resolution only lives once.
+    """
+    profile = load_profile(admin_client, user_id)
     active_role = resolve_active_role(
         admin_client, user_id=user_id, session_id=session_id, default_role=profile["role"]
     )
