@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 
+import AuthPageLayout from "@/components/common/AuthPageLayout.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
@@ -29,11 +30,13 @@ const REQUIRED_FIELDS = {
 
 // A shape check only; the backend's EmailStr is the authority.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// Mirrors the backend's SignupRequest rule and message.
+// Mirrors the backend's PASSWORD_MIN_LENGTH / PASSWORD_RULE in
+// auth/schemas.py (ACC-R8); change both together.
+const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_RULE = "Password must be at least 8 characters and include at least one letter and one digit.";
 
 function meetsPasswordRule(password) {
-  return password.length >= 8 && /\p{L}/u.test(password) && /\p{Nd}/u.test(password);
+  return password.length >= PASSWORD_MIN_LENGTH && /\p{L}/u.test(password) && /\p{Nd}/u.test(password);
 }
 
 function validate() {
@@ -89,80 +92,66 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <main class="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4 py-12">
-    <div class="pointer-events-none absolute -left-16 -top-16 h-64 w-64 rounded-full bg-bauhaus-yellow/70 sm:h-80 sm:w-80" aria-hidden="true" />
-    <div class="pointer-events-none absolute -bottom-20 -right-20 h-72 w-72 bg-bauhaus-blue/70 sm:h-96 sm:w-96" aria-hidden="true" />
+  <AuthPageLayout>
+    <BauhausCard background="white" accent="square" accent-color="bauhaus-blue">
+      <form class="flex flex-col gap-6" novalidate @submit.prevent="handleSubmit">
+        <div>
+          <h2 class="text-2xl font-black uppercase tracking-tight">Create an Account</h2>
+          <p class="mt-1 text-sm font-medium text-ink/70">Sign up as an Event Organiser to request events.</p>
+        </div>
 
-    <div class="relative z-10 w-full max-w-md">
-      <div class="mb-8 text-center">
-        <h1 class="text-5xl font-black uppercase leading-[0.9] tracking-tighter text-ink sm:text-6xl">
-          Connect<span class="text-bauhaus-red">Sphere</span>
-        </h1>
-        <p class="mt-3 text-sm font-bold uppercase tracking-widest text-ink/70">
-          Event &amp; Venue Services Platform
-        </p>
-      </div>
+        <div
+          v-if="formError"
+          role="alert"
+          class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+        >
+          {{ formError }}
+        </div>
 
-      <BauhausCard background="white" accent="square" accent-color="bauhaus-blue">
-        <form class="flex flex-col gap-6" novalidate @submit.prevent="handleSubmit">
-          <div>
-            <h2 class="text-2xl font-black uppercase tracking-tight">Create an Account</h2>
-            <p class="mt-1 text-sm font-medium text-ink/70">Sign up as an Event Organiser to request events.</p>
-          </div>
+        <BauhausInput
+          v-model="form.full_name"
+          :error="fieldErrors.full_name"
+          label="Full Name"
+          required
+          autocomplete="name"
+        />
+        <BauhausInput
+          v-model="form.email"
+          :error="fieldErrors.email"
+          label="Email"
+          type="email"
+          required
+          placeholder="you@example.com"
+          autocomplete="email"
+        />
+        <BauhausInput
+          v-model="form.password"
+          :error="fieldErrors.password"
+          label="Password"
+          type="password"
+          required
+          placeholder="••••••••"
+          autocomplete="new-password"
+        />
+        <BauhausInput
+          v-model="form.organisation_name"
+          :error="fieldErrors.organisation_name"
+          label="Organisation Name"
+          required
+          autocomplete="organization"
+        />
+        <BauhausInput
+          v-model="form.phone_number"
+          :error="fieldErrors.phone_number"
+          label="Phone Number"
+          type="tel"
+          autocomplete="tel"
+        />
 
-          <div
-            v-if="formError"
-            role="alert"
-            class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
-          >
-            {{ formError }}
-          </div>
-
-          <BauhausInput
-            v-model="form.full_name"
-            :error="fieldErrors.full_name"
-            label="Full Name"
-            required
-            autocomplete="name"
-          />
-          <BauhausInput
-            v-model="form.email"
-            :error="fieldErrors.email"
-            label="Email"
-            type="email"
-            required
-            placeholder="you@example.com"
-            autocomplete="email"
-          />
-          <BauhausInput
-            v-model="form.password"
-            :error="fieldErrors.password"
-            label="Password"
-            type="password"
-            required
-            placeholder="••••••••"
-            autocomplete="new-password"
-          />
-          <BauhausInput
-            v-model="form.organisation_name"
-            :error="fieldErrors.organisation_name"
-            label="Organisation Name"
-            required
-            autocomplete="organization"
-          />
-          <BauhausInput
-            v-model="form.phone_number"
-            :error="fieldErrors.phone_number"
-            label="Phone Number"
-            type="tel"
-            autocomplete="tel"
-          />
-
-          <BauhausButton type="submit" variant="primary" full-width :disabled="isSubmitting">
-            {{ isSubmitting ? "Creating Account…" : "Create Account" }}
-          </BauhausButton>
-        </form>
-      </BauhausCard>
-    </div>
-  </main>
+        <BauhausButton type="submit" variant="primary" full-width :disabled="isSubmitting">
+          {{ isSubmitting ? "Creating Account…" : "Create Account" }}
+        </BauhausButton>
+      </form>
+    </BauhausCard>
+  </AuthPageLayout>
 </template>

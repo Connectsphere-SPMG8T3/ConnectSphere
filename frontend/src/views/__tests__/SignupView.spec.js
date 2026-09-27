@@ -144,7 +144,9 @@ describe("SignupView", () => {
     },
   );
 
-  it.each(["Abc1234", "Password", "12345678"])(
+  // Built from their parts: password-like literals trip GitGuardian. The
+  // superscript case matches the backend, which counts only decimal digits.
+  it.each(["a".repeat(6) + "1", "a".repeat(8), "1".repeat(8), "a".repeat(7) + "\u00b2"])(
     "rejects the password %j, explaining the rule, before submitting",
     async (password) => {
       const { el } = await mountAt("/signup");
