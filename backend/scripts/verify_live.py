@@ -1,0 +1,534 @@
+"""Run the scriptable manual test cases against the real system.
+
+Two kinds of check, each named by the test case ID it runs (docs/test-cases/):
+
+- API checks: real HTTP requests to a running backend, which talks to the live
+  Supabase project. They only read shared data. The sessions they open are
+  their own, and every one of them is logged out at the end.
+- Database checks: the rolled-back scripts in supabase/verification/, run
+  through `supabase db query` (needs `supabase login`), so they change nothing.
+
+Usage, from backend/ with the virtualenv active and the backend running:
+
+    python scripts/verify_live.py                       # print results only
+    python scripts/verify_live.py --record              # also write a run log
+    python scripts/verify_live.py --api http://localhost:8010/api/v1
+    python scripts/verify_live.py --skip-db             # API checks only
+    python scripts/verify_live.py -k TC-ROLE            # checks whose ID or title contains this
+
+--record writes docs/test-cases/runs/<date>-<time>-api-db-<commit>.md.
+Exits 1 if any check fails.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import datetime as dt
+import hashlib
+import hmac
+import json
+import subprocess
+import sys
+import time
+import traceback
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable
+from zoneinfo import ZoneInfo
+
+import httpx
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RUNS_DIR = REPO_ROOT / "docs" / "test-cases" / "runs"
+VERIFICATION_DIR = REPO_ROOT / "supabase" / "verification"
+SGT = ZoneInfo("Asia/Singapore")
+PROJECT_REF = "vuiryrzzyfecjqftwicj"
+
+SEEDED_PASSWORD = "Cs1234"  # supabase/seed.sql
+ACCOUNTS = {
+    "event_organiser": "organiser@connectsphere.dev",
+    "event_coordinator": "coordinator@connectsphere.dev",
+    "venue_staff": "venue.staff@connectsphere.dev",
+    "tech_support": "tech.support@connectsphere.dev",
+    "attendee": "attendee@connectsphere.dev",
+}
+INVALID_CREDENTIALS = "Invalid email or password."
+INVALID_TOKEN = "Invalid or expired authentication token."
+
+# Rolled-back verification scripts, with the manual cases each one automates
+# (as recorded in docs/test-cases/). event_review_fixture_reset.sql is left out
+# on purpose: it writes to the shared fixtures.
+DB_SCRIPTS = [
+    ("auth_security_checks.sql", "TC-DATA-001–005, 007, 008, 010–012"),
+    ("active_role_checks.sql", "TC-DATA-013"),
+    ("venue_schema_checks.sql", "TC-VENUE-030–035"),
+    ("event_schema_checks.sql", "SCRUM-8 schema"),
+    ("event_review_checks.sql", "SCRUM-34/52 grants"),
+    ("event_history_checks.sql", "TC-REV-015, TC-REV-016"),
+    ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
+]
+
+
+class CheckFailed(Exception):
+    pass
+
+
+def expect(condition: bool, message: str) -> None:
+    if not condition:
+        raise CheckFailed(message)
+
+
+def expect_status(response: httpx.Response, status: int) -> None:
+    expect(
+        response.status_code == status,
+        f"expected HTTP {status}, got {response.status_code}: {response.text[:200]}",
+    )
+
+
+def expect_detail(response: httpx.Response, detail: str) -> None:
+    actual = response.json().get("detail")
+    expect(actual == detail, f"expected detail {detail!r}, got {actual!r}")
+
+
+@dataclass
+class Session:
+    role: str
+    access_token: str
+    refresh_token: str
+    body: dict
+
+    @property
+    def headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.access_token}"}
+
+
+@dataclass
+class Context:
+    api: str
+    client: httpx.Client
+    _shared: dict = field(default_factory=dict)
+    _opened: list = field(default_factory=list)
+
+    def login(self, role: str, email: str | None = None) -> Session:
+        """A fresh session of its own, logged out when the run ends."""
+        response = self.client.post(
+            f"{self.api}/auth/login",
+            json={"email": email or ACCOUNTS[role], "password": SEEDED_PASSWORD},
+        )
+        if response.status_code == 429:
+            raise CheckFailed("Supabase rate-limited sign-in (429); wait a few minutes and re-run")
+        expect_status(response, 200)
+        body = response.json()
+        session = Session(role, body["access_token"], body["refresh_token"], body)
+        self._opened.append(session)
+        return session
+
+    def shared(self, role: str) -> Session:
+        """One session per role for checks that only read, to spare sign-ins."""
+        if role not in self._shared:
+            self._shared[role] = self.login(role)
+        return self._shared[role]
+
+    def logout_all(self) -> None:
+        for session in self._opened:
+            try:
+                self.client.post(f"{self.api}/auth/logout", headers=session.headers)
+            except httpx.HTTPError:
+                pass
+
+
+@dataclass
+class Check:
+    case_id: str
+    title: str
+    run: Callable[[Context], None]
+
+
+API_CHECKS: list[Check] = []
+
+
+def check(case_id: str, title: str):
+    def register(fn: Callable[[Context], None]):
+        API_CHECKS.append(Check(case_id, title, fn))
+        return fn
+
+    return register
+
+
+# --- Login -----------------------------------------------------------------
+
+
+@check("TC-AUTH-001", "Coordinator login returns tokens and the coordinator profile")
+def _(ctx: Context) -> None:
+    body = ctx.shared("event_coordinator").body
+    expect(body.get("access_token") and body.get("refresh_token"), "tokens missing from the response")
+    expect(body["profile"]["role"] == "event_coordinator", f"role is {body['profile']['role']!r}")
+
+
+@check("TC-AUTH-002", "Every other seeded role logs in with its own role")
+def _(ctx: Context) -> None:
+    for role in ("event_organiser", "venue_staff", "tech_support", "attendee"):
+        actual = ctx.shared(role).body["profile"]["role"]
+        expect(actual == role, f"{ACCOUNTS[role]} logged in as {actual!r}")
+
+
+@check("TC-AUTH-003", "Login response carries the full profile")
+def _(ctx: Context) -> None:
+    profile = ctx.shared("attendee").body["profile"]
+    for key in ("id", "email", "full_name", "role", "organisation_name", "department", "phone_number"):
+        expect(key in profile, f"profile has no {key!r}")
+
+
+@check("TC-AUTH-006", "Wrong password is rejected with the generic message")
+def _(ctx: Context) -> None:
+    response = ctx.client.post(
+        f"{ctx.api}/auth/login",
+        json={"email": ACCOUNTS["event_coordinator"], "password": SEEDED_PASSWORD + "x"},
+    )
+    expect_status(response, 401)
+    expect_detail(response, INVALID_CREDENTIALS)
+
+
+@check("TC-AUTH-007", "Unregistered email gets the same message as a wrong password")
+def _(ctx: Context) -> None:
+    response = ctx.client.post(
+        f"{ctx.api}/auth/login",
+        json={"email": "nobody@connectsphere.dev", "password": SEEDED_PASSWORD},
+    )
+    expect_status(response, 401)
+    expect_detail(response, INVALID_CREDENTIALS)
+
+
+@check("TC-AUTH-010", "Malformed email is rejected by schema validation")
+def _(ctx: Context) -> None:
+    response = ctx.client.post(f"{ctx.api}/auth/login", json={"email": "not-an-email", "password": "irrelevant"})
+    expect_status(response, 422)
+
+
+@check("TC-AUTH-011", "Reserved-TLD email is rejected by schema validation")
+def _(ctx: Context) -> None:
+    response = ctx.client.post(
+        f"{ctx.api}/auth/login", json={"email": "someone@example.test", "password": SEEDED_PASSWORD}
+    )
+    expect_status(response, 422)
+
+
+@check("TC-AUTH-012", "Email padded with spaces still logs in")
+def _(ctx: Context) -> None:
+    session = ctx.login("event_coordinator", email=f"  {ACCOUNTS['event_coordinator']}  ")
+    expect(session.body["profile"]["role"] == "event_coordinator", "logged in as the wrong account")
+
+
+@check("TC-AUTH-013", "Email in a different case still logs in")
+def _(ctx: Context) -> None:
+    session = ctx.login("event_coordinator", email=ACCOUNTS["event_coordinator"].upper())
+    expect(session.body["profile"]["role"] == "event_coordinator", "logged in as the wrong account")
+
+
+@check("TC-AUTH-014", "SQL-injection password is an ordinary wrong password")
+def _(ctx: Context) -> None:
+    injection = "' OR " + "'1'='1"
+    response = ctx.client.post(
+        f"{ctx.api}/auth/login", json={"email": ACCOUNTS["event_coordinator"], "password": injection}
+    )
+    expect_status(response, 401)
+    expect_detail(response, INVALID_CREDENTIALS)
+
+
+# --- Session ---------------------------------------------------------------
+
+
+@check("TC-AUTH-020", "/auth/me without a token is 401 with WWW-Authenticate")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}/auth/me")
+    expect_status(response, 401)
+    expect(response.headers.get("www-authenticate") == "Bearer", "WWW-Authenticate: Bearer missing")
+
+
+@check("TC-AUTH-021", "/auth/me with a malformed token is 401")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}/auth/me", headers={"Authorization": "Bearer not-a-real-token"})
+    expect_status(response, 401)
+    expect_detail(response, INVALID_TOKEN)
+
+
+@check("TC-AUTH-022", "/auth/me with a token signed by the wrong key is 401")
+def _(ctx: Context) -> None:
+    real = ctx.shared("attendee")
+    claims = _jwt_claims(real.access_token)
+    forged = _sign_hs256({**claims, "role": "authenticated"}, key=b"not-this-projects-key")
+    response = ctx.client.get(f"{ctx.api}/auth/me", headers={"Authorization": f"Bearer {forged}"})
+    expect_status(response, 401)
+
+
+@check("TC-AUTH-019", "/auth/me returns the caller's own profile")
+def _(ctx: Context) -> None:
+    session = ctx.shared("event_organiser")
+    response = ctx.client.get(f"{ctx.api}/auth/me", headers=session.headers)
+    expect_status(response, 200)
+    expect(response.json()["email"] == ACCOUNTS["event_organiser"], "a different profile came back")
+
+
+# --- Logout and refresh ----------------------------------------------------
+
+
+@check("TC-AUTH-028", "Logout without a token is 401")
+def _(ctx: Context) -> None:
+    expect_status(ctx.client.post(f"{ctx.api}/auth/logout"), 401)
+
+
+@check("TC-AUTH-029", "Logging out one user leaves another user's session working")
+def _(ctx: Context) -> None:
+    organiser = ctx.login("event_organiser")
+    coordinator = ctx.login("event_coordinator")
+    expect_status(ctx.client.post(f"{ctx.api}/auth/logout", headers=organiser.headers), 204)
+
+    kept = ctx.client.post(f"{ctx.api}/auth/refresh", json={"refresh_token": coordinator.refresh_token})
+    expect_status(kept, 200)
+    coordinator.access_token = kept.json()["access_token"]  # so logout_all revokes it
+
+    revoked = ctx.client.post(f"{ctx.api}/auth/refresh", json={"refresh_token": organiser.refresh_token})
+    expect_status(revoked, 401)
+
+
+@check("TC-AUTH-032", "Refresh rejects an unknown token (401) and an empty one (422)")
+def _(ctx: Context) -> None:
+    unknown = ctx.client.post(f"{ctx.api}/auth/refresh", json={"refresh_token": "not-a-real-refresh-token"})
+    expect_status(unknown, 401)
+    expect_detail(unknown, INVALID_TOKEN)
+    expect_status(ctx.client.post(f"{ctx.api}/auth/refresh", json={"refresh_token": ""}), 422)
+
+
+# --- Roles -----------------------------------------------------------------
+
+VENUE_STAFF_DASHBOARD = "/venues/dashboard/venue-staff"
+
+
+@check("TC-RBAC-006", "A venue-staff-only endpoint refuses an attendee")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=ctx.shared("attendee").headers)
+    expect_status(response, 403)
+    expect("venue_staff" in response.json().get("detail", ""), "403 detail does not name venue_staff")
+
+
+@check("TC-RBAC-007", "The same endpoint opens for venue staff")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=ctx.shared("venue_staff").headers)
+    expect_status(response, 200)
+
+
+@check("TC-ROLE-006", "Switching to a role the account doesn't hold is 403")
+def _(ctx: Context) -> None:
+    response = ctx.client.post(
+        f"{ctx.api}/auth/active-role",
+        json={"role": "attendee"},
+        headers=ctx.shared("event_coordinator").headers,
+    )
+    expect_status(response, 403)
+    expect_detail(response, "You do not hold the 'attendee' role.")
+
+
+@check("TC-ROLE-007", "Switching roles without a token is 401")
+def _(ctx: Context) -> None:
+    expect_status(ctx.client.post(f"{ctx.api}/auth/active-role", json={"role": "venue_staff"}), 401)
+
+
+@check("TC-ROLE-008", "Login and /auth/me both list every role the account holds")
+def _(ctx: Context) -> None:
+    session = ctx.shared("event_coordinator")
+    expected = {"event_coordinator", "venue_staff"}
+    expect(set(session.body["profile"]["roles"]) == expected, f"login roles: {session.body['profile']['roles']}")
+    me = ctx.client.get(f"{ctx.api}/auth/me", headers=session.headers)
+    expect_status(me, 200)
+    expect(set(me.json()["roles"]) == expected, f"/auth/me roles: {me.json()['roles']}")
+
+
+@check("TC-ROLE-017", "A held but inactive role doesn't open its endpoint")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(
+        f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=ctx.shared("event_coordinator").headers
+    )
+    expect_status(response, 403)
+
+
+@check("TC-ROLE-018", "The endpoint opens after switching role and closes after switching back")
+def _(ctx: Context) -> None:
+    session = ctx.login("event_coordinator")  # its own session: switching must not touch shared ones
+
+    def switch(role: str) -> None:
+        response = ctx.client.post(f"{ctx.api}/auth/active-role", json={"role": role}, headers=session.headers)
+        expect_status(response, 200)
+
+    switch("venue_staff")
+    expect_status(ctx.client.get(f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=session.headers), 200)
+    switch("event_coordinator")
+    expect_status(ctx.client.get(f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=session.headers), 403)
+
+
+# --- Helpers ---------------------------------------------------------------
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _jwt_claims(token: str) -> dict:
+    payload = token.split(".")[1]
+    return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+
+
+def _sign_hs256(claims: dict, key: bytes) -> str:
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    body = _b64url(json.dumps(claims).encode())
+    signature = hmac.new(key, f"{header}.{body}".encode(), hashlib.sha256).digest()
+    return f"{header}.{body}.{_b64url(signature)}"
+
+
+def git(*args: str) -> str:
+    return subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True).stdout.strip()
+
+
+# --- Running ---------------------------------------------------------------
+
+
+@dataclass
+class Result:
+    case_id: str
+    title: str
+    passed: bool
+    detail: str = ""
+
+
+def run_api_checks(ctx: Context, keyword: str | None) -> list[Result]:
+    results = []
+    for item in API_CHECKS:
+        if keyword and keyword.lower() not in f"{item.case_id} {item.title}".lower():
+            continue
+        try:
+            item.run(ctx)
+            results.append(Result(item.case_id, item.title, True))
+        except CheckFailed as failure:
+            results.append(Result(item.case_id, item.title, False, str(failure)))
+        except Exception:  # a crash in a check is a failure, not a reason to stop the run
+            results.append(Result(item.case_id, item.title, False, traceback.format_exc(limit=1).strip()))
+        print_result(results[-1])
+    return results
+
+
+def run_db_checks(keyword: str | None) -> list[Result]:
+    results = []
+    for script, cases in DB_SCRIPTS:
+        if keyword and keyword.lower() not in f"{script} {cases}".lower():
+            continue
+        completed = subprocess.run(
+            ["supabase", "db", "query", "--linked", "--project-ref", PROJECT_REF, "-o", "json", "-f", str(VERIFICATION_DIR / script)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        title = f"{cases}: supabase/verification/{script}"
+        if completed.returncode != 0:
+            results.append(Result(script, title, False, _cli_error(completed.stderr)))
+        else:
+            failed = _failed_rows(completed.stdout)
+            results.append(Result(script, title, not failed, "; ".join(failed)))
+        print_result(results[-1])
+    return results
+
+
+def _cli_error(stderr: str) -> str:
+    lines = [line for line in stderr.splitlines() if line.strip() and "new version" not in line
+             and "recommend updating" not in line and "Try rerunning" not in line and "Initialising" not in line]
+    return next((line for line in lines if "ERROR" in line), " ".join(lines))[:300]
+
+
+def _failed_rows(stdout: str) -> list[str]:
+    """Scripts either raise on failure or return rows with a boolean `ok` column."""
+    rows = json.loads(stdout[stdout.index("{"):]).get("rows", [])
+    failed = []
+    for row in rows:
+        values = list(row.values())
+        if False in values:
+            failed.append(str(values[0]))
+    return failed
+
+
+def print_result(result: Result) -> None:
+    mark = "PASS" if result.passed else "FAIL"
+    print(f"  {mark}  {result.case_id:<28} {result.title}")
+    if result.detail:
+        print(f"        {result.detail}")
+
+
+def write_run_log(results: list[Result], api: str, started: dt.datetime, duration: float) -> Path:
+    commit = git("rev-parse", "--short", "HEAD")
+    dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
+    passed = sum(r.passed for r in results)
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    path = RUNS_DIR / f"{started:%Y-%m-%d-%H%M}-api-db-{commit}.md"
+
+    lines = [
+        f"# Automated live checks — {started:%Y-%m-%d %H:%M} SGT",
+        "",
+        "| | |",
+        "|---|---|",
+        "| Method | `backend/scripts/verify_live.py` (API + rolled-back SQL) |",
+        f"| Result | **{passed}/{len(results)} passed** |",
+        f"| Commit | `{commit}`{' + uncommitted changes' if dirty else ''} on `{git('branch', '--show-current')}` |",
+        f"| Backend | `{api}` |",
+        f"| Database | live Supabase project `{PROJECT_REF}`, via `supabase db query` |",
+        f"| Run by | {git('config', 'user.name') or 'unknown'} |",
+        f"| Duration | {duration:.0f}s |",
+        "",
+        "| Case | Check | Result | Detail |",
+        "|---|---|---|---|",
+    ]
+    for r in results:
+        detail = r.detail.replace("|", "\\|").replace("\n", " ")
+        lines.append(f"| {r.case_id} | {r.title} | {'Pass' if r.passed else '**Fail**'} | {detail} |")
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--api", default="http://localhost:8000/api/v1", help="backend API base URL")
+    parser.add_argument("--record", action="store_true", help="write a run log to docs/test-cases/runs/")
+    parser.add_argument("--skip-db", action="store_true", help="skip the supabase/verification scripts")
+    parser.add_argument("--skip-api", action="store_true", help="skip the API checks")
+    parser.add_argument("-k", dest="keyword", help="only checks whose ID, title or script contains this")
+    args = parser.parse_args()
+
+    started = dt.datetime.now(SGT)
+    clock = time.monotonic()
+    results: list[Result] = []
+
+    if not args.skip_api:
+        with httpx.Client(timeout=30) as client:
+            try:
+                client.get(args.api.rsplit("/api/", 1)[0] + "/health").raise_for_status()
+            except httpx.HTTPError as error:
+                print(f"Backend not reachable at {args.api} ({error}). Start it, or pass --api.")
+                return 2
+            ctx = Context(args.api, client)
+            print(f"API checks against {args.api}")
+            try:
+                results += run_api_checks(ctx, args.keyword)
+            finally:
+                ctx.logout_all()
+
+    if not args.skip_db:
+        print(f"Database checks (rolled back) on Supabase project {PROJECT_REF}")
+        results += run_db_checks(args.keyword)
+
+    failed = [r for r in results if not r.passed]
+    print(f"\n{len(results) - len(failed)}/{len(results)} passed")
+    if args.record and results:
+        path = write_run_log(results, args.api, started, time.monotonic() - clock)
+        print(f"Run log: {path.relative_to(REPO_ROOT)}")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
