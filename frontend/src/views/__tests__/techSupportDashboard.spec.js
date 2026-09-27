@@ -63,26 +63,28 @@ describe("TechSupportDashboard tabs", () => {
     equipmentApi.maintenance.mockResolvedValue({ items: [] });
   });
 
-  it("opens on the availability check and has no tab bar of its own", async () => {
+  it("opens on the inventory, loads it, and has no tab bar or welcome card of its own", async () => {
     const { el } = await mountDashboard();
-
-    expect(el.textContent).toContain("Event time window");
-    expect(el.querySelector('nav[aria-label="Technical support views"]')).toBeNull();
-    expect(equipmentApi.inventory).not.toHaveBeenCalled();
-  });
-
-  it("shows and loads the inventory when the route asks for it", async () => {
-    const { el } = await mountDashboard({ tab: "inventory" });
     await settle();
 
-    expect(el.textContent).toContain("Inventory & status overview");
+    expect(el.textContent).toContain("Inventory & status");
     expect(el.textContent).not.toContain("Event time window");
+    expect(el.textContent).not.toContain("Welcome");
+    expect(el.querySelector('nav[aria-label="Technical support views"]')).toBeNull();
     expect(equipmentApi.inventory).toHaveBeenCalledTimes(1);
     expect(el.textContent).toContain("4K Projector");
   });
 
-  it("loads the inventory when the sidebar switches to it", async () => {
-    const { el, router } = await mountDashboard();
+  it("shows the availability check when the route asks for it, without loading the inventory", async () => {
+    const { el } = await mountDashboard({ tab: "availability" });
+
+    expect(el.textContent).toContain("Event time window");
+    expect(el.textContent).not.toContain("Inventory & status");
+    expect(equipmentApi.inventory).not.toHaveBeenCalled();
+  });
+
+  it("loads the inventory when the sidebar switches to it from the availability check", async () => {
+    const { el, router } = await mountDashboard({ tab: "availability" });
     await router.push({ name: "dashboard-tech-support", query: { tab: "inventory" } });
     await settle();
     await settle();
@@ -91,8 +93,25 @@ describe("TechSupportDashboard tabs", () => {
     expect(el.textContent).toContain("4K Projector");
   });
 
+  it("summarises the inventory in tiles, and shows a dash rather than a zero when it could not load", async () => {
+    const { el } = await mountDashboard();
+    await settle();
+    const tile = (label) => [...el.querySelectorAll("[data-testid=tile]")].find((t) => t.textContent.includes(label));
+
+    expect(tile("Out of stock").textContent).toContain("0");
+    expect(tile("Equipment types").textContent).toContain("1");
+
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+    equipmentApi.inventory.mockRejectedValue(new Error("down"));
+    const failed = await mountDashboard();
+    await settle();
+    const failedTile = [...failed.el.querySelectorAll("[data-testid=tile]")].find((t) => t.textContent.includes("Out of stock"));
+    expect(failedTile.textContent).toContain("—");
+  });
+
   it("marks fully available stock with the design-system green, not a raw Tailwind colour", async () => {
-    const { el } = await mountDashboard({ tab: "inventory" });
+    const { el } = await mountDashboard();
     await settle();
 
     const badge = [...el.querySelectorAll("span")].find((span) => span.textContent.trim() === "AVAILABLE");

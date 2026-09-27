@@ -77,8 +77,12 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
       roles: ["tech_support"],
     });
 
-    expect(el.querySelector('a[href="/dashboard/tech-support?tab=availability"]')).toBeTruthy();
-    expect(el.querySelector('a[href="/dashboard/tech-support?tab=inventory"]')).toBeTruthy();
+    const inventory = el.querySelector('a[href="/dashboard/tech-support?tab=inventory"]');
+    const availability = el.querySelector('a[href="/dashboard/tech-support?tab=availability"]');
+    expect(inventory).toBeTruthy();
+    expect(availability).toBeTruthy();
+    // Inventory is the main view, so it comes first.
+    expect(inventory.compareDocumentPosition(availability) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(el.textContent).toContain("Availability");
     expect(el.textContent).toContain("Inventory");
   });
