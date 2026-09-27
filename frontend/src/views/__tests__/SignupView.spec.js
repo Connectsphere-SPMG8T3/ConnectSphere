@@ -238,4 +238,17 @@ describe("SignupView", () => {
 
     expect(router.currentRoute.value.path).toBe("/dashboard/organiser");
   });
+
+  it("sends and pre-fills an email typed with surrounding spaces without them", async () => {
+    authApi.signup.mockResolvedValue(CREATED_PROFILE);
+    const { el } = await mountAt("/signup");
+
+    fillValidForm(el);
+    fill(el, "Email", "  olivia@connectsphere.dev  ");
+    await submit(el);
+
+    expect(authApi.signup).toHaveBeenCalledWith(expect.objectContaining({ email: "olivia@connectsphere.dev" }));
+    await vi.waitFor(() => expect(el.textContent).toContain("Account created. Please sign in."));
+    expect(field(el, "Email").value).toBe("olivia@connectsphere.dev");
+  });
 });
