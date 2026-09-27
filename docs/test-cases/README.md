@@ -8,7 +8,7 @@ See [SCENARIO.md](../SCENARIO.md) for requirement context and [SETUP.md](../SETU
 
 | File | Stories | ID prefixes |
 |---|---|---|
-| [auth.md](auth.md) | SCRUM-48 login, session, logout | TC-AUTH |
+| [auth.md](auth.md) | SCRUM-48 login, session, logout; SCRUM-80 organiser sign-up | TC-AUTH |
 | [roles-and-access.md](roles-and-access.md) | SCRUM-48 routing and data-layer security; SCRUM-74/75/76/78 role switching | TC-RBAC, TC-ROLE, TC-DATA |
 | [venues.md](venues.md) | SCRUM-39 venue search, SCRUM-67 venue profile | TC-VENUE |
 | [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment | TC-EVENT, TC-REV, TC-AMD |

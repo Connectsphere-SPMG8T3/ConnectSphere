@@ -983,6 +983,78 @@ Not a Jira story; a fix on `fix/card-enter-key`. Reported by the developer: "imp
   - No console errors or warnings.
 - **Not verified:** an actual sign-in by pressing Enter, which needs a password, and the agent doesn't enter passwords (TC-AUTH-036 covers it manually). Venue search in the browser, because it's open only to coordinators and venue staff, and only the organiser session was available (TC-VENUE-055). Both go through the same card change the unit tests cover.
 
+### 4.20. SCRUM-80 — Event organiser signup (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-80` |
+| Summary | Event organiser signup |
+| Issue type | Story |
+| Status | To Do (at time of writing this entry) |
+| Parent epic | `SCRUM-7` — User authorisation and authentication |
+| Sprint | SCRUM Sprint 2 |
+| Story point estimate | 3 |
+| Priority | Medium |
+
+**User story (verbatim):**
+
+> As an event organiser, I want to signup for  an account at the ConnectSphere platform so that I can create event requests
+
+**Acceptance criteria (verbatim from Jira):**
+
+> 1. **Registration form**
+>     * The user can access a sign-up page.
+>     * The form requires the user to enter their name, email address, and password.
+>     * The user must select/register as an **Event Organiser**.
+> 2. **Valid registration**
+>     * Given the user provides all required information in a valid format, when they submit the registration form, then an account is created successfully.
+>     * The user's role is stored as **Event Organiser**.
+> 3. **Email validation**
+>     * The system rejects an invalid email format.
+>     * The system rejects registration if the email address is already registered.
+> 4. **Password requirements**
+>     * The system enforces the platform's password requirements.
+>     * The system displays an appropriate error message when the password does not meet the requirements.
+> 5. **Required fields**
+>     * The system prevents registration when any required field is empty.
+>     * The user is shown which fields need to be completed.
+> 6. **Successful signup**
+>     * After successful registration, the user is informed that their account has been created.
+>     * The user can log in using their newly registered credentials.
+>     * After logging in, the user has access to functionality available to **Event Organisers**, including creating event requests.
+
+(The user story's double space after "signup for" is as written in Jira.)
+
+#### How the implementation maps to the ticket
+
+The design was agreed with the developer on 2026-09-27, before any code was written.
+
+- **Vocabulary.** The ticket says "registration". In this domain *Registration* already means an attendee's place on an event (§6.18, SCRUM-43), so account creation is called **Sign-up** throughout the code and docs (`CONTEXT.md`, "Accounts").
+- **Organisers only.** ACC-R2 lets both Organisers and Attendees sign up, but the Sprint 2 goal covers organisers only. Attendee sign-up became its own backlog story, **SCRUM-83**, outside this sprint. The API accepts `role: "event_organiser"` and nothing else; SCRUM-83 widens that to `attendee`. AC1's "must select Event Organiser" is met by the page being an organiser sign-up, with no role picker yet.
+- **Accounts are created already confirmed** (AC3, AC6; **ADR-0003**). The live project has email confirmation on. With it on, GoTrue's own sign-up can't report a duplicate email, and a new user can't log in until they click an emailed link. So the backend creates the account with the admin API and `email_confirm=True`, which reports a duplicate as `email_exists` and lets the user log in straight away. The project's confirmation setting was left unchanged. **[Team decision]**, REQUIREMENTS ACC-R7.
+- **"The platform's password requirements"** (AC4) weren't defined anywhere. **[Team decision]**: at least 8 characters, with at least one letter and one digit (REQUIREMENTS ACC-R8). The developer set Supabase's minimum password length to 8 to match.
+- **Organisation name and phone number.** The ticket lists only name, email and password, but REQUIREMENTS §6.1 and ACC-R5 (QA-90) ask organisers for an organisation name and phone number. Organisation name is required and phone number is optional. Both are stored as plain text on `profiles`. Linking to a client profile (ACC-R5) is deferred, because no client table or story exists yet. **[Assumption]**, REQUIREMENTS ACC-R5.
+- **After signing up** (AC6), the user is sent to the login page with a confirmation and their email already filled in, rather than being logged in automatically. Sign-up never opens a session.
+
+What was actually built:
+
+1. **API** — `POST /api/v1/auth/signup` (`modules/auth/router.py`, `service.signup`, `schemas.SignupRequest`). The admin client's `auth.admin.create_user` gets the email, password, `email_confirm=True`, and `role`, `full_name`, `organisation_name` and `phone_number` in `user_metadata`. The business role has to go in `user_metadata`: `AdminUserAttributes` has its own top-level `role`, which is the *Postgres* role. The existing `handle_new_user()` trigger creates the `profiles` and `user_roles` rows. The endpoint returns 201 with the profile read back from `profiles`, plus `roles`.
+2. **Errors** — 409 `EmailAlreadyRegisteredError` ("An account with this email already exists."), matched on the `email_exists` code. 503 for `AuthRetryableError`, caught first. 422 naming the field, before Supabase is called, when the role isn't `event_organiser`, a required field is missing or only spaces, the email is malformed, or the password breaks the rule (with one fixed message). An empty phone number is stored as no phone number.
+3. **SPA** — `views/SignupView.vue` at public `/signup`, built from the Bauhaus input, button and card components. It checks empty fields, the email's shape and the password rule before sending, using the backend's exact password message. A server 409 shows under Email, a server 422 shows each message under the field its `loc` names, and anything else shows a banner above the form while keeping what was typed. On success it pushes `/login` with the email in history state, so it never appears in the URL.
+4. **Login page** — `LoginView` shows "Account created. Please sign in." with the email filled in when it arrives from sign-up, and links to `/signup`. The router guard sends a signed-in user who opens `/signup` to their dashboard, as it already did for `/login`.
+5. **`ApiError.detail`** (`services/api.js`) — the response's raw `detail`, so a form can place 422 errors per field. This is additive: `message` and `status` are unchanged.
+
+**Not built, and recorded instead:** a rate limit or captcha on sign-up (PROJECT_REVIEW D14, accepted risk); email verification (ADR-0003); a way for an existing account to add the other external role (REQUIREMENTS ACC-R4).
+
+#### Verification
+
+- **Written red first**, one behaviour at a time, at two agreed seams: the `POST /auth/signup` endpoint with only the admin client mocked (`tests/test_auth.py::TestSignup`), and the sign-up flow through the real router and store with only `@/services/api` mocked (`views/__tests__/SignupView.spec.js`). Each failed for the expected reason first: the route 404, the uncaught `AuthApiError`/`AuthRetryableError`, 201 where 422 was wanted, no field errors, and no redirect for a signed-in user. The invalid-email tests passed as soon as they were written, because `email` was already typed `EmailStr`. Swapping it for `str` made all four fail, so the tests do guard the rule.
+- **An email padded with spaces is trimmed at both layers**, so no fix was needed. It was suspected while writing TC-AUTH-047, and the test written to catch it passed at once. The email fields are `type="email"`, whose value the browser strips of surrounding whitespace, and `EmailStr` trims at the API. Setting the field to `type="text"` made the test fail, so it now guards that. The same check showed TC-AUTH-012's expected 401 on login was wrong; that case is corrected.
+- `pytest` (full suite): **417 passed**. `npm test` (full suite): **441 passed** across 36 files. `npm run build` succeeds. `router/__tests__/activeRoleAccess.spec.js` failed until `signup` joined its list of routes that need no role list. That test exists to catch exactly this, a new route without `allowedRoles`.
+- **Real system, run by the developer on 2026-09-27** against the live project, who reported that everything worked. The checklist: sign up as an organiser in the browser; confirm the new `profiles` row (`event_organiser`, organisation and phone) and `user_roles` row; try the same email again (409 under Email) and a weak password; log in with the new account and reach event-request creation.
+- **Not covered by automated tests:** `services/api.js` putting a 422's `detail` on `ApiError`, because the view tests mock the whole module (the live check exercised it).
+- **Cleanup pending:** the test account made during the live check still exists. Delete it from Supabase Auth, which cascades to `profiles`, `user_roles` and `session_active_roles`. Any event it created must be deleted first, because `events.organiser_id` is `on delete restrict`.
+
 ## 5. Architecture: modular monolith
 
 - **`backend/`** — Python FastAPI. Each domain lives in its own package under `app/modules/<domain>/` with a consistent internal shape (`router.py`, `schemas.py`, `service.py`, optionally `dependencies.py`), sharing a common `app/core/` (config, security, exceptions) and `app/db/` (Supabase client factories). Modules talk to each other only through service-layer function calls, never by reaching into another module's internals — the `auth` module's `dependencies.py` re-exports `app.core.security` deliberately, so other future modules depend on `app.modules.auth.dependencies` rather than on `app.core` directly.
