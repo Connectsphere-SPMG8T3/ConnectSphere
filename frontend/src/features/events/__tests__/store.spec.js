@@ -84,8 +84,8 @@ describe("coordinator dashboard store", () => {
   });
 
   it("treats a 404 as 'not built yet' and shows empty widgets without an error", async () => {
-    // The events module does not exist yet (PROJECT_OVERVIEW.md §3). Until it ships,
-    // the dashboard must read as empty rather than broken.
+    // The events module has no `GET /events/dashboard/coordinator` route yet.
+    // Until it ships, the dashboard must read as empty rather than broken.
     signedInCoordinator();
     eventsApi.coordinatorDashboard.mockRejectedValue(new ApiError("Not Found", 404));
     const store = useCoordinatorDashboardStore();
