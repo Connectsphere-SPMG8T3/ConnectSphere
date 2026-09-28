@@ -1,4 +1,5 @@
 import { API_URL } from "./fixtures.js";
+import { deleteThrowawayAccounts } from "./throwaway.js";
 
 // Fail in one clear line when a server isn't running, rather than letting
 // every spec time out on its first navigation.
@@ -17,4 +18,9 @@ export default async function globalSetup(config) {
       throw new Error(`${name} not reachable at ${url} (${error.message}). Start it: ${hint}.`);
     }
   }
+
+  // Sign-up specs create live-check+… accounts; clear any an interrupted
+  // run left behind, and clear this run's when it finishes.
+  deleteThrowawayAccounts();
+  return () => deleteThrowawayAccounts();
 }

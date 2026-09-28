@@ -2,7 +2,8 @@
 // Cases: docs/test-cases/auth.md. Each title starts with the case it runs.
 import { ACCOUNTS, API_URL, SEEDED_PASSWORD, STORAGE_KEY, apiLogin, expect, seedSession, signInThroughForm, test } from "./support/fixtures.js";
 
-const WELCOME_HEADING = new Set(["event_organiser", "event_coordinator", "tech_support", "attendee"]);
+// The venue staff and tech support dashboards open straight onto their data, with no welcome heading.
+const WELCOME_HEADING = new Set(["event_organiser", "event_coordinator", "attendee"]);
 
 test.describe("Login", () => {
   for (const [role, account] of Object.entries(ACCOUNTS)) {
@@ -82,13 +83,13 @@ test.describe("Login", () => {
 
 test.describe("Session", () => {
   test("TC-AUTH-004 a session survives a page reload", async ({ page, sharedSessions }) => {
-    await seedSession(page, await sharedSessions("tech_support"));
-    await page.goto(ACCOUNTS.tech_support.dashboard);
+    await seedSession(page, await sharedSessions("event_organiser"));
+    await page.goto(ACCOUNTS.event_organiser.dashboard);
 
     await page.reload();
 
-    await expect(page).toHaveURL(ACCOUNTS.tech_support.dashboard);
-    await expect(page.getByRole("heading", { name: `Welcome, ${ACCOUNTS.tech_support.name}` })).toBeVisible();
+    await expect(page).toHaveURL(ACCOUNTS.event_organiser.dashboard);
+    await expect(page.getByRole("heading", { name: `Welcome, ${ACCOUNTS.event_organiser.name}` })).toBeVisible();
   });
 
   test("TC-AUTH-030 an expired access token is renewed without signing in again", async ({ page }) => {
