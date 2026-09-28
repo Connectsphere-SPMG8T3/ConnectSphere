@@ -40,7 +40,20 @@ E2E_BASE_URL=http://localhost:5177 E2E_API_URL=http://localhost:8010/api/v1 npm 
 
 The frontend under test must point at the same backend (`VITE_API_BASE_URL`), since the specs sign in through it directly. Playwright keeps a screenshot and trace of each failure in `frontend/test-results/` (gitignored). Open one with `npx playwright show-trace <path>`.
 
-Each run makes about 30 sign-ins (script) or 25 (Playwright). If Supabase answers 429, wait a few minutes before the next run.
+### Supabase's sign-in rate limit
+
+Supabase limits sign-ins per IP address; the limit is under **Authentication → Rate Limits** in the dashboard. Every sign-in these checks make goes through your backend, so it counts against your machine's IP, and only yours: teammates on other networks are unaffected, and nothing is locked or damaged. If the limit is reached, sign-ins from your machine, the browser included, are refused for a few minutes.
+
+| Run | Sign-ins with correct credentials | Deliberately wrong |
+|---|---|---|
+| Script | 12 | 3 |
+| Playwright | 21 | 1 |
+
+Both suites back to back, several times within minutes on 2026-09-27 and 28, never hit the limit. Sign-up checks create accounts through the admin API, which this limit doesn't cover.
+
+If a run does hit it, the first refused sign-in is recorded as a **Fail** that says "either sign-in is broken, or Supabase rate-limited this IP", and every later check that needs a sign-in is recorded as **Blocked** without trying, so the run doesn't extend the limit. The backend currently reports the refusal as a 401 wrong password (`docs/PROJECT_REVIEW.md` D16), so the checks can't tell the two causes apart. Wait about five minutes, run once more, and treat it as a real failure if it repeats.
+
+Don't run the suites in the few minutes before a demo or a teammate's login from the same network.
 
 ## What stays manual
 
@@ -73,7 +86,7 @@ Copy into `<date>-<time>-manual-<commit>.md`:
 | TC-AUTH-046 | "Create an account" link on login | Fail | Link text wraps at 375px: D14 |
 ```
 
-Result is **Pass**, **Fail** (with a defect ID from `docs/PROJECT_REVIEW.md`, or what went wrong) or **Blocked** (and why).
+Result is **Pass**, **Fail** (with a defect ID from `docs/PROJECT_REVIEW.md`, or what went wrong) or **Blocked** (and why). Automated run logs use the same three results.
 
 ## Before 2026-09-27
 
