@@ -22,7 +22,9 @@ Usage, from backend/ with the virtualenv active and the backend running:
     python scripts/verify_live.py -k TC-ROLE            # checks whose ID or title contains this
 
 --record writes docs/test-cases/runs/<date>-<time>-api-db-<commit>.md.
-Exits 1 if any check fails.
+A check that couldn't run is recorded as Blocked, not as a pass or a fail:
+after the first refused sign-in (Supabase's per-IP rate limit, or broken
+sign-in), no further sign-ins are attempted. Exits 1 unless every check passed.
 """
 
 from __future__ import annotations
@@ -86,6 +88,22 @@ class CheckFailed(Exception):
     pass
 
 
+class CheckBlocked(Exception):
+    """The check couldn't run, e.g. an earlier sign-in was refused. Not a verdict."""
+
+
+# Supabase limits sign-ins per IP. The backend currently reports that refusal
+# as a 401 "Invalid email or password." (PROJECT_REVIEW D16), so a refused
+# sign-in with known-good credentials can't be told apart from broken sign-in.
+# After the first one, no more sign-ins are attempted: every further attempt
+# would extend the limit, and every check needing one is marked Blocked.
+SIGN_IN_REFUSED = (
+    "correct credentials were refused (HTTP {status}). Either sign-in is broken, or Supabase "
+    "rate-limited this IP, which the backend reports as a 401 (PROJECT_REVIEW D16). "
+    "No further sign-ins were attempted; wait about 5 minutes and re-run."
+)
+
+
 def expect(condition: bool, message: str) -> None:
     if not condition:
         raise CheckFailed(message)
@@ -120,22 +138,37 @@ class Context:
     api: str
     client: httpx.Client
     run_id: str = ""
+    sign_in_refused: bool = False
     _shared: dict = field(default_factory=dict)
     _opened: list = field(default_factory=list)
 
     def login(self, role: str, email: str | None = None, password: str = SEEDED_PASSWORD) -> Session:
-        """A fresh session of its own, logged out when the run ends."""
+        """A fresh session of its own, logged out when the run ends.
+
+        Only for credentials that should work; wrong-password checks post
+        to /auth/login directly.
+        """
+        if self.sign_in_refused:
+            raise CheckBlocked("not run: an earlier sign-in was refused (see the first failure)")
         response = self.client.post(
             f"{self.api}/auth/login",
             json={"email": email or ACCOUNTS[role], "password": password},
         )
-        if response.status_code == 429:
-            raise CheckFailed("Supabase rate-limited sign-in (429); wait a few minutes and re-run")
+        if response.status_code in (401, 429):
+            self.sign_in_refused = True
+            raise CheckFailed(SIGN_IN_REFUSED.format(status=response.status_code))
         expect_status(response, 200)
         body = response.json()
         session = Session(role, body["access_token"], body["refresh_token"], body)
         self._opened.append(session)
         return session
+
+    def attempt_login(self, email: str, password: str) -> httpx.Response:
+        """A sign-in expected to be refused. Blocked once sign-ins are being
+        refused, since a rate-limited 401 would otherwise pass as a correct one."""
+        if self.sign_in_refused:
+            raise CheckBlocked("not run: an earlier sign-in was refused (see the first failure)")
+        return self.client.post(f"{self.api}/auth/login", json={"email": email, "password": password})
 
     def shared(self, role: str) -> Session:
         """One session per role for checks that only read, to spare sign-ins."""
@@ -211,20 +244,14 @@ def _(ctx: Context) -> None:
 
 @check("TC-AUTH-006", "Wrong password is rejected with the generic message")
 def _(ctx: Context) -> None:
-    response = ctx.client.post(
-        f"{ctx.api}/auth/login",
-        json={"email": ACCOUNTS["event_coordinator"], "password": SEEDED_PASSWORD + "x"},
-    )
+    response = ctx.attempt_login(ACCOUNTS["event_coordinator"], SEEDED_PASSWORD + "x")
     expect_status(response, 401)
     expect_detail(response, INVALID_CREDENTIALS)
 
 
 @check("TC-AUTH-007", "Unregistered email gets the same message as a wrong password")
 def _(ctx: Context) -> None:
-    response = ctx.client.post(
-        f"{ctx.api}/auth/login",
-        json={"email": "nobody@connectsphere.dev", "password": SEEDED_PASSWORD},
-    )
+    response = ctx.attempt_login("nobody@connectsphere.dev", SEEDED_PASSWORD)
     expect_status(response, 401)
     expect_detail(response, INVALID_CREDENTIALS)
 
@@ -258,9 +285,7 @@ def _(ctx: Context) -> None:
 @check("TC-AUTH-014", "SQL-injection password is an ordinary wrong password")
 def _(ctx: Context) -> None:
     injection = "' OR " + "'1'='1"
-    response = ctx.client.post(
-        f"{ctx.api}/auth/login", json={"email": ACCOUNTS["event_coordinator"], "password": injection}
-    )
+    response = ctx.attempt_login(ACCOUNTS["event_coordinator"], injection)
     expect_status(response, 401)
     expect_detail(response, INVALID_CREDENTIALS)
 
@@ -520,8 +545,12 @@ def git(*args: str) -> str:
 class Result:
     case_id: str
     title: str
-    passed: bool
+    status: str  # "pass", "fail" or "blocked"
     detail: str = ""
+
+    @property
+    def passed(self) -> bool:
+        return self.status == "pass"
 
 
 def run_api_checks(ctx: Context, keyword: str | None, skip_accounts: bool) -> list[Result]:
@@ -534,11 +563,13 @@ def run_api_checks(ctx: Context, keyword: str | None, skip_accounts: bool) -> li
             continue
         try:
             item.run(ctx)
-            results.append(Result(item.case_id, item.title, True))
+            results.append(Result(item.case_id, item.title, "pass"))
+        except CheckBlocked as blocked:
+            results.append(Result(item.case_id, item.title, "blocked", str(blocked)))
         except CheckFailed as failure:
-            results.append(Result(item.case_id, item.title, False, str(failure)))
+            results.append(Result(item.case_id, item.title, "fail", str(failure)))
         except Exception:  # a crash in a check is a failure, not a reason to stop the run
-            results.append(Result(item.case_id, item.title, False, traceback.format_exc(limit=1).strip()))
+            results.append(Result(item.case_id, item.title, "fail", traceback.format_exc(limit=1).strip()))
         print_result(results[-1])
     return results
 
@@ -575,10 +606,10 @@ def run_db_checks(keyword: str | None) -> list[Result]:
         completed = _supabase_query("-f", str(VERIFICATION_DIR / script))
         title = f"{cases}: supabase/verification/{script}"
         if completed.returncode != 0:
-            results.append(Result(script, title, False, _cli_error(completed.stderr)))
+            results.append(Result(script, title, "fail", _cli_error(completed.stderr)))
         else:
             failed = _failed_rows(completed.stdout)
-            results.append(Result(script, title, not failed, "; ".join(failed)))
+            results.append(Result(script, title, "fail" if failed else "pass", "; ".join(failed)))
         print_result(results[-1])
     return results
 
@@ -601,16 +632,22 @@ def _failed_rows(stdout: str) -> list[str]:
 
 
 def print_result(result: Result) -> None:
-    mark = "PASS" if result.passed else "FAIL"
-    print(f"  {mark}  {result.case_id:<28} {result.title}")
+    mark = {"pass": "PASS", "fail": "FAIL", "blocked": "BLOCK"}[result.status]
+    print(f"  {mark:<5} {result.case_id:<28} {result.title}")
     if result.detail:
         print(f"        {result.detail}")
+
+
+def summary(results: list[Result]) -> str:
+    passed = sum(r.status == "pass" for r in results)
+    blocked = sum(r.status == "blocked" for r in results)
+    text = f"{passed}/{len(results)} passed"
+    return text + (f", {blocked} blocked" if blocked else "")
 
 
 def write_run_log(results: list[Result], api: str, started: dt.datetime, duration: float) -> Path:
     commit = git("rev-parse", "--short", "HEAD")
     dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
-    passed = sum(r.passed for r in results)
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     path = RUNS_DIR / f"{started:%Y-%m-%d-%H%M}-api-db-{commit}.md"
 
@@ -620,7 +657,7 @@ def write_run_log(results: list[Result], api: str, started: dt.datetime, duratio
         "| | |",
         "|---|---|",
         "| Method | `backend/scripts/verify_live.py` (API + rolled-back SQL) |",
-        f"| Result | **{passed}/{len(results)} passed** |",
+        f"| Result | **{summary(results)}** |",
         f"| Commit | `{commit}`{' + uncommitted changes' if dirty else ''} on `{git('branch', '--show-current')}` |",
         f"| Backend | `{api}` |",
         f"| Database | live Supabase project `{PROJECT_REF}`, via `supabase db query` |",
@@ -632,7 +669,8 @@ def write_run_log(results: list[Result], api: str, started: dt.datetime, duratio
     ]
     for r in results:
         detail = r.detail.replace("|", "\\|").replace("\n", " ")
-        lines.append(f"| {r.case_id} | {r.title} | {'Pass' if r.passed else '**Fail**'} | {detail} |")
+        label = {"pass": "Pass", "fail": "**Fail**", "blocked": "Blocked"}[r.status]
+        lines.append(f"| {r.case_id} | {r.title} | {label} | {detail} |")
     path.write_text("\n".join(lines) + "\n")
     return path
 
@@ -676,8 +714,8 @@ def main() -> int:
         print(f"Database checks (rolled back) on Supabase project {PROJECT_REF}")
         results += run_db_checks(args.keyword)
 
-    failed = [r for r in results if not r.passed]
-    print(f"\n{len(results) - len(failed)}/{len(results)} passed")
+    failed = [r for r in results if r.status != "pass"]
+    print(f"\n{summary(results)}")
     if args.record and results:
         path = write_run_log(results, args.api, started, time.monotonic() - clock)
         print(f"Run log: {path.relative_to(REPO_ROOT)}")

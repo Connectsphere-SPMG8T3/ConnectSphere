@@ -1,6 +1,17 @@
 // Sign-in, session and sign-out, against the real backend and Supabase.
 // Cases: docs/test-cases/auth.md. Each title starts with the case it runs.
-import { ACCOUNTS, API_URL, SEEDED_PASSWORD, STORAGE_KEY, apiLogin, expect, seedSession, signInThroughForm, test } from "./support/fixtures.js";
+import {
+  ACCOUNTS,
+  API_URL,
+  SEEDED_PASSWORD,
+  STORAGE_KEY,
+  apiLogin,
+  expect,
+  seedSession,
+  signInThroughForm,
+  skipIfSignInRefused,
+  test,
+} from "./support/fixtures.js";
 
 // The venue staff and tech support dashboards open straight onto their data, with no welcome heading.
 const WELCOME_HEADING = new Set(["event_organiser", "event_coordinator", "attendee"]);
@@ -64,6 +75,7 @@ test.describe("Login", () => {
   });
 
   test("TC-AUTH-036 pressing Enter in either field signs in", async ({ page }) => {
+    skipIfSignInRefused();
     const { email, dashboard } = ACCOUNTS.event_organiser;
 
     await page.goto("/login");

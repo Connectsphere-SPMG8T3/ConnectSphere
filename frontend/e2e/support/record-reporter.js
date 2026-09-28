@@ -34,7 +34,15 @@ function singaporeTime(date) {
   return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
 }
 
-const cell = (text) => String(text).replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+// A skipped spec is one that couldn't run (an earlier sign-in was refused).
+const RESULT_LABELS = { passed: "Pass", failed: "**Fail**", timedOut: "**Timed out**", skipped: "Blocked" };
+
+const cell = (text) =>
+  String(text)
+    .replace(/\x1b\[[0-9;]*m/g, "") // Playwright's error text carries terminal colours
+    .replace(/\|/g, "\\|")
+    .replace(/\s+/g, " ")
+    .trim();
 
 export default class RecordReporter {
   onBegin(config) {
@@ -47,7 +55,13 @@ export default class RecordReporter {
     const title = test.title;
     const caseIds = title.match(/TC-[A-Z]+-\d+/g) ?? [];
     const check = title.replace(/^(TC-[A-Z]+-\d+\s+)+/, "");
-    const detail = result.status === "passed" ? "" : (result.error?.message ?? "").split("\n")[0].slice(0, 200);
+    const annotations = [...test.annotations, ...(result.annotations ?? [])];
+    const note = (type) => annotations.find((a) => a.type === type)?.description;
+    let detail = "";
+    if (result.status === "skipped") detail = note("skip") ?? "";
+    else if (result.status !== "passed") {
+      detail = note("sign-in refused") ?? (result.error?.message ?? "").split("\n")[0].slice(0, 200);
+    }
     this.rows.push({ caseIds: caseIds.join(", ") || "—", check, status: result.status, detail });
   }
 
@@ -56,6 +70,7 @@ export default class RecordReporter {
     const commit = git("rev-parse --short HEAD") || "unknown";
     const dirty = Boolean(git("status --porcelain --untracked-files=no"));
     const passed = this.rows.filter((row) => row.status === "passed").length;
+    const blocked = this.rows.filter((row) => row.status === "skipped").length;
     const seconds = Math.round((Date.now() - this.started.getTime()) / 1000);
 
     const lines = [
@@ -64,7 +79,7 @@ export default class RecordReporter {
       "| | |",
       "|---|---|",
       "| Method | Playwright, `frontend/e2e/` (real browser, real backend, live Supabase) |",
-      `| Result | **${passed}/${this.rows.length} passed** |`,
+      `| Result | **${passed}/${this.rows.length} passed${blocked ? `, ${blocked} blocked` : ""}** |`,
       `| Commit | \`${commit}\`${dirty ? " + uncommitted changes" : ""} on \`${git("branch --show-current")}\` |`,
       `| Frontend | \`${this.baseURL}\` |`,
       `| Backend | \`${process.env.E2E_API_URL || "http://localhost:8000/api/v1"}\` |`,
@@ -75,7 +90,7 @@ export default class RecordReporter {
       "|---|---|---|---|",
       ...this.rows.map(
         (row) =>
-          `| ${row.caseIds} | ${cell(row.check)} | ${row.status === "passed" ? "Pass" : `**${row.status}**`} | ${cell(row.detail)} |`,
+          `| ${row.caseIds} | ${cell(row.check)} | ${RESULT_LABELS[row.status] ?? `**${row.status}**`} | ${cell(row.detail)} |`,
       ),
     ];
 

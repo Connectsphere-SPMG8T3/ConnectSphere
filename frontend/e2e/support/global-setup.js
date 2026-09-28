@@ -1,9 +1,12 @@
-import { API_URL } from "./fixtures.js";
+import { rmSync } from "node:fs";
+
+import { API_URL, SIGN_IN_REFUSED_FLAG } from "./fixtures.js";
 import { deleteThrowawayAccounts } from "./throwaway.js";
 
 // Fail in one clear line when a server isn't running, rather than letting
 // every spec time out on its first navigation.
 export default async function globalSetup(config) {
+  rmSync(SIGN_IN_REFUSED_FLAG, { force: true });
   const baseURL = config.projects[0].use.baseURL;
   const healthURL = API_URL.replace(/\/api\/v1\/?$/, "") + "/health";
 

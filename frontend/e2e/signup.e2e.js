@@ -1,7 +1,7 @@
 // Organiser sign-up (SCRUM-80), against the real backend and Supabase.
 // Cases: docs/test-cases/auth.md, "Sign-up — SCRUM-80". Accounts made here are
 // live-check+… throwaways, deleted by global setup/teardown (support/throwaway.js).
-import { ACCOUNTS, expect, seedSession, test } from "./support/fixtures.js";
+import { ACCOUNTS, expect, seedSession, skipIfSignInRefused, test } from "./support/fixtures.js";
 import { THROWAWAY_PASSWORD, throwawayEmail } from "./support/throwaway.js";
 
 const PASSWORD_RULE = "Password must be at least 8 characters and include at least one letter and one digit.";
@@ -21,6 +21,7 @@ function trackSignupRequests(page) {
 }
 
 test("TC-AUTH-037 TC-AUTH-038 an organiser signs up, signs in and opens a new event request", async ({ page }) => {
+  skipIfSignInRefused();
   const email = throwawayEmail("037");
   await page.goto("/login");
   await page.getByRole("link", { name: "Create an account" }).click();
@@ -118,6 +119,7 @@ test("TC-AUTH-046 the sign-up page is only for signed-out visitors", async ({ pa
 });
 
 test("TC-AUTH-047 an email typed with spaces is sent trimmed and signs in", async ({ page }) => {
+  skipIfSignInRefused();
   const email = throwawayEmail("047");
   await page.goto("/signup");
   await fillSignup(page, { email: `  ${email}  ` });
