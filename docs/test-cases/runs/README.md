@@ -51,7 +51,7 @@ Supabase limits sign-ins per IP address; the limit is under **Authentication →
 
 Both suites back to back, several times within minutes on 2026-09-27 and 28, never hit the limit. Sign-up checks create accounts through the admin API, which this limit doesn't cover.
 
-If a run does hit it, the first refused sign-in is recorded as a **Fail** that says "either sign-in is broken, or Supabase rate-limited this IP", and every later check that needs a sign-in is recorded as **Blocked** without trying, so the run doesn't extend the limit. The backend currently reports the refusal as a 401 wrong password (`docs/PROJECT_REVIEW.md` D16), so the checks can't tell the two causes apart. Wait about five minutes, run once more, and treat it as a real failure if it repeats.
+If a run does hit it, the first refused sign-in is recorded as a **Fail** that says "either sign-in is broken, or Supabase rate-limited this IP", and every later check that needs a sign-in is recorded as **Blocked** without trying, so the run doesn't extend the limit. The backend currently reports the refusal as a 401 wrong password (`docs/DEFECTS.md` D16), so the checks can't tell the two causes apart. Wait about five minutes, run once more, and treat it as a real failure if it repeats.
 
 Don't run the suites in the few minutes before a demo or a teammate's login from the same network.
 
@@ -59,7 +59,7 @@ Don't run the suites in the few minutes before a demo or a teammate's login from
 
 A person has to look at:
 
-- **Design and layout**: the Bauhaus look (`docs/SCENARIO.md` §6), alignment, spacing, colour, and the phone-width (375px) layout.
+- **Design and layout**: the Bauhaus look (`docs/PROJECT_OVERVIEW.md` §6), alignment, spacing, colour, and the phone-width (375px) layout.
 - **Wording and clarity**: whether a message, empty state or confirmation reads well and says what the user needs.
 - **Feel**: nothing flashes, jumps or briefly shows another role's content (TC-RBAC-003's "not even momentarily", TC-ROLE-014), and loading states make sense.
 - **Things outside the app**: an `.ics` file opening in a real calendar app, and email.
@@ -86,8 +86,8 @@ Copy into `<date>-<time>-manual-<commit>.md`:
 | TC-AUTH-046 | "Create an account" link on login | Fail | Link text wraps at 375px: D14 |
 ```
 
-Result is **Pass**, **Fail** (with a defect ID from `docs/PROJECT_REVIEW.md`, or what went wrong) or **Blocked** (and why). Automated run logs use the same three results.
+Result is **Pass**, **Fail** (with a defect ID from `docs/DEFECTS.md`, or what went wrong) or **Blocked** (and why). Automated run logs use the same three results.
 
 ## Before 2026-09-27
 
-This log starts on 2026-09-27, when the tooling was added. Stories verified before then have no run files. Their real-system verification is recorded as prose in each story's "Verified" and "Not verified" notes in `docs/SCENARIO.md` §4, dated by the commit that added them. The first recorded runs cover those stories' automated cases as they stand now. Past runs are not backfilled: a log file here always records a run that actually happened, on the date it shows.
+This log starts on 2026-09-27, when the tooling was added. Stories verified before then have no run files. Their real-system verification is recorded as prose in each story's "Verified" and "Not verified" notes in `docs/BUILD_LOG.md` §4, dated by the commit that added them. The first recorded runs cover those stories' automated cases as they stand now. Past runs are not backfilled: a log file here always records a run that actually happened, on the date it shows.

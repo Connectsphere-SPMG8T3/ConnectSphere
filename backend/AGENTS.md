@@ -41,7 +41,7 @@ Reference implementations: `modules/auth/` for Supabase Auth, and `modules/venue
 - **Import guards from `app.modules.auth.dependencies`**, not from `app.core.security` directly. The auth module re-exports them on purpose so other modules depend on its public surface. See `venues/router.py` for the pattern, including a named `Annotated` alias per access level (e.g. `VenueReader`).
 - **Endpoints that call Supabase are plain `def`, not `async def`.** supabase-py is synchronous, so FastAPI runs a plain `def` in its threadpool, whereas an `async def` would block the event loop.
 - **Errors** are typed exceptions in `app/core/exceptions.py`. Add new ones there instead of raising bare `HTTPException` from services. Report a Supabase outage as `503` (see `AuthServiceUnavailableError`), not `401` or `500`.
-- **Supabase SDK traps** (see `docs/SCENARIO.md` §5):
+- **Supabase SDK traps** (see `docs/PROJECT_OVERVIEW.md` §5):
   - Never call `sign_in_with_password` or `refresh_session` on a shared client. Use `app.db.supabase.create_auth_client()`.
   - Import auth exceptions from `supabase_auth.errors`, never `gotrue.errors`.
 - **Schema changes go through a migration** in `supabase/migrations/`, never ad-hoc SQL against the live project.

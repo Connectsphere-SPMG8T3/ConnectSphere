@@ -2,7 +2,7 @@
 
 **The single checklist a story, fix, or enabler must clear before anyone calls it done.**
 
-This file is the one source of truth. Root `AGENTS.md` and `docs/PROJECT_REVIEW.md` point here rather than keeping their own copies — if a rule changes, it changes here first.
+This file is the one source of truth. Root `AGENTS.md` and `docs/ROADMAP.md` point here rather than keeping their own copies — if a rule changes, it changes here first.
 
 It covers **both** halves of the work: what an AI agent or a developer does while building, and what a human does afterwards to close the loop (review, merge, Jira). Every item is tagged with who owns it:
 
@@ -14,13 +14,13 @@ It covers **both** halves of the work: what an AI agent or a developer does whil
 
 Agents never push, open PRs, or change Jira unless the developer asks (root `AGENTS.md`, "Git workflow"). Phase 4 is therefore where the work is handed back to a person — an agent that stops after Phase 3 has done its job, but the *story* is not done.
 
-_Last updated: 2026-09-27 — Phase 2 adds recorded live checks and the developer's manual browser pass; Phase 3 adds the run logs in `docs/test-cases/runs/` (`chore/automated-live-checks`). 2026-09-22 — "CI is green on the PR" moved from "Not yet enforceable" into Phase 4, now that `.github/workflows/ci.yml` exists. First version (same day) consolidated the checklist in root `AGENTS.md` and the Sprint 2 proposal in `docs/PROJECT_REVIEW.md` §C4._
+_Last updated: 2026-09-27 — Phase 2 adds recorded live checks and the developer's manual browser pass; Phase 3 adds the run logs in `docs/test-cases/runs/` (`chore/automated-live-checks`). 2026-09-22 — "CI is green on the PR" moved from "Not yet enforceable" into Phase 4, now that `.github/workflows/ci.yml` exists. First version (same day) consolidated the checklist in root `AGENTS.md` and the Sprint 2 proposal in `docs/ROADMAP.md` §C4._
 
 ---
 
 ## Phase 1 — Before writing code
 
-- [ ] **[A/D]** The work is identified as a **story** (`SCRUM-<n>`), a **fix** (defect `D<n>` in `docs/PROJECT_REVIEW.md`), or an **enabler** (docs, tooling, config).
+- [ ] **[A/D]** The work is identified as a **story** (`SCRUM-<n>`), a **fix** (defect `D<n>` in `docs/DEFECTS.md`), or an **enabler** (docs, tooling, config).
 - [ ] **[A/D]** For a story: the user story and acceptance criteria come from Jira (or are pasted by the developer). Never work from the ticket title alone, and never invent acceptance criteria.
 - [ ] **[D]** Acceptance criteria are written in **Given/When/Then** form on the Jira issue before the sprint starts.
 - [ ] **[A/D]** `docs/REQUIREMENTS.md`, `docs/IMPLEMENTATION_MAP.md`, and the live Supabase project have been checked — not just the migration files, which have drifted before.
@@ -45,11 +45,11 @@ _Last updated: 2026-09-27 — Phase 2 adds recorded live checks and the develope
 ## Phase 3 — Paper trail (graded evidence)
 
 - [ ] **[A]** `docs/IMPLEMENTATION_MAP.md` — updated **in place** in the same branch: status table, reuse tables, anything removed, "know before you build" notes, and the "Last updated" line.
-- [ ] **[A]** `docs/SCENARIO.md` §4 — a new entry **appended** using the existing template. Never rewrite past entries.
+- [ ] **[A]** `docs/BUILD_LOG.md` §4 — a new entry **appended** using the existing template. Never rewrite past entries.
 - [ ] **[A]** `docs/test-cases/<area>.md` — manual cases for new user-facing behaviour, traced to the Jira key and its acceptance criteria.
 - [ ] **[A]** `docs/test-cases/runs/` — this story's run logs (automated and manual) committed on the branch.
 - [ ] **[A]** `docs/REQUIREMENTS.md` — updated when a rule, assumption, or design decision changed, citing the `QA-<row>` behind it.
-- [ ] **[A]** `docs/PROJECT_REVIEW.md` — defects marked fixed, with the branch or commit.
+- [ ] **[A]** `docs/DEFECTS.md` — defects marked fixed, with the branch or commit.
 - [ ] **[A]** Committed on a non-`main` branch, staged **by file name**, with an imperative summary (`feat(events): …`) and a body explaining *why*, carrying the Jira key or defect ID.
 - [ ] **[A]** The final report states what changed, how it was verified, **what was not verified and why**, and any follow-ups.
 
@@ -65,13 +65,13 @@ This phase is human-owned. An agent does these steps only when the developer exp
 - [ ] **[D]** The branch is merged into `main` and then deleted.
 - [ ] **[D]** **The Jira issue is moved to Done and the PR is linked on it.** This is the step most often missed — a merged branch with the ticket still In Progress breaks the sprint burndown, which is graded evidence.
 - [ ] **[D]** Any customer clarification or scope change discovered during the work is recorded as a Jira comment citing its `QA-<row>`.
-- [ ] **[D]** Anything demo-able is noted for the sprint review (`docs/PROJECT_REVIEW.md` §C4, "Scrum evidence").
+- [ ] **[D]** Anything demo-able is noted for the sprint review (`docs/ROADMAP.md` §C4, "Scrum evidence").
 
 ---
 
 ## Not yet enforceable
 
-These were agreed as targets in `docs/PROJECT_REVIEW.md` §C4 but **cannot be checked today**. They are listed separately on purpose: a checklist with unenforceable items on it teaches the team to ignore the whole list. Move an item up into the phases above on the day the tooling lands.
+These were agreed as targets in `docs/ROADMAP.md` §C4 but **cannot be checked today**. They are listed separately on purpose: a checklist with unenforceable items on it teaches the team to ignore the whole list. Move an item up into the phases above on the day the tooling lands.
 
 | Target | Blocked on | Move up when |
 |---|---|---|
@@ -86,6 +86,6 @@ Until then, Phase 2's "full suite passes" and "verified against the real system"
 
 - `docs/CI.md` — what the automated checks cover, what they deliberately do not, and the two targets below that are waiting on tooling described there.
 - Root `AGENTS.md` — the working rules this checklist enforces (git workflow, TDD, security baseline, scope discipline).
-- `docs/PROJECT_REVIEW.md` §C4 — the sprint plan and the Scrum evidence to capture alongside it.
+- `docs/ROADMAP.md` §C4 — the sprint plan and the Scrum evidence to capture alongside it.
 - `docs/IMPLEMENTATION_MAP.md` — what exists right now, to check before building and to update after.
 - `docs/REQUIREMENTS.md` — the behaviour specs, access matrix, and open questions (§9) this checklist tests against.

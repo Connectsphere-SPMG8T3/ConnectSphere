@@ -20,7 +20,7 @@ SCRUM-80's acceptance criteria require the opposite of both: *"The system reject
 
 **`POST /auth/signup` creates the account with the secret-key admin client's `auth.admin.create_user(..., email_confirm=True)`.** Accounts are confirmed as soon as they are created; nobody verifies that the sign-up email belongs to the person.
 
-- The request carries `role`, `full_name`, `organisation_name` and `phone_number` as `user_metadata`. `handle_new_user()` still creates the `profiles` and `user_roles` rows, and it still accepts only `event_organiser` or `attendee` from metadata (AUTH-R3, PROJECT_REVIEW D2). The backend also validates `role` before calling Supabase, so a staff role is rejected with a 422, not quietly saved as `attendee`.
+- The request carries `role`, `full_name`, `organisation_name` and `phone_number` as `user_metadata`. `handle_new_user()` still creates the `profiles` and `user_roles` rows, and it still accepts only `event_organiser` or `attendee` from metadata (AUTH-R3, DEFECTS D2). The backend also validates `role` before calling Supabase, so a staff role is rejected with a 422, not quietly saved as `attendee`.
 - A duplicate email comes back from the admin API as an `AuthApiError` with code `email_exists`. The service maps that **code** (not the message text) to a 409.
 - `AuthRetryableError` is caught first and mapped to 503, as for every other auth call.
 - The endpoint returns the new profile and never opens a session. The SPA sends the user to `/login`.
@@ -46,7 +46,7 @@ SCRUM-80's acceptance criteria require the opposite of both: *"The system reject
 
 - **Nobody verifies email addresses.** Anyone can sign up with an address they don't own. With no emails sent yet this changes little, but it matters once notifications go by email.
 - **Emails reveal whether an account exists.** A 409 tells the caller the address is registered. That's what AC 3 asks for, but it's the enumeration GoTrue was designed to prevent.
-- **No rate limit or captcha.** The admin API skips GoTrue's sign-up rate limiting, so a script can create confirmed accounts in bulk. Recorded as a known risk in `docs/PROJECT_REVIEW.md`, not addressed in SCRUM-80.
+- **No rate limit or captcha.** The admin API skips GoTrue's sign-up rate limiting, so a script can create confirmed accounts in bulk. Recorded as a known risk in `docs/DEFECTS.md` (D14), not addressed in SCRUM-80.
 - **Reversing this later affects existing accounts.** Switching to verified sign-up leaves every account created before then confirmed without ever having been verified.
 
 ## Revisit when
@@ -57,6 +57,6 @@ SCRUM-80's acceptance criteria require the opposite of both: *"The system reject
 ## Links
 
 - Jira SCRUM-80 (Event organiser signup), SCRUM-83 (Attendee signup)
-- `docs/REQUIREMENTS.md` ACC-R2, ACC-R3, AUTH-R3; `docs/PROJECT_REVIEW.md` D2
+- `docs/REQUIREMENTS.md` ACC-R2, ACC-R3, AUTH-R3; `docs/DEFECTS.md` D2
 - `supabase/migrations/20260919000000_profiles_role_requires_user_roles_membership.sql` — the current `handle_new_user()`
 - [ADR-0002](0002-supabase-client-only-data-access.md) — the client factories this uses (the admin client)

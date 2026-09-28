@@ -3,7 +3,8 @@
 -- should read `ok = true`. This script only checks that the objects and grants
 -- exist — it makes no calls to transition_event, so it never touches fixture
 -- data. For a behavioural check that actually calls transition_event, see the
--- plan's Task 1 Step 6 query (`docs/superpowers/plans/2026-09-23-approve-reject-event.md`),
+-- SCRUM-34/52 plan's Task 1 Step 6 query (the plan left docs/ on 2026-09-28:
+-- `git show 36aa9a7:docs/superpowers/plans/2026-09-23-approve-reject-event.md`),
 -- which wraps the call in `begin; ... rollback;` so it leaves no trace; to
 -- repair drift a real (non-rolled-back) approve/reject already left behind,
 -- run `supabase/verification/event_review_fixture_reset.sql` instead.

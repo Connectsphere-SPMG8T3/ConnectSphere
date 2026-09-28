@@ -4,12 +4,12 @@
 |---|---|
 | **Status** | Accepted |
 | **Decided** | 2026-09-12 (with SCRUM-48, the first backend code) |
-| **Recorded** | 2026-09-22 — written retroactively from `SCENARIO.md` §5 and `REQUIREMENTS.md` §3.2; the reasoning is contemporaneous, the ADR framing is not |
+| **Recorded** | 2026-09-22 — written retroactively from `PROJECT_OVERVIEW.md` §5 and `REQUIREMENTS.md` §3.2; the reasoning is contemporaneous, the ADR framing is not |
 | **Deciders** | Jie Ching Lim — wrote the architecture narrative in `fda8aec` (the SCRUM-48 commit) and the container-decisions table in `b168f0d`; adopted by the team and followed by every module since |
 
 ## Context
 
-The customer briefing (`SCENARIO.md` §2.3) sets two non-functional requirements that pull on architecture directly:
+The customer briefing (`PROJECT_OVERVIEW.md` §2.3) sets two non-functional requirements that pull on architecture directly:
 
 - **Maintainability** — "future functionality/business rules must be addable without a full rebuild." The customer confirmed in Session 1 that change can happen at any time.
 - **Scalability** — the system must absorb three years of anticipated growth in events, users, venues, equipment and registrations (W1 §8e).
@@ -18,7 +18,7 @@ Three further constraints applied when the decision was made:
 
 1. **The tech stack was left to us** (QA-73, QA-74). No customer preference to satisfy.
 2. **Team and horizon:** six developers, four sprints, no dedicated ops capacity, and no CI at the time the decision was taken (CI was added afterwards on `chore/ci-pipeline`; see `.github/workflows/ci.yml`).
-3. **The domains are coupled by one workflow, not independent.** The event lifecycle (`SCENARIO.md` §2.2) runs draft → submit → assign → review → venue booking → equipment → registration → confirmation, crossing every domain and all five roles in a single business transaction. The release is graded on *coherent end-to-end workflows* (W4), not on isolated features.
+3. **The domains are coupled by one workflow, not independent.** The event lifecycle (`PROJECT_OVERVIEW.md` §2.2) runs draft → submit → assign → review → venue booking → equipment → registration → confirmation, crossing every domain and all five roles in a single business transaction. The release is graded on *coherent end-to-end workflows* (W4), not on isolated features.
 
 The customer also requires that double-booking be **impossible** — first-come-first-served, no staff override (QA-10, QA-113) — and that pending requests hold a venue exclusively (QA-6).
 
@@ -51,7 +51,7 @@ Two rules make the boundaries real rather than cosmetic:
 
 - **Module boundaries are enforced by convention, not by a compiler or a network.** They erode quietly, and already have twice: the `equipment` module reached Postgres directly with SQLAlchemy while every other module went through the Supabase client, corrected only at review (`3d4110d`); and `events/service.py` raises its own `HTTPException` subclasses instead of adding them to `app/core/exceptions.py`, which `backend/AGENTS.md` asks for.
 - **No independent scaling or deployment.** Accepted — no evidence yet that any one domain has a different load profile.
-- **One shared database and one migration history**, which is already the project's main collision point (`PROJECT_REVIEW.md` §A3.10; the migration-drift defect, D8).
+- **One shared database and one migration history**, which is already the project's main collision point (`archive/2026-09-13-design-review.md` §A3.10; the migration-drift defect, D8).
 
 **Neutral**
 
@@ -73,7 +73,7 @@ None of these three are automated. CI (`.github/workflows/ci.yml`) runs the test
 
 ## Links
 
-- `docs/SCENARIO.md` §5 — the original architecture narrative
+- `docs/PROJECT_OVERVIEW.md` §5 — the original architecture narrative
 - `docs/REQUIREMENTS.md` §3.2 — container decisions table, §3.3 — component diagram
-- `docs/SCENARIO.md` §2.3 — the customer's non-functional requirements
-- `docs/PROJECT_REVIEW.md` §A3 — design improvements that build on this structure
+- `docs/PROJECT_OVERVIEW.md` §2.3 — the customer's non-functional requirements
+- `docs/archive/2026-09-13-design-review.md` §A3 — design improvements that build on this structure

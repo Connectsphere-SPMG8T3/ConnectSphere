@@ -1,8 +1,6 @@
 # ConnectSphere — Setup Guide
 
-This document walks through getting the full stack (Supabase, FastAPI backend, Vue frontend) running locally, and records the environment decisions made while first scaffolding the project so they don't need to be re-derived later. For the business/course context behind these decisions (the customer briefing, the first-release scope, and the exact SCRUM-48 ticket this implements), see [docs/SCENARIO.md](SCENARIO.md).
-
-> **Login field note:** the SCRUM-48 Jira ticket's acceptance criteria say "username and password." This implementation authenticates by **email** and password instead, since Supabase Auth's `sign_in_with_password` is email-based and `public.profiles.email` is the unique identifying field (there is no separate username column). If the customer clarifies during Q&A that a distinct, non-email username is required, that's a schema and auth-flow change, not just a label change on the login form.
+This document walks through getting the full stack (Supabase, FastAPI backend, Vue frontend) running locally, and records the environment decisions made while first scaffolding the project so they don't need to be re-derived later. For the business/course context behind these decisions (the customer briefing, the first-release scope, and the exact SCRUM-48 ticket this implements), see [docs/PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md).
 
 ## 1. Prerequisites
 
@@ -42,9 +40,9 @@ supabase db push                              # applies supabase/migrations/*.sq
 psql "$DATABASE_URL" -f supabase/seed.sql     # creates 5 test accounts, one per role
 ```
 
-`supabase/migrations/20260912000001_init_auth_and_profiles.sql` creates the `user_role` enum, `public.profiles` table, indexes, the `handle_new_user()` trigger (auto-populates a profile row when a new `auth.users` row is inserted), and RLS policies. `20260913120749_fix_auth_security_defects.sql` then restricts sign-up to the external roles (`event_organiser`, `attendee`), replaces the `profiles` policies with a non-recursive version backed by `private.current_user_role()`, and pins `search_path` on the auth functions (see `docs/SCENARIO.md` §4.2).
+`supabase/migrations/20260912000001_init_auth_and_profiles.sql` creates the `user_role` enum, `public.profiles` table, indexes, the `handle_new_user()` trigger (auto-populates a profile row when a new `auth.users` row is inserted), and RLS policies. `20260913120749_fix_auth_security_defects.sql` then restricts sign-up to the external roles (`event_organiser`, `attendee`), replaces the `profiles` policies with a non-recursive version backed by `private.current_user_role()`, and pins `search_path` on the auth functions (see `docs/BUILD_LOG.md` §4.2).
 
-`20260915090000_venues_catalogue_and_availability.sql` (SCRUM-39) adds the venue catalogue: the `venue_layout` / `facility` / `accessibility_feature` / `venue_booking_status` / `venue_block_reason` enums, the `venues`, `venue_layouts`, `venue_facilities`, `venue_blocks` and `venue_bookings` tables, the `btree_gist` exclusion constraint that makes overlapping venue bookings impossible (DB-1), and staff-only read policies (see `docs/SCENARIO.md` §4.4). Before pushing, run `supabase migration list --linked` — the live history had drifted once (PROJECT_REVIEW D8).
+`20260915090000_venues_catalogue_and_availability.sql` (SCRUM-39) adds the venue catalogue: the `venue_layout` / `facility` / `accessibility_feature` / `venue_booking_status` / `venue_block_reason` enums, the `venues`, `venue_layouts`, `venue_facilities`, `venue_blocks` and `venue_bookings` tables, the `btree_gist` exclusion constraint that makes overlapping venue bookings impossible (DB-1), and staff-only read policies (see `docs/BUILD_LOG.md` §4.4). Before pushing, run `supabase migration list --linked` — the live history had drifted once (DEFECTS D8).
 
 `supabase/seed.sql` inserts directly into `auth.users` / `auth.identities` (the standard pattern for locally seeding confirmed Supabase Auth accounts outside the GoTrue signup API) so the five role-specific test accounts exist immediately, with no email confirmation step needed. Because the trigger no longer accepts staff roles from sign-up metadata, the seed sets each profile's role explicitly afterwards.
 

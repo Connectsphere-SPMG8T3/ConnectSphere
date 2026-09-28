@@ -1,5 +1,5 @@
 -- =============================================================================
--- ConnectSphere — auth/profile security checks (regression for PROJECT_REVIEW D2, D3, D6)
+-- ConnectSphere — auth/profile security checks (regression for DEFECTS D2, D3, D6)
 --
 -- Runs every check inside one transaction and ROLLS BACK, so it changes nothing.
 -- Any failed check raises an exception naming the defect. Run after migrations
