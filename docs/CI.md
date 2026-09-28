@@ -4,7 +4,7 @@
 
 This file is the single reference for ConnectSphere's automated checks. It sits apart from `DEFINITION_OF_DONE.md` (which says what *a task* must clear) because CI is a standing property of the repository that changes on its own schedule.
 
-_Last updated: 2026-09-27 — §3: Playwright specs and a live-check script now exist, run locally rather than in CI (`chore/automated-live-checks`). 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
+_Last updated: 2026-09-28 — §1: both jobs upload a JUnit report as a run artifact, kept 90 days, as the unit suites' execution record (`docs/test-cases/runs/README.md`). 2026-09-27 — §3: Playwright specs and a live-check script now exist, run locally rather than in CI (`chore/automated-live-checks`). 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
 
 ---
 
@@ -14,8 +14,10 @@ One workflow, `.github/workflows/ci.yml`, named **CI**. Two jobs run in parallel
 
 | Job | Steps | Measured |
 |---|---|---|
-| **Backend (pytest)** | Python 3.11 → `pip install -r requirements.txt` → `pytest` | 207 tests, 27s on the runner (14.5s locally) |
-| **Frontend (vitest + build)** | Node 20 → `npm ci` → `npm test` → `cp .env.example .env` → `npm run build` | 312 tests across 23 files, 39s on the runner (46s locally) |
+| **Backend (pytest)** | Python 3.11 → `pip install -r requirements.txt` → `pytest --junitxml` → upload `backend-test-report` | 207 tests, 27s on the runner (14.5s locally) |
+| **Frontend (vitest + build)** | Node 20 → `npm ci` → `npm test` (JUnit reporter) → upload `frontend-test-report` → `cp .env.example .env` → `npm run build` | 312 tests across 23 files, 39s on the runner (46s locally) |
+
+**Test reports.** Each job uploads its per-test results as a JUnit XML artifact (`backend-test-report`, `frontend-test-report`) on every run, including failed ones, kept for 90 days. Find them under the run's **Artifacts** in the Actions tab. They are the execution record for the mocked suites; runs against the real system are logged in `docs/test-cases/runs/`.
 
 **Triggers:** `pull_request` into `main`, and `push` to `main`. A push to a feature branch with no open PR runs nothing — deliberate, to keep intermediate pushes off the minute budget. A branch's first run therefore appears when its PR is opened.
 

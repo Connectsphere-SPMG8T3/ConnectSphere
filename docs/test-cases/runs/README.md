@@ -2,6 +2,8 @@
 
 **The record of each time the test cases in [`docs/test-cases/`](../README.md) were run against the real system, and what happened.** The case files say what to test. This folder records that it was tested, when, against which commit, and whether it passed.
 
+The mocked unit suites (pytest, Vitest) keep their own record: every CI run on a pull request uploads a JUnit report per job (`backend-test-report`, `frontend-test-report`), kept for 90 days under the run's **Artifacts** in GitHub Actions.
+
 One file per run, named `<date>-<time>-<method>-<commit>.md` (Singapore time), so runs from different branches never conflict and the folder lists them in order. Never edit a past run. A re-run is a new file.
 
 ## Three ways a case gets run
@@ -14,12 +16,12 @@ One file per run, named `<date>-<time>-<method>-<commit>.md` (Singapore time), s
 
 To see whether a case is automated, search for its ID: `grep -rn "TC-AUTH-006" backend/scripts frontend/e2e`. Every automated check's name starts with the ID of the case it runs. A case with no match is manual.
 
-Automated checks sign in as the seeded accounts, only **read** shared data, and log out every session they open. The SQL scripts roll back. That keeps the live project usable as the demo database (`docs/CI.md` §4 item 3, [Team decision]). A check that has to create, approve or reject something stays manual until it can clean up after itself.
+Automated checks sign in as the seeded accounts, never change seeded or shared data, and log out every session they open. The SQL scripts roll back. Sign-up checks create throwaway accounts named `live-check+…@connectsphere.dev`, and every such account is deleted, with everything it owns, before and after each run. That keeps the live project usable as the demo database (`docs/CI.md` §4 item 3, [Team decision]). A check that would have to approve, reject or change a shared record stays manual until it can clean up after itself the same way.
 
 ## When to record a run
 
 - **At story or fix verification** (Definition of Done Phase 2): both automated runs with recording on, plus a manual log for the story's cases that need human judgement.
-- **At the end of each sprint**: both automated runs, plus the 🔴 High cases that are still manual, as a regression pass before the sprint review.
+- **At the end of each sprint**: both automated runs with recording on, as regression evidence for the sprint review. No full manual pass. Re-check a story by hand only if its area changed after it was verified.
 - Not while you're writing code. Run the checks without recording as often as you like.
 
 ## Running the automated checks
@@ -38,7 +40,7 @@ E2E_BASE_URL=http://localhost:5177 E2E_API_URL=http://localhost:8010/api/v1 npm 
 
 The frontend under test must point at the same backend (`VITE_API_BASE_URL`), since the specs sign in through it directly. Playwright keeps a screenshot and trace of each failure in `frontend/test-results/` (gitignored). Open one with `npx playwright show-trace <path>`.
 
-Each run makes about 25 sign-ins (script) or 20 (Playwright). If Supabase answers 429, wait a few minutes before the next run.
+Each run makes about 30 sign-ins (script) or 25 (Playwright). If Supabase answers 429, wait a few minutes before the next run.
 
 ## What stays manual
 
@@ -48,7 +50,7 @@ A person has to look at:
 - **Wording and clarity**: whether a message, empty state or confirmation reads well and says what the user needs.
 - **Feel**: nothing flashes, jumps or briefly shows another role's content (TC-RBAC-003's "not even momentarily", TC-ROLE-014), and loading states make sense.
 - **Things outside the app**: an `.ics` file opening in a real calendar app, and email.
-- **Setup that changes shared state**: cases that create accounts or events, approve or reject, or change a Supabase setting (TC-AUTH-048, TC-DATA-014).
+- **Setup that changes shared state or the environment**: cases that create events, approve or reject, point the backend at a failing server (TC-AUTH-034, 035, 045), or change a Supabase setting (TC-AUTH-048).
 
 ## Manual run template
 
@@ -72,3 +74,7 @@ Copy into `<date>-<time>-manual-<commit>.md`:
 ```
 
 Result is **Pass**, **Fail** (with a defect ID from `docs/PROJECT_REVIEW.md`, or what went wrong) or **Blocked** (and why).
+
+## Before 2026-09-27
+
+This log starts on 2026-09-27, when the tooling was added. Stories verified before then have no run files. Their real-system verification is recorded as prose in each story's "Verified" and "Not verified" notes in `docs/SCENARIO.md` §4, dated by the commit that added them. The first recorded runs cover those stories' automated cases as they stand now. Past runs are not backfilled: a log file here always records a run that actually happened, on the date it shows.
