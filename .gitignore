@@ -35,3 +35,7 @@ docs/Session * - Clarification Answers*
 # Playwright output (failure screenshots and traces); run logs go to docs/test-cases/runs/
 frontend/test-results/
 frontend/playwright-report/
+
+# JUnit reports written by the CI test steps
+backend/reports/
+frontend/reports/
