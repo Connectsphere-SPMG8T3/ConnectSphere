@@ -69,7 +69,7 @@ export const useCoordinatorDashboardStore = defineStore("coordinatorDashboard", 
       } catch (err) {
         this.reset();
         // A 404 means the endpoint isn't deployed yet, which is the expected
-        // state for the whole of Sprint 1. That is not an error worth showing a
+        // state until the events module adds it. That is not an error worth showing a
         // coordinator, so the widgets simply stay empty. Anything else is a
         // real failure and must be visible — an empty dashboard that silently
         // swallowed a 500 would tell a coordinator they have nothing to do.

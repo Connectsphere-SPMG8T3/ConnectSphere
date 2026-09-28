@@ -22,7 +22,7 @@ export const ACCOUNTS = {
 };
 
 // Supabase limits sign-ins per IP, and the backend currently reports that
-// refusal as a 401 "Invalid email or password." (PROJECT_REVIEW D16), so a
+// refusal as a 401 "Invalid email or password." (DEFECTS D16), so a
 // refused sign-in with known-good credentials can't be told apart from broken
 // sign-in. After the first one, every step that would sign in skips its spec
 // instead, which the run log records as Blocked: each further attempt would
@@ -30,7 +30,7 @@ export const ACCOUNTS = {
 const GOOD_PASSWORDS = new Set([SEEDED_PASSWORD, THROWAWAY_PASSWORD]);
 export const SIGN_IN_REFUSED =
   "Correct credentials were refused. Either sign-in is broken, or Supabase rate-limited this IP, " +
-  "which the backend reports as a 401 (PROJECT_REVIEW D16). Wait about 5 minutes and re-run.";
+  "which the backend reports as a 401 (DEFECTS D16). Wait about 5 minutes and re-run.";
 const BLOCKED = "Blocked: an earlier sign-in was refused, so no further sign-ins were attempted.";
 
 // A file, not a variable: Playwright restarts the worker process after a

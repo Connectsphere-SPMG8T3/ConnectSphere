@@ -13,7 +13,7 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 | ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
 |----|-------|----------------|------------|-------------|------------------|----------|
 | TC-DASH-001 | Dashboard loads with honest empty states when the events module is absent | Backend running; no events tables | Open `/dashboard/coordinator` and wait for the network to settle | — | `GET /events/dashboard/coordinator` returns 404. The page shows "AWAITING DATA — the events module has not been built yet…", all counters read `0`, and each widget's empty state explains it will populate once the module ships. No error banner. | 🔴 |
-| TC-DASH-002 | No fabricated metrics are displayed (regression, PROJECT_REVIEW D8) | As TC-DASH-001 | Read every number on the page | — | No counter shows a non-zero value. The strings "Requests Awaiting Review", "Venues to Coordinate" and "Events in Progress" do **not** appear — they were the hardcoded placeholders removed by this story. | 🔴 |
+| TC-DASH-002 | No fabricated metrics are displayed (regression, DEFECTS D8) | As TC-DASH-001 | Read every number on the page | — | No counter shows a non-zero value. The strings "Requests Awaiting Review", "Venues to Coordinate" and "Events in Progress" do **not** appear — they were the hardcoded placeholders removed by this story. | 🔴 |
 | TC-DASH-003 | Counts are withheld until the first load settles | Throttle the network (DevTools → Slow 3G) before loading | Open `/dashboard/coordinator` and watch the counters while the request is in flight | — | While loading, the three category counters and the four status counters show "—", not `0`, and empty states read "Checking for updates…". They switch to real figures only once the request settles. A `0` must never be shown before the answer is known. | 🟠 |
 | TC-DASH-004 | A server failure is surfaced, not silently rendered as an empty dashboard | Point the backend at a stub that answers 503, or stop the backend | Reload `/dashboard/coordinator` | — | A red error banner shows the failure message. The dashboard does **not** claim the coordinator has nothing to do. (Contrast with TC-DASH-001: only a 404 is treated as "not built yet".) | 🔴 |
 | TC-DASH-005 | The dashboard is usable on a phone-width viewport (NFR-U1) | As TC-DASH-001 | Set the viewport to 390 × 844 | — | Category cards stack to one column, status cards stack to one column, no horizontal scrolling, all text legible. | 🟠 |
@@ -39,7 +39,7 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 | AS-R5 (awaiting-assignment alert) | TC-DASH-012 |
 | §7 NFR-R1 (flags stay visible until resolved) | TC-DASH-012 |
 | NFR-U1 (desktop and mobile friendly) | TC-DASH-005 |
-| PROJECT_REVIEW D8 (fabricated metrics) | TC-DASH-002 |
+| DEFECTS D8 (fabricated metrics) | TC-DASH-002 |
 | Reliability (an outage is not rendered as "nothing to do") | TC-DASH-004 |
 
 Automated equivalents live in `frontend/src/features/events/__tests__/` (Vitest): `dashboard.spec.js` covers TC-DASH-006, 008, 009, 010, 011 and 012's readiness logic as pure unit tests; `store.spec.js` covers TC-DASH-001, 003 and 004. TC-DASH-002 and TC-DASH-005 are visual and remain manual.
@@ -57,7 +57,7 @@ Unlike the coordinator dashboard above, no stubbing is needed: `venues`, `venue_
 | ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
 |----|-------|----------------|------------|-------------|------------------|----------|
 | TC-VSD-001 | The four tiles show real figures from the endpoint | Seed applied | Open `/dashboard/venue-staff` and read the four tiles | — | Pending requests `2`, In re-review `1`, Active & upcoming blocks `3`, Venues `8` with the sub-line "7 active · 1 inactive". Every figure matches `GET /api/v1/venues/dashboard/venue-staff`. | 🔴 |
-| TC-VSD-002 | No fabricated metrics remain (regression, PROJECT_REVIEW D8) | As above | Read every label and number on the page | — | The strings "Venues Managed", "Booking Requests" and "Availability Updates Due" do **not** appear, and no tile reads `12`, `6` or `2` unless that is the true count. Those were the hardcoded placeholders this story removed. | 🔴 |
+| TC-VSD-002 | No fabricated metrics remain (regression, DEFECTS D8) | As above | Read every label and number on the page | — | The strings "Venues Managed", "Booking Requests" and "Availability Updates Due" do **not** appear, and no tile reads `12`, `6` or `2` unless that is the true count. Those were the hardcoded placeholders this story removed. | 🔴 |
 | TC-VSD-003 | Counts are withheld until the first load settles | Throttle the network (DevTools → Slow 3G) | Reload and watch the tiles while the request is in flight | — | All four tiles show "—", not `0`, and the lists read "Checking for updates…". A `0` must never appear before the answer is known. | 🟠 |
 | TC-VSD-004 | A server failure is surfaced, not rendered as an empty queue | Stop the backend, or point it at a stub answering 503 | Reload the dashboard | — | A red error banner shows the failure. The page does **not** say "Nothing is waiting on your decision". | 🔴 |
 | TC-VSD-005 | The endpoint is gated on the session's active role, not roles held | Signed in as `coordinator@connectsphere.dev` | `curl` the endpoint with the coordinator's token; then switch the nav dropdown to Venue Staff and retry | coordinator token | First call **403**. After the switch, **200** and the dashboard renders. Confirms the guard reads the active role (SCRUM-74/75). | 🔴 |
@@ -114,7 +114,7 @@ Unlike the coordinator dashboard above, no stubbing is needed: `venues`, `venue_
 | RBAC (venue staff only) | TC-VSD-006 |
 | REQUIREMENTS §4 (stored UTC, displayed Asia/Singapore) | TC-VSD-016 |
 | NFR-U1 (desktop and mobile friendly) | TC-VSD-015 |
-| PROJECT_REVIEW D8 (fabricated metrics) | TC-VSD-002 |
+| DEFECTS D8 (fabricated metrics) | TC-VSD-002 |
 | Reliability (an outage is not rendered as "nothing to do") | TC-VSD-004 |
 
 Automated equivalents live in `frontend/src/features/venues/__tests__/` and `backend/tests/`. `calendar.spec.js` covers TC-VSD-007, 008, 010, 019 and 020, and the week-grid half of 017, as pure unit tests, including boundaries a manual pass cannot easily reach (a range ending one millisecond after midnight, and the same instant written two ways). `dashboard.spec.js` covers TC-VSD-011's ordering and TC-VSD-013/014's status precedence. `venueStaffDashboardStore.spec.js` covers TC-VSD-003 and 004. `views/__tests__/venueStaffDashboard.spec.js` covers TC-VSD-001, 002, 009, 012 and 013. `backend/tests/test_venues_api.py` covers TC-VSD-005 and 006's server side. `ics.spec.js` covers the file's format — stamps, escaping, octet-safe folding, stable UIDs, tentative versus confirmed. TC-VSD-015, TC-VSD-016 and the "opens in a real calendar app" half of TC-VSD-021 are visual or need a third-party client, and remain manual.
@@ -181,7 +181,7 @@ The two maintenance records are PA Systems 08:00–13:00 UTC ("Amplifier inspect
 | TC-TSD-005 | AC3 — maintenance status is derived from the clock | Seed applied; system date before 15 Oct 2026 | Read the status badge on each maintenance record | — | Both read **SCHEDULED**. A record whose window has started but not ended reads IN_PROGRESS; one wholly in the past reads COMPLETED. The badge is computed at request time, never stored. | 🟠 |
 | TC-TSD-006 | AC3 — past maintenance is not hidden (known behaviour) | Seed applied; system date after 15 Oct 2026, or a record backdated | Read the maintenance panel | — | Finished records still appear, marked COMPLETED — `get_equipment_maintenance` applies no date filter. Pinning current behaviour: if the team decides the panel should show upcoming work only, this case changes with it. | 🟡 |
 | TC-TSD-007 | AC2 — active requests are honestly empty, not faked | Seed applied | Read the "Active requests" panel | — | An empty state reads "No request workflow yet" and explains requests appear once SCRUM-24 lands. The strings "Marcus Lim", "Olivia Tan", "PENDING", "Approve" and "Reject" do **not** appear anywhere on the page. | 🔴 |
-| TC-TSD-008 | No fabricated data remains (regression, PROJECT_REVIEW D8) | Seed applied | Read every number and label on the dashboard | — | Every figure traces to an API response. No hardcoded request cards, and no count that cannot be reproduced from `/equipment/inventory` or `/equipment/maintenance`. | 🔴 |
+| TC-TSD-008 | No fabricated data remains (regression, DEFECTS D8) | Seed applied | Read every number and label on the dashboard | — | Every figure traces to an API response. No hardcoded request cards, and no count that cannot be reproduced from `/equipment/inventory` or `/equipment/maintenance`. | 🔴 |
 | TC-TSD-009 | Both endpoints are gated on the session's active role | An account holding `tech_support` but signed in as another role | `curl` `/api/v1/equipment/inventory` and `/api/v1/equipment/maintenance` with that token; then switch the nav dropdown to Technical Support and retry | that account's token | First calls **403**, after the switch **200**. Confirms the guard reads the active role, not roles held (SCRUM-76). | 🔴 |
 | TC-TSD-010 | Another role cannot reach the page by URL | Signed in as `coordinator@connectsphere.dev`, active role Event Coordinator | Navigate to `/dashboard/tech-support` | — | Redirected to `/dashboard/coordinator`; the equipment data never renders. | 🔴 |
 | TC-TSD-011 | A server failure is surfaced, not shown as an empty inventory | Stop the backend, or point it at a stub answering 503 | Reload the dashboard | — | An error message names the failure. The page does **not** render an empty equipment table or an empty maintenance list as though both were genuinely empty. | 🔴 |
@@ -199,7 +199,7 @@ The two maintenance records are PA Systems 08:00–13:00 UTC ("Amplifier inspect
 | AC2 "the list of active requests being sent to me" | TC-TSD-007 (empty state — the workflow itself is SCRUM-24) |
 | AC3 "the list of equipment scheduled for maintenance" | TC-TSD-004, TC-TSD-005, TC-TSD-006 |
 | REQUIREMENTS §6.21 "build a widget only when its data exists" | TC-TSD-007, TC-TSD-012 |
-| PROJECT_REVIEW D8 (no fabricated dashboard data) | TC-TSD-007, TC-TSD-008 |
+| DEFECTS D8 (no fabricated dashboard data) | TC-TSD-007, TC-TSD-008 |
 | SCRUM-76 (guards read the session's active role) | TC-TSD-009 |
 | RBAC (technical support only) | TC-TSD-010 |
 | Navigation and design-system consistency (`fix/ui-TechSupportDashboard`) | TC-TSD-013, TC-TSD-014, TC-TSD-015, TC-TSD-016 |

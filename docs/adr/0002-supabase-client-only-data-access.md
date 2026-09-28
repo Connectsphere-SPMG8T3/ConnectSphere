@@ -89,5 +89,5 @@ Both of these still describe the question as open and should now point here inst
 - Commit `3d4110d` — `refactor(equipment): read through the Supabase client like every other module`
 - `backend/app/db/supabase.py` — the three client factories; `app/db/session.py` — now a re-export, previously the SQLAlchemy seam
 - `docs/REQUIREMENTS.md` §4 — the DB-1…DB-6 integrity guarantees
-- `CLAUDE.md` / `docs/SCENARIO.md` §5 — the supabase-py client traps (session leakage, `supabase_auth.errors`)
+- `CLAUDE.md` / `docs/PROJECT_OVERVIEW.md` §5 — the supabase-py client traps (session leakage, `supabase_auth.errors`)
 - [ADR-0001](0001-modular-monolith-backend.md) — the module shape this repository seam sits inside

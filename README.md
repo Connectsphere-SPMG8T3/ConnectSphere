@@ -9,7 +9,7 @@ This repository implements a **Modular Monolith** architecture:
 - **`supabase/`** — PostgreSQL schema migrations, seed data, and Supabase Auth configuration.
 - **`mcp/`** — Supabase MCP server configuration for project `vuiryrzzyfecjqftwicj`.
 
-For the full business context (roles, the Scrum item this implements, and the architectural reasoning behind it), see [docs/SCENARIO.md](docs/SCENARIO.md). For a step-by-step local setup, see [docs/SETUP.md](docs/SETUP.md) (this README's [Getting started](#getting-started) is the short version).
+For the full business context (roles, the Scrum item this implements, and the architectural reasoning behind it), see [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) (and [docs/README.md](docs/README.md) for every other doc). For a step-by-step local setup, see [docs/SETUP.md](docs/SETUP.md) (this README's [Getting started](#getting-started) is the short version).
 
 **Contributing?** [docs/DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md) is the checklist every story, fix, and enabler has to clear — through PR review, merge, and moving the Jira issue to Done. The working rules behind it (branch naming, test-first development, the security baseline) are in [AGENTS.md](AGENTS.md), which applies to human contributors as much as to AI agents.
 

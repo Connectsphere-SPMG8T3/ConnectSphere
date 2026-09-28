@@ -26,7 +26,7 @@ Before exploring or changing code, ask the developer which kind of work this is 
    - **Suggest planning first.** In Claude Code, recommend switching to plan mode before any code is written. In other tools, write the plan out and get the developer's agreement. The plan maps every acceptance criterion to the files, tests, and verification that will satisfy it, and names anything from `docs/IMPLEMENTATION_MAP.md` it will reuse.
    - Branch: `feature/scrum-<n>-<short-slug>`.
 2. **Fix**
-   - Ask for the defect ID from `docs/PROJECT_REVIEW.md` (D1, D2, …), or the observed vs expected behaviour and how to reproduce it.
+   - Ask for the defect ID from `docs/DEFECTS.md` (D1, D2, …), or the observed vs expected behaviour and how to reproduce it.
    - Reproduce the defect first, then write a failing regression test before changing code.
    - Branch: `fix/<short-slug>`.
 
@@ -40,11 +40,12 @@ Read, in this order:
 
 1. `docs/REQUIREMENTS.md` — what the system *should* do: behaviour specs, acceptance criteria, the domain model, customer clarifications cited as `QA-<row>`.
 2. `docs/IMPLEMENTATION_MAP.md` — what exists **right now** (modules, endpoints, tables, reusable components) and what to know before building on it.
-3. `docs/SCENARIO.md` — project context and the append-only log of what each story actually built.
-4. `docs/SETUP.md` — how to run everything locally.
-5. `docs/PROJECT_REVIEW.md` — known defects (D1, D2, …), design decisions, and the sprint plan.
-6. `docs/test-cases/` — existing manual test cases, one file per area (start at its `README.md`).
-7. `docs/DEFINITION_OF_DONE.md` — the checklist this task has to clear before it counts as done.
+3. `docs/PROJECT_OVERVIEW.md` — course and customer context, the 20 first-release features, and the reasoning behind the architecture and design system.
+4. `docs/BUILD_LOG.md` — the append-only log of what each story actually built.
+5. `docs/SETUP.md` — how to run everything locally.
+6. `docs/DEFECTS.md` — known defects (D1, D2, …) and their status.
+7. `docs/test-cases/` — existing manual test cases, one file per area (start at its `README.md`).
+8. `docs/DEFINITION_OF_DONE.md` — the checklist this task has to clear before it counts as done.
 
 Customer rules take precedence in this order: session Q&A answers (`QA-<row>`), then the Week 4 core features, then the Week 1 briefing.
 
@@ -77,7 +78,7 @@ Plan any change that spans more than one file or layer before writing code.
 
 ## Scope discipline
 
-- Change only what the task needs. When you notice something else broken or questionable, **report it** (and add it to `docs/PROJECT_REVIEW.md` if it's a defect) rather than silently fixing it on the side.
+- Change only what the task needs. When you notice something else broken or questionable, **report it** (and add it to `docs/DEFECTS.md` if it's a defect) rather than silently fixing it on the side.
 - Don't adopt new libraries, restructure modules, or change project-wide conventions without confirming with the user first.
 - New modules follow the target module design in `docs/REQUIREMENTS.md` §3.3. If the team hasn't adopted part of that design yet, say so rather than diverging silently.
 
@@ -118,7 +119,7 @@ Every run of the test cases against the real system is recorded in `docs/test-ca
 1. **Run the automated live checks with recording on**, against a backend and frontend running this branch: `python scripts/verify_live.py --record` from `backend/`, then `npm run test:e2e:record` from `frontend/`. If the developer's own servers are on 8000/5173, start yours on spare ports and pass `--api` / `E2E_BASE_URL` / `E2E_API_URL`. A failure is a finding to fix or report, never something to re-run until it passes.
 2. **Automate the story's new cases where you can.** A case whose outcome is a status code, a redirect, a stored value, a field's text, or whether a request was sent gets a check in `backend/scripts/verify_live.py` or `frontend/e2e/`, named with its case ID first. Never change seeded or shared data. A check may create its own throwaway records only if the run deletes them, as the sign-up checks do with `live-check+…` accounts. Otherwise it stays manual.
 3. **Then stop and ask the developer to do the manual pass.** List the story's cases that still need a person: design and layout (including phone width), wording, anything that must not flash or jump, anything outside the app, and cases that change shared data. For each one, give the case ID, the page to open, and exactly what to look at. Keep it a short checklist grouped by page. Don't mark these as passed yourself. If you drive a browser, it can confirm that something works, but only the developer can judge how it looks and reads.
-4. **Record what the developer reports** as a manual run file (template in `docs/test-cases/runs/README.md`). A failure also becomes a defect in `docs/PROJECT_REVIEW.md`.
+4. **Record what the developer reports** as a manual run file (template in `docs/test-cases/runs/README.md`). A failure also becomes a defect in `docs/DEFECTS.md`.
 5. If the developer defers the manual pass, the final report lists those cases under "not verified".
 
 At the end of a sprint, if the developer asks, run both suites with recording on as regression evidence. There is no sprint-wide manual pass.
@@ -127,11 +128,11 @@ Commit the run logs with the story, since they are the evidence that it was test
 
 ## Keep the paper trail current (graded evidence)
 
-- `docs/IMPLEMENTATION_MAP.md`: **after implementing anything that changes what exists**, update the map in the same branch. That includes a story or fix, a module, endpoint, table, or migration, a reusable component, store, or helper, or a changed contract (request/response shape, guard, enum). Unlike `SCENARIO.md`, this file is edited in place: update the status table, add the new pieces to the reuse tables, remove what no longer exists, and record any "know before you build" notes the next developer needs. Update the "Last updated" line as well.
-- `docs/SCENARIO.md` §4: append an entry for each completed story or bug fix, following the existing template. Never rewrite past entries.
+- `docs/IMPLEMENTATION_MAP.md`: **after implementing anything that changes what exists**, update the map in the same branch. That includes a story or fix, a module, endpoint, table, or migration, a reusable component, store, or helper, or a changed contract (request/response shape, guard, enum). Unlike `BUILD_LOG.md`, this file is edited in place: update the status table, add the new pieces to the reuse tables, remove what no longer exists, and record any "know before you build" notes the next developer needs. Replace its "Last updated" line with this change: one entry, not a running list (the history belongs in `BUILD_LOG.md`).
+- `docs/BUILD_LOG.md` §4: append an entry for each completed story or bug fix, following the existing template. Never rewrite past entries.
 - `docs/test-cases/<area>.md`: add manual cases for new behaviour, traced to Jira keys and acceptance criteria.
 - `docs/REQUIREMENTS.md`: update it when a rule, assumption, or design decision changes.
-- `docs/PROJECT_REVIEW.md`: mark defects fixed, with the branch or commit.
+- `docs/DEFECTS.md`: mark defects fixed, with the branch or commit, and add any new defect as the next number.
 
 ## Run commands
 

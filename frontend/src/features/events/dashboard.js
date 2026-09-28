@@ -170,7 +170,7 @@ export function prioritiseActionItems(items = []) {
  * customer confirmed (QA-22, QA-77): the coordinator returns a request with a
  * message, the organiser edits the same request and resubmits. A resubmission
  * *is* the clarification response. See REQUIREMENTS §6.4 — this replaced the
- * older "clarification thread" reading of SCRUM-33 (PROJECT_REVIEW B2a).
+ * older "clarification thread" reading of SCRUM-33 (docs/archive/2026-09-13-design-review.md B2a).
  */
 const IMMEDIATE_ACTION_KINDS = [
   "arrangement_issue",

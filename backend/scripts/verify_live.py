@@ -93,13 +93,13 @@ class CheckBlocked(Exception):
 
 
 # Supabase limits sign-ins per IP. The backend currently reports that refusal
-# as a 401 "Invalid email or password." (PROJECT_REVIEW D16), so a refused
+# as a 401 "Invalid email or password." (DEFECTS D16), so a refused
 # sign-in with known-good credentials can't be told apart from broken sign-in.
 # After the first one, no more sign-ins are attempted: every further attempt
 # would extend the limit, and every check needing one is marked Blocked.
 SIGN_IN_REFUSED = (
     "correct credentials were refused (HTTP {status}). Either sign-in is broken, or Supabase "
-    "rate-limited this IP, which the backend reports as a 401 (PROJECT_REVIEW D16). "
+    "rate-limited this IP, which the backend reports as a 401 (DEFECTS D16). "
     "No further sign-ins were attempted; wait about 5 minutes and re-run."
 )
 

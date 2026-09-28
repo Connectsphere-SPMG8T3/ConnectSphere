@@ -38,7 +38,7 @@ def names_by_id(event_ids: Iterable[str]) -> dict[str, str]:
     No ownership check: the callers are already behind their own role and
     relationship guards, and an event's name is the least of what they are
     cleared to see. `venue_bookings.event_id` has no foreign key to `events`
-    (SCENARIO §4.9), so a PostgREST embed is not available and a caller that
+    (BUILD_LOG §4.9), so a PostgREST embed is not available and a caller that
     needs names asks here rather than reading another module's table.
     """
     return repository.list_event_names(event_ids)
