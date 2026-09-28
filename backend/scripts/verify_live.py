@@ -8,6 +8,11 @@ Two kinds of check, each named by the test case ID it runs (docs/test-cases/):
 - Database checks: the rolled-back scripts in supabase/verification/, run
   through `supabase db query` (needs `supabase login`), so they change nothing.
 
+Sign-up checks create throwaway accounts named live-check+<run>-<case>@
+connectsphere.dev. Every such account, and everything it owns, is deleted
+through `supabase db query` before the checks start and after they finish, so
+the seeded data is never touched. --skip-db skips these checks too.
+
 Usage, from backend/ with the virtualenv active and the backend running:
 
     python scripts/verify_live.py                       # print results only
@@ -55,6 +60,13 @@ ACCOUNTS = {
 }
 INVALID_CREDENTIALS = "Invalid email or password."
 INVALID_TOKEN = "Invalid or expired authentication token."
+PASSWORD_RULE = "Password must be at least 8 characters and include at least one letter and one digit."
+
+# Throwaway accounts made by the sign-up checks. The LIKE pattern matches
+# nothing else: seeded accounts have no "+".
+THROWAWAY_PREFIX = "live-check+"
+THROWAWAY_DOMAIN = "@connectsphere.dev"
+THROWAWAY_PASSWORD = SEEDED_PASSWORD + "live"
 
 # Rolled-back verification scripts, with the manual cases each one automates
 # (as recorded in docs/test-cases/). event_review_fixture_reset.sql is left out
@@ -107,14 +119,15 @@ class Session:
 class Context:
     api: str
     client: httpx.Client
+    run_id: str = ""
     _shared: dict = field(default_factory=dict)
     _opened: list = field(default_factory=list)
 
-    def login(self, role: str, email: str | None = None) -> Session:
+    def login(self, role: str, email: str | None = None, password: str = SEEDED_PASSWORD) -> Session:
         """A fresh session of its own, logged out when the run ends."""
         response = self.client.post(
             f"{self.api}/auth/login",
-            json={"email": email or ACCOUNTS[role], "password": SEEDED_PASSWORD},
+            json={"email": email or ACCOUNTS[role], "password": password},
         )
         if response.status_code == 429:
             raise CheckFailed("Supabase rate-limited sign-in (429); wait a few minutes and re-run")
@@ -130,6 +143,21 @@ class Context:
             self._shared[role] = self.login(role)
         return self._shared[role]
 
+    def throwaway_email(self, case: str) -> str:
+        return f"{THROWAWAY_PREFIX}{self.run_id}-{case}{THROWAWAY_DOMAIN}"
+
+    def signup(self, **overrides) -> httpx.Response:
+        body = {
+            "role": "event_organiser",
+            "full_name": "Live Check",
+            "email": None,
+            "password": THROWAWAY_PASSWORD,
+            "organisation_name": "Live Check Org",
+            "phone_number": "+65 9123 4567",
+            **overrides,
+        }
+        return self.client.post(f"{self.api}/auth/signup", json=body)
+
     def logout_all(self) -> None:
         for session in self._opened:
             try:
@@ -143,14 +171,15 @@ class Check:
     case_id: str
     title: str
     run: Callable[[Context], None]
+    creates_accounts: bool = False
 
 
 API_CHECKS: list[Check] = []
 
 
-def check(case_id: str, title: str):
+def check(case_id: str, title: str, creates_accounts: bool = False):
     def register(fn: Callable[[Context], None]):
-        API_CHECKS.append(Check(case_id, title, fn))
+        API_CHECKS.append(Check(case_id, title, fn, creates_accounts))
         return fn
 
     return register
@@ -366,6 +395,101 @@ def _(ctx: Context) -> None:
     expect_status(ctx.client.get(f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=session.headers), 403)
 
 
+# --- Sign-up (SCRUM-80) ----------------------------------------------------
+
+
+def expect_field_error(response: httpx.Response, field_name: str, msg: str | None = None) -> None:
+    expect_status(response, 422)
+    errors = [e for e in response.json().get("detail", []) if e.get("loc") == ["body", field_name]]
+    expect(errors, f"no 422 error on body.{field_name}: {response.text[:200]}")
+    if msg is not None:
+        expect(errors[0].get("msg") == msg, f"body.{field_name} msg is {errors[0].get('msg')!r}")
+
+
+def stored_account(email: str) -> dict:
+    """The auth.users, profiles and user_roles rows behind an email."""
+    rows = db_query(
+        "select u.email, u.email_confirmed_at is not null as confirmed, p.role::text as role, "
+        "p.organisation_name, p.phone_number, "
+        "(select string_agg(r.role::text, ',' order by r.role) from public.user_roles r "
+        " where r.profile_id = p.id) as roles "
+        f"from auth.users u join public.profiles p on p.id = u.id where u.email = '{email}'"
+    )
+    expect(len(rows) == 1, f"expected one stored account for {email}, found {len(rows)}")
+    return rows[0]
+
+
+@check("TC-AUTH-037", "Sign-up creates a confirmed organiser with its profile and role rows", creates_accounts=True)
+def _(ctx: Context) -> None:
+    email = ctx.throwaway_email("037")
+    response = ctx.signup(email=email, organisation_name="SMU Events Club")
+    expect_status(response, 201)
+    body = response.json()
+    expect(body["role"] == "event_organiser", f"response role is {body['role']!r}")
+    expect(body["roles"] == ["event_organiser"], f"response roles are {body['roles']}")
+
+    stored = stored_account(email)
+    expect(stored["role"] == "event_organiser", f"profiles.role is {stored['role']!r}")
+    expect(stored["roles"] == "event_organiser", f"user_roles holds {stored['roles']!r}")
+    expect(stored["organisation_name"] == "SMU Events Club", "organisation not stored")
+    expect(stored["phone_number"] == "+65 9123 4567", "phone number not stored")
+    expect(stored["confirmed"] is True, "email_confirmed_at is not set (ADR-0003)")
+
+
+@check("TC-AUTH-038", "A new organiser can log in straight away", creates_accounts=True)
+def _(ctx: Context) -> None:
+    email = ctx.throwaway_email("038")
+    expect_status(ctx.signup(email=email), 201)
+    session = ctx.login("event_organiser", email=email, password=THROWAWAY_PASSWORD)
+    expect(session.body["profile"]["role"] == "event_organiser", "logged in with the wrong role")
+
+
+@check("TC-AUTH-040", "A malformed email is refused by the API with no account made")
+def _(ctx: Context) -> None:
+    for bad in ("not-an-email", "olivia@", "@connectsphere.dev"):
+        expect_field_error(ctx.signup(email=bad), "email")
+
+
+@check("TC-AUTH-041", "A password that breaks the rule is refused; exactly 8 characters is accepted", creates_accounts=True)
+def _(ctx: Context) -> None:
+    too_short, no_digit, no_letter = "Abc" + "1234", "Pass" + "word", "1234" + "5678"
+    for bad in (too_short, no_digit, no_letter):
+        expect_field_error(ctx.signup(email=ctx.throwaway_email("041-refused"), password=bad), "password", PASSWORD_RULE)
+    expect_status(ctx.signup(email=ctx.throwaway_email("041"), password="a" * 7 + "1"), 201)
+
+
+@check("TC-AUTH-042", "An email that already has an account is refused with 409")
+def _(ctx: Context) -> None:
+    response = ctx.signup(email=ACCOUNTS["event_organiser"])
+    expect_status(response, 409)
+    expect_detail(response, "An account with this email already exists.")
+
+
+@check("TC-AUTH-043", "Sign-up refuses every role but event_organiser")
+def _(ctx: Context) -> None:
+    for role in ("event_coordinator", "venue_staff", "tech_support", "attendee"):
+        expect_field_error(ctx.signup(email=ctx.throwaway_email("043"), role=role), "role")
+
+
+@check("TC-AUTH-044", "A blank phone number is stored as NULL", creates_accounts=True)
+def _(ctx: Context) -> None:
+    email = ctx.throwaway_email("044")
+    response = ctx.signup(email=email, phone_number="   ")
+    expect_status(response, 201)
+    expect(response.json()["phone_number"] is None, "response phone_number is not null")
+    expect(stored_account(email)["phone_number"] is None, "profiles.phone_number is not NULL")
+
+
+@check("TC-AUTH-047", "An email padded with spaces is stored trimmed and logs in", creates_accounts=True)
+def _(ctx: Context) -> None:
+    email = ctx.throwaway_email("047")
+    response = ctx.signup(email=f"  {email}  ")
+    expect_status(response, 201)
+    expect(response.json()["email"] == email, f"response email is {response.json()['email']!r}")
+    stored_account(email)
+    ctx.login("event_organiser", email=email, password=THROWAWAY_PASSWORD)
+
+
 # --- Helpers ---------------------------------------------------------------
 
 
@@ -400,10 +524,13 @@ class Result:
     detail: str = ""
 
 
-def run_api_checks(ctx: Context, keyword: str | None) -> list[Result]:
+def run_api_checks(ctx: Context, keyword: str | None, skip_accounts: bool) -> list[Result]:
     results = []
     for item in API_CHECKS:
         if keyword and keyword.lower() not in f"{item.case_id} {item.title}".lower():
+            continue
+        if item.creates_accounts and skip_accounts:
+            print(f"  SKIP  {item.case_id:<28} {item.title} (creates an account; needs the database)")
             continue
         try:
             item.run(ctx)
@@ -416,17 +543,36 @@ def run_api_checks(ctx: Context, keyword: str | None) -> list[Result]:
     return results
 
 
+def _supabase_query(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["supabase", "db", "query", "--linked", "--project-ref", PROJECT_REF, "-o", "json", *args],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
+def db_query(sql: str) -> list[dict]:
+    completed = _supabase_query(sql)
+    if completed.returncode != 0:
+        raise CheckFailed(f"database query failed: {_cli_error(completed.stderr)}")
+    return json.loads(completed.stdout[completed.stdout.index("{"):]).get("rows", [])
+
+
+def delete_throwaway_accounts() -> int:
+    """Deletes every sign-up check account; auth.users cascades to what it owns."""
+    rows = db_query(
+        f"delete from auth.users where email like '{THROWAWAY_PREFIX}%{THROWAWAY_DOMAIN}' returning email"
+    )
+    return len(rows)
+
+
 def run_db_checks(keyword: str | None) -> list[Result]:
     results = []
     for script, cases in DB_SCRIPTS:
         if keyword and keyword.lower() not in f"{script} {cases}".lower():
             continue
-        completed = subprocess.run(
-            ["supabase", "db", "query", "--linked", "--project-ref", PROJECT_REF, "-o", "json", "-f", str(VERIFICATION_DIR / script)],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-        )
+        completed = _supabase_query("-f", str(VERIFICATION_DIR / script))
         title = f"{cases}: supabase/verification/{script}"
         if completed.returncode != 0:
             results.append(Result(script, title, False, _cli_error(completed.stderr)))
@@ -495,7 +641,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--api", default="http://localhost:8000/api/v1", help="backend API base URL")
     parser.add_argument("--record", action="store_true", help="write a run log to docs/test-cases/runs/")
-    parser.add_argument("--skip-db", action="store_true", help="skip the supabase/verification scripts")
+    parser.add_argument(
+        "--skip-db", action="store_true", help="skip the supabase/verification scripts and the sign-up checks"
+    )
     parser.add_argument("--skip-api", action="store_true", help="skip the API checks")
     parser.add_argument("-k", dest="keyword", help="only checks whose ID, title or script contains this")
     args = parser.parse_args()
@@ -511,12 +659,18 @@ def main() -> int:
             except httpx.HTTPError as error:
                 print(f"Backend not reachable at {args.api} ({error}). Start it, or pass --api.")
                 return 2
-            ctx = Context(args.api, client)
+            ctx = Context(args.api, client, run_id=f"{started:%Y%m%d%H%M%S}")
             print(f"API checks against {args.api}")
             try:
-                results += run_api_checks(ctx, args.keyword)
+                if not args.skip_db:
+                    left_over = delete_throwaway_accounts()
+                    if left_over:
+                        print(f"  (deleted {left_over} sign-up check account(s) left by an earlier run)")
+                results += run_api_checks(ctx, args.keyword, skip_accounts=args.skip_db)
             finally:
                 ctx.logout_all()
+                if not args.skip_db:
+                    delete_throwaway_accounts()
 
     if not args.skip_db:
         print(f"Database checks (rolled back) on Supabase project {PROJECT_REF}")
