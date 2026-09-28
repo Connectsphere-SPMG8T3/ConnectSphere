@@ -111,6 +111,20 @@ Several early bugs (SCRUM-48, logout defect D1) passed a fully mocked test suite
 
 Run the full test suite (`pytest` from `backend/`) before declaring done, not only the new tests. In the final report, state what **was not** verified and why.
 
+## Live checks and the manual browser pass
+
+Every run of the test cases against the real system is recorded in `docs/test-cases/runs/` (its `README.md` has the commands and the manual template). When a story or fix reaches verification:
+
+1. **Run the automated live checks with recording on**, against a backend and frontend running this branch: `python scripts/verify_live.py --record` from `backend/`, then `npm run test:e2e:record` from `frontend/`. If the developer's own servers are on 8000/5173, start yours on spare ports and pass `--api` / `E2E_BASE_URL` / `E2E_API_URL`. A failure is a finding to fix or report, never something to re-run until it passes.
+2. **Automate the story's new cases where you can.** A case whose outcome is a status code, a redirect, a stored value, a field's text, or whether a request was sent gets a check in `backend/scripts/verify_live.py` or `frontend/e2e/`, named with its case ID first. Never change seeded or shared data. A check may create its own throwaway records only if the run deletes them, as the sign-up checks do with `live-check+…` accounts. Otherwise it stays manual.
+3. **Then stop and ask the developer to do the manual pass.** List the story's cases that still need a person: design and layout (including phone width), wording, anything that must not flash or jump, anything outside the app, and cases that change shared data. For each one, give the case ID, the page to open, and exactly what to look at. Keep it a short checklist grouped by page. Don't mark these as passed yourself. If you drive a browser, it can confirm that something works, but only the developer can judge how it looks and reads.
+4. **Record what the developer reports** as a manual run file (template in `docs/test-cases/runs/README.md`). A failure also becomes a defect in `docs/PROJECT_REVIEW.md`.
+5. If the developer defers the manual pass, the final report lists those cases under "not verified".
+
+At the end of a sprint, if the developer asks, run both suites with recording on as regression evidence. There is no sprint-wide manual pass.
+
+Commit the run logs with the story, since they are the evidence that it was tested.
+
 ## Keep the paper trail current (graded evidence)
 
 - `docs/IMPLEMENTATION_MAP.md`: **after implementing anything that changes what exists**, update the map in the same branch. That includes a story or fix, a module, endpoint, table, or migration, a reusable component, store, or helper, or a changed contract (request/response shape, guard, enum). Unlike `SCENARIO.md`, this file is edited in place: update the status table, add the new pieces to the reuse tables, remove what no longer exists, and record any "know before you build" notes the next developer needs. Update the "Last updated" line as well.
@@ -128,6 +142,8 @@ Run the full test suite (`pytest` from `backend/`) before declaring done, not on
 | Start backend | `uvicorn app.main:app --reload --port 8000` | from `backend/` |
 | Start frontend | `npm run dev` | from `frontend/` |
 | Run tests | `pytest` | from `backend/` |
+| Live API + database checks | `python scripts/verify_live.py --record` | from `backend/`; backend running, `supabase login` done |
+| Live browser checks | `npm run test:e2e:record` | from `frontend/`; both servers running; first time `npx playwright install chromium` |
 
 ## Definition of done (every task)
 
@@ -138,6 +154,7 @@ Run the full test suite (`pytest` from `backend/`) before declaring done, not on
 - [ ] Reusable pieces were extended or extracted rather than duplicated, and `docs/IMPLEMENTATION_MAP.md` reflects the new state.
 - [ ] Automated tests cover the happy path, boundaries, failures, and authorisation denials, and the full suite passes.
 - [ ] The change is verified against the real system wherever it crosses an integration boundary.
+- [ ] The live checks were run with recording on, and the developer was asked for the manual browser pass, with the results recorded in `docs/test-cases/runs/`.
 - [ ] Database changes show no new security or performance advisories.
 - [ ] Docs are updated per "Keep the paper trail current" above. The work is on a non-`main` branch, committed with a *why*-focused message.
 - [ ] The final report covers: what changed, how it was verified, what wasn't verified, and follow-ups.

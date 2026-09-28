@@ -41,7 +41,18 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest
+        run: pytest --junitxml=reports/junit.xml
+
+      # The per-test results of this run, kept as the automated suite's
+      # execution record (docs/test-cases/runs/README.md). Uploaded even when
+      # tests fail, since that is when the record matters most.
+      - name: Upload test report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-report
+          path: backend/reports/junit.xml
+          retention-days: 90
 
   frontend:
     name: Frontend (vitest + build)
@@ -63,7 +74,15 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test
+        run: npm test -- --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml
+
+      - name: Upload test report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-report
+          path: frontend/reports/junit.xml
+          retention-days: 90
 
       # Vite reads .env at build time; the example file holds placeholders
       # only (the project URL and publishable key are not secrets).
