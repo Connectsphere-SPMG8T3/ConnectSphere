@@ -1063,5 +1063,8 @@ Finishes SCRUM-72 on `feature/scrum-72-coordinator-dashboard-api`. The acceptanc
   - `verify_live.py -k TC-DASH`: TC-DASH-013–018 **6/6 passed**.
 - **Real browser** (Vite on 5180 against that API): Overview and Events at 1280px and 390px, compared with the organiser's Overview. No horizontal scroll, no console errors. Playwright TC-DASH-001 and 022 passed.
 - **Found (DEFECTS D17, open):** TC-DASH-019 failed in 2 of 5 runs. The link was right, but the review page's first two parallel requests both answered 500 (`httpx.ReadError`, WinError 10035, inside `get_current_user` on the shared Supabase client), and the page showed "Failed to fetch" (D10). The code is unchanged by this branch. It is recorded rather than fixed here.
+- **Recorded runs** (commit `ff5925e`, servers on 8010/5180):
+  - `runs/2026-09-30-1914-api-db-ff5925e.md`: **45/45 passed**.
+  - `runs/2026-09-30-1915-e2e-ff5925e.md`: **37 passed, 2 failed**. TC-DASH-019 and TC-ROLE-005 both failed on server errors in the shared Supabase client (the review page, then the dashboard and a role switch), not on anything they assert about. That is recorded under D17. Neither was re-run to make it pass.
 - **Not verified:** TC-DASH-020 (return and resubmit a fixture, because it changes shared data) and the arrangement-issue path in a browser (nothing in the UI can set technical readiness yet; it is covered by pytest only). The visual cases TC-DASH-002, 003, 005 and 024 are waiting on the developer's manual pass.
 - **Noticed, not fixed:** `IMPLEMENTATION_MAP.md` still says `modules/equipment/` is an empty package and lists the equipment branches as unmerged, but the equipment module is on `main`.
