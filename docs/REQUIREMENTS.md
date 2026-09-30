@@ -1093,6 +1093,14 @@ Ties break by **soonest event date**, then by longest wait, then by ID for stabl
 
 **Mapping to SCRUM-72's acceptance criteria.** AC1 names three categories: *immediate action* (ranks 1–4), *awaiting initial approval/rejection* (rank 6), and *newly received client clarification responses* (rank 5). The third is the **return-for-amendment** cycle the customer confirmed (QA-22, QA-77, §6.4) — a resubmission *is* the clarification response. This supersedes the older "clarification thread" reading in SCRUM-33 (archive/2026-09-13-design-review §B2a). AC2 is the active-status overview, covering `under_review`, `returned`, `planning` and `confirmed`; `draft` is excluded by DR-R2 and terminal statuses are out of scope for an "active" view.
 
+**What the server derives** (`GET /events/dashboard/coordinator`, `events.service.coordinator_dashboard`). Only events assigned to the caller, never drafts (DR-R2). `awaiting_review` is an `under_review` event with no answered amendment; `resubmitted` is one whose latest amendment has `resubmitted_at`. Kinds with no data source yet (change and cancellation requests, booking and equipment decisions, re-review outcomes) are never produced, so their widgets stay empty rather than invented.
+
+- **[Assumption]** `arrangement_issue` is produced for a `planning` or `confirmed` event whose `technical_readiness` is `issue`, the one arrangement problem the system records today. The event also carries the flag `technical_issue`. See §9 item 15.
+- **[Assumption]** Equipment readiness is `not_required` when the event lists no preliminary equipment needs, `ready` once it has at least one `confirmed` or `completed` reservation, and `pending` otherwise. §6.6's "every request reserved" needs SCRUM-24's per-event equipment requests, which don't exist yet. See §9 item 16.
+- **[Assumption]** The awaiting-assignment alert (AS-R5) counts every non-draft, non-terminal event with no coordinator, not only `submitted` ones. Until SCRUM-12 assigns on submission, submitted events sit in `under_review` (or later) with no coordinator. See §9 item 17.
+
+**[Team decision]** The coordinator dashboard follows the organiser dashboard's layout (§6.21.2): **Overview** and **Events** views chosen from the sidebar (`?tab=`), the same header card, category tiles, status cards and event cards. The AC1 prioritised list and the readiness gaps stay on Overview. Category tiles and status headings open Events filtered to them, and every event opens `/coordinator/events/:id`. Reason: the developer asked for one consistent look across the two event dashboards.
+
 #### 6.21.2 Event Organiser dashboard *(SCRUM-71)*
 
 The organiser dashboard is the primary workspace for event requests owned by the signed-in organiser. It is not an organisation-wide event directory: organisation-level read-only visibility is a separate future view. The dashboard composes the existing events feature store and links to the event request and event detail flows; it does not perform inline event mutations.
@@ -1286,6 +1294,9 @@ These are the Week 1 features outside the core 20. They stay in Jira at `priorit
 12. **Comments:** Session 2 named event comments as the organiser–coordinator channel (QA2-27) but also allowed it to happen offline. Is the comments thread (§8, SCRUM-61) expected in release 1?
 13. **Rejection reason length (SCRUM-52):** Jira sets no maximum. We capped it at 1000 characters (§6.4) as a reasonable bound for a free-text field feeding both the history table and a notification message. Is a different limit expected?
 14. **Return message and resubmission note length (SCRUM-33):** **[Assumption]** Both are capped at 1000 characters, checked after trimming, exactly as the API checks a rejection reason (`EventRejectRequest`; the §6.4 wording "checked on the raw value" doesn't match the code, which strips first). Jira sets no bound; both values reach `event_status_history.reason` and a notification message. Is a different limit expected?
+15. **Arrangement issues (SCRUM-72):** **[Assumption]** A technical readiness of `issue` on a planning or confirmed event is shown as an arrangement issue, the coordinator's most urgent action (§6.21.1). Are there other "issues" the coordinator must see before change requests and re-review exist?
+16. **Equipment readiness before SCRUM-24 (SCRUM-72):** **[Assumption]** Ready once any reservation exists for the event (or `not_required` when none was asked for). Is that close enough until per-line equipment requests exist?
+17. **Awaiting-assignment count (SCRUM-72):** **[Assumption]** Counts every active event with no coordinator, because submission doesn't assign one yet (SCRUM-12). Once SCRUM-12 lands, should it go back to counting only `submitted`?
 
 ---
 

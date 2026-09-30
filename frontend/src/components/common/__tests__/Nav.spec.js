@@ -70,6 +70,20 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
     expect(el.textContent).toContain("Events");
   });
 
+  it("shows coordinator overview and events views in place of Dashboard", async () => {
+    const { el } = await mountNav({
+      id: "u1",
+      role: "event_coordinator",
+      roles: ["event_coordinator"],
+    });
+
+    expect(el.querySelector('a[href="/dashboard/coordinator?tab=overview"]')).toBeTruthy();
+    expect(el.querySelector('a[href="/dashboard/coordinator?tab=events"]')).toBeTruthy();
+    expect(el.querySelector('a[aria-label="Dashboard"]')).toBeNull();
+    // Coordinators keep their venue search.
+    expect(el.querySelector('a[href="/venues"]')).toBeTruthy();
+  });
+
   it("shows the tech support availability and inventory views in the side navigation", async () => {
     const { el } = await mountNav({
       id: "u1",

@@ -1023,3 +1023,45 @@ Not a Jira story. An enabler on `chore/automated-live-checks`. It makes every ru
 - **Verified:** both suites against the live project, run from this branch on spare ports (backend 8010, frontend 5177), with the run logs in `docs/test-cases/runs/`. No `live-check+` accounts remained after either run. TC-AUTH-013, whose case left the outcome open, was confirmed live: an upper-case email signs in. The JUnit flags were run locally for both suites (pytest 421, Vitest 449), and the workflow YAML parses.
 - **Found:** the backend reports Supabase's sign-in rate limit as a 401 "Invalid email or password." (PROJECT_REVIEW **D16**, accepted as low risk: it makes no test case fail and needs many sign-ins from one IP), so the checks can't distinguish a rate limit from broken sign-in. The Blocked handling was exercised against a stand-in backend that refuses every sign-in: one Fail, and every later sign-in check Blocked (13 in the script, 27 in Playwright), with no further sign-in attempts.
 - **Not verified:** the artifact upload itself, which first runs on this branch's PR. A run on Windows: the npm scripts avoid shell-specific syntax, but the `E2E_*` variables in the README examples are written for a POSIX shell.
+
+
+### 4.23. SCRUM-72 — Coordinator dashboard on real data, in the organiser's layout
+
+Finishes SCRUM-72 on `feature/scrum-72-coordinator-dashboard-api`. The acceptance criteria are as recorded verbatim in §4.5 (the developer confirmed they are current; the Jira MCP was not connected).
+
+**Before.** The dashboard's store called `GET /events/dashboard/coordinator`, which didn't exist, so every widget read "Awaiting data". §4.5 built it that way on purpose, because the events tables didn't exist then. They do now (SCRUM-8/33/34/52). The coordinator review page (`/coordinator/events/:id`) was reachable only by typing its URL.
+
+**Backend.**
+- `GET /events/dashboard/coordinator` (`event_coordinator` only, by active role) returns the shape the store already expected: `action_items`, `active_events`, `unassigned_count`.
+- It covers only the caller's assigned events in `under_review`, `returned`, `planning` or `confirmed`; drafts never appear (DR-R2).
+- It produces three action kinds: `awaiting_review`, `resubmitted` (AC1's clarification response, QA-22/QA-77), and `arrangement_issue` when technical readiness is `issue`.
+- Readiness uses two new service reads, `venues.service.booking_statuses_by_event` and `equipment.service.reserved_event_ids`, so no module reads another's tables.
+- The route is declared above `/{event_id}`, which would otherwise answer 422.
+- Three rules had no customer answer and are recorded as **[Assumption]** in REQUIREMENTS §6.21.1 and §9 items 15–17: the arrangement-issue signal, equipment readiness before SCRUM-24, and the unassigned count before SCRUM-12. The other action kinds have no data source yet, so they are never produced; nothing is faked.
+
+**Frontend.**
+- Every event on the dashboard links to its review page.
+- At the developer's request, the page now follows the organiser dashboard (SCRUM-71). The sidebar has **Overview** and **Events** for the coordinator (`?tab=`), from one `EVENT_VIEW_DASHBOARDS` map in `Nav.vue`.
+- **Overview** reuses the organiser's header card, category tiles, and paged "by status" cards. It keeps the AC1 prioritised list, the awaiting-assignment alert and the readiness gaps. A tile or status heading opens Events filtered to it.
+- **Events** reuses the organiser's filter bar (search, status, sort and direction) and event cards, split into "Needs your action" and "In progress", each with a **Review** button.
+- The filtering, sorting and grouping are pure functions in `features/events/coordinatorDashboard.js`. They sit alongside `organiserDashboard.js` rather than reusing it, because the payload is shaped differently. The AC1 category → kinds map moved into `dashboard.js` as `ACTION_CATEGORY_KINDS`, so the tiles and the filter share one definition.
+- While loading, the page now shows "Loading events..." instead of dashes in each counter, as the organiser's does. Either way, no zero is shown before the answer is known (TC-DASH-003, reworded).
+
+#### Verification
+
+- **Written red first:**
+  - `backend/tests/test_coordinator_dashboard.py` (25 cases: derivation, the repository query shapes including the named organiser FK, the cross-module reads, 200/403 ×4/401, and 200-not-422)
+  - `features/events/__tests__/coordinatorDashboard.spec.js` (12)
+  - `views/__tests__/CoordinatorDashboard.spec.js` (14)
+  - one new `Nav.spec.js` case
+
+  Each failed first because the code didn't exist yet. In the view spec, two link cases already passed after the first half of the work.
+- **Full suites:** `pytest` **448 passed**. `npm test` **39 files, 476 passed**. `npm run build` passed.
+- **Real API** (this branch on port 8010, live project):
+  - As `coordinator@connectsphere.dev`: 200, with the three assigned events (fixtures `…0201`, `…0202`, and one planning event) and `unassigned_count` 7, matching a direct database count. The organiser name resolved through `events_organiser_id_fkey`.
+  - 403 as the organiser, 403 after switching to Venue Staff, 401 with no token.
+  - `verify_live.py -k TC-DASH`: TC-DASH-013–018 **6/6 passed**.
+- **Real browser** (Vite on 5180 against that API): Overview and Events at 1280px and 390px, compared with the organiser's Overview. No horizontal scroll, no console errors. Playwright TC-DASH-001 and 022 passed.
+- **Found (DEFECTS D17, open):** TC-DASH-019 failed in 2 of 5 runs. The link was right, but the review page's first two parallel requests both answered 500 (`httpx.ReadError`, WinError 10035, inside `get_current_user` on the shared Supabase client), and the page showed "Failed to fetch" (D10). The code is unchanged by this branch. It is recorded rather than fixed here.
+- **Not verified:** TC-DASH-020 (return and resubmit a fixture, because it changes shared data) and the arrangement-issue path in a browser (nothing in the UI can set technical readiness yet; it is covered by pytest only). The visual cases TC-DASH-002, 003, 005 and 024 are waiting on the developer's manual pass.
+- **Noticed, not fixed:** `IMPLEMENTATION_MAP.md` still says `modules/equipment/` is an empty package and lists the equipment branches as unmerged, but the equipment module is on `main`.

@@ -56,15 +56,21 @@ watch(
 const showVenuesLink = computed(() =>
   ["event_coordinator", "venue_staff"].includes(authStore.role),
 );
-const showOrganiserViews = computed(() => authStore.role === "event_organiser");
+// Organisers and coordinators get Overview/Events views of their dashboard;
+// each dashboard reads the tab from the route.
+const EVENT_VIEW_DASHBOARDS = {
+  event_organiser: "dashboard-organiser",
+  event_coordinator: "dashboard-coordinator",
+};
+const eventViewsDashboard = computed(() => EVENT_VIEW_DASHBOARDS[authStore.role] ?? null);
 const showTechSupportViews = computed(() => authStore.role === "tech_support");
 
 const isDashboardActive = computed(() => route.name?.startsWith("dashboard-"));
-const isOrganiserOverviewActive = computed(
-  () => route.name === "dashboard-organiser" && route.query.tab !== "events",
+const isEventOverviewActive = computed(
+  () => route.name === eventViewsDashboard.value && route.query.tab !== "events",
 );
-const isOrganiserEventsActive = computed(
-  () => route.name === "dashboard-organiser" && route.query.tab === "events",
+const isEventListActive = computed(
+  () => route.name === eventViewsDashboard.value && route.query.tab === "events",
 );
 // Must stay in sync with the tab names TechSupportDashboard reads from the query.
 // Inventory is the default view, so it is active unless availability is asked for.
@@ -155,10 +161,10 @@ async function handleLogout() {
       class="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-4 py-6"
       :class="sectionPadClass"
     >
-      <template v-if="showOrganiserViews">
+      <template v-if="eventViewsDashboard">
         <RouterLink
-          :to="{ name: 'dashboard-organiser', query: { tab: 'overview' } }"
-          :class="navLinkClass(isOrganiserOverviewActive)"
+          :to="{ name: eventViewsDashboard, query: { tab: 'overview' } }"
+          :class="navLinkClass(isEventOverviewActive)"
           title="Overview"
           aria-label="Overview"
         >
@@ -181,8 +187,8 @@ async function handleLogout() {
         </RouterLink>
 
         <RouterLink
-          :to="{ name: 'dashboard-organiser', query: { tab: 'events' } }"
-          :class="navLinkClass(isOrganiserEventsActive)"
+          :to="{ name: eventViewsDashboard, query: { tab: 'events' } }"
+          :class="navLinkClass(isEventListActive)"
           title="Events"
           aria-label="Events"
         >

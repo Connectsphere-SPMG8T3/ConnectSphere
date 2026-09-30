@@ -172,19 +172,18 @@ export function prioritiseActionItems(items = []) {
  * *is* the clarification response. See REQUIREMENTS §6.4 — this replaced the
  * older "clarification thread" reading of SCRUM-33 (docs/archive/2026-09-13-design-review.md B2a).
  */
-const IMMEDIATE_ACTION_KINDS = [
-  "arrangement_issue",
-  "re_review_rejected",
-  "cancellation_request",
-  "change_request",
-];
+export const ACTION_CATEGORY_KINDS = {
+  immediate: ["arrangement_issue", "re_review_rejected", "cancellation_request", "change_request"],
+  awaitingApproval: ["awaiting_review"],
+  clarificationResponses: ["resubmitted"],
+};
 
 export function summariseActionItems(items = []) {
-  const count = (predicate) => items.filter(predicate).length;
+  const count = (kinds) => items.filter((item) => kinds.includes(item.kind)).length;
   return {
-    immediate: count((item) => IMMEDIATE_ACTION_KINDS.includes(item.kind)),
-    awaitingApproval: count((item) => item.kind === "awaiting_review"),
-    clarificationResponses: count((item) => item.kind === "resubmitted"),
+    immediate: count(ACTION_CATEGORY_KINDS.immediate),
+    awaitingApproval: count(ACTION_CATEGORY_KINDS.awaitingApproval),
+    clarificationResponses: count(ACTION_CATEGORY_KINDS.clarificationResponses),
     total: items.length,
   };
 }
