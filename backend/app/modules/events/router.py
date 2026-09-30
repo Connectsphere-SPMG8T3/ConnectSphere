@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Response, status
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.events import service
 from app.modules.events.schemas import (
+    CoordinatorDashboard,
     EventCreateRequest,
     EventHistoryResponse,
     EventRejectRequest,
@@ -29,6 +30,13 @@ def create_event(body: EventCreateRequest, current_user: EventOrganiser) -> Even
 @router.get("", response_model=list[EventResponse])
 def list_events(current_user: EventOrganiser) -> list[EventResponse]:
     return service.list_owned(current_user.id)
+
+
+# Declared above `/{event_id}`: that path is typed UUID, so this one would
+# otherwise reach `read_event` and answer 422 instead of the dashboard.
+@router.get("/dashboard/coordinator", response_model=CoordinatorDashboard)
+def coordinator_dashboard(current_user: EventCoordinator) -> CoordinatorDashboard:
+    return service.coordinator_dashboard(current_user.id)
 
 
 @router.get("/{event_id}", response_model=EventResponse)

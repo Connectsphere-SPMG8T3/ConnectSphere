@@ -23,6 +23,60 @@ def list_events(organiser_id: str) -> list[dict]:
     return response.data or []
 
 
+# SCRUM-72: the coordinator dashboard's reads. The organiser is embedded through
+# the named FK: `events` points at `profiles` twice (organiser and coordinator),
+# so a bare `profiles(...)` embed fails the whole query with PGRST201.
+_COORDINATOR_DASHBOARD_COLUMNS = (
+    "id, name, status, starts_at, submitted_at, technical_readiness, preliminary_equipment_needs, "
+    "organiser:profiles!events_organiser_id_fkey(full_name)"
+)
+
+
+def list_coordinator_events(coordinator_id: str, statuses: Iterable[str]) -> list[dict]:
+    response = (
+        get_supabase_admin_client()
+        .table("events")
+        .select(_COORDINATOR_DASHBOARD_COLUMNS)
+        .eq("coordinator_id", coordinator_id)
+        .in_("status", list(statuses))
+        .execute()
+    )
+    return response.data or []
+
+
+def list_latest_resubmissions(event_ids: Iterable[str]) -> dict[str, str]:
+    """`{event_id: resubmitted_at}` of each event's most recent answered amendment."""
+    ids = list(event_ids)
+    if not ids:
+        return {}
+    response = (
+        get_supabase_admin_client()
+        .table("amendment_requests")
+        .select("event_id, resubmitted_at")
+        .in_("event_id", ids)
+        .not_.is_("resubmitted_at", "null")
+        .order("resubmitted_at", desc=True)
+        .execute()
+    )
+    latest: dict[str, str] = {}
+    for row in response.data or []:
+        latest.setdefault(row["event_id"], row["resubmitted_at"])
+    return latest
+
+
+def count_unassigned(statuses: Iterable[str]) -> int:
+    """How many events in these statuses have no coordinator, counted by Postgres."""
+    response = (
+        get_supabase_admin_client()
+        .table("events")
+        .select("id", count="exact", head=True)
+        .is_("coordinator_id", "null")
+        .in_("status", list(statuses))
+        .execute()
+    )
+    return response.count or 0
+
+
 def list_event_names(event_ids: Iterable[str]) -> dict[str, str]:
     """`{event_id: name}` for the ids given, skipping any that no longer exist.
 

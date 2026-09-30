@@ -7,9 +7,10 @@
  *      responses.
  * AC2: the status of each active event.
  *
- * The `events` module has not been built yet, so every widget below renders an
- * empty state today and fills in unchanged once the dashboard endpoint ships.
- * Nothing on this page invents a figure.
+ * Every figure comes from `GET /events/dashboard/coordinator`, scoped to the
+ * events assigned to this coordinator. Action kinds whose data the system
+ * doesn't hold yet simply never appear, so nothing on this page invents a
+ * figure. Each row opens the event's review page.
  */
 import { computed, onMounted } from "vue";
 import { RouterLink } from "vue-router";
@@ -80,14 +81,18 @@ const dateFormat = new Intl.DateTimeFormat("en-SG", {
   timeZone: "Asia/Singapore",
 });
 
+// Every row opens the event's review page (SCRUM-34/52/33).
+const reviewRoute = (eventId) => ({ name: "coordinator-event", params: { id: eventId } });
+
 function formatDate(value) {
   if (!value) return "Date to be confirmed";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? "Date to be confirmed" : dateFormat.format(parsed);
 }
 
+// Only reached when the API answers 404 — a backend older than this page.
 const pendingMessage =
-  "This widget is wired to the coordinator dashboard endpoint and will fill in once the events module ships. It shows nothing rather than a placeholder figure.";
+  "The coordinator dashboard endpoint isn't available on this server. This widget shows nothing rather than a placeholder figure.";
 
 // An empty widget means three different things, and saying which is the whole
 // point of this dashboard: still checking, not built yet, or genuinely clear.
@@ -123,8 +128,7 @@ function emptyDetail(clearText) {
       class="mb-8 border-2 border-dashed border-ink/40 bg-surface px-5 py-4 text-sm font-medium text-ink/75"
     >
       <span class="font-bold uppercase tracking-widest">Awaiting data —</span>
-      the events module has not been built yet, so there is nothing to show. Every widget below is
-      already connected and will populate on its own once it ships.
+      this server doesn't provide the coordinator dashboard yet, so there is nothing to show.
     </p>
 
     <!-- Urgent alert: AS-R5, shown on every coordinator dashboard. -->
@@ -168,29 +172,33 @@ function emptyDetail(clearText) {
         <li
           v-for="(item, index) in dashboard.prioritisedActions"
           :key="`${item.event_id}-${item.kind}`"
-          class="flex flex-col gap-3 border-2 border-ink bg-canvas p-5 shadow-hard sm:flex-row sm:items-center sm:justify-between sm:border-4"
         >
-          <div class="flex items-start gap-4">
-            <span class="text-2xl font-black tracking-tighter text-ink/30">{{ index + 1 }}</span>
-            <div>
-              <p class="text-lg font-black uppercase leading-tight tracking-tighter">
-                {{ item.event_name }}
-              </p>
-              <p class="mt-1 text-sm font-medium text-ink/70">
-                {{ actionKindMeta(item.kind).description }}
-              </p>
-              <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/50">
-                {{ formatDate(item.starts_at) }}
-                <template v-if="item.organiser_name"> · {{ item.organiser_name }}</template>
-              </p>
-            </div>
-          </div>
-          <span
-            class="shrink-0 self-start border-2 border-ink px-3 py-1 text-xs font-bold uppercase tracking-widest sm:self-center"
-            :class="toneClasses[actionKindMeta(item.kind).tone]"
+          <RouterLink
+            :to="reviewRoute(item.event_id)"
+            class="flex flex-col gap-3 border-2 border-ink bg-canvas p-5 shadow-hard active-press sm:flex-row sm:items-center sm:justify-between sm:border-4"
           >
-            {{ actionKindMeta(item.kind).label }}
-          </span>
+            <div class="flex items-start gap-4">
+              <span class="text-2xl font-black tracking-tighter text-ink/30">{{ index + 1 }}</span>
+              <div>
+                <p class="text-lg font-black uppercase leading-tight tracking-tighter">
+                  {{ item.event_name }}
+                </p>
+                <p class="mt-1 text-sm font-medium text-ink/70">
+                  {{ actionKindMeta(item.kind).description }}
+                </p>
+                <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/50">
+                  {{ formatDate(item.starts_at) }}
+                  <template v-if="item.organiser_name"> · {{ item.organiser_name }}</template>
+                </p>
+              </div>
+            </div>
+            <span
+              class="shrink-0 self-start border-2 border-ink px-3 py-1 text-xs font-bold uppercase tracking-widest sm:self-center"
+              :class="toneClasses[actionKindMeta(item.kind).tone]"
+            >
+              {{ actionKindMeta(item.kind).label }}
+            </span>
+          </RouterLink>
         </li>
       </ol>
 
@@ -222,20 +230,21 @@ function emptyDetail(clearText) {
           <p class="mt-1 text-xs font-medium text-ink/60">{{ group.description }}</p>
 
           <ul v-if="group.events.length" class="mt-4 space-y-2">
-            <li
-              v-for="event in group.events"
-              :key="event.event_id"
-              class="border-l-4 border-ink bg-surface py-2 pl-3"
-            >
-              <p class="text-sm font-bold uppercase tracking-tight">{{ event.event_name }}</p>
-              <p class="text-xs font-medium text-ink/60">{{ formatDate(event.starts_at) }}</p>
-              <p
-                v-for="flag in event.flags ?? []"
-                :key="flag"
-                class="mt-1 inline-block bg-bauhaus-red px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-canvas"
+            <li v-for="event in group.events" :key="event.event_id">
+              <RouterLink
+                :to="reviewRoute(event.event_id)"
+                class="block border-l-4 border-ink bg-surface py-2 pl-3 active-press hover:bg-muted"
               >
-                {{ flag.replace(/_/g, " ") }}
-              </p>
+                <p class="text-sm font-bold uppercase tracking-tight">{{ event.event_name }}</p>
+                <p class="text-xs font-medium text-ink/60">{{ formatDate(event.starts_at) }}</p>
+                <p
+                  v-for="flag in event.flags ?? []"
+                  :key="flag"
+                  class="mt-1 inline-block bg-bauhaus-red px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-canvas"
+                >
+                  {{ flag.replace(/_/g, " ") }}
+                </p>
+              </RouterLink>
             </li>
           </ul>
 
@@ -255,20 +264,21 @@ function emptyDetail(clearText) {
       </h2>
 
       <ul v-if="gaps.length" class="space-y-3">
-        <li
-          v-for="event in gaps"
-          :key="event.event_id"
-          class="border-2 border-ink bg-bauhaus-yellow p-5 shadow-hard sm:border-4"
-        >
-          <p class="text-lg font-black uppercase leading-tight tracking-tighter">
-            {{ event.event_name }}
-          </p>
-          <p class="mt-1 text-xs font-bold uppercase tracking-widest opacity-70">
-            {{ formatDate(event.starts_at) }} · {{ STATUS_LABELS[event.status] }}
-          </p>
-          <p class="mt-2 text-sm font-medium">
-            Outstanding: {{ outstandingReadiness(event).join(", ") }}
-          </p>
+        <li v-for="event in gaps" :key="event.event_id">
+          <RouterLink
+            :to="reviewRoute(event.event_id)"
+            class="block border-2 border-ink bg-bauhaus-yellow p-5 shadow-hard active-press sm:border-4"
+          >
+            <p class="text-lg font-black uppercase leading-tight tracking-tighter">
+              {{ event.event_name }}
+            </p>
+            <p class="mt-1 text-xs font-bold uppercase tracking-widest opacity-70">
+              {{ formatDate(event.starts_at) }} · {{ STATUS_LABELS[event.status] }}
+            </p>
+            <p class="mt-2 text-sm font-medium">
+              Outstanding: {{ outstandingReadiness(event).join(", ") }}
+            </p>
+          </RouterLink>
         </li>
       </ul>
 

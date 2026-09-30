@@ -8,12 +8,12 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 
 **Preconditions for every case:** logged in as `coordinator@connectsphere.dev` / `Cs1234`, on `/dashboard/coordinator`.
 
-**A note on how these are run.** The SCRUM-8 events module is available, but the coordinator dashboard endpoint remains outside SCRUM-8 and is not yet backed by event data. TC-DASH-001–005 exercise that real state directly. TC-DASH-006–012 need dashboard data, so they are run by **stubbing the endpoint response** at the network layer (Playwright `page.route`, or DevTools' local-overrides / a request-interception extension). Re-run them against real seeded dashboard data when SCRUM-72's backend endpoint lands.
+**A note on how these are run.** `GET /events/dashboard/coordinator` is built (`feature/scrum-72-coordinator-dashboard-api`), so TC-DASH-001–005 and TC-DASH-013–020 run against real seeded data. TC-DASH-006–012 need payloads the seed doesn't produce: every action kind at once, unknown kinds, drafts in the response. They are still run by **stubbing the endpoint response** at the network layer (Playwright `page.route`, or DevTools' local overrides). Several kinds they use (`cancellation_request`, `venue_blocked`) have no data source yet, so the server never sends them.
 
 | ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
 |----|-------|----------------|------------|-------------|------------------|----------|
-| TC-DASH-001 | Dashboard loads with honest empty states when the events module is absent | Backend running; no events tables | Open `/dashboard/coordinator` and wait for the network to settle | — | `GET /events/dashboard/coordinator` returns 404. The page shows "AWAITING DATA — the events module has not been built yet…", all counters read `0`, and each widget's empty state explains it will populate once the module ships. No error banner. | 🔴 |
-| TC-DASH-002 | No fabricated metrics are displayed (regression, DEFECTS D8) | As TC-DASH-001 | Read every number on the page | — | No counter shows a non-zero value. The strings "Requests Awaiting Review", "Venues to Coordinate" and "Events in Progress" do **not** appear — they were the hardcoded placeholders removed by this story. | 🔴 |
+| TC-DASH-001 | Dashboard loads from the real endpoint | Backend on this branch or later | Open `/dashboard/coordinator` and wait for the network to settle | — | `GET /events/dashboard/coordinator` returns 200. No "Awaiting data" notice and no error banner. The seeded fixture events appear under their status. (Against a backend older than the endpoint, it answers 404 and the page shows "Awaiting data — this server doesn't provide the coordinator dashboard yet" with no error banner; `store.spec.js` covers that path.) | 🔴 |
+| TC-DASH-002 | No fabricated metrics are displayed (regression, DEFECTS D8) | As TC-DASH-001 | Read every number on the page and compare it with the events assigned to this coordinator | — | Every counter matches the coordinator's real assigned events (TC-DASH-013). The strings "Requests Awaiting Review", "Venues to Coordinate" and "Events in Progress" do **not** appear — they were the hardcoded placeholders this story removed. | 🔴 |
 | TC-DASH-003 | Counts are withheld until the first load settles | Throttle the network (DevTools → Slow 3G) before loading | Open `/dashboard/coordinator` and watch the counters while the request is in flight | — | While loading, the three category counters and the four status counters show "—", not `0`, and empty states read "Checking for updates…". They switch to real figures only once the request settles. A `0` must never be shown before the answer is known. | 🟠 |
 | TC-DASH-004 | A server failure is surfaced, not silently rendered as an empty dashboard | Point the backend at a stub that answers 503, or stop the backend | Reload `/dashboard/coordinator` | — | A red error banner shows the failure message. The dashboard does **not** claim the coordinator has nothing to do. (Contrast with TC-DASH-001: only a 404 is treated as "not built yet".) | 🔴 |
 | TC-DASH-005 | The dashboard is usable on a phone-width viewport (NFR-U1) | As TC-DASH-001 | Set the viewport to 390 × 844 | — | Category cards stack to one column, status cards stack to one column, no horizontal scrolling, all text legible. | 🟠 |
@@ -24,25 +24,41 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 | TC-DASH-010 | AC2 — every active status is shown with its count and events | Stubbed payload with events in `under_review` (×2), `returned`, `planning`, `confirmed` | Read the "Active events by status" section | five events | Four cards appear — Under review (2), Returned for amendment (1), Planning (1), Confirmed (1) — each listing its events with dates. Statuses with no events still appear, showing `0` and "None." | 🔴 |
 | TC-DASH-011 | AC2 — drafts never appear in a coordinator's view (DR-R2) | Stubbed payload including an event with `"status": "draft"` and a terminal-status event | Read the whole page | draft + cancelled event | Neither appears in any card, and neither is counted anywhere. | 🔴 |
 | TC-DASH-012 | Urgent alerts and the schedule overview render | Stubbed payload with `unassigned_count: 3`, one event flagged `venue_blocked`, and one `planning` event starting in 8 days with `readiness.venue = "pending"` | Read the alert banner, the status cards, and the readiness section | as above | A red "Urgent — awaiting assignment" card shows `3` (AS-R5). The flagged event shows a "VENUE BLOCKED" badge (§7 NFR-R1). "Readiness gaps — next 14 days" lists the event with "Outstanding: Venue". | 🟠 |
+| TC-DASH-013 | Only the caller's own active events come back | Seed applied; fixture events reset (`event_review_fixture_reset.sql`) | Send `GET /events/dashboard/coordinator` as the coordinator | — | 200. Every `active_events` entry has status `under_review`, `returned`, `planning` or `confirmed` (never `draft` or a terminal status). The fixtures `e0000000-…-0201` and `e0000000-…-0202`, both assigned to this coordinator, are listed. Every action item refers to a listed event. | 🔴 |
+| TC-DASH-014 | AC1 — every event under review is an action item, and a returned one isn't | As TC-DASH-013 | Read `action_items` against `active_events` | — | Each `under_review` event has exactly one action item, of kind `awaiting_review` (first review) or `resubmitted` (answered amendment). A `returned` event has none, because it is waiting on the organiser. On the page, fixture `…-0201` is listed under **Awaiting approval** with the organiser's name. | 🔴 |
+| TC-DASH-015 | The awaiting-assignment alert counts the real unassigned events (AS-R5) | As TC-DASH-013 | Compare `unassigned_count` with the database | `select count(*) from events where coordinator_id is null and status in ('submitted','under_review','returned','planning','confirmed')` | The two numbers are equal. On the page, the red "awaiting assignment" card shows the same figure. Until SCRUM-12 assigns on submission, this includes submitted events sitting in `under_review` (REQUIREMENTS §6.21.1 [Assumption]). | 🟠 |
+| TC-DASH-016 | An organiser can't read the coordinator dashboard | Signed in as `organiser@connectsphere.dev` | Send `GET /events/dashboard/coordinator` directly, bypassing the SPA | — | 403. | 🔴 |
+| TC-DASH-017 | A coordinator acting as another role can't read it (SCRUM-76) | Signed in as `coordinator@connectsphere.dev`, which also holds `venue_staff` | Switch the active role to Venue Staff, request the endpoint; switch back and request it again | — | 403 while acting as Venue Staff; 200 after switching back. | 🔴 |
+| TC-DASH-018 | No token, no dashboard | — | Send `GET /events/dashboard/coordinator` without an `Authorization` header | — | 401. | 🟠 |
+| TC-DASH-019 | Every row opens the event's review page | As TC-DASH-001 | Click an event in **Active events by status**; go back and click an action item | — | Each click opens `/coordinator/events/<that event's id>` showing that event. Rows in "Readiness gaps" open the same page. The rows press flat on click like the venue-staff dashboard's. | 🔴 |
+| TC-DASH-020 | AC1 — an amended and resubmitted request shows as a clarification response | Fixture `…-0201` in `under_review`. **Changes shared data:** reset the fixtures with `event_review_fixture_reset.sql` afterwards | As the coordinator, return `…-0201` for amendment. As `organiser@connectsphere.dev`, amend and resubmit it. As the coordinator, reload the dashboard | message and note of your choice | The event is listed under **Clarification responses** (count 1) with the "Amended and resubmitted" badge, ranked above any "Awaiting first review" item, and no longer counted under Awaiting approval. | 🔴 |
 
 ### Traceability — SCRUM-72
 
 | Acceptance criterion / rule | Covered by |
 |---|---|
 | AC1 "prioritized list of incoming event requests requiring immediate action" | TC-DASH-006, TC-DASH-007, TC-DASH-008 |
-| AC1 "requests awaiting initial approval/rejection" | TC-DASH-007, TC-DASH-010 |
-| AC1 "items with newly received client clarification responses" (QA-22, QA-77 return/resubmit) | TC-DASH-007 |
-| AC2 "Displays status for each active event" | TC-DASH-010, TC-DASH-011 |
+| AC1 "requests awaiting initial approval/rejection" | TC-DASH-007, TC-DASH-010, TC-DASH-014 |
+| AC1 "items with newly received client clarification responses" (QA-22, QA-77 return/resubmit) | TC-DASH-007, TC-DASH-020 |
+| AC2 "Displays status for each active event" | TC-DASH-010, TC-DASH-011, TC-DASH-013 |
+| Only the caller's assigned events; access by active role (SCRUM-76) | TC-DASH-013, TC-DASH-016, TC-DASH-017, TC-DASH-018 |
+| Rows open the review page (SCRUM-34/52/33) | TC-DASH-019 |
 | REQUIREMENTS §6.21 "build a widget only when its data exists; until then, show an empty state" | TC-DASH-001, TC-DASH-003 |
 | REQUIREMENTS §6.21.1 prioritisation [Team decision] | TC-DASH-006, TC-DASH-008, TC-DASH-009 |
 | DR-R2 (drafts invisible to staff) | TC-DASH-011 |
-| AS-R5 (awaiting-assignment alert) | TC-DASH-012 |
+| AS-R5 (awaiting-assignment alert) | TC-DASH-012, TC-DASH-015 |
 | §7 NFR-R1 (flags stay visible until resolved) | TC-DASH-012 |
 | NFR-U1 (desktop and mobile friendly) | TC-DASH-005 |
 | DEFECTS D8 (fabricated metrics) | TC-DASH-002 |
 | Reliability (an outage is not rendered as "nothing to do") | TC-DASH-004 |
 
-Automated equivalents live in `frontend/src/features/events/__tests__/` (Vitest): `dashboard.spec.js` covers TC-DASH-006, 008, 009, 010, 011 and 012's readiness logic as pure unit tests; `store.spec.js` covers TC-DASH-001, 003 and 004. TC-DASH-002 and TC-DASH-005 are visual and remain manual.
+Automated equivalents:
+
+- **Vitest**, in `frontend/src/features/events/__tests__/`: `dashboard.spec.js` covers TC-DASH-006, 008, 009, 010, 011 and 012's readiness logic as pure unit tests. `store.spec.js` covers the 404 fallback of TC-DASH-001, plus 003 and 004. `views/__tests__/CoordinatorDashboard.spec.js` covers TC-DASH-019's links.
+- **pytest**, in `backend/tests/test_coordinator_dashboard.py`: the server's derivation behind TC-DASH-013–018 and 020 (action kinds, readiness, unassigned count, scope, 403/401). The `technical_issue` → `arrangement_issue` rule is covered only there, since no screen can set technical readiness yet.
+- **Live checks:** TC-DASH-013–018 in `backend/scripts/verify_live.py`, and TC-DASH-001 and 019 in `frontend/e2e/dashboards.e2e.js`.
+
+TC-DASH-002, 003 and 005 are visual and stay manual. So does TC-DASH-020, because it changes shared data.
 
 ## Venue Staff dashboard (SCRUM-70)
 

@@ -5,9 +5,17 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException, status
 
 from app.core.exceptions import NotAssignedCoordinatorError
+# Module imports, not names: `venues.service` imports this module too, and a
+# module reference resolves at call time, so the cycle is harmless.
+from app.modules.equipment import service as equipment_service
 from app.modules.events import lifecycle, repository
+from app.modules.venues import service as venues_service
 from app.modules.events.schemas import (
     AmendmentRequest,
+    CoordinatorActionItem,
+    CoordinatorActionKind,
+    CoordinatorActiveEvent,
+    CoordinatorDashboard,
     EventCreateRequest,
     EventHistoryEntry,
     EventHistoryResponse,
@@ -16,9 +24,21 @@ from app.modules.events.schemas import (
     EventReturnRequest,
     EventStatus,
     EventUpdateRequest,
+    Readiness,
+    ReadinessState,
 )
 
 DEFAULT_EVENT_TIMEZONE = "Asia/Singapore"
+
+# The statuses an assigned coordinator still has work in (SCRUM-72 AC2). Drafts
+# are private to their organiser (DR-R2) and terminal statuses aren't active.
+ACTIVE_COORDINATOR_STATUSES = ("under_review", "returned", "planning", "confirmed")
+
+# [Assumption] REQUIREMENTS §6.21.1: the awaiting-assignment alert (AS-R5) counts
+# every non-draft, non-terminal event with no coordinator. AS-R5 names only
+# `submitted`, but until SCRUM-12 assigns on submission, unassigned events sit in
+# `under_review` or later.
+UNASSIGNED_STATUSES = ("submitted", *ACTIVE_COORDINATOR_STATUSES)
 
 
 class EventNotFoundError(HTTPException):
@@ -265,3 +285,87 @@ def submit(event_id: str, organiser_id: str, body: EventUpdateRequest | None = N
     if not updated:
         raise EventConflictError()
     return _to_response(updated)
+
+
+def _venue_readiness(booking_statuses: list[str]) -> ReadinessState:
+    # REQUIREMENTS §6.6: the venue is ready once a booking is approved.
+    return ReadinessState.ready if "approved" in booking_statuses else ReadinessState.pending
+
+
+def _equipment_readiness(row: dict, reserved: set[str]) -> ReadinessState:
+    # [Assumption] REQUIREMENTS §6.21.1: no equipment asked for means nothing to
+    # wait on; otherwise ready once tech support has reserved some.
+    if not (row.get("preliminary_equipment_needs") or "").strip():
+        return ReadinessState.not_required
+    return ReadinessState.ready if row["id"] in reserved else ReadinessState.pending
+
+
+def _action_kind(row: dict, resubmitted_at: str | None) -> CoordinatorActionKind | None:
+    status = row["status"]
+    if status == "under_review":
+        # A resubmission is the organiser's answer to a return (QA-22, QA-77):
+        # SCRUM-72's "clarification response", not a first review.
+        return CoordinatorActionKind.resubmitted if resubmitted_at else CoordinatorActionKind.awaiting_review
+    # [Assumption] REQUIREMENTS §6.21.1: tech support marking technical readiness
+    # as `issue` is the one arrangement problem the system records today.
+    if status in ("planning", "confirmed") and row.get("technical_readiness") == "issue":
+        return CoordinatorActionKind.arrangement_issue
+    # `returned` is waiting on the organiser, not the coordinator.
+    return None
+
+
+def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
+    """Everything the Event Coordinator dashboard shows, in one round trip (SCRUM-72).
+
+    Only events assigned to the caller, never drafts (DR-R2). Action kinds whose
+    data doesn't exist yet (change and cancellation requests, booking and
+    equipment decisions, re-review outcomes) are not produced, so their widgets
+    stay empty rather than invent anything (REQUIREMENTS §6.21). The SPA ranks
+    the items, so they are returned unordered.
+    """
+    rows = repository.list_coordinator_events(coordinator_id, ACTIVE_COORDINATOR_STATUSES)
+    event_ids = [row["id"] for row in rows]
+    under_review_ids = [row["id"] for row in rows if row["status"] == "under_review"]
+
+    resubmissions = repository.list_latest_resubmissions(under_review_ids)
+    bookings = venues_service.booking_statuses_by_event(event_ids) if event_ids else {}
+    reserved = equipment_service.reserved_event_ids(event_ids) if event_ids else set()
+
+    action_items: list[CoordinatorActionItem] = []
+    active_events: list[CoordinatorActiveEvent] = []
+    for row in rows:
+        resubmitted_at = resubmissions.get(row["id"])
+        kind = _action_kind(row, resubmitted_at)
+        if kind is not None:
+            action_items.append(
+                CoordinatorActionItem(
+                    event_id=row["id"],
+                    event_name=row["name"],
+                    kind=kind,
+                    starts_at=row.get("starts_at"),
+                    occurred_at=resubmitted_at or row.get("submitted_at"),
+                    organiser_name=(row.get("organiser") or {}).get("full_name"),
+                )
+            )
+
+        technical = ReadinessState(row["technical_readiness"])
+        active_events.append(
+            CoordinatorActiveEvent(
+                event_id=row["id"],
+                event_name=row["name"],
+                status=row["status"],
+                starts_at=row.get("starts_at"),
+                flags=["technical_issue"] if technical is ReadinessState.issue else [],
+                readiness=Readiness(
+                    venue=_venue_readiness(bookings.get(row["id"], [])),
+                    equipment=_equipment_readiness(row, reserved),
+                    technical=technical,
+                ),
+            )
+        )
+
+    return CoordinatorDashboard(
+        action_items=action_items,
+        active_events=active_events,
+        unassigned_count=repository.count_unassigned(UNASSIGNED_STATUSES),
+    )

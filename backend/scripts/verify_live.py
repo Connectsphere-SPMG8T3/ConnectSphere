@@ -205,14 +205,16 @@ class Check:
     title: str
     run: Callable[[Context], None]
     creates_accounts: bool = False
+    # Reads the database to compare against, so --skip-db skips it too.
+    needs_db: bool = False
 
 
 API_CHECKS: list[Check] = []
 
 
-def check(case_id: str, title: str, creates_accounts: bool = False):
+def check(case_id: str, title: str, creates_accounts: bool = False, needs_db: bool = False):
     def register(fn: Callable[[Context], None]):
-        API_CHECKS.append(Check(case_id, title, fn, creates_accounts))
+        API_CHECKS.append(Check(case_id, title, fn, creates_accounts, needs_db))
         return fn
 
     return register
@@ -420,6 +422,85 @@ def _(ctx: Context) -> None:
     expect_status(ctx.client.get(f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=session.headers), 403)
 
 
+# --- Coordinator dashboard (SCRUM-72) --------------------------------------
+
+COORDINATOR_DASHBOARD = "/events/dashboard/coordinator"
+ACTIVE_COORDINATOR_STATUSES = {"under_review", "returned", "planning", "confirmed"}
+# supabase/seed.sql: review fixtures assigned to coordinator@connectsphere.dev.
+REVIEW_FIXTURES = {"e0000000-0000-4000-8000-000000000201", "e0000000-0000-4000-8000-000000000202"}
+
+
+def coordinator_dashboard(ctx: Context) -> dict:
+    response = ctx.client.get(f"{ctx.api}{COORDINATOR_DASHBOARD}", headers=ctx.shared("event_coordinator").headers)
+    expect_status(response, 200)
+    return response.json()
+
+
+@check("TC-DASH-013", "Coordinator dashboard returns only the caller's active events")
+def _(ctx: Context) -> None:
+    body = coordinator_dashboard(ctx)
+    listed = {event["event_id"]: event for event in body["active_events"]}
+    statuses = {event["status"] for event in listed.values()}
+    expect(statuses <= ACTIVE_COORDINATOR_STATUSES, f"inactive statuses listed: {statuses - ACTIVE_COORDINATOR_STATUSES}")
+    # A fixture moved to a terminal status by an un-reset manual run is correctly absent.
+    missing = REVIEW_FIXTURES - set(listed)
+    expect(not missing, f"fixture events missing (reset them with event_review_fixture_reset.sql?): {missing}")
+    stray = {item["event_id"] for item in body["action_items"]} - set(listed)
+    expect(not stray, f"action items for events not listed: {stray}")
+
+
+@check("TC-DASH-014", "Every event under review is one action item; a returned one is none")
+def _(ctx: Context) -> None:
+    body = coordinator_dashboard(ctx)
+    kinds_by_event: dict[str, list[str]] = {}
+    for item in body["action_items"]:
+        kinds_by_event.setdefault(item["event_id"], []).append(item["kind"])
+    for event in body["active_events"]:
+        kinds = kinds_by_event.get(event["event_id"], [])
+        if event["status"] == "under_review":
+            expect(
+                len(kinds) == 1 and kinds[0] in {"awaiting_review", "resubmitted"},
+                f"{event['event_id']} under review has action items {kinds}",
+            )
+        if event["status"] == "returned":
+            expect(not kinds, f"{event['event_id']} is returned but has action items {kinds}")
+
+
+@check("TC-DASH-015", "The awaiting-assignment count matches the database", needs_db=True)
+def _(ctx: Context) -> None:
+    body = coordinator_dashboard(ctx)
+    [row] = db_query(
+        "select count(*)::int as n from public.events where coordinator_id is null "
+        "and status in ('submitted','under_review','returned','planning','confirmed')"
+    )
+    expect(body["unassigned_count"] == row["n"], f"API says {body['unassigned_count']}, database says {row['n']}")
+
+
+@check("TC-DASH-016", "An organiser can't read the coordinator dashboard")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}{COORDINATOR_DASHBOARD}", headers=ctx.shared("event_organiser").headers)
+    expect_status(response, 403)
+
+
+@check("TC-DASH-017", "The coordinator dashboard closes while acting as venue staff and reopens after")
+def _(ctx: Context) -> None:
+    session = ctx.login("event_coordinator")  # its own session: switching must not touch shared ones
+
+    def switch(role: str) -> None:
+        response = ctx.client.post(f"{ctx.api}/auth/active-role", json={"role": role}, headers=session.headers)
+        expect_status(response, 200)
+
+    switch("venue_staff")
+    expect_status(ctx.client.get(f"{ctx.api}{COORDINATOR_DASHBOARD}", headers=session.headers), 403)
+    switch("event_coordinator")
+    expect_status(ctx.client.get(f"{ctx.api}{COORDINATOR_DASHBOARD}", headers=session.headers), 200)
+
+
+@check("TC-DASH-018", "The coordinator dashboard without a token is 401")
+def _(ctx: Context) -> None:
+    expect_status(ctx.client.get(f"{ctx.api}{COORDINATOR_DASHBOARD}"), 401)
+
+
 # --- Sign-up (SCRUM-80) ----------------------------------------------------
 
 
@@ -560,6 +641,9 @@ def run_api_checks(ctx: Context, keyword: str | None, skip_accounts: bool) -> li
             continue
         if item.creates_accounts and skip_accounts:
             print(f"  SKIP  {item.case_id:<28} {item.title} (creates an account; needs the database)")
+            continue
+        if item.needs_db and skip_accounts:
+            print(f"  SKIP  {item.case_id:<28} {item.title} (compares against the database)")
             continue
         try:
             item.run(ctx)
