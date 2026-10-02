@@ -424,6 +424,29 @@ def _(ctx: Context) -> None:
 # --- Sign-up (SCRUM-80) ----------------------------------------------------
 
 
+FIXTURE_EVENT = "e0000000-0000-4000-8000-000000000201"  # supabase/seed.sql: under_review, assigned
+
+
+@check("TC-CMT-009", "The organiser and the assigned coordinator both read the event's comment thread")
+def _(ctx: Context) -> None:
+    for role in ("event_organiser", "event_coordinator"):
+        response = ctx.client.get(f"{ctx.api}/events/{FIXTURE_EVENT}/comments", headers=ctx.shared(role).headers)
+        expect_status(response, 200)
+        comments = response.json().get("comments")
+        expect(isinstance(comments, list), f"{role}: response has no comments list")
+        for comment in comments:
+            expect({"id", "body", "created_at", "author"} <= comment.keys(), f"{role}: comment is missing fields")
+
+
+@check("TC-CMT-008", "Venue staff, tech support and attendees can neither read nor post comments")
+def _(ctx: Context) -> None:
+    url = f"{ctx.api}/events/{FIXTURE_EVENT}/comments"
+    for role in ("venue_staff", "tech_support", "attendee"):
+        headers = ctx.shared(role).headers
+        expect_status(ctx.client.get(url, headers=headers), 403)
+        expect_status(ctx.client.post(url, headers=headers, json={"body": "live check"}), 403)
+
+
 def expect_field_error(response: httpx.Response, field_name: str, msg: str | None = None) -> None:
     expect_status(response, 422)
     errors = [e for e in response.json().get("detail", []) if e.get("loc") == ["body", field_name]]
