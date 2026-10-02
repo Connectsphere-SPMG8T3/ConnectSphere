@@ -16,7 +16,12 @@ export const useEventCommentsStore = defineStore("eventComments", {
   actions: {
     async load(eventId) {
       const auth = useAuthStore();
-      if (this.eventId !== eventId) this.comments = [];
+      if (this.eventId !== eventId) {
+        // A post still in flight belongs to the previous event; its `finally` won't
+        // clear the flag once the event changes, so clear it here.
+        this.comments = [];
+        this.isPosting = false;
+      }
       this.eventId = eventId;
       this.isLoading = true;
       this.error = null;

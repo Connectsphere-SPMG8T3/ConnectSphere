@@ -81,7 +81,9 @@ describe("EventDiscussion (SCRUM-61)", () => {
     eventsApi.listComments.mockResolvedValue({ comments: [{ ...COMMENT, body: "x".repeat(1000) }] });
     await mountDiscussion();
 
-    expect(document.querySelector("[data-comment-body]").className).toContain("break-words");
+    // overflow-wrap: anywhere, unlike break-word, also lowers the min-content width, so the
+    // organiser page's grid column can't grow to the word's full width (found at 1440px).
+    expect(document.querySelector("[data-comment-body]").className).toContain("[overflow-wrap:anywhere]");
   });
 
   it("counts characters against the 1000 limit", async () => {

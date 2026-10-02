@@ -57,7 +57,7 @@ async function submit() {
           <template v-if="comment.author?.role"> · {{ ROLE_LABELS[comment.author.role] ?? comment.author.role }}</template>
           · {{ formatter.format(new Date(comment.created_at)) }}
         </p>
-        <p data-comment-body class="mt-1 whitespace-pre-wrap break-words text-sm font-medium">{{ comment.body }}</p>
+        <p data-comment-body class="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm font-medium">{{ comment.body }}</p>
       </li>
     </ol>
 

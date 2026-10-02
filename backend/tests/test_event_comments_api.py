@@ -102,7 +102,7 @@ class TestPost:
         assert response.status_code == 201
         body = response.json()
         assert body["body"] == "Can we recce the hall on Friday?"
-        assert body["author"] == {"id": ORGANISER_ID, "full_name": "Olivia Tan", "role": "event_organiser"}
+        assert body["author"] == {"id": ORGANISER_ID, "full_name": "Test event_organiser", "role": "event_organiser"}
         assert body["created_at"]
         [sent] = thread["calls"]
         assert sent["author_id"] == ORGANISER_ID
@@ -171,6 +171,23 @@ class TestPost:
 
         assert response.status_code == 409
         assert response.json()["detail"] == "Comments are closed for this event. Reload."
+
+    def test_a_saved_comment_is_not_reported_as_failed_if_the_thread_cannot_be_reread(
+        self, client, auth_headers, act_as, thread, monkeypatch
+    ):
+        """The comment and its notification are committed by the time the response is built,
+        so nothing after the RPC may turn the request into an error (the user would retry and
+        duplicate both). The author's name comes from the caller's verified profile."""
+        def unreadable(event_id):
+            raise RuntimeError("PostgREST unavailable")
+        monkeypatch.setattr(repository, "list_comments", unreadable)
+        act_as("event_organiser", ORGANISER_ID)
+
+        response = post(client, auth_headers)
+
+        assert response.status_code == 201
+        assert response.json()["author"] == {"id": ORGANISER_ID, "full_name": "Test event_organiser", "role": "event_organiser"}
+        assert len(thread["calls"]) == 1
 
     def test_an_unassigned_event_still_takes_the_organisers_comment(self, client, auth_headers, act_as, thread):
         thread["event"]["coordinator_id"] = None

@@ -1068,10 +1068,12 @@ Design and plan: `docs/superpowers/specs/2026-10-02-scrum-61-event-comments-desi
 
 **Found while building:** adding a second `<textarea>` to the coordinator page broke two existing view tests that picked the first one on the page; they now select the modal's as `[role="dialog"] textarea`. The product was unaffected.
 
+**Fixed after the whole-branch review, each written red first:** (1) a 1000-character word stretched the organiser page to about 7,100px at 1440px wide, because `break-words` doesn't lower an element's min-content width inside the page grid; the body now uses `[overflow-wrap:anywhere]`, re-measured in a real browser at 1440px and 375px. (2) Posting on one event and opening another before the reply left **Post** stuck on "Posting…" on every later event page until a reload; switching events now clears the flag. (3) After the comment was committed, the API re-read the whole thread just to get the author's name, so a failed read reported a saved, already-notified comment as an error and invited a duplicate retry; the name now comes from the caller's verified profile.
+
 #### Verification
 
 - **Written red first:** `test_events_repository.py` comment wrappers (`AttributeError`), `test_event_comments_api.py` (404 from the missing routes), `comments.spec.js`, `eventCommentsStore.spec.js`, `EventDiscussion.spec.js` (unresolved imports), and the view tests (panel absent).
-- **Suites:** backend `pytest` 469 passed; frontend Vitest 473 passed in 40 files; `npm run build` succeeds.
+- **Suites (after the review fixes):** backend `pytest` 470 passed; frontend Vitest 474 passed in 40 files; `npm run build` succeeds.
 - **Real system:** `verify_live.py -k TC-CMT` against this branch's backend and the live database: TC-CMT-008 and TC-CMT-009 pass, which also proves the author embed through `event_comments_author_id_fkey` works on the real schema.
 - **Advisors:** no new security findings; the only new performance notes are INFO "unused index" on the two new, still-empty `event_comments` indexes.
 - **Not verified by the agent:** `event_comment_checks.sql` (the function, notifications and RLS) — the Supabase MCP call was declined by the approval prompt and the local CLI lacks `db query --linked`, so the developer runs it; the result is recorded in `docs/test-cases/runs/`. The manual browser pass (TC-CMT-001, 002, 004, 012, phone width) is the developer's.

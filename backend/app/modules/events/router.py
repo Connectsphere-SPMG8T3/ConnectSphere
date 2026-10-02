@@ -51,7 +51,7 @@ def read_event_comments(event_id: UUID, current_user: EventParticipant) -> Event
 
 @router.post("/{event_id}/comments", response_model=EventComment, status_code=status.HTTP_201_CREATED)
 def add_event_comment(event_id: UUID, body: EventCommentCreate, current_user: EventParticipant) -> EventComment:
-    return service.add_comment(str(event_id), current_user.id, current_user.role, body.body)
+    return service.add_comment(str(event_id), current_user.id, current_user.role, current_user.full_name, body.body)
 
 
 @router.patch("/{event_id}", response_model=EventResponse)

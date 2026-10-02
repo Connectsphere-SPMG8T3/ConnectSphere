@@ -107,6 +107,23 @@ describe("useEventCommentsStore (SCRUM-61)", () => {
     expect(store.isPosting).toBe(false);
   });
 
+  it("lets the next event post when a post on the previous event is still in flight", async () => {
+    eventsApi.listComments.mockResolvedValue({ comments: [] });
+    const slowPost = deferred();
+    eventsApi.addComment.mockReturnValueOnce(slowPost.promise);
+    const store = useEventCommentsStore();
+    await store.load("event-1");
+
+    const posting = store.post("On event one");
+    await store.load("event-2");
+    slowPost.resolve(FIRST);
+    await posting;
+
+    expect(store.eventId).toBe("event-2");
+    expect(store.isPosting).toBe(false);
+    expect(store.comments).toEqual([]);
+  });
+
   it("does not post an invalid comment", async () => {
     const store = useEventCommentsStore();
     store.eventId = "event-1";

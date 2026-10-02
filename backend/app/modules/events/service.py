@@ -295,22 +295,20 @@ def comments(event_id: str, user_id: str, role: str) -> EventCommentsResponse:
     return EventCommentsResponse(comments=[_to_comment(event, row) for row in repository.list_comments(event_id)])
 
 
-def add_comment(event_id: str, user_id: str, role: str, body: str) -> EventComment:
+def add_comment(event_id: str, user_id: str, role: str, full_name: str, body: str) -> EventComment:
+    """`full_name` is the caller's, from their verified profile (`CurrentUser`). Nothing after
+    the RPC reads the database: by then the comment and its notification are committed, and a
+    failed read would report a saved comment as failed, inviting a duplicate retry."""
     event = _visible_event(event_id, user_id, role)
-    status = EventStatus(event["status"])
-    if status == EventStatus.draft:
+    event_status = EventStatus(event["status"])
+    if event_status == EventStatus.draft:
         raise EventConflictError("Comments open once the request is submitted.")
-    if status not in COMMENTABLE_STATUSES:
-        raise EventConflictError(f"Comments are closed for a {status.value.replace('_', ' ')} event.")
+    if event_status not in COMMENTABLE_STATUSES:
+        raise EventConflictError(f"Comments are closed for a {event_status.value.replace('_', ' ')} event.")
     who = "The organiser" if role == "event_organiser" else "Your coordinator"
     row = repository.add_comment(
         event_id, user_id, body, notify_message=f'{who} commented on "{event["name"]}".',
     )
     if not row:
         raise EventConflictError("Comments are closed for this event. Reload.")
-    full_name = next(
-        (c["author"]["full_name"] for c in repository.list_comments(event_id) if c["id"] == row["id"] and c.get("author")),
-        None,
-    )
-    author = {"id": user_id, "full_name": full_name} if full_name else None
-    return _to_comment(event, {**row, "author": author})
+    return _to_comment(event, {**row, "author": {"id": user_id, "full_name": full_name}})
