@@ -6,6 +6,9 @@ from fastapi import APIRouter, Depends, Response, status
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.events import service
 from app.modules.events.schemas import (
+    EventComment,
+    EventCommentCreate,
+    EventCommentsResponse,
     EventCreateRequest,
     EventHistoryResponse,
     EventRejectRequest,
@@ -39,6 +42,16 @@ def read_event(event_id: UUID, current_user: EventParticipant) -> EventResponse:
 @router.get("/{event_id}/history", response_model=EventHistoryResponse)
 def read_event_history(event_id: UUID, current_user: EventParticipant) -> EventHistoryResponse:
     return service.history(str(event_id), current_user.id, current_user.role)
+
+
+@router.get("/{event_id}/comments", response_model=EventCommentsResponse)
+def read_event_comments(event_id: UUID, current_user: EventParticipant) -> EventCommentsResponse:
+    return service.comments(str(event_id), current_user.id, current_user.role)
+
+
+@router.post("/{event_id}/comments", response_model=EventComment, status_code=status.HTTP_201_CREATED)
+def add_event_comment(event_id: UUID, body: EventCommentCreate, current_user: EventParticipant) -> EventComment:
+    return service.add_comment(str(event_id), current_user.id, current_user.role, body.body)
 
 
 @router.patch("/{event_id}", response_model=EventResponse)
