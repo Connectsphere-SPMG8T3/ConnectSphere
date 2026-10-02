@@ -81,6 +81,7 @@ DB_SCRIPTS = [
     ("event_review_checks.sql", "SCRUM-34/52 grants"),
     ("event_history_checks.sql", "TC-REV-015, TC-REV-016"),
     ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
+    ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
 ]
 
 
