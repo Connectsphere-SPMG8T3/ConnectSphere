@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn() },
+  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), listComments: vi.fn(), addComment: vi.fn() },
 }));
 
 function eventResponse(overrides = {}) {
@@ -27,6 +27,7 @@ const mountedApps = [];
 async function mountView(response) {
   eventsApi.get.mockResolvedValue(response);
   eventsApi.history.mockResolvedValue({ entries: [] });
+  eventsApi.listComments.mockResolvedValue({ comments: [] });
   const pinia = createPinia();
   setActivePinia(pinia);
   const auth = useAuthStore();
@@ -58,6 +59,13 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     vi.clearAllMocks();
+  });
+
+  it("shows the event's discussion thread (SCRUM-61)", async () => {
+    const el = await mountView(eventResponse());
+
+    await vi.waitFor(() => expect(eventsApi.listComments).toHaveBeenCalledWith("event-1", "access"));
+    expect(el.textContent).toContain("Discussion");
   });
 
   it("offers approve and reject for a request under review", async () => {
@@ -105,7 +113,7 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
 
     button("Open return dialog").click();
     await nextTick();
-    const textarea = document.querySelector("textarea");
+    const textarea = document.querySelector('[role="dialog"] textarea');
     textarea.value = "Confirm attendance";
     textarea.dispatchEvent(new Event("input"));
     const box = [...document.querySelectorAll('input[type="checkbox"]')]
@@ -144,7 +152,7 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
 
     button("Open reject dialog").click();
     await nextTick();
-    const textarea = document.querySelector("textarea");
+    const textarea = document.querySelector('[role="dialog"] textarea');
     textarea.value = "Venue unavailable";
     textarea.dispatchEvent(new Event("input"));
     await nextTick();

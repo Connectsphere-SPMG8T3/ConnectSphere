@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn(), history: vi.fn() },
+  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn(), history: vi.fn(), listComments: vi.fn(), addComment: vi.fn() },
 }));
 
 function eventResponse(overrides = {}) {
@@ -31,6 +31,7 @@ const mountedApps = [];
 
 async function mountDetail(response, historyResponse = { entries: [] }) {
   eventsApi.history.mockResolvedValue(historyResponse);
+  eventsApi.listComments.mockResolvedValue({ comments: [] });
   eventsApi.get.mockResolvedValue(response);
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -56,6 +57,20 @@ async function mountDetail(response, historyResponse = { entries: [] }) {
 describe("EventDetailView status", () => {
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  it("shows the discussion once the request is submitted (SCRUM-61)", async () => {
+    const el = await mountDetail(eventResponse({ status: "under_review" }));
+
+    await vi.waitFor(() => expect(eventsApi.listComments).toHaveBeenCalledWith("event-1", "access"));
+    expect(el.textContent).toContain("Discussion");
+  });
+
+  it("has no discussion on a draft (SCRUM-61)", async () => {
+    const el = await mountDetail(eventResponse({ status: "draft" }));
+
+    expect(el.textContent).not.toContain("Discussion");
+    expect(eventsApi.listComments).not.toHaveBeenCalled();
   });
 
   beforeEach(() => {
