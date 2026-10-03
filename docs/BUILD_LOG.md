@@ -1077,4 +1077,5 @@ Design and plan: `docs/superpowers/specs/2026-10-02-scrum-61-event-comments-desi
 - **Real system:** `verify_live.py -k TC-CMT` against this branch's backend and the live database: TC-CMT-008 and TC-CMT-009 pass, which also proves the author embed through `event_comments_author_id_fkey` works on the real schema.
 - **Advisors:** no new security findings; the only new performance notes are INFO "unused index" on the two new, still-empty `event_comments` indexes.
 - **Recorded live runs (after updating the Supabase CLI from v2.48.3 to v2.119.0):** `verify_live.py --record` 42/42, including `event_comment_checks.sql` (function, notifications, refusals, RLS) — `runs/2026-10-02-1949-api-db-c7d0736.md`; Playwright 36/36 — `runs/2026-10-02-1951-e2e-c7d0736.md`.
-- **Not verified by the agent:** the manual browser pass (TC-CMT-001, 002, 004, 012, phone width), which is the developer's.
+- **Manual browser pass (developer, 2026-10-03):** TC-CMT-001, 002, 003, 009, 012, the empty-state wording and both pages at 375px pass — `runs/2026-10-03-0830-manual-c06f7f3.md`.
+- **Not verified by hand:** TC-CMT-004 (closed event read-only), which needs the fixture set to `rejected` by SQL; it is covered by `TestPost::test_a_closed_event_refuses_new_comments` and `EventDiscussion.spec.js`.
