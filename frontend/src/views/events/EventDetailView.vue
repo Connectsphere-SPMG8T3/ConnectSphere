@@ -5,7 +5,9 @@ import { useRoute, useRouter } from "vue-router";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
+import EventDiscussion from "@/components/events/EventDiscussion.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
+import { hasThread } from "@/features/events/comments";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { useEventReviewStore } from "@/features/events/eventReviewStore";
 import { useEventsStore } from "@/stores/events";
@@ -128,6 +130,9 @@ onMounted(async () => {
           <BauhausCard background="white" accent="none">
             <h2 class="mb-6 text-2xl font-black uppercase tracking-tight">History</h2>
             <EventStatusHistory :entries="review.history" />
+          </BauhausCard>
+          <BauhausCard v-if="hasThread(event.status)" background="white" accent="none">
+            <EventDiscussion :event-id="event.id" :status="event.status" />
           </BauhausCard>
         </aside>
       </div>

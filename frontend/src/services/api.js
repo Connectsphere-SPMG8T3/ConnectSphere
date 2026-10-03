@@ -121,6 +121,13 @@ export const eventsApi = {
   history(eventId, token) {
     return request(`/events/${encodeURIComponent(eventId)}/history`, { token });
   },
+  // SCRUM-61: the organiser–coordinator discussion thread.
+  listComments(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/comments`, { token });
+  },
+  addComment(eventId, body, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/comments`, { method: "POST", body: { body }, token });
+  },
 };
 
 export const equipmentApi = {

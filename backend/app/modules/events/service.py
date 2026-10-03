@@ -7,7 +7,10 @@ from fastapi import HTTPException, status
 from app.core.exceptions import NotAssignedCoordinatorError
 from app.modules.events import lifecycle, repository
 from app.modules.events.schemas import (
+    COMMENTABLE_STATUSES,
     AmendmentRequest,
+    EventComment,
+    EventCommentsResponse,
     EventCreateRequest,
     EventHistoryEntry,
     EventHistoryResponse,
@@ -265,3 +268,47 @@ def submit(event_id: str, organiser_id: str, body: EventUpdateRequest | None = N
     if not updated:
         raise EventConflictError()
     return _to_response(updated)
+
+
+def _comment_role(event: dict, author_id: str | None) -> str | None:
+    """The role an author holds on this event. None for someone no longer on it,
+    such as a coordinator since reassigned."""
+    if author_id and author_id == event.get("organiser_id"):
+        return "event_organiser"
+    if author_id and author_id == event.get("coordinator_id"):
+        return "event_coordinator"
+    return None
+
+
+def _to_comment(event: dict, row: dict) -> EventComment:
+    author = row.get("author")
+    if author:
+        author = {**author, "role": _comment_role(event, author.get("id"))}
+    return EventComment(id=row["id"], body=row["body"], created_at=row["created_at"], author=author)
+
+
+def comments(event_id: str, user_id: str, role: str) -> EventCommentsResponse:
+    """The discussion thread (SCRUM-61), visible to the same people as the event."""
+    event = _visible_event(event_id, user_id, role)
+    if event["status"] == EventStatus.draft.value:
+        return EventCommentsResponse(comments=[])
+    return EventCommentsResponse(comments=[_to_comment(event, row) for row in repository.list_comments(event_id)])
+
+
+def add_comment(event_id: str, user_id: str, role: str, full_name: str, body: str) -> EventComment:
+    """`full_name` is the caller's, from their verified profile (`CurrentUser`). Nothing after
+    the RPC reads the database: by then the comment and its notification are committed, and a
+    failed read would report a saved comment as failed, inviting a duplicate retry."""
+    event = _visible_event(event_id, user_id, role)
+    event_status = EventStatus(event["status"])
+    if event_status == EventStatus.draft:
+        raise EventConflictError("Comments open once the request is submitted.")
+    if event_status not in COMMENTABLE_STATUSES:
+        raise EventConflictError(f"Comments are closed for a {event_status.value.replace('_', ' ')} event.")
+    who = "The organiser" if role == "event_organiser" else "Your coordinator"
+    row = repository.add_comment(
+        event_id, user_id, body, notify_message=f'{who} commented on "{event["name"]}".',
+    )
+    if not row:
+        raise EventConflictError("Comments are closed for this event. Reload.")
+    return _to_comment(event, {**row, "author": {"id": user_id, "full_name": full_name}})

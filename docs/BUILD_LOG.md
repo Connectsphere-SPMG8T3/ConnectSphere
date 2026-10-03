@@ -1023,3 +1023,59 @@ Not a Jira story. An enabler on `chore/automated-live-checks`. It makes every ru
 - **Verified:** both suites against the live project, run from this branch on spare ports (backend 8010, frontend 5177), with the run logs in `docs/test-cases/runs/`. No `live-check+` accounts remained after either run. TC-AUTH-013, whose case left the outcome open, was confirmed live: an upper-case email signs in. The JUnit flags were run locally for both suites (pytest 421, Vitest 449), and the workflow YAML parses.
 - **Found:** the backend reports Supabase's sign-in rate limit as a 401 "Invalid email or password." (PROJECT_REVIEW **D16**, accepted as low risk: it makes no test case fail and needs many sign-ins from one IP), so the checks can't distinguish a rate limit from broken sign-in. The Blocked handling was exercised against a stand-in backend that refuses every sign-in: one Fail, and every later sign-in check Blocked (13 in the script, 27 in Playwright), with no further sign-in attempts.
 - **Not verified:** the artifact upload itself, which first runs on this branch's PR. A run on Windows: the npm scripts avoid shell-specific syntax, but the `E2E_*` variables in the README examples are written for a POSIX shell.
+
+
+### 4.23. SCRUM-61 — Comment and discuss on my event (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-61` |
+| Summary | Comment and discuss on my event |
+| Issue type | Story |
+| Status | In Progress (at time of writing this entry) |
+| Parent epic | `SCRUM-14` — Event Information Management |
+| Sprint | SCRUM Sprint 2 |
+| Priority | Medium |
+
+**User story and criteria as they stood in Jira (verbatim):**
+
+> As an Event Organiser, I want to add comments and questions to my event record, so that planning conversations are retained alongside the event rather than scattered across email.
+>
+> Organiser and authorised staff can add comments/questions to an event record.
+>
+> * Each comment records the contributor and timestamp.
+> * Relevant parties are notified of new comments.
+> * All discussions are stored as part of the event history.
+
+The criteria are not yet in Given/When/Then form on the issue (Definition of Done, Phase 1); they are numbered AC1–AC4 here and in `docs/test-cases/events.md`.
+
+#### Decisions taken with the developer
+
+- **"Authorised staff"** is the event's assigned coordinator. Readers and posters are the owning organiser and the assigned coordinator, each in that active role, the same readers as the status history (QA2-27 names comments as the organiser–coordinator channel). Venue staff and tech support wait until bookings and equipment requests link them to an event. **[Team decision]**
+- **Notifications (AC3)** are written as `comment_added` rows for the other party. There is still no read API or bell; that remains SCRUM-27. **[Team decision]**
+- **History (AC4)** is a separate, permanent Discussion thread beside the status timeline, not merged into it; a unified change log remains SCRUM-62. **[Team decision]**
+- **When posting is open:** `submitted` to `confirmed`. Rejected, cancelled and completed events keep a read-only thread; a draft has none. **[Team decision]**
+- **Body:** plain text, trimmed, 1–1000 characters (**[Assumption]**, REQUIREMENTS §9 Q15). Comments are append-only. No @mentions or resolve (optional per QA-131/132). REQUIREMENTS §9 Q12 (are comments in release 1?) is answered yes.
+
+Design and plan: `docs/superpowers/specs/2026-10-02-scrum-61-event-comments-design.md`, `docs/superpowers/plans/2026-10-02-scrum-61-event-comments.md`.
+
+#### What was built
+
+1. **Data** — migration `20261002120000`: `event_comments` (append-only, author kept as `null` if the profile is deleted), select-only RLS for the organiser and assigned coordinator in their active roles, and `add_event_comment`, a `security definer` function callable only by the backend that locks the event, refuses drafts and closed events by returning no row, and writes the comment and the other party's notification in one transaction. Applied to the live project on 2026-10-02.
+2. **API** — `GET` and `POST /events/{id}/comments`, gated by `require_roles(["event_organiser", "event_coordinator"])` and the same `_visible_event` check as `/history`. The comment's `author.role` is derived from the event (owner or assigned coordinator), never from `profiles.role`, so a dual-role account is labelled by the part it plays on that event.
+3. **UI** — `EventDiscussion` on the organiser's `EventDetailView` (hidden on drafts) and on `CoordinatorEventView`, backed by `useEventCommentsStore` and the pure rules in `features/events/comments.js`.
+4. **Fixtures** — `event_review_fixture_reset.sql` now also clears the two fixtures' comments.
+
+**Found while building:** adding a second `<textarea>` to the coordinator page broke two existing view tests that picked the first one on the page; they now select the modal's as `[role="dialog"] textarea`. The product was unaffected.
+
+**Fixed after the whole-branch review, each written red first:** (1) a 1000-character word stretched the organiser page to about 7,100px at 1440px wide, because `break-words` doesn't lower an element's min-content width inside the page grid; the body now uses `[overflow-wrap:anywhere]`, re-measured in a real browser at 1440px and 375px. (2) Posting on one event and opening another before the reply left **Post** stuck on "Posting…" on every later event page until a reload; switching events now clears the flag. (3) After the comment was committed, the API re-read the whole thread just to get the author's name, so a failed read reported a saved, already-notified comment as an error and invited a duplicate retry; the name now comes from the caller's verified profile.
+
+#### Verification
+
+- **Written red first:** `test_events_repository.py` comment wrappers (`AttributeError`), `test_event_comments_api.py` (404 from the missing routes), `comments.spec.js`, `eventCommentsStore.spec.js`, `EventDiscussion.spec.js` (unresolved imports), and the view tests (panel absent).
+- **Suites (after the review fixes):** backend `pytest` 470 passed; frontend Vitest 474 passed in 40 files; `npm run build` succeeds.
+- **Real system:** `verify_live.py -k TC-CMT` against this branch's backend and the live database: TC-CMT-008 and TC-CMT-009 pass, which also proves the author embed through `event_comments_author_id_fkey` works on the real schema.
+- **Advisors:** no new security findings; the only new performance notes are INFO "unused index" on the two new, still-empty `event_comments` indexes.
+- **Recorded live runs (after updating the Supabase CLI from v2.48.3 to v2.119.0):** `verify_live.py --record` 42/42, including `event_comment_checks.sql` (function, notifications, refusals, RLS) — `runs/2026-10-02-1949-api-db-c7d0736.md`; Playwright 36/36 — `runs/2026-10-02-1951-e2e-c7d0736.md`.
+- **Manual browser pass (developer, 2026-10-03):** TC-CMT-001, 002, 003, 009, 012, the empty-state wording and both pages at 375px pass — `runs/2026-10-03-0830-manual-c06f7f3.md`.
+- **Not verified by hand:** TC-CMT-004 (closed event read-only), which needs the fixture set to `rejected` by SQL; it is covered by `TestPost::test_a_closed_event_refuses_new_comments` and `EventDiscussion.spec.js`.

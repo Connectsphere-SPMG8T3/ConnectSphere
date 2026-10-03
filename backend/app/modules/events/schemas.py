@@ -204,3 +204,40 @@ class EventHistoryEntry(BaseModel):
 
 class EventHistoryResponse(BaseModel):
     entries: list[EventHistoryEntry]
+
+
+COMMENT_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as a rejection reason
+
+# Statuses whose thread accepts new comments (SCRUM-61). Drafts have no thread yet;
+# rejected, cancelled and completed events keep theirs read-only. Mirrored in
+# public.add_event_comment and in the SPA's features/events/comments.js.
+COMMENTABLE_STATUSES = frozenset({
+    EventStatus.submitted, EventStatus.under_review, EventStatus.returned,
+    EventStatus.planning, EventStatus.confirmed,
+})
+
+
+class EventCommentCreate(BaseModel):
+    body: str = Field(max_length=COMMENT_MAX_LENGTH)
+
+    @field_validator("body", mode="before")
+    @classmethod
+    def body_is_not_blank(cls, value):
+        return _required_text(value, "A comment can't be empty.")
+
+
+class EventCommentAuthor(BaseModel):
+    id: str
+    full_name: str
+    role: str | None = None  # the role they hold on this event, not their profile role
+
+
+class EventComment(BaseModel):
+    id: str
+    body: str
+    created_at: datetime
+    author: EventCommentAuthor | None = None
+
+
+class EventCommentsResponse(BaseModel):
+    comments: list[EventComment]

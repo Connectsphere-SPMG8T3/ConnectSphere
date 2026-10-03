@@ -213,3 +213,36 @@ def get_open_amendment(event_id: str) -> dict | None:
         .execute()
     )
     return response.data if response else None
+
+
+def list_comments(event_id: str) -> list[dict]:
+    """The event's discussion thread, oldest first (SCRUM-61). The author is embedded
+    through the FK named in the migration; it is null if their profile was deleted."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_comments")
+        .select("id, body, created_at, author_id, author:profiles!event_comments_author_id_fkey(id, full_name)")
+        .eq("event_id", event_id)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return response.data or []
+
+
+def add_comment(event_id: str, author_id: str, body: str, *, notify_message: str) -> dict | None:
+    """Run `public.add_event_comment`: the comment and the other party's notification in
+    one transaction. None when the event is missing, a draft or closed."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "add_event_comment",
+            {
+                "p_event_id": event_id,
+                "p_author_id": author_id,
+                "p_body": body,
+                "p_notify_message": notify_message,
+            },
+        )
+        .execute()
+    )
+    return _first_row(response)
