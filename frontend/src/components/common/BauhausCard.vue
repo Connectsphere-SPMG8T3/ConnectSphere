@@ -29,6 +29,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  allowOverflow: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(["click"]);
@@ -75,9 +79,10 @@ const accentBorderClass = computed(
 
 <template>
   <div
-    class="relative overflow-hidden border-2 border-ink bg-surface text-ink"
+    class="relative border-2 border-ink bg-surface text-ink"
     :class="[
       compact ? 'p-4 sm:p-5' : 'p-6 sm:p-8',
+      allowOverflow ? 'overflow-visible' : 'overflow-hidden',
       clickable ? 'cursor-pointer transition-transform hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink' : '',
     ]"
     :role="clickable ? 'button' : undefined"

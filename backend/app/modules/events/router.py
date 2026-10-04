@@ -34,6 +34,11 @@ def list_events(current_user: EventOrganiser) -> list[EventResponse]:
     return service.list_owned(current_user.id)
 
 
+@router.post("/{event_id}/clone", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
+def clone_event(event_id: UUID, current_user: EventOrganiser) -> EventResponse:
+    return service.clone(str(event_id), current_user.id)
+
+
 @router.get("/{event_id}", response_model=EventResponse)
 def read_event(event_id: UUID, current_user: EventParticipant) -> EventResponse:
     return service.read(str(event_id), current_user.id, current_user.role)

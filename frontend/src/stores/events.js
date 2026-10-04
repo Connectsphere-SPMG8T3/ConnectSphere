@@ -146,6 +146,10 @@ export const useEventsStore = defineStore("events", {
       return this.save((token) => eventsApi.create(eventToPayload(event), token));
     },
 
+    async clone(eventId) {
+      return this.save((token) => eventsApi.clone(eventId, token));
+    },
+
     async updateDraft(eventId, event) {
       return this.save((token) => eventsApi.update(eventId, eventToPayload(event, { clearing: true }), token));
     },

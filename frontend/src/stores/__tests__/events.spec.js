@@ -8,7 +8,7 @@ import { emptyEvent, eventToPayload, useEventsStore } from "@/stores/events";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn(), resubmit: vi.fn() },
+  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn(), resubmit: vi.fn(), clone: vi.fn() },
 }));
 
 function signedInStore() {
@@ -86,6 +86,35 @@ describe("event store", () => {
     expect(eventsApi.create).toHaveBeenCalledWith({ name: event.name, event_timezone: "Asia/Singapore", facilities_required: [], registration_enabled: false }, "access");
     expect(result.id).toBe("e1");
     expect(store.events).toEqual([result]);
+  });
+
+  it("clones an event through the authenticated session and stores the new draft", async () => {
+    const store = signedInStore();
+    eventsApi.clone.mockResolvedValue({
+      id: "e2",
+      status: "draft",
+      name: "Planning workshop",
+      event_timezone: "Asia/Singapore",
+      facilities_required: [],
+      registration_enabled: false,
+    });
+
+    const result = await store.clone("e1");
+
+    expect(eventsApi.clone).toHaveBeenCalledWith("e1", "access");
+    expect(result).toMatchObject({ id: "e2", status: "draft", name: "Planning workshop" });
+    expect(store.events).toEqual([result]);
+  });
+
+  it("keeps the clone failure and clears saving state", async () => {
+    const store = signedInStore();
+    eventsApi.clone.mockRejectedValue(new ApiError("Event not found.", 404));
+
+    await expect(store.clone("missing-event")).rejects.toThrow("Event not found.");
+
+    expect(store.error).toBe("Event not found.");
+    expect(store.isSaving).toBe(false);
+    expect(store.events).toEqual([]);
   });
 
   it("loads one event request through the authenticated session", async () => {
