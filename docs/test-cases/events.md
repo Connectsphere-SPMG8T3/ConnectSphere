@@ -72,6 +72,24 @@ These cases cover the implemented organiser draft and submission workflow. Run t
 | Duplicate submission returns `409` (ER-R4) | TC-EVENT-021 |
 | Only Event Organisers can create requests; ownership is enforced server-side (AUTH-R1, S-R1) | TC-EVENT-005, TC-EVENT-030 |
 
+## Reuse a previous event as a template (SCRUM-66)
+
+These cases cover creating a new draft from the signed-in organiser's own previous event. Sharing templates between organisers, including organisers with the same `organisation_name`, is deferred until client organisations are implemented.
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-EVENT-040 | Organiser creates a draft from their previous event | Logged in as an Event Organiser with an eligible previous event | Open the organiser's event list, choose **Use as template**, and inspect the new draft | Existing event with request details, dates, and arrangements | Exactly one new draft is created. Reusable request fields are copied, but the new event has a different ID and does not copy the source status, dates, bookings, reservations, registrations, notifications, comments, or history. | 🔴 |
+| TC-EVENT-041 | Template draft is editable and independent | A template draft exists | Change copied fields, dates, and requirements, save, then submit the new request | Changed title, purpose, date/time, attendance, and requirements | Normal event validation applies. The new request follows the normal submission lifecycle, and the source event remains unchanged. | 🔴 |
+| TC-EVENT-042 | Organiser cannot use another organiser's event as a template | Two organisers exist; organiser B owns an event | Log in as organiser A and try to use organiser B's event through the UI and direct API request | Organiser B's event ID; same `organisation_name` may be used in the profile data | The event is not offered as a template and the API returns `404`; no source details are disclosed and no draft is created. | 🔴 |
+
+### Traceability — SCRUM-66
+
+| SCRUM-66 acceptance criterion / rule | Covered by |
+|---|---|
+| A new draft copies reusable fields while excluding source identity and workflow data | TC-EVENT-040; `test_organiser_can_create_an_independent_draft_from_their_event`; organiser dashboard copy-icon test |
+| Copied values remain editable, validated, and independent from the source event | TC-EVENT-041; `test_cloned_draft_can_be_edited_and_submitted_without_changing_source` |
+| Template access is limited to the organiser's own events; organisation-name matching grants no access | TC-EVENT-042; `test_organiser_cannot_clone_another_organisers_event` |
+
 ## Event review — approve and reject (SCRUM-34, SCRUM-52)
 
 **Preconditions for every case unless noted otherwise:** every migration applied (including `20260923120000_event_review_history_and_notifications.sql`) and `supabase/seed.sql` run, so fixture events `e0000000-…-0201` (`under_review`, assigned to `coordinator@connectsphere.dev`) and `e0000000-…-0202` (`planning`, with `held` venue booking `d0000000-…-0201`) exist. Reset both events (and the booking) to those statuses between cases, since approving/rejecting mutates them — run `supabase/verification/event_review_fixture_reset.sql` as an operator (Supabase MCP `execute_sql` or `psql "$DATABASE_URL" -f ...`) to do this; it also clears the stray `event_status_history`/`notifications` rows a raw status reset would otherwise leave behind, which `seed.sql`'s `on conflict do nothing` inserts cannot repair. Logged in as `coordinator@connectsphere.dev` / `Cs1234` (Marcus Lim) on `/coordinator/events/{id}` unless the case says otherwise.

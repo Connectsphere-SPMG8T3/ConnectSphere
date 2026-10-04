@@ -1079,3 +1079,26 @@ Design and plan: `docs/superpowers/specs/2026-10-02-scrum-61-event-comments-desi
 - **Recorded live runs (after updating the Supabase CLI from v2.48.3 to v2.119.0):** `verify_live.py --record` 42/42, including `event_comment_checks.sql` (function, notifications, refusals, RLS) — `runs/2026-10-02-1949-api-db-c7d0736.md`; Playwright 36/36 — `runs/2026-10-02-1951-e2e-c7d0736.md`.
 - **Manual browser pass (developer, 2026-10-03):** TC-CMT-001, 002, 003, 009, 012, the empty-state wording and both pages at 375px pass — `runs/2026-10-03-0830-manual-c06f7f3.md`.
 - **Not verified by hand:** TC-CMT-004 (closed event read-only), which needs the fixture set to `rejected` by SQL; it is covered by `TestPost::test_a_closed_event_refuses_new_comments` and `EventDiscussion.spec.js`.
+
+### 4.24. SCRUM-66 — Reuse a previous or recurring event
+
+**User story:**
+
+> As an Event Organiser, I want to create a new request based on a previous or recurring event, so that I do not have to re-enter unchanged information.
+
+**Scope decision.** The first-release implementation lets an organiser reuse only their own events. `profiles.organisation_name` is descriptive data, not an authorisation relationship, so same-organisation sharing is deferred until client organisations are implemented. The clone creates a draft template; it does not automatically schedule or submit a recurring event.
+
+**What was built:**
+
+1. **API** — `POST /api/v1/events/{event_id}/clone`, guarded by the active `event_organiser` role and the existing owner check. It copies reusable request fields through `service.clone` and creates a new draft through the existing repository path. Dates, registration windows, assignments, workflow state, registrations, notifications, comments, and history are not copied.
+2. **Frontend** — `eventsApi.clone`, `useEventsStore.clone`, and **Use as template** actions on organiser event cards. The returned draft is opened in the existing event request form for normal editing and submission.
+3. **Traceability** — manual cases TC-EVENT-040–042 were added to `docs/test-cases/events.md`.
+
+#### Verification
+
+- **Written red first:** backend clone tests initially failed with the expected missing-route `404`; the frontend store test initially failed because `store.clone` did not exist.
+- Backend focused SCRUM-66 tests: **5 passed** (clone creation, source independence after edit/submit, owner denial, missing-event denial, and non-organiser role denial); full backend suite: **477 passed** with 3 existing deprecation warnings.
+- Frontend focused SCRUM-66 tests: **35 passed** across the API adapter, store, organiser dashboard, and mobile menu; full frontend suite: **480 passed** across 41 files; `npm run build` succeeds.
+- Browser verification (2026-10-04): the inline copy icon is visible, its action box is `52px` square like **Edit draft**, and clicking it opens a new draft form with copied name and blank date/time fields. At 375px, the two action buttons collapse into a three-dot menu with visible **Edit draft** and **Use as template** options. The throwaway draft was deleted after verification.
+- SCRUM-66 clone-specific implementation paths are **100% exercised**: API adapter success/denial, store success/error state, dashboard copy navigation, backend creation, field exclusions, source independence, ownership denial, missing-event denial, and active-role denial. Whole-file reports remain below 100% (`events.js` **98.44%**, `OrganiserDashboard.vue` **97.3%**) because those modules contain unrelated SCRUM-8/33/71 branches; whole-repository 100% coverage is not claimed.
+- **Not verified:** live same-organisation/non-owner API denial and the full manual TC-EVENT-041 edit/save/submit flow. No database migration was needed.

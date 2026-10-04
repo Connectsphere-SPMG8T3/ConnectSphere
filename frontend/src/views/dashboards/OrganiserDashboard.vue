@@ -56,6 +56,7 @@ const sortFieldLabels = Object.fromEntries(sortOptions.map((option) => [option.v
 
 const STATUS_PAGE_SIZE = 2;
 const statusPages = ref({});
+const actionMenuEventId = ref(null);
 
 const visibleEvents = computed(() =>
   sortOrganiserEvents(
@@ -164,6 +165,7 @@ function eventActionHoverClass(status) {
 }
 
 function eventAction(event) {
+  actionMenuEventId.value = null;
   const action = getOrganiserAction(event);
   // Drafts and returned requests are both edited on the request form (SCRUM-33).
   if (action.kind === "continue_draft" || action.kind === "amend") {
@@ -171,6 +173,16 @@ function eventAction(event) {
     return;
   }
   router.push({ name: "event-detail", params: { id: event.id } });
+}
+
+async function cloneEvent(event) {
+  actionMenuEventId.value = null;
+  const clonedEvent = await eventsStore.clone(event.id);
+  router.push({ name: "event-new", query: { id: clonedEvent.id } });
+}
+
+function toggleActionMenu(eventId) {
+  actionMenuEventId.value = actionMenuEventId.value === eventId ? null : eventId;
 }
 
 function clearFilters() {
@@ -407,14 +419,51 @@ onMounted(() => eventsStore.load().catch(() => {}));
           <span class="text-sm font-bold uppercase tracking-widest">{{ groupedEvents.drafts.length }} total</span>
         </div>
         <div v-if="groupedEvents.drafts.length" class="grid gap-4">
-          <BauhausCard v-for="event in groupedEvents.drafts" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact :class="[eventCardHoverClass(event.status), 'border-4 shadow-none transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none']">
+          <BauhausCard v-for="event in groupedEvents.drafts" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow :class="[eventCardHoverClass(event.status), 'border-4 shadow-none transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none']">
             <div class="flex min-w-0 items-center justify-between gap-4">
               <div class="min-w-0" data-event-name>
                 <h3 data-event-name class="text-xl font-black uppercase tracking-tight">{{ event.name }}</h3>
                 <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/70">Draft · {{ formatSchedule(event) }}</p>
                 <p class="mt-2 text-sm font-medium">Action needed: finish and submit this request.</p>
               </div>
-              <BauhausButton :class="['shrink-0 shadow-none', eventActionHoverClass(event.status)]" variant="outline" @click="eventAction(event)">Edit draft</BauhausButton>
+              <div class="relative flex shrink-0 flex-wrap justify-end gap-2">
+                <div class="hidden items-center gap-2 sm:flex">
+                  <BauhausButton :class="['shadow-none', eventActionHoverClass(event.status)]" variant="outline" @click="eventAction(event)">Edit draft</BauhausButton>
+                  <BauhausButton
+                    class="h-[52px] w-[52px] shrink-0 !p-0 shadow-none"
+                    variant="outline"
+                    :aria-label="`Use ${event.name} as a template`"
+                    title="Use as template"
+                    @click="cloneEvent(event)"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="h-5 w-5">
+                      <rect width="14" height="14" x="8" y="8" rx="2" />
+                      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10" />
+                    </svg>
+                  </BauhausButton>
+                </div>
+                <div class="sm:hidden">
+                  <button
+                    type="button"
+                    class="h-[52px] w-[52px] border-2 border-ink bg-canvas p-0 text-ink shadow-none transition-colors hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow"
+                    :aria-label="`Open actions for ${event.name}`"
+                    :aria-expanded="actionMenuEventId === event.id"
+                    aria-haspopup="menu"
+                    @click="toggleActionMenu(event.id)"
+                    @keydown.esc="actionMenuEventId = null"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="mx-auto h-5 w-5">
+                      <circle cx="5" cy="12" r="2" />
+                      <circle cx="12" cy="12" r="2" />
+                      <circle cx="19" cy="12" r="2" />
+                    </svg>
+                  </button>
+                  <div v-if="actionMenuEventId === event.id" class="absolute bottom-full right-0 z-10 mb-2 min-w-48 border-2 border-ink bg-canvas p-2 shadow-hard" role="menu">
+                    <button type="button" class="block w-full px-3 py-2 text-left text-xs font-black uppercase tracking-wide hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="eventAction(event)">Edit draft</button>
+                    <button type="button" class="mt-1 block w-full px-3 py-2 text-left text-xs font-black uppercase tracking-wide hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="cloneEvent(event)">Use as template</button>
+                  </div>
+                </div>
+              </div>
             </div>
           </BauhausCard>
         </div>
@@ -427,7 +476,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
           <span class="text-sm font-bold uppercase tracking-widest">{{ groupedEvents.requests.length }} total</span>
         </div>
         <div v-if="groupedEvents.requests.length" class="grid gap-4">
-          <BauhausCard v-for="event in groupedEvents.requests" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact :class="[eventCardHoverClass(event.status), 'border-4 shadow-none transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none']">
+          <BauhausCard v-for="event in groupedEvents.requests" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow :class="[eventCardHoverClass(event.status), 'border-4 shadow-none transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none']">
             <div class="flex min-w-0 items-center justify-between gap-4">
               <div class="min-w-0" data-event-name>
                 <h3 data-event-name class="text-xl font-black uppercase tracking-tight">{{ event.name }}</h3>
@@ -439,7 +488,44 @@ onMounted(() => eventsStore.load().catch(() => {}));
                   {{ event.status === 'submitted' && !event.coordinatorId ? 'Action needed: awaiting assignment.' : 'Action needed: review this request.' }}
                 </p>
               </div>
-              <BauhausButton :class="['shrink-0 shadow-none', eventActionHoverClass(event.status)]" variant="outline" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</BauhausButton>
+              <div class="relative flex shrink-0 flex-wrap justify-end gap-2">
+                <div class="hidden items-center gap-2 sm:flex">
+                  <BauhausButton :class="['shadow-none', eventActionHoverClass(event.status)]" variant="outline" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</BauhausButton>
+                  <BauhausButton
+                    class="h-[52px] w-[52px] shrink-0 !p-0 shadow-none"
+                    variant="outline"
+                    :aria-label="`Use ${event.name} as a template`"
+                    title="Use as template"
+                    @click="cloneEvent(event)"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="h-5 w-5">
+                      <rect width="14" height="14" x="8" y="8" rx="2" />
+                      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10" />
+                    </svg>
+                  </BauhausButton>
+                </div>
+                <div class="sm:hidden">
+                  <button
+                    type="button"
+                    class="h-[52px] w-[52px] border-2 border-ink bg-canvas p-0 text-ink shadow-none transition-colors hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow"
+                    :aria-label="`Open actions for ${event.name}`"
+                    :aria-expanded="actionMenuEventId === event.id"
+                    aria-haspopup="menu"
+                    @click="toggleActionMenu(event.id)"
+                    @keydown.esc="actionMenuEventId = null"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="mx-auto h-5 w-5">
+                      <circle cx="5" cy="12" r="2" />
+                      <circle cx="12" cy="12" r="2" />
+                      <circle cx="19" cy="12" r="2" />
+                    </svg>
+                  </button>
+                  <div v-if="actionMenuEventId === event.id" class="absolute bottom-full right-0 z-10 mb-2 min-w-48 border-2 border-ink bg-canvas p-2 shadow-hard" role="menu">
+                    <button type="button" class="block w-full px-3 py-2 text-left text-xs font-black uppercase tracking-wide hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</button>
+                    <button type="button" class="mt-1 block w-full px-3 py-2 text-left text-xs font-black uppercase tracking-wide hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="cloneEvent(event)">Use as template</button>
+                  </div>
+                </div>
+              </div>
             </div>
           </BauhausCard>
         </div>

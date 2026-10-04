@@ -1263,6 +1263,28 @@ These are the Week 1 features outside the core 20. They stay in Jira at `priorit
 | Event reports, venue usage reports, registration reports, export | Venue usage covers bookings, utilisation, and activity over a period (QA-67). Registration export uses participant lists; consent mechanism is a team choice (QA-109). | `reports` |
 | Email / SMS / WhatsApp notifications; .ics export | Channel is a team choice (QA-11, QA-39); SCRUM-69, SCRUM-58 | `notifications` |
 
+### 8.1 Reuse a previous or recurring event *(SCRUM-66)*
+
+**User story**
+
+As an Event Organiser, I want to create a new request based on a previous or recurring event, so that I do not have to re-enter unchanged information.
+
+**Behaviour and rules**
+
+- An organiser can choose one of their own previous event requests as a template while starting a new request.
+- The new draft copies reusable request information: name, purpose, expected attendance, location and layout preferences, required facilities, accessibility needs, preliminary equipment needs, and registration settings.
+- Event-specific or workflow-owned data is not copied: event ID, status, owner identity, coordinator assignment, dates and times, venue bookings, equipment reservations, registrations, notifications, comments, and history.
+- The new request starts as a new draft with its own identity and audit trail. Editing or submitting it never changes the source event.
+- All copied values remain editable before submission, subject to the normal draft validation and submission rules in §6.2.
+- Only the organiser's own eligible event requests can be selected as templates in SCRUM-66. Drafts remain visible only to their owner, and `organisation_name` from SCRUM-80 is descriptive profile data, not an authorisation relationship. Shared access to another organiser's events is deferred to a future client-organisation story because client organisations are outside the first-release core scope.
+- **[Team decision]** The first version supports an explicit “Use as template” action. Automatic recurrence scheduling and automatic retriggering of bookings, equipment reservations, registrations, or notifications are out of scope.
+
+**Acceptance criteria**
+
+- **Given** I am an authenticated Event Organiser and select an eligible event with **Use as template**, **then** exactly one new draft is created with reusable request fields pre-filled; if no eligible event exists, I can still start a blank request. The source event's ID, status, owner, coordinator, dates, bookings, reservations, registrations, notifications, comments, and history are not copied.
+- **Given** the template draft is created, **when** I edit its copied fields, dates, or requirements and submit it, **then** the changes are validated by the normal event-request rules, saved only on the new draft, and the source event remains unchanged. The new draft has a distinct event ID and follows the normal submission and review lifecycle.
+- **Given** another organiser owns an event, **then** it is not available as a template, even when both organisers have the same `organisation_name`; the source event's details are not disclosed.
+
 ---
 
 ## 9. Open questions for the customer

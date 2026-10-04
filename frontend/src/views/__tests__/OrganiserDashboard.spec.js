@@ -9,7 +9,7 @@ import { useEventsStore } from "@/stores/events";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn() },
+  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn(), clone: vi.fn() },
 }));
 
 const EVENT_RESPONSES = [
@@ -380,6 +380,51 @@ describe("OrganiserDashboard", () => {
     buttonByText(el, "New event request").click();
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
     expect(router.currentRoute.value.name).toBe("event-new");
+  });
+
+  it("uses the copy icon to create and open a new template draft", async () => {
+    const { el, router } = await mountDashboard();
+    await openEvents(el);
+    eventsApi.clone.mockResolvedValue({
+      id: "cloned-1",
+      status: "draft",
+      name: "Annual Conference",
+      event_timezone: "Asia/Singapore",
+      facilities_required: [],
+      registration_enabled: false,
+    });
+
+    const copyButton = el.querySelector('button[aria-label="Use Annual Conference as a template"]');
+    expect(copyButton).not.toBeNull();
+    expect(copyButton.querySelector("svg")).not.toBeNull();
+    copyButton.click();
+
+    await vi.waitFor(() => expect(eventsApi.clone).toHaveBeenCalledWith("review-1", "access"));
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
+    expect(router.currentRoute.value.query.id).toBe("cloned-1");
+  });
+
+  it("opens mobile event actions from the three-dot menu", async () => {
+    const { el, router } = await mountDashboard();
+    await openEvents(el);
+
+    const menuButton = el.querySelector('button[aria-label="Open actions for Regional Workshop"]');
+    expect(menuButton).not.toBeNull();
+    expect(menuButton.getAttribute("aria-expanded")).toBe("false");
+
+    menuButton.click();
+    await settle();
+
+    expect(menuButton.getAttribute("aria-expanded")).toBe("true");
+    const menu = menuButton.parentElement.querySelector('[role="menu"]');
+    expect([...menu.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent.trim())).toEqual([
+      "Edit draft",
+      "Use as template",
+    ]);
+
+    menu.querySelector('[role="menuitem"]').click();
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
+    expect(router.currentRoute.value.query.id).toBe("draft-1");
   });
 
   it("opens a returned request on the request form to amend and resubmit (SCRUM-33)", async () => {

@@ -95,6 +95,9 @@ export const eventsApi = {
   create(payload, token) {
     return request("/events", { method: "POST", body: payload, token });
   },
+  clone(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/clone`, { method: "POST", token });
+  },
   update(eventId, payload, token) {
     return request(`/events/${encodeURIComponent(eventId)}`, { method: "PATCH", body: payload, token });
   },

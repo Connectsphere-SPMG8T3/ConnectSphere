@@ -23,6 +23,20 @@ from app.modules.events.schemas import (
 
 DEFAULT_EVENT_TIMEZONE = "Asia/Singapore"
 
+CLONE_FIELDS = (
+    "name",
+    "event_timezone",
+    "purpose",
+    "description",
+    "expected_attendance",
+    "layout_preference",
+    "facilities_required",
+    "accessibility_needs",
+    "preliminary_equipment_needs",
+    "registration_enabled",
+    "registration_capacity",
+)
+
 
 class EventNotFoundError(HTTPException):
     def __init__(self) -> None:
@@ -204,6 +218,12 @@ def _parse_datetime(value: datetime | str) -> datetime:
 
 def create(organiser_id: str, body: EventCreateRequest) -> EventResponse:
     values = body.model_dump(mode="json", exclude_unset=True)
+    return _to_response(repository.create_event(organiser_id, values))
+
+
+def clone(event_id: str, organiser_id: str) -> EventResponse:
+    source = _owned_event(event_id, organiser_id)
+    values = {field: source.get(field) for field in CLONE_FIELDS}
     return _to_response(repository.create_event(organiser_id, values))
 
 
