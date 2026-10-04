@@ -18,6 +18,20 @@ Two `.env.example` files exist — copy each to a real `.env` alongside it and f
 - `/.env.example` → `/.env` (used by `docker-compose.yml` and as a reference for the values below)
 - `frontend/.env.example` → `frontend/.env` (used directly by Vite; only `VITE_`-prefixed vars are exposed to the browser)
 
+From the repo root, on **macOS / Linux / WSL**:
+
+```bash
+cp .env.example .env
+cp frontend/.env.example frontend/.env
+```
+
+On **Windows PowerShell**:
+
+```powershell
+Copy-Item .env.example .env
+Copy-Item frontend\.env.example frontend\.env
+```
+
 Required values:
 
 | Variable | Where it's used | Source |
@@ -71,17 +85,40 @@ All seeded accounts share the password `Cs1234`. Emails intentionally use the `@
 
 ## 4. Backend
 
+The backend and frontend each run in their own terminal. Only creating and activating the virtualenv differs between operating systems; every other command is the same everywhere. Commands are on separate lines rather than chained with `&&`, because Windows PowerShell 5.1 (the version built into Windows) doesn't support `&&`.
+
+First-time setup (run once per machine; never copy `.venv` between machines, it holds platform-specific binaries):
+
+**macOS / Linux / WSL** (bash or zsh):
+
 ```bash
 cd backend
-python -m venv .venv
-. .venv/Scripts/activate        # Windows: .venv\Scripts\activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+```
+
+**Windows PowerShell:**
+
+```powershell
+cd backend
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+If PowerShell refuses to run `Activate.ps1` ("running scripts is disabled on this system"), allow local scripts once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. In **cmd** the activate command is `.venv\Scripts\activate.bat`; in **Git Bash** it is `source .venv/Scripts/activate`.
+
+Start the server (activate the virtualenv first in each new terminal, as above):
+
+```bash
+cd backend
 uvicorn app.main:app --reload --port 8000
 ```
 
 API docs: `http://localhost:8000/docs`. Health check: `GET /health`.
 
-Run tests:
+Run tests (virtualenv active):
 
 ```bash
 cd backend
@@ -100,6 +137,8 @@ A few tests deliberately use real supabase-py client objects (no network) or rea
 Session lifecycle endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh` (exchanges a refresh token for a new session; Supabase rotates the refresh token on every use), `GET /api/v1/auth/me`, `POST /api/v1/auth/logout` (revokes only the caller's current session).
 
 ## 5. Frontend
+
+These commands are the same on macOS, Linux/WSL and Windows (PowerShell, cmd or Git Bash). Run `npm install` on each machine rather than copying `node_modules`.
 
 ```bash
 cd frontend

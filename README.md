@@ -35,10 +35,21 @@ See [Run instructions](#run-instructions) below for the full local setup.
 
 ### 1. Configure environment variables
 
+macOS / Linux / WSL:
+
 ```bash
 cp .env.example .env
-# fill in SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY
+cp frontend/.env.example frontend/.env
 ```
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+Copy-Item frontend\.env.example frontend\.env
+```
+
+Then fill in `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SECRET_KEY` (and the `VITE_` values in `frontend/.env`).
 
 ### 2. Apply database migrations and seed data
 
@@ -50,17 +61,33 @@ psql "$DATABASE_URL" -f supabase/seed.sql
 
 ### 3. Run the backend
 
+macOS / Linux / WSL:
+
 ```bash
 cd backend
-python -m venv .venv
-. .venv/Scripts/activate   # Windows: .venv\Scripts\activate; for Mac: source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
+Windows PowerShell:
+
+```powershell
+cd backend
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+Creating the virtualenv and `pip install` are one-time steps; after that, activate it in each new terminal before starting the server. For cmd, Git Bash, or a PowerShell "running scripts is disabled" error, see [docs/SETUP.md §4](docs/SETUP.md#4-backend).
+
 The API is served at `http://localhost:8000`, docs at `http://localhost:8000/docs`.
 
 ### 4. Run the frontend
+
+In a second terminal (same commands on every OS):
 
 ```bash
 cd frontend
@@ -71,6 +98,8 @@ npm run dev
 The app is served at `http://localhost:5173`.
 
 ### 5. Run backend tests
+
+With the virtualenv active:
 
 ```bash
 cd backend
