@@ -5,6 +5,7 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
+import EquipmentRequestPanel from "@/components/equipment/EquipmentRequestPanel.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import EventDiscussion from "@/components/events/EventDiscussion.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
@@ -197,6 +198,10 @@ watch(
 
         <BauhausCard background="white" accent="none">
           <EventDiscussion :event-id="event.id" :status="event.status" />
+        </BauhausCard>
+
+        <BauhausCard background="white" accent="none">
+          <EquipmentRequestPanel :event-id="event.id" :status="event.status" />
         </BauhausCard>
       </div>
     </template>
