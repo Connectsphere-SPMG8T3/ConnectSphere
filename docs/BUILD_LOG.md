@@ -1075,5 +1075,6 @@ Finishes SCRUM-72 on `feature/scrum-72-coordinator-dashboard-api`. The acceptanc
 - Now removed end to end: `unassigned_count` from `CoordinatorDashboard`, `count_unassigned` and `UNASSIGNED_STATUSES` from the events module, and `unassignedCount` from the store.
 - TC-DASH-012 and TC-DASH-015 now check that the coordinator sees nothing about unassigned events, and the live check TC-DASH-015 asserts the response has no such field.
 - REQUIREMENTS §6.5 records the clarification as superseding AS-R1, AS-R3 and AS-R5 until the Lead story rewrites that section. §9 item 17 is resolved, and item 18 lists what the clarification leaves open.
-- **Verification:** the tests were changed first and failed for the expected reasons (15 backend, because the service still called the removed query, and 1 store case), then passed. `pytest` **448 passed**, `npm test` **39 files, 476 passed**, `npm run build` passed. See the run log below for the live checks.
-
+- **Verification:** the tests were changed first and failed for the expected reasons (15 backend, because the service still called the removed query, and 1 store case), then passed. `pytest` **448 passed**, `npm test` **39 files, 476 passed**, `npm run build` passed. Live checks at `db0f8c4`, on a freshly started backend on 8010:
+  - `runs/2026-10-05-1102-api-db-db0f8c4.md`: **45/45 passed**, including the reworded TC-DASH-015.
+  - `runs/2026-10-05-1103-e2e-db0f8c4.md`: **37 passed, 2 failed**. TC-DASH-019 and TC-ROLE-003 failed on server errors in the shared Supabase client (D17), which occurred on the review page and on a role switch. Neither was re-run to make it pass.
