@@ -39,7 +39,6 @@ const PAYLOAD = {
       flags: [],
     },
   ],
-  unassigned_count: 2,
 };
 
 function signedInCoordinator() {
@@ -67,7 +66,7 @@ describe("coordinator dashboard store", () => {
     // Cancellation outranks an initial review, so e1 comes first despite
     // arriving second in the payload.
     expect(store.prioritisedActions.map((item) => item.event_id)).toEqual(["e1", "e2"]);
-    expect(store.unassignedCount).toBe(2);
+    expect(store.$state).not.toHaveProperty("unassignedCount");
     expect(store.error).toBeNull();
   });
 
@@ -136,7 +135,6 @@ describe("coordinator dashboard store", () => {
 
     expect(store.prioritisedActions).toEqual([]);
     expect(store.activeEvents).toEqual([]);
-    expect(store.unassignedCount).toBe(0);
   });
 
   it("withholds its counts until a load has settled, so a zero is never guesswork", async () => {

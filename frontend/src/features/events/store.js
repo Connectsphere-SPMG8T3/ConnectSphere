@@ -11,17 +11,15 @@ import { useAuthStore } from "@/stores/auth";
 /**
  * Backing store for the Event Coordinator dashboard (SCRUM-72).
  *
- * The shape below is the contract the `events` module's dashboard endpoint has
- * to return. It is defined now so the widgets are built against real data, not
- * placeholders: today the endpoint does not exist and every widget renders its
- * empty state, and when the endpoint ships the dashboard fills in with no
- * further component changes.
+ * Loads `GET /events/dashboard/coordinator` (`events.service.coordinator_dashboard`
+ * in the backend), whose response shape is the state below: `action_items` and
+ * `active_events`. The widgets were built against this contract before the
+ * endpoint existed, so they needed no change when it shipped.
  */
 export const useCoordinatorDashboardStore = defineStore("coordinatorDashboard", {
   state: () => ({
     actionItems: [],
     activeEvents: [],
-    unassignedCount: 0,
     isLoading: false,
     error: null,
     // False until a load has actually returned data. Distinguishes "the events
@@ -47,7 +45,6 @@ export const useCoordinatorDashboardStore = defineStore("coordinatorDashboard", 
     reset() {
       this.actionItems = [];
       this.activeEvents = [];
-      this.unassignedCount = 0;
       this.isAvailable = false;
     },
 
@@ -64,14 +61,12 @@ export const useCoordinatorDashboardStore = defineStore("coordinatorDashboard", 
         const payload = await auth.withSession((token) => eventsApi.coordinatorDashboard(token));
         this.actionItems = payload?.action_items ?? [];
         this.activeEvents = payload?.active_events ?? [];
-        this.unassignedCount = payload?.unassigned_count ?? 0;
         this.isAvailable = true;
       } catch (err) {
         this.reset();
-        // A 404 means the endpoint isn't deployed yet, which is the expected
-        // state until the events module adds it. That is not an error worth showing a
-        // coordinator, so the widgets simply stay empty. Anything else is a
-        // real failure and must be visible — an empty dashboard that silently
+        // A 404 means this backend predates the endpoint. That is not an
+        // error worth showing a coordinator, so the widgets simply stay empty.
+        // Anything else is a real failure and must be visible — an empty dashboard that silently
         // swallowed a 500 would tell a coordinator they have nothing to do.
         if (!(err instanceof ApiError) || err.status !== 404) {
           this.error =

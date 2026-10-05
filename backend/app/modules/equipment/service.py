@@ -116,3 +116,18 @@ def get_equipment_maintenance() -> EquipmentMaintenanceResponse:
             )
         )
     return EquipmentMaintenanceResponse(items=items)
+
+
+# A reservation that was made and not cancelled means tech support settled the
+# line: `confirmed` still holds units, `completed` has used them.
+RESERVED_STATUSES = ("confirmed", "completed")
+
+
+def reserved_event_ids(event_ids: Iterable[str]) -> set[str]:
+    """The events among `event_ids` that tech support has reserved equipment for.
+
+    [Assumption] REQUIREMENTS §6.21.1: SCRUM-24's per-event equipment requests
+    don't exist yet, so "every request reserved" (§6.6) is read as "at least one
+    reservation". Used by the coordinator dashboard (SCRUM-72).
+    """
+    return set(repository.list_reserved_event_ids(event_ids, RESERVED_STATUSES))

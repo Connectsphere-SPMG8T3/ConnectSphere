@@ -672,6 +672,10 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 
 ### 6.5 Coordinator assignment *(SCRUM-12, SCRUM-68)*
 
+> **Superseded in part by the Event Coordinator Lead (customer clarification of 2026-10-05, QA row to be added).** The customer has introduced a new internal role, the **Event Coordinator Lead**. Newly submitted requests are no longer assigned directly to a coordinator: they enter an **unassigned queue** that the Lead can view. The Lead reviews basic event information, assigns a suitable coordinator, and can reassign. Coordinators manage only the events assigned to them; the Lead can view all coordinator assignments and the active events under their supervision. Relevant users are notified of assignments and reassignments.
+>
+> This replaces automatic assignment (AS-R1, AS-R3) and the "Awaiting assignment" alert on every coordinator dashboard (AS-R5), and it contradicts "no manager exists (QA-3)" below. The rules beneath are kept for the record until the story that builds the Lead role rewrites this section. Already applied: the coordinator dashboard no longer shows or receives an unassigned count (SCRUM-72, §6.21). Still open: §9 item 19.
+
 **Automatic assignment** (QA-5, QA-54, QA-79, QA2-7). Coordinators don't claim requests and no manager exists (QA-3). The customer named "round-robin or load-based" and left the detailed criteria to us (QA2-7).
 
 - **AS-R1:** On submission, the system assigns the **least-loaded active coordinator**. Load is the number of assigned events in `under_review`, `returned`, `planning`, or `confirmed`. Ties go to whoever was least recently assigned, then to the lowest ID. **[Team decision]** QA-54 says "by system load/availability", and schedules are out of scope (QA-14), so load is the measure.
@@ -1067,7 +1071,8 @@ Each dashboard composes widgets from the feature stores. **Build a widget only w
 | Role | Widgets (in priority order) |
 |---|---|
 | Organiser | Drafts · Returned requests needing my amendment · My requests with status · Upcoming confirmed events · Decided change requests |
-| Coordinator | My events needing action (resubmitted, change or cancellation requested, booking or equipment decided, re-review outcomes, issues) · My events by status · Readiness gaps in the next 14 days · "Awaiting assignment" alert (AS-R5) |
+| Coordinator | My events needing action (resubmitted, change or cancellation requested, booking or equipment decided, re-review outcomes, issues) · My events by status · Readiness gaps in the next 14 days. No unassigned figure: unassigned events are the Event Coordinator Lead's queue (§6.5) |
+| Event Coordinator Lead | The unassigned queue · all coordinator assignments and active events under their supervision. **Not built yet**; to be specified with the Lead story (§6.5, §9 item 19) |
 | Venue staff | Pending holds (oldest first) · Bookings in re-review · Active and upcoming blocks · Venues (active/inactive). **All venues**, since staff are a pool (AUTH-R5). |
 | Tech support | Pending and re-review equipment lines · Events needing technical readiness · Equipment in maintenance · Upcoming reservations (7 days) |
 | Attendee | My upcoming registrations and waitlist invitations · Browse open events |
@@ -1092,6 +1097,14 @@ SCRUM-72 asks for a **prioritised** list but does not define priority, and the c
 Ties break by **soonest event date**, then by longest wait, then by ID for stable ordering. An action kind the SPA does not recognise ranks last but is never dropped — losing a coordinator's action item silently is worse than rendering it unstyled.
 
 **Mapping to SCRUM-72's acceptance criteria.** AC1 names three categories: *immediate action* (ranks 1–4), *awaiting initial approval/rejection* (rank 6), and *newly received client clarification responses* (rank 5). The third is the **return-for-amendment** cycle the customer confirmed (QA-22, QA-77, §6.4) — a resubmission *is* the clarification response. This supersedes the older "clarification thread" reading in SCRUM-33 (archive/2026-09-13-design-review §B2a). AC2 is the active-status overview, covering `under_review`, `returned`, `planning` and `confirmed`; `draft` is excluded by DR-R2 and terminal statuses are out of scope for an "active" view.
+
+**What the server derives** (`GET /events/dashboard/coordinator`, `events.service.coordinator_dashboard`). Only events assigned to the caller, never drafts (DR-R2). `awaiting_review` is an `under_review` event with no answered amendment; `resubmitted` is one whose latest amendment has `resubmitted_at`. Kinds with no data source yet (change and cancellation requests, booking and equipment decisions, re-review outcomes) are never produced, so their widgets stay empty rather than invented.
+
+- **[Assumption]** `arrangement_issue` is produced for a `planning` or `confirmed` event whose `technical_readiness` is `issue`, the one arrangement problem the system records today. The event also carries the flag `technical_issue`. See §9 item 16.
+- **[Assumption]** Equipment readiness is `not_required` when the event lists no preliminary equipment needs, `ready` once it has at least one `confirmed` or `completed` reservation, and `pending` otherwise. §6.6's "every request reserved" needs SCRUM-24's per-event equipment requests, which don't exist yet. See §9 item 17.
+- **Unassigned events are not shown.** The coordinator dashboard carries no unassigned count or alert: unassigned events are the Event Coordinator Lead's queue (customer clarification of 2026-10-05, QA row to be added, §6.5). This replaces the earlier [Assumption] about counting them (§9 item 18).
+
+**[Team decision]** The coordinator dashboard follows the organiser dashboard's layout (§6.21.2): **Overview** and **Events** views chosen from the sidebar (`?tab=`), the same header card, category tiles, status cards and event cards. The AC1 prioritised list and the readiness gaps stay on Overview. Category tiles and status headings open Events filtered to them, and every event opens `/coordinator/events/:id`. Reason: the developer asked for one consistent look across the two event dashboards.
 
 #### 6.21.2 Event Organiser dashboard *(SCRUM-71)*
 
@@ -1309,6 +1322,10 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 13. **Rejection reason length (SCRUM-52):** Jira sets no maximum. We capped it at 1000 characters (§6.4) as a reasonable bound for a free-text field feeding both the history table and a notification message. Is a different limit expected?
 14. **Return message and resubmission note length (SCRUM-33):** **[Assumption]** Both are capped at 1000 characters, checked after trimming, exactly as the API checks a rejection reason (`EventRejectRequest`; the §6.4 wording "checked on the raw value" doesn't match the code, which strips first). Jira sets no bound; both values reach `event_status_history.reason` and a notification message. Is a different limit expected?
 15. **Comment length (SCRUM-61):** **[Assumption]** A comment is capped at 1000 characters after trimming, the same cap as a rejection reason and a return message. Jira sets no bound. Is a different limit expected?
+16. **Arrangement issues (SCRUM-72):** **[Assumption]** A technical readiness of `issue` on a planning or confirmed event is shown as an arrangement issue, the coordinator's most urgent action (§6.21.1). Are there other "issues" the coordinator must see before change requests and re-review exist?
+17. **Equipment readiness before SCRUM-24 (SCRUM-72):** **[Assumption]** Ready once any reservation exists for the event (or `not_required` when none was asked for). Is that close enough until per-line equipment requests exist?
+18. ~~**Awaiting-assignment count (SCRUM-72)**~~ — **Resolved by the Event Coordinator Lead clarification** (customer clarification of 2026-10-05, QA row to be added): coordinators no longer see unassigned events at all; the Lead's queue does (§6.5).
+19. **Event Coordinator Lead (§6.5):** the clarification leaves open: whether the Lead can also act as a coordinator on events (approve, reject, return); what "basic event information" the queue shows; whether a coordinator can still hand over an event themselves (AS-R4) or only the Lead reassigns; whether submission stays `draft → under_review` or a request waits in `submitted` until assigned; and who exactly is notified on assignment and reassignment (organiser, new coordinator, previous coordinator).
 
 ---
 

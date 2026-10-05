@@ -162,3 +162,19 @@ def list_maintenance() -> list[MaintenanceRow]:
             )
         )
     return rows
+
+
+def list_reserved_event_ids(event_ids: Iterable[str], statuses: Iterable[str]) -> list[str]:
+    """The ids among `event_ids` that hold at least one reservation in `statuses`."""
+    ids = list(event_ids)
+    if not ids:
+        return []
+    response = (
+        get_supabase_admin_client()
+        .table("equipment_reservations")
+        .select("event_id")
+        .in_("event_id", ids)
+        .in_("status", list(statuses))
+        .execute()
+    )
+    return [row["event_id"] for row in response.data or []]

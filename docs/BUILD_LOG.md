@@ -1102,3 +1102,58 @@ Design and plan: `docs/superpowers/specs/2026-10-02-scrum-61-event-comments-desi
 - Browser verification (2026-10-04): the inline copy icon is visible, its action box is `52px` square like **Edit draft**, and clicking it opens a new draft form with copied name and blank date/time fields. At 375px, the two action buttons collapse into a three-dot menu with visible **Edit draft** and **Use as template** options. The throwaway draft was deleted after verification.
 - SCRUM-66 clone-specific implementation paths are **100% exercised**: API adapter success/denial, store success/error state, dashboard copy navigation, backend creation, field exclusions, source independence, ownership denial, missing-event denial, and active-role denial. Whole-file reports remain below 100% (`events.js` **98.44%**, `OrganiserDashboard.vue` **97.3%**) because those modules contain unrelated SCRUM-8/33/71 branches; whole-repository 100% coverage is not claimed.
 - **Not verified:** live same-organisation/non-owner API denial and the full manual TC-EVENT-041 edit/save/submit flow. No database migration was needed.
+
+### 4.25. SCRUM-72 — Coordinator dashboard on real data, in the organiser's layout
+
+Finishes SCRUM-72 on `feature/scrum-72-coordinator-dashboard-api`. The acceptance criteria are as recorded verbatim in §4.5 (the developer confirmed they are current; the Jira MCP was not connected).
+
+**Before.** The dashboard's store called `GET /events/dashboard/coordinator`, which didn't exist, so every widget read "Awaiting data". §4.5 built it that way on purpose, because the events tables didn't exist then. They do now (SCRUM-8/33/34/52). The coordinator review page (`/coordinator/events/:id`) was reachable only by typing its URL.
+
+**Backend.**
+- `GET /events/dashboard/coordinator` (`event_coordinator` only, by active role) returns the shape the store already expected: `action_items`, `active_events`, `unassigned_count`.
+- It covers only the caller's assigned events in `under_review`, `returned`, `planning` or `confirmed`; drafts never appear (DR-R2).
+- It produces three action kinds: `awaiting_review`, `resubmitted` (AC1's clarification response, QA-22/QA-77), and `arrangement_issue` when technical readiness is `issue`.
+- Readiness uses two new service reads, `venues.service.booking_statuses_by_event` and `equipment.service.reserved_event_ids`, so no module reads another's tables.
+- The route is declared above `/{event_id}`, which would otherwise answer 422.
+- Three rules had no customer answer and are recorded as **[Assumption]** in REQUIREMENTS §6.21.1 and §9 items 16–18: the arrangement-issue signal, equipment readiness before SCRUM-24, and the unassigned count before SCRUM-12. The other action kinds have no data source yet, so they are never produced; nothing is faked.
+
+**Frontend.**
+- Every event on the dashboard links to its review page.
+- At the developer's request, the page now follows the organiser dashboard (SCRUM-71). The sidebar has **Overview** and **Events** for the coordinator (`?tab=`), from one `EVENT_VIEW_DASHBOARDS` map in `Nav.vue`.
+- **Overview** reuses the organiser's header card, category tiles, and paged "by status" cards. It keeps the AC1 prioritised list, the awaiting-assignment alert and the readiness gaps. A tile or status heading opens Events filtered to it.
+- **Events** reuses the organiser's filter bar (search, status, sort and direction) and event cards, split into "Needs your action" and "In progress", each with a **Review** button.
+- The filtering, sorting and grouping are pure functions in `features/events/coordinatorDashboard.js`. They sit alongside `organiserDashboard.js` rather than reusing it, because the payload is shaped differently. The AC1 category → kinds map moved into `dashboard.js` as `ACTION_CATEGORY_KINDS`, so the tiles and the filter share one definition.
+- While loading, the page now shows "Loading events..." instead of dashes in each counter, as the organiser's does. Either way, no zero is shown before the answer is known (TC-DASH-003, reworded).
+
+#### Verification
+
+- **Written red first:**
+  - `backend/tests/test_coordinator_dashboard.py` (25 cases: derivation, the repository query shapes including the named organiser FK, the cross-module reads, 200/403 ×4/401, and 200-not-422)
+  - `features/events/__tests__/coordinatorDashboard.spec.js` (12)
+  - `views/__tests__/CoordinatorDashboard.spec.js` (14)
+  - one new `Nav.spec.js` case
+
+  Each failed first because the code didn't exist yet. In the view spec, two link cases already passed after the first half of the work.
+- **Full suites:** `pytest` **448 passed**. `npm test` **39 files, 476 passed**. `npm run build` passed.
+- **Real API** (this branch on port 8010, live project):
+  - As `coordinator@connectsphere.dev`: 200, with the three assigned events (fixtures `…0201`, `…0202`, and one planning event) and `unassigned_count` 7, matching a direct database count. The organiser name resolved through `events_organiser_id_fkey`.
+  - 403 as the organiser, 403 after switching to Venue Staff, 401 with no token.
+  - `verify_live.py -k TC-DASH`: TC-DASH-013–018 **6/6 passed**.
+- **Real browser** (Vite on 5180 against that API): Overview and Events at 1280px and 390px, compared with the organiser's Overview. No horizontal scroll, no console errors. Playwright TC-DASH-001 and 022 passed.
+- **Found (DEFECTS D18, open):** TC-DASH-019 failed in 2 of 5 runs. The link was right, but the review page's first two parallel requests both answered 500 (`httpx.ReadError`, WinError 10035, inside `get_current_user` on the shared Supabase client), and the page showed "Failed to fetch" (D10). The code is unchanged by this branch. It is recorded rather than fixed here.
+- **Recorded runs** (commit `ff5925e`, servers on 8010/5180):
+  - `runs/2026-09-30-1914-api-db-ff5925e.md`: **45/45 passed**.
+  - `runs/2026-09-30-1915-e2e-ff5925e.md`: **37 passed, 2 failed**. TC-DASH-019 and TC-ROLE-005 both failed on server errors in the shared Supabase client (the review page, then the dashboard and a role switch), not on anything they assert about. That is recorded under D18. Neither was re-run to make it pass.
+- **Not verified:** TC-DASH-020 (return and resubmit a fixture, because it changes shared data) and the arrangement-issue path in a browser (nothing in the UI can set technical readiness yet; it is covered by pytest only). The visual cases TC-DASH-002, 003, 005 and 024 are waiting on the developer's manual pass.
+- **Noticed, not fixed:** `IMPLEMENTATION_MAP.md` still says `modules/equipment/` is an empty package and lists the equipment branches as unmerged, but the equipment module is on `main`.
+
+**Follow-up on the same branch: unassigned events move to the Event Coordinator Lead** (customer clarification of 2026-10-05, QA row to be added). The customer introduced an Event Coordinator Lead who assigns submitted requests from an unassigned queue, so a coordinator no longer needs to see unassigned events. The branch is now `fix/scrum-72-coordinator-dashboard-api`.
+- The developer removed the "Urgent — awaiting assignment" alert from the Overview (`b9065e5`).
+- A code review then found what that left behind: the view spec still expected the alert (the frontend suite failed), the test cases still described it, and the endpoint still ran a count query every load for a figure nothing showed.
+- Now removed end to end: `unassigned_count` from `CoordinatorDashboard`, `count_unassigned` and `UNASSIGNED_STATUSES` from the events module, and `unassignedCount` from the store.
+- TC-DASH-012 and TC-DASH-015 now check that the coordinator sees nothing about unassigned events, and the live check TC-DASH-015 asserts the response has no such field.
+- REQUIREMENTS §6.5 records the clarification as superseding AS-R1, AS-R3 and AS-R5 until the Lead story rewrites that section. §9 item 18 is resolved, and item 18 lists what the clarification leaves open.
+- **Verification:** the tests were changed first and failed for the expected reasons (15 backend, because the service still called the removed query, and 1 store case), then passed. `pytest` **448 passed**, `npm test` **39 files, 476 passed**, `npm run build` passed. Live checks at `db0f8c4`, on a freshly started backend on 8010:
+  - `runs/2026-10-05-1102-api-db-db0f8c4.md`: **45/45 passed**, including the reworded TC-DASH-015.
+  - `runs/2026-10-05-1103-e2e-db0f8c4.md`: **37 passed, 2 failed**. TC-DASH-019 and TC-ROLE-003 failed on server errors in the shared Supabase client (D18), which occurred on the review page and on a role switch. Neither was re-run to make it pass.
+- **Merged with `main`** before opening the PR: SCRUM-61 (comments) and SCRUM-66 (clone) had changed the same events files, so their code was kept alongside the dashboard. `main` had already used D17 and §9 item 15, so this branch's defect became **D18** and its §9 items became 16–19. Commit messages and the run logs above still say D17 for the shared-client defect, because they were written before the merge.

@@ -1,5 +1,6 @@
 """Venue module use cases: search the catalogue, read one venue."""
 
+from collections.abc import Iterable
 from datetime import datetime, timezone
 
 from app.core.exceptions import VenueNotFoundError
@@ -91,3 +92,15 @@ def venue_staff_dashboard(now: datetime | None = None) -> VenueStaffDashboard:
         re_review_bookings=[b for b in bookings if b.status == "re_review"],
         blocks=repository.list_all_upcoming_blocks(now),
     )
+
+
+def booking_statuses_by_event(event_ids: Iterable[str]) -> dict[str, list[str]]:
+    """`{event_id: [booking status, ...]}` — the venues module's answer to "has this
+    event's venue been settled?" (REQUIREMENTS §6.6: ready once a booking is
+    `approved`). Events with no booking are absent. Used by the coordinator
+    dashboard (SCRUM-72); the event arrangements panel (SCRUM-13) needs the same.
+    """
+    statuses: dict[str, list[str]] = {}
+    for row in repository.list_booking_statuses(event_ids):
+        statuses.setdefault(row["event_id"], []).append(row["status"])
+    return statuses

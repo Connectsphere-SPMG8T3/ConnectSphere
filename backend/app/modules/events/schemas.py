@@ -206,6 +206,62 @@ class EventHistoryResponse(BaseModel):
     entries: list[EventHistoryEntry]
 
 
+# SCRUM-72: the Event Coordinator dashboard. The SPA's store
+# (`frontend/src/features/events/store.js`) fixed this shape first, and it does
+# the ranking itself, so action items are returned unordered.
+
+
+class CoordinatorActionKind(str, Enum):
+    """The action kinds the server can produce today. The SPA's `ACTION_KINDS`
+    lists more (change and cancellation requests, booking and equipment
+    decisions, re-review outcomes); those arrive with the stories that build
+    their data, and until then their widgets stay empty (REQUIREMENTS §6.21)."""
+
+    arrangement_issue = "arrangement_issue"
+    resubmitted = "resubmitted"
+    awaiting_review = "awaiting_review"
+
+
+class ReadinessState(str, Enum):
+    not_required = "not_required"
+    pending = "pending"
+    ready = "ready"
+    issue = "issue"
+
+
+class CoordinatorActionItem(BaseModel):
+    event_id: str
+    event_name: str
+    kind: CoordinatorActionKind
+    starts_at: datetime | None = None
+    occurred_at: datetime | None = None
+    organiser_name: str | None = None
+
+
+class Readiness(BaseModel):
+    """The blocking arrangements of REQUIREMENTS §6.6."""
+
+    venue: ReadinessState
+    equipment: ReadinessState
+    technical: ReadinessState
+
+
+class CoordinatorActiveEvent(BaseModel):
+    event_id: str
+    event_name: str
+    status: EventStatus
+    starts_at: datetime | None = None
+    flags: list[str] = []
+    readiness: Readiness
+
+
+class CoordinatorDashboard(BaseModel):
+    action_items: list[CoordinatorActionItem] = []
+    active_events: list[CoordinatorActiveEvent] = []
+    # No unassigned figure: unassigned events are the Event Coordinator Lead's
+    # queue, not a coordinator's (customer clarification, REQUIREMENTS §6.5).
+
+
 COMMENT_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as a rejection reason
 
 # Statuses whose thread accepts new comments (SCRUM-61). Drafts have no thread yet;

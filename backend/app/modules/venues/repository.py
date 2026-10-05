@@ -277,3 +277,18 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
         for row in response.data or []
     ]
     return sorted(bookings, key=lambda b: (b.period.starts_at, b.id))
+
+
+def list_booking_statuses(event_ids: Iterable[str]) -> list[dict]:
+    """`{event_id, status}` for every booking of these events, whatever its status."""
+    ids = list(event_ids)
+    if not ids:
+        return []
+    response = (
+        get_supabase_admin_client()
+        .table("venue_bookings")
+        .select("event_id, status")
+        .in_("event_id", ids)
+        .execute()
+    )
+    return response.data or []
