@@ -18,6 +18,9 @@
 --   - event e0000000-0000-4000-8000-000000000201 (reset to under_review)
 --   - event e0000000-0000-4000-8000-000000000202 (reset to planning)
 --   - venue booking d0000000-0000-4000-8000-000000000201 (reset to held)
+--   - any other venue booking on the two fixture events, deleted: a manual
+--     SCRUM-19 run can request a venue for a fixture once it is in planning,
+--     and that hold must not outlive the reset to under_review
 --   - event_status_history rows (other than creation and submission),
 --     notifications rows, amendment_requests rows (SCRUM-33) and event_comments
 --     rows (SCRUM-61) whose event_id is one of the two fixture events above
@@ -73,6 +76,13 @@ update public.events
 update public.events
    set status = 'planning'
  where id = 'e0000000-0000-4000-8000-000000000202';
+
+delete from public.venue_bookings
+ where event_id in (
+     'e0000000-0000-4000-8000-000000000201',
+     'e0000000-0000-4000-8000-000000000202'
+ )
+   and id <> 'd0000000-0000-4000-8000-000000000201';
 
 update public.venue_bookings
    set status = 'held'

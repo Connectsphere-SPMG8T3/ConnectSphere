@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, Query, status
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.venues import service
 from app.modules.venues.schemas import (
+    VenueBooking,
+    VenueBookingCreate,
     VenueDetail,
     VenueSearchCriteria,
     VenueSearchResponse,
@@ -72,3 +74,21 @@ def read_venue_staff_dashboard(current_user: VenueStaffOnly) -> VenueStaffDashbo
 def read_venue(venue_id: UUID, current_user: VenueReader) -> VenueDetail:
     """One venue with its upcoming blocks and occupying bookings."""
     return service.get_venue(str(venue_id))
+
+
+# Booking requests sit in the venues module, which owns `venue_bookings`, under
+# their own path so SCRUM-20 can add `/venue-bookings/{id}/approve` beside them.
+bookings_router = APIRouter(prefix="/venue-bookings", tags=["venue bookings"])
+
+# Only a coordinator requests a venue (REQUIREMENTS §2), gated on the session's
+# active role; the service then checks it is *this event's* coordinator.
+BookingRequester = Annotated[CurrentUser, Depends(require_roles(["event_coordinator"]))]
+
+
+@bookings_router.post("", response_model=VenueBooking, status_code=status.HTTP_201_CREATED)
+def request_venue_booking(body: VenueBookingCreate, current_user: BookingRequester) -> VenueBooking:
+    """Request a venue for a planning event: a tentative hold over the event's
+    own period, and venue staff are notified. Refused with 409 when the venue
+    is held, booked or blocked for that time, the event already has a venue,
+    or the event isn't in planning."""
+    return service.request_booking(body, current_user.id)

@@ -858,6 +858,10 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **BR-R4:** A hold is released when the event is rejected or cancelled, or when the coordinator updates or cancels the booking (QA2-13). Holds have **no expiry** (QA-6); duration limits were left to us (QA2-13). **[Team decision]** No automatic expiry in release 1, because an expired hold would silently drop a live event's venue. Venue staff dashboards sort pending holds by age so old ones get attention.
 - **BR-R5:** The coordinator can cancel a `held` or `approved` booking, which releases the slot and notifies venue staff.
 - **BR-R6:** A booking request can't be made while the event is `under_review` or `returned` (QA-22).
+- **BR-R7 [Team decision, SCRUM-19]:** The hold always covers the **event's own** `[starts_at, ends_at)`. The request carries only the event, the venue and an optional note; the client can't supply or widen the period. A search opened from the event is pre-filled with that period, and a venue is only offered for request while the search checks it.
+- **BR-R8 [Team decision, SCRUM-19]:** Every refusal is decided by `public.request_venue_booking` under a lock on the event, with DB-1 as the only judge of overlaps, so two coordinators racing for one slot can't both win (QA2-23). A venue block refuses the request too ("Venue blocked for this time.", §6.14); the block check isn't locked, because a block may overlap a hold anyway (CAL-R1).
+- **BR-R9 [Assumption, SCRUM-19]:** The note for venue staff is optional and capped at **1000 characters** after trimming, like the other free-text fields. See §9.
+- **SCRUM-19 scope:** BR-R3 (suitability) is **not enforced by SCRUM-19**; it moves to SCRUM-18, which owns the suitability verdict. BR-R5 (coordinator cancels a hold) is **not built**; it is **SCRUM-85**. Until it exists, a coordinator who picks the wrong venue is held to it unless venue staff reject the booking (§6.13).
 
 **Acceptance criteria**
 - **Given** a planning event and a suitable, free venue, **when** I request it, **then** a `held` booking exists, the calendar shows a tentative hold, and venue staff are notified.
@@ -1326,6 +1330,7 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 17. **Equipment readiness before SCRUM-24 (SCRUM-72):** **[Assumption]** Ready once any reservation exists for the event (or `not_required` when none was asked for). Is that close enough until per-line equipment requests exist?
 18. ~~**Awaiting-assignment count (SCRUM-72)**~~ — **Resolved by the Event Coordinator Lead clarification** (customer clarification of 2026-10-05, QA row to be added): coordinators no longer see unassigned events at all; the Lead's queue does (§6.5).
 19. **Event Coordinator Lead (§6.5):** the clarification leaves open: whether the Lead can also act as a coordinator on events (approve, reject, return); what "basic event information" the queue shows; whether a coordinator can still hand over an event themselves (AS-R4) or only the Lead reassigns; whether submission stays `draft → under_review` or a request waits in `submitted` until assigned; and who exactly is notified on assignment and reassignment (organiser, new coordinator, previous coordinator).
+20. **Booking request note length (SCRUM-19):** **[Assumption]** The coordinator's note to venue staff is capped at 1000 characters after trimming, the same cap as a comment. Jira sets no bound. Is a different limit expected?
 
 ---
 

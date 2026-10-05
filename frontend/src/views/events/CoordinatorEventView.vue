@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
@@ -13,6 +13,7 @@ import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import { showToast } from "@/composables/useToast";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { canApprove, canReject, canReturn, useEventReviewStore } from "@/features/events/eventReviewStore";
+import { BOOKING_STATUS_LABELS, venuePanelState } from "@/features/venues/bookingRequest";
 
 const route = useRoute();
 const router = useRouter();
@@ -27,6 +28,7 @@ const statusLabel = computed(() => STATUS_LABELS[event.value?.status] ?? event.v
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
+const venuePanel = computed(() => venuePanelState(event.value));
 
 function displayDateTime(value, timeZone) {
   if (!value) return "Not provided";
@@ -152,6 +154,40 @@ watch(
             <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Equipment needs</dt><dd class="mt-1 font-medium">{{ displayValue(event.preliminary_equipment_needs) }}</dd></div>
             <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Description</dt><dd class="mt-1 whitespace-pre-wrap font-medium">{{ displayValue(event.description) }}</dd></div>
           </dl>
+        </BauhausCard>
+
+        <BauhausCard v-if="venuePanel.kind !== 'none'" background="white" accent="none" data-testid="venue-panel">
+          <h2 class="text-2xl font-black uppercase tracking-tight">Venue</h2>
+          <template v-if="venuePanel.kind === 'booked'">
+            <p class="mt-4 text-lg font-black uppercase tracking-tight">
+              <RouterLink
+                :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
+                class="underline decoration-2 underline-offset-4"
+              >
+                {{ venuePanel.booking.venue_name ?? "Venue" }}
+              </RouterLink>
+            </p>
+            <p
+              class="mt-3 inline-block border-2 border-ink px-3 py-1 text-xs font-black uppercase tracking-widest"
+              :class="venuePanel.booking.status === 'approved' ? 'bg-bauhaus-blue text-canvas' : 'bg-bauhaus-yellow'"
+            >
+              {{ BOOKING_STATUS_LABELS[venuePanel.booking.status] ?? venuePanel.booking.status }}
+            </p>
+            <p v-if="venuePanel.booking.status === 'held'" class="mt-3 text-sm font-medium">
+              Held for this event's time while venue staff decide.
+            </p>
+          </template>
+          <template v-else-if="venuePanel.kind === 'can-request'">
+            <p class="mt-4 text-sm font-medium">No venue requested yet. Search with this event's requirements and request one.</p>
+            <BauhausButton
+              class="mt-4"
+              variant="secondary"
+              @click="router.push({ name: 'venue-search', query: { event: event.id } })"
+            >
+              Find a venue
+            </BauhausButton>
+          </template>
+          <p v-else class="mt-4 text-sm font-medium">{{ venuePanel.reason }}</p>
         </BauhausCard>
 
         <BauhausCard background="white" accent="none">

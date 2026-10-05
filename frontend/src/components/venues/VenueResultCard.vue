@@ -86,6 +86,11 @@ const hours = computed(() => `${venue.value.opens_at.slice(0, 5)}–${venue.valu
           {{ reason.message }}
         </li>
       </ul>
+
+      <!-- An action on this venue, e.g. "Request this venue" when the search was opened from an event (SCRUM-19). -->
+      <div v-if="$slots.actions" class="mt-auto border-t-2 border-ink pt-4">
+        <slot name="actions" />
+      </div>
     </div>
   </BauhausCard>
 </template>

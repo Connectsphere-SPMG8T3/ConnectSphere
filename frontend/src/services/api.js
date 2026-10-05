@@ -82,6 +82,14 @@ export const venuesApi = {
   },
 };
 
+export const venueBookingsApi = {
+  // SCRUM-19: a tentative hold over the event's own period. The body carries no
+  // times; the API reads them from the event.
+  request(payload, token) {
+    return request("/venue-bookings", { method: "POST", body: payload, token });
+  },
+};
+
 export const eventsApi = {
   coordinatorDashboard(token) {
     return request("/events/dashboard/coordinator", { token });
