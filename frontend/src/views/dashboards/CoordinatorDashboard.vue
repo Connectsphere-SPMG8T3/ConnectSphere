@@ -293,19 +293,6 @@ const cardSections = computed(() => [
     <!-- Overview -->
     <template v-if="activeTab === 'overview' && isLoaded">
       <!-- Urgent alert: AS-R5, shown on every coordinator dashboard. -->
-      <div
-        v-if="dashboard.unassignedCount > 0"
-        data-testid="unassigned-alert"
-        class="mb-10 border-2 border-ink bg-bauhaus-red p-6 text-canvas shadow-hard sm:border-4"
-        role="status"
-      >
-        <p class="text-xs font-bold uppercase tracking-widest">Urgent — awaiting assignment</p>
-        <p class="mt-2 text-4xl font-black tracking-tighter">{{ dashboard.unassignedCount }}</p>
-        <p class="mt-2 text-sm font-medium">
-          {{ dashboard.unassignedCount === 1 ? "A request has" : "Requests have" }} been submitted with
-          no coordinator assigned.
-        </p>
-      </div>
 
       <section class="mb-10" aria-labelledby="needs-action">
         <div class="mb-5 flex items-baseline justify-between gap-4">
