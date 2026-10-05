@@ -159,6 +159,19 @@ export const equipmentApi = {
   maintenance(token) {
     return request("/equipment/maintenance", { token });
   },
+  // SCRUM-45 equipment request lines.
+  catalogue(token) {
+    return request("/equipment/catalogue", { token });
+  },
+  submitRequest(payload, token) {
+    return request("/equipment/requests", { method: "POST", body: payload, token });
+  },
+  eventRequests(eventId, token) {
+    return request(`/equipment/requests/event/${encodeURIComponent(eventId)}`, { token });
+  },
+  pendingRequests(token) {
+    return request("/equipment/requests/pending", { token });
+  },
 };
 
 export function checkEquipmentAvailability(payload, token) {

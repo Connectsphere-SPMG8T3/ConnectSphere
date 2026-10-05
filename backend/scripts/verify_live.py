@@ -88,6 +88,7 @@ DB_SCRIPTS = [
     ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
+    ("equipment_request_checks.sql", "TC-EQR-002, 003, 006, 007, 008, 009 (database half)"),
 ]
 
 
@@ -684,6 +685,104 @@ def _(ctx: Context) -> None:
         f"where event_id in ('{left}', '{right}') and status = 'held'"
     )
     expect(count["n"] == 1, f"{count['n']} holds exist")
+
+# --- Equipment requests (SCRUM-45) ----------------------------------------
+
+PROJECTOR_ID = "b0000000-0000-4000-8000-000000000001"  # supabase/seed.sql: 4K Projector, 4 in total
+EQUIPMENT_REQUESTS = "/equipment/requests"
+LIVE_CHECK_NOTE = "live-check SCRUM-45"  # marks the lines TC-EQR-002 writes, so only those are deleted
+
+
+def delete_live_check_lines() -> None:
+    db_query(
+        "delete from public.equipment_requests "
+        f"where event_id = '{PLANNING_FIXTURE}' and technical_requirements like '{LIVE_CHECK_NOTE}%'"
+    )
+
+
+def submit_equipment(ctx: Context, session: Session, event_id: str, items: list) -> httpx.Response:
+    return ctx.client.post(
+        f"{ctx.api}{EQUIPMENT_REQUESTS}", json={"event_id": event_id, "items": items}, headers=session.headers,
+    )
+
+
+@check("TC-EQR-001", "Coordinators and tech support read the equipment catalogue; organisers can't")
+def _(ctx: Context) -> None:
+    for role in ("event_coordinator", "tech_support"):
+        response = ctx.client.get(f"{ctx.api}/equipment/catalogue", headers=ctx.shared(role).headers)
+        expect_status(response, 200)
+        items = response.json()["items"]
+        expect(any(item["equipment_id"] == PROJECTOR_ID for item in items), f"{role}: seeded projector missing")
+        expect(all({"name", "total_quantity"} <= item.keys() for item in items), f"{role}: item fields missing")
+    expect_status(ctx.client.get(f"{ctx.api}/equipment/catalogue", headers=ctx.shared("event_organiser").headers), 403)
+
+
+@check(
+    "TC-EQR-002",
+    "A submission on a planning event is saved pending, above inventory, and visible to both sides",
+    needs_db=True,
+)
+def _(ctx: Context) -> None:
+    coordinator = ctx.shared("event_coordinator")
+    note = f"{LIVE_CHECK_NOTE} {ctx.run_id}: HDMI to the lectern"
+    try:
+        # 5 is above the 4 that exist: EQ-R1 allows it.
+        response = submit_equipment(ctx, coordinator, PLANNING_FIXTURE, [
+            {"equipment_id": PROJECTOR_ID, "quantity": 5, "technical_requirements": note},
+        ])
+        expect_status(response, 201)
+        [line] = response.json()["lines"]
+        expect(line["status"] == "pending", f"status is {line['status']!r}")
+        expect(line["quantity"] == 5, f"quantity is {line['quantity']}")
+
+        mine = ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/event/{PLANNING_FIXTURE}", headers=coordinator.headers)
+        expect_status(mine, 200)
+        expect(any(l["id"] == line["id"] for l in mine.json()["lines"]), "the coordinator doesn't see the line")
+
+        queue = ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/pending", headers=ctx.shared("tech_support").headers)
+        expect_status(queue, 200)
+        seen = [l for l in queue.json()["lines"] if l["id"] == line["id"]]
+        expect(seen, "tech support don't see the line")
+        expect(seen[0]["technical_requirements"] == note, "tech support don't see the technical requirements")
+        expect(seen[0]["event_name"], "tech support line has no event name")
+
+        stored = db_query(f"select status::text as status, quantity from public.equipment_requests where id = '{line['id']}'")
+        expect(stored == [{"status": "pending", "quantity": 5}], f"stored row is {stored}")
+    finally:
+        delete_live_check_lines()
+
+
+@check("TC-EQR-004", "Quantities that aren't whole numbers of at least 1, and empty submissions, are refused")
+def _(ctx: Context) -> None:
+    coordinator = ctx.shared("event_coordinator")
+    for quantity in (0, -1, 2.5, "2"):
+        response = submit_equipment(ctx, coordinator, PLANNING_FIXTURE, [{"equipment_id": PROJECTOR_ID, "quantity": quantity}])
+        expect(response.status_code == 422, f"quantity {quantity!r} answered {response.status_code}")
+    expect_status(submit_equipment(ctx, coordinator, PLANNING_FIXTURE, []), 422)
+    too_long = [{"equipment_id": PROJECTOR_ID, "quantity": 1, "technical_requirements": "x" * 1001}]
+    expect_status(submit_equipment(ctx, coordinator, PLANNING_FIXTURE, too_long), 422)
+
+
+@check("TC-EQR-008", "An event that isn't in planning refuses an equipment request")
+def _(ctx: Context) -> None:
+    response = submit_equipment(ctx, ctx.shared("event_coordinator"), FIXTURE_EVENT, [{"equipment_id": PROJECTOR_ID, "quantity": 1}])
+    expect_status(response, 409)
+    expect("planning" in response.json().get("detail", ""), f"detail is {response.json().get('detail')!r}")
+
+
+@check("TC-EQR-009", "Only a coordinator submits and only tech support see the queue, by active role")
+def _(ctx: Context) -> None:
+    item = [{"equipment_id": PROJECTOR_ID, "quantity": 1}]
+    for role in ("event_organiser", "venue_staff", "tech_support", "attendee"):
+        expect_status(submit_equipment(ctx, ctx.shared(role), PLANNING_FIXTURE, item), 403)
+    expect_status(
+        ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/pending", headers=ctx.shared("event_coordinator").headers), 403,
+    )
+    # The seeded coordinator also holds venue_staff: acting as it closes submission.
+    session = ctx.login("event_coordinator")
+    response = ctx.client.post(f"{ctx.api}/auth/active-role", json={"role": "venue_staff"}, headers=session.headers)
+    expect_status(response, 200)
+    expect_status(submit_equipment(ctx, session, PLANNING_FIXTURE, item), 403)
 
 
 def expect_field_error(response: httpx.Response, field_name: str, msg: str | None = None) -> None:

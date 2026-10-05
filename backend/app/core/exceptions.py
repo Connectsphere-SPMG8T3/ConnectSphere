@@ -97,3 +97,25 @@ class NotAssignedCoordinatorError(HTTPException):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the event's assigned coordinator can do this.",
         )
+
+
+class EquipmentRequestNotAllowedError(HTTPException):
+    """The event's status doesn't accept equipment requests (SCRUM-45, QA-22)."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+class EquipmentNotInCatalogueError(HTTPException):
+    """A requested item is missing from the catalogue or retired (SCRUM-45)."""
+
+    def __init__(self, indexes: list[int] | None = None) -> None:
+        # No indexes when the database refused the batch: it doesn't say which item.
+        locs = [["body", "items", index, "equipment_id"] for index in indexes] if indexes else [["body", "items"]]
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                {"loc": loc, "msg": "This item is not in the equipment catalogue.", "type": "not_in_catalogue"}
+                for loc in locs
+            ],
+        )

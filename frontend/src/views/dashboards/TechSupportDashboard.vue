@@ -5,6 +5,7 @@ import { useRoute } from "vue-router";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
+import PendingEquipmentRequests from "@/components/equipment/PendingEquipmentRequests.vue";
 import { ApiError, checkEquipmentAvailability, equipmentApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
@@ -325,11 +326,8 @@ function formatDate(value) {
           <h2 id="incoming-requests-heading" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
             Active requests
           </h2>
-          <p class="mb-4 text-xs font-medium text-ink/60">Equipment requests waiting on your decision.</p>
-          <BauhausEmptyState
-            title="No request workflow yet"
-            detail="Equipment requests appear here once organisers can raise them and tech support can reserve or reject them (SCRUM-24)."
-          />
+          <p class="mb-4 text-xs font-medium text-ink/60">Pending equipment lines from coordinators, soonest event first.</p>
+          <PendingEquipmentRequests />
         </section>
 
         <section aria-labelledby="maintenance-heading">

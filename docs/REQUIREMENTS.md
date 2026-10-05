@@ -930,6 +930,15 @@ Conflicts are checked when **searching** (as a filter), when **requesting** (DB-
 - **Given** a reserved line of 4, **when** I change it to 6, **then** the line is `re_review`, the 4 units stay reserved, and tech support are notified.
 - **Given** tech support reject a line with "Only 3 available", **then** I'm notified with the reason, and the event can't be confirmed.
 
+**SCRUM-45 (Sprint 3) builds the coordinator's half: recording and submitting lines.** Jira's acceptance criteria, as agreed with the developer:
+- The assigned coordinator of a `planning` event adds catalogue items, each with a whole-number quantity of at least 1 and optional technical requirements (≤ 1000 characters). A submission needs at least one item.
+- A quantity above the item's total inventory shows a warning as it is entered and can still be submitted (EQ-R1; no QA row overrides it).
+- On submission every line is `pending`, visible to tech support and the coordinator, and the submission is saved all or none.
+- **[Team decision]** Status is per line, submitted as a batch (lines share a `submission_id`), matching the data model, §6.6 and SCRUM-24 rather than a request-level status.
+- Out of scope this sprint: notifying tech support (asked for by the first acceptance criterion above), editing or deleting pending lines (EQ-R4), and tech support's sortable queue. Tech support get a read-only list of pending lines on their dashboard.
+- AC1 and AC7 ("assigned to the event") are revisited next sprint, when the Event Coordinator Lead's assignment queue (§6.5) is built.
+- Assumptions: §9 item 21.
+
 ### 6.16 Equipment availability checking *(SCRUM-23)*
 
 For an equipment type and the event window W = `[starts_at, ends_at)`:
@@ -1327,10 +1336,11 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 14. **Return message and resubmission note length (SCRUM-33):** **[Assumption]** Both are capped at 1000 characters, checked after trimming, exactly as the API checks a rejection reason (`EventRejectRequest`; the §6.4 wording "checked on the raw value" doesn't match the code, which strips first). Jira sets no bound; both values reach `event_status_history.reason` and a notification message. Is a different limit expected?
 15. **Comment length (SCRUM-61):** **[Assumption]** A comment is capped at 1000 characters after trimming, the same cap as a rejection reason and a return message. Jira sets no bound. Is a different limit expected?
 16. **Arrangement issues (SCRUM-72):** **[Assumption]** A technical readiness of `issue` on a planning or confirmed event is shown as an arrangement issue, the coordinator's most urgent action (§6.21.1). Are there other "issues" the coordinator must see before change requests and re-review exist?
-17. **Equipment readiness before SCRUM-24 (SCRUM-72):** **[Assumption]** Ready once any reservation exists for the event (or `not_required` when none was asked for). Is that close enough until per-line equipment requests exist?
+17. **Equipment readiness before SCRUM-24 (SCRUM-72):** **[Assumption]** Ready once any reservation exists for the event (or `not_required` when none was asked for). Is that close enough until per-line equipment requests exist? *(SCRUM-45 now creates per-line requests, but the dashboard still uses this assumption: switching it to "every line `reserved`" is a follow-up, IMPLEMENTATION_MAP §5.)*
 18. ~~**Awaiting-assignment count (SCRUM-72)**~~ — **Resolved by the Event Coordinator Lead clarification** (customer clarification of 2026-10-05, QA row to be added): coordinators no longer see unassigned events at all; the Lead's queue does (§6.5).
 19. **Event Coordinator Lead (§6.5):** the clarification leaves open: whether the Lead can also act as a coordinator on events (approve, reject, return); what "basic event information" the queue shows; whether a coordinator can still hand over an event themselves (AS-R4) or only the Lead reassigns; whether submission stays `draft → under_review` or a request waits in `submitted` until assigned; and who exactly is notified on assignment and reassignment (organiser, new coordinator, previous coordinator).
 20. **Booking request note length (SCRUM-19):** **[Assumption]** The coordinator's note to venue staff is capped at 1000 characters after trimming, the same cap as a comment. Jira sets no bound. Is a different limit expected?
+21. **Equipment request details (SCRUM-45):** **[Assumption]**s, none answered by the customer or Jira: (a) an item appears at most once per submission, so tech support decide one quantity per item ("combine the quantities"); (b) a submission holds at most 50 items; (c) "visible to the submitting coordinator" is read as the *assigned* coordinator, who is the same person until reassignment exists (§6.5); (d) a `retired` catalogue item can't be requested; (e) tech support's list leaves out lines on `rejected`, `cancelled` and `completed` events until SCRUM-24 releases them (§6.15 `released`). Are any of these wrong?
 
 ---
 

@@ -117,9 +117,9 @@ def _assigned_event(event_id: str, coordinator_id: str) -> dict:
 
 def assigned_event(event_id: str, coordinator_id: str) -> dict:
     """The event row for its assigned coordinator, for other modules acting on
-    the coordinator's behalf (SCRUM-19's venue booking request). Same answers as
-    every coordinator action here: 404 for a missing event or a draft, 403 for a
-    coordinator who isn't assigned."""
+    the coordinator's behalf (SCRUM-19's venue booking request, SCRUM-45's
+    equipment request). Same answers as every coordinator action here: 404 for a
+    missing event or a draft, 403 for a coordinator who isn't assigned."""
     return _assigned_event(event_id, coordinator_id)
 
 

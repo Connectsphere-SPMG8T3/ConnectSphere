@@ -1265,3 +1265,73 @@ The issue had no acceptance criteria. Six were written from REQUIREMENTS §6.12 
   - `runs/2026-10-05-1853-e2e-f9852a8.md`: **39 passed, 1 failed**. TC-BOOK-008 passed. TC-DASH-019 failed with "Failed to fetch" on the review page. The backend log shows 5 server errors, all `httpx.ReadError: [Errno 35]` in the shared Supabase client (`resolve_active_role`, `events.repository.get_event`), none in the new booking code. This is D18, now also seen on macOS, and was not re-run to make it pass.
 - **Fixture reset extended.** The manual pass requested a venue for review fixture `…-0201` after approving it, which left a hold the reset script didn't know about: it would have reset the event to `under_review` while it still held Boardroom Orchid. `event_review_fixture_reset.sql` now also deletes any booking on the two fixtures other than the seeded `d0000000-…-0201`.
 - **Follow-up raised:** cancelling a hold (BR-R5) is **SCRUM-85**, linked to SCRUM-19 in Jira.
+
+### 4.27. SCRUM-45 — Record and submit an event equipment request
+
+Built on `feature/scrum-45-equipment-request`, branched from `main` at `f9852a8`. The developer pasted the user story and acceptance criteria, then revised them after a conflict check. The Jira MCP was not connected.
+
+**Story.** As an Event Coordinator, I want to specify and submit the types, quantities, and technical requirements of equipment needed for an event, so that I can request the necessary hardware from Technical Support Staff to ensure the event is properly equipped.
+
+**Acceptance criteria (as revised by the developer).**
+1. An Event Coordinator assigned to an event can add items from the equipment catalogue and specify a quantity for each.
+2. Each item can optionally include technical requirements (up to 1,000 characters), which are saved and shown to Technical Support Staff.
+3. Quantity must be a whole number of at least 1.
+4. A submission must contain at least one item.
+5. If a quantity exceeds the item's total catalogue inventory, a warning is shown when the quantity is entered, but the request can still be submitted.
+6. On submission, each submitted line gets status "Pending" and is visible to Technical Support Staff and to the submitting Coordinator. All lines in one submission are saved together, or none are.
+7. A request is only accepted for an event that is assigned to the submitting Coordinator and is in planning status (QA-22).
+
+#### Decisions taken with the developer
+
+- **Conflict found before planning:** the first draft of AC5 blocked submission above inventory, which contradicted EQ-R1. The developer revised AC5 to warn-and-allow, so EQ-R1 stands and there is no deviation to record.
+- **Status is per line, submitted as a batch** (lines share a `submission_id`), not a request-level status. This matches the data model, §6.6 readiness and SCRUM-24.
+- **Out of scope this sprint:** notifying tech support, editing or deleting pending lines (EQ-R4), and tech support's sortable queue. Tech support get a read-only list instead.
+- AC1 and AC7 are revisited next sprint with the Event Coordinator Lead's assignment queue (§6.5).
+- **Don't merge SCRUM-19** (under review) into this branch. Rebase onto `main` once it lands. Because the live project already had SCRUM-19's migration, the developer chose to **wait for SCRUM-19** before applying this story's migration. Once SCRUM-19 merged (PR #40), the branch was rebased onto `main` (`3fff160`): only docs conflicted, plus `events.service.assigned_event`, which both stories had added with the same behaviour, so `main`'s was kept. The §9 assumptions became item 21 and this entry §4.27, because SCRUM-19 had used item 20 and §4.26.
+- Five smaller rules had no answer and are recorded as **[Assumption]**s in REQUIREMENTS §9 item 21: one line per item, 50 items at most, "submitting" read as "assigned" coordinator, retired items not requestable, and closed events' lines hidden from tech support.
+
+#### What was built
+
+- **Database** (`20261006120000_equipment_requests.sql`):
+  - enum `equipment_request_status`, with all five §6.15 values
+  - table `equipment_requests`, with quantity ≥ 1 and technical requirements of 1–1000 characters after trimming, both enforced by the table
+  - select-only RLS on the active role (`private.current_user_role()`)
+  - `submit_equipment_request`: locks the event, re-checks that it exists and isn't a draft, the assignment and `planning` (with its own outcome for `returned`), then the catalogue. It inserts the batch in one statement and returns an outcome code rather than raising. Only `service_role` can execute it.
+- **Backend** (`modules/equipment`):
+  - `GET /equipment/catalogue` (coordinator, tech support)
+  - `POST /equipment/requests` (coordinator)
+  - `GET /equipment/requests/event/{id}` (assigned coordinator)
+  - `GET /equipment/requests/pending` (tech support)
+  - The assignment check reuses `_assigned_event` through a new public `events.service.assigned_event`.
+  - Errors are typed in `core/exceptions.py`.
+  - The service checks the catalogue before calling the function, so the 422 can name the offending item. The function checks again under the lock.
+- **Frontend:**
+  - `features/equipment/` holds the pure rules, `useEquipmentRequestStore` and `useEquipmentQueueStore`.
+  - `EquipmentRequestPanel` on `CoordinatorEventView`. The EQ-R1 warning reuses `BauhausInput`'s `flag` prop: a yellow "review this" note, not a red error.
+  - `PendingEquipmentRequests` replaces the "No request workflow yet" placeholder in the tech-support dashboard's **Active requests**.
+- **Verification assets:**
+  - `supabase/verification/equipment_request_checks.sql`, rolled back after it runs
+  - `verify_live.py` TC-EQR-001, 002, 004, 008, 009. TC-EQR-002 writes one marked line on fixture `…0202` and deletes it in the same run, as agreed with the developer.
+  - `frontend/e2e/equipment.e2e.js`
+  - The fixture reset script now also clears request lines.
+- **Docs:** `docs/test-cases/equipment.md` (TC-EQR-001–013); REQUIREMENTS §6.15 SCRUM-45 note and §9 item 21; IMPLEMENTATION_MAP (also corrects the stale SCRUM-23/73 entries noted in §4.25); DEFECTS **D19**.
+
+#### Verification
+
+- **Written red first:**
+  - `backend/tests/test_equipment_requests_api.py` (62 cases). It failed because the repository functions didn't exist.
+  - `features/equipment/__tests__/equipmentRequest.spec.js` (29) and `equipmentRequestStore.spec.js` (8). Both failed because the modules didn't exist.
+  - `components/equipment/__tests__/EquipmentRequestPanel.spec.js` (13)
+  - three new `techSupportDashboard.spec.js` cases. They failed on the placeholder.
+- **Full suites:** `pytest` **574 passed**, including the active-role matrix over the four new routes. `npm test` **46 files, 560 passed**. `npm run build` passed. After the rebase onto SCRUM-19: `pytest` **606 passed**, `npm test` **47 files, 563 passed**, build passed.
+- **Live project** (after the rebase): `supabase db push --dry-run` listed only `20261006120000`; it was applied with `supabase db push` and `supabase migration list --linked` matches. `supabase db advisors --linked` reports nothing on the new table or function; its 9 `auth_rls_initplan` warnings are all on the SCRUM-23 write policies (D19), plus the known leaked-password-protection warning.
+- **Recorded runs** (commit `3fff160`, servers on 8010/5180):
+  - `runs/2026-10-05-2250-api-db-3fff160.md`: **62/62 passed**, including TC-EQR-001, 002, 004, 008, 009 and `equipment_request_checks.sql`. TC-EQR-002 exercised the real PostgREST embeds and deleted its line; the live table was empty afterwards.
+  - `runs/2026-10-05-2253-e2e-3fff160.md`: **41 passed, 1 failed**. Both SCRUM-45 specs passed. TC-ROLE-003 failed because `POST /auth/active-role` answered 500 (`httpx.RemoteProtocolError: Server disconnected` in the shared Supabase client), which is D18. In the same run, the coordinator event page's two new equipment reads also answered 500 once during TC-BOOK-008, which still passed. Not re-run to get a pass.
+  - Local `node_modules` had no `@playwright/test` (SCRUM-19 added it); `npm install` from the unchanged lockfile and `npx playwright install chromium` fixed that.
+- **Manual browser pass** by the developer: TC-EQR-003, 005, 006, 012 and 013 all **passed** (`runs/2026-10-05-2332-manual-a9bd1a9.md`). It submitted five lines on the planning event *test approve*, not on a fixture.
+- **Not verified:** a coordinator who isn't assigned to the event, against the live API, because the seed has only one coordinator (`pytest` and `equipment_request_checks.sql` cover it).
+- **Noticed, not fixed:**
+  - **D19**: the SCRUM-23 equipment tables' write policies don't follow the active role.
+  - No data module maps a Supabase outage to 503 (only auth does), so an outage here is a 500, like everywhere else.
+  - `TechSupportDashboard`'s maintenance times are formatted in UTC, not Singapore time.
