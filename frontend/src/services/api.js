@@ -95,6 +95,9 @@ export const eventsApi = {
   create(payload, token) {
     return request("/events", { method: "POST", body: payload, token });
   },
+  clone(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/clone`, { method: "POST", token });
+  },
   update(eventId, payload, token) {
     return request(`/events/${encodeURIComponent(eventId)}`, { method: "PATCH", body: payload, token });
   },
@@ -120,6 +123,13 @@ export const eventsApi = {
   },
   history(eventId, token) {
     return request(`/events/${encodeURIComponent(eventId)}/history`, { token });
+  },
+  // SCRUM-61: the organiser–coordinator discussion thread.
+  listComments(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/comments`, { token });
+  },
+  addComment(eventId, body, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/comments`, { method: "POST", body: { body }, token });
   },
 };
 

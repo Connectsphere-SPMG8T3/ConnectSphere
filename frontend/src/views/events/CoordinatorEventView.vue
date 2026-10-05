@@ -6,6 +6,7 @@ import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
+import EventDiscussion from "@/components/events/EventDiscussion.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
 import RejectEventModal from "@/components/events/RejectEventModal.vue";
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
@@ -156,6 +157,10 @@ watch(
         <BauhausCard background="white" accent="none">
           <h2 class="mb-6 text-2xl font-black uppercase tracking-tight">History</h2>
           <EventStatusHistory :entries="review.history" />
+        </BauhausCard>
+
+        <BauhausCard background="white" accent="none">
+          <EventDiscussion :event-id="event.id" :status="event.status" />
         </BauhausCard>
       </div>
     </template>

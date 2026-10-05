@@ -172,3 +172,71 @@ def test_get_open_amendment_is_none_when_nothing_is_open(monkeypatch):
     monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
 
     assert repository.get_open_amendment("event-1") is None
+
+
+def test_list_comments_reads_oldest_first_with_the_author_embedded(monkeypatch):
+    calls = {}
+
+    class CommentQuery:
+        def select(self, columns):
+            calls["columns"] = columns
+            return self
+
+        def eq(self, field, value):
+            calls["eq"] = (field, value)
+            return self
+
+        def order(self, column, *, desc=False):
+            calls["order"] = (column, desc)
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[{"id": "c1"}])
+
+    class AdminClient:
+        def table(self, name):
+            calls["table"] = name
+            return CommentQuery()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    assert repository.list_comments("event-1") == [{"id": "c1"}]
+    assert calls["table"] == "event_comments"
+    assert "author:profiles!event_comments_author_id_fkey(id, full_name)" in calls["columns"]
+    assert calls["eq"] == ("event_id", "event-1")
+    assert calls["order"] == ("created_at", False)
+
+
+def test_add_comment_calls_the_function_and_returns_its_row(monkeypatch):
+    sent = {}
+
+    class Rpc:
+        def execute(self):
+            return SimpleNamespace(data=[{"id": "c1", "body": "Hi"}])
+
+    class AdminClient:
+        def rpc(self, name, params):
+            sent["name"], sent["params"] = name, params
+            return Rpc()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    row = repository.add_comment("event-1", "user-1", "Hi", notify_message="msg")
+
+    assert row == {"id": "c1", "body": "Hi"}
+    assert sent == {"name": "add_event_comment", "params": {
+        "p_event_id": "event-1", "p_author_id": "user-1", "p_body": "Hi", "p_notify_message": "msg"}}
+
+
+def test_add_comment_is_none_when_the_function_refuses(monkeypatch):
+    class Rpc:
+        def execute(self):
+            return SimpleNamespace(data=[])
+
+    class AdminClient:
+        def rpc(self, name, params):
+            return Rpc()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    assert repository.add_comment("event-1", "user-1", "Hi", notify_message="msg") is None

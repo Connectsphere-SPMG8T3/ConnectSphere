@@ -72,6 +72,24 @@ These cases cover the implemented organiser draft and submission workflow. Run t
 | Duplicate submission returns `409` (ER-R4) | TC-EVENT-021 |
 | Only Event Organisers can create requests; ownership is enforced server-side (AUTH-R1, S-R1) | TC-EVENT-005, TC-EVENT-030 |
 
+## Reuse a previous event as a template (SCRUM-66)
+
+These cases cover creating a new draft from the signed-in organiser's own previous event. Sharing templates between organisers, including organisers with the same `organisation_name`, is deferred until client organisations are implemented.
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-EVENT-040 | Organiser creates a draft from their previous event | Logged in as an Event Organiser with an eligible previous event | Open the organiser's event list, choose **Use as template**, and inspect the new draft | Existing event with request details, dates, and arrangements | Exactly one new draft is created. Reusable request fields are copied, but the new event has a different ID and does not copy the source status, dates, bookings, reservations, registrations, notifications, comments, or history. | 🔴 |
+| TC-EVENT-041 | Template draft is editable and independent | A template draft exists | Change copied fields, dates, and requirements, save, then submit the new request | Changed title, purpose, date/time, attendance, and requirements | Normal event validation applies. The new request follows the normal submission lifecycle, and the source event remains unchanged. | 🔴 |
+| TC-EVENT-042 | Organiser cannot use another organiser's event as a template | Two organisers exist; organiser B owns an event | Log in as organiser A and try to use organiser B's event through the UI and direct API request | Organiser B's event ID; same `organisation_name` may be used in the profile data | The event is not offered as a template and the API returns `404`; no source details are disclosed and no draft is created. | 🔴 |
+
+### Traceability — SCRUM-66
+
+| SCRUM-66 acceptance criterion / rule | Covered by |
+|---|---|
+| A new draft copies reusable fields while excluding source identity and workflow data | TC-EVENT-040; `test_organiser_can_create_an_independent_draft_from_their_event`; organiser dashboard copy-icon test |
+| Copied values remain editable, validated, and independent from the source event | TC-EVENT-041; `test_cloned_draft_can_be_edited_and_submitted_without_changing_source` |
+| Template access is limited to the organiser's own events; organisation-name matching grants no access | TC-EVENT-042; `test_organiser_cannot_clone_another_organisers_event` |
+
 ## Event review — approve and reject (SCRUM-34, SCRUM-52)
 
 **Preconditions for every case unless noted otherwise:** every migration applied (including `20260923120000_event_review_history_and_notifications.sql`) and `supabase/seed.sql` run, so fixture events `e0000000-…-0201` (`under_review`, assigned to `coordinator@connectsphere.dev`) and `e0000000-…-0202` (`planning`, with `held` venue booking `d0000000-…-0201`) exist. Reset both events (and the booking) to those statuses between cases, since approving/rejecting mutates them — run `supabase/verification/event_review_fixture_reset.sql` as an operator (Supabase MCP `execute_sql` or `psql "$DATABASE_URL" -f ...`) to do this; it also clears the stray `event_status_history`/`notifications` rows a raw status reset would otherwise leave behind, which `seed.sql`'s `on conflict do nothing` inserts cannot repair. Logged in as `coordinator@connectsphere.dev` / `Cs1234` (Marcus Lim) on `/coordinator/events/{id}` unless the case says otherwise.
@@ -153,3 +171,35 @@ One case per acceptance criterion, in Jira order (SCRUM-34 AC1–6, then SCRUM-5
 | AC7 no approve/reject while returned | TC-AMD-009 | `test_event_lifecycle.py::test_a_returned_event_cannot_be_approved_or_rejected`; `TestReturn::test_a_returned_request_cannot_be_decided` |
 
 **Automated coverage today.** `ReturnEventModal.spec.js` also pins the dialog's top alignment, after the real-system run found its heading unreachable at 375x812. The API suite mocks the repository, so the functions' own atomicity, notifications and RLS are covered by `supabase/verification/event_amendment_checks.sql`, run against the live project, rather than by `pytest`. TC-AMD-004's "after a reload" and the phone-width checks remain manual.
+
+## Event comments (SCRUM-61)
+
+**Preconditions for every case unless noted otherwise:** every migration applied (including `20261002120000_event_comments.sql`), fixture event `e0000000-…-0201` reset to `under_review` with `supabase/verification/event_review_fixture_reset.sql` (which also clears its comments), and assigned to `coordinator@connectsphere.dev` (Marcus Lim). The organiser is `organiser@connectsphere.dev` (Olivia Tan). Run the reset again afterwards: the cases below post to shared data.
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-CMT-001 | AC1 — the organiser posts a comment on their submitted request | Organiser on `/events/…0201` | Type in **Add a comment**, click **Post** | `"Can we recce the hall on Friday?"` | `POST /events/{id}/comments` → 201. The comment appears at the bottom of **Discussion** and the box clears. One `comment_added` notification to the coordinator, none to the organiser. | 🔴 |
+| TC-CMT-002 | AC1 — the assigned coordinator replies | TC-CMT-001 done; coordinator on `/coordinator/events/…0201` | The organiser's comment is shown; type a reply, click **Post** | `"Booked a recce for 3pm."` | 201; the reply appears under the organiser's comment. One `comment_added` notification to the organiser. | 🔴 |
+| TC-CMT-003 | A comment can't be blank or longer than 1000 characters | Either user, thread open | Type only spaces; then paste 1001 characters | `"   "`, 1001 × `x` | **Post** stays disabled for spaces; the box stops at 1000 and the counter reads `1000 / 1000`. Raw `POST` with `{"body":"   "}` or 1001 characters → 422. | 🟠 |
+| TC-CMT-004 | A closed event's thread is read-only | Fixture set to `rejected` by SQL (reset afterwards) | Open both event pages | — | Earlier comments still show; the composer is replaced by "This discussion is closed. Earlier comments stay on the record." Raw `POST` → 409 `Comments are closed for a rejected event.` | 🟠 |
+| TC-CMT-005 | A draft has no thread | Organiser with a draft | Open `/events/<draft id>` | — | No **Discussion** panel. Raw `GET …/comments` → 200 `{"comments": []}`; `POST` → 409 `Comments open once the request is submitted.` | 🟢 |
+| TC-CMT-006 | AC1 — another organiser can't read or post | A second organiser account | `GET` and `POST /events/…0201/comments` as that organiser | valid body | 404 for both. | 🔴 |
+| TC-CMT-007 | AC1 — a coordinator who isn't assigned can't read or post | A second coordinator account | `GET` and `POST` as that coordinator | valid body | 403 for both. | 🔴 |
+| TC-CMT-008 | AC1 — other roles can't read or post, even on an account that also holds the coordinator role | — | `GET` and `POST` as venue staff, tech support, attendee, and `coordinator@connectsphere.dev` switched to Venue Staff | valid body | 403 for every request. | 🔴 |
+| TC-CMT-009 | AC2 — each comment shows who wrote it and when | TC-CMT-002 done | Read the thread as both users | — | Each comment shows the author's name, their role on the event (Event Organiser / Event Coordinator) and the time in Singapore time. The time is set by the database, not the browser. | 🔴 |
+| TC-CMT-010 | AC3 — each comment notifies the other party | TC-CMT-001 and 002 done | Query `notifications` for the fixture | — | Exactly one `comment_added` row per comment, addressed to the other party, with the message "The organiser commented on …" / "Your coordinator commented on …". | 🔴 |
+| TC-CMT-011 | AC3 — no notification when no coordinator is assigned | An under-review event with no coordinator (SQL, rolled back) | Post as its organiser | `"Anyone there?"` | Comment saved; no notification written. | 🟠 |
+| TC-CMT-012 | AC4 — the thread is kept with the event | TC-CMT-002 done | Reload both pages; sign out and back in | — | Both comments still show, oldest first, on both pages. | 🟠 |
+| TC-CMT-013 | AC4 — comments can't be edited or deleted | — | Look for edit/delete controls; try `update`/`delete` on `event_comments` as a signed-in user (RLS) | — | No edit or delete controls; the API has no such routes; RLS updates and deletes affect 0 rows. | 🟢 |
+
+### Traceability — SCRUM-61
+
+| Acceptance criterion | Covered by | Automated equivalent |
+|---|---|---|
+| AC1 organiser and authorised staff can add comments | TC-CMT-001, TC-CMT-002, TC-CMT-003, TC-CMT-004, TC-CMT-005 | `test_event_comments_api.py::TestPost` (both roles, every open status, blank/missing/1000/1001, closed 409, draft 409, racing a close 409, unassigned event); `EventDiscussion.spec.js` (counter, disabled Post, read-only when closed, keeps text on failure); `comments.spec.js`; `eventCommentsStore.spec.js`; `EventDetailView.spec.js` / `CoordinatorEventView.spec.js` (panel shown, none on a draft) |
+| AC1 (denials) nobody else reads or posts | TC-CMT-006, TC-CMT-007, TC-CMT-008 | `TestAccess` (other organiser 404, unassigned coordinator 403, draft 404 to coordinators, other roles 403, coordinator acting as venue staff 403, organiser acting as attendee 403); `test_active_role_access.py`; `event_comment_checks.sql` (RLS); `verify_live.py` TC-CMT-008 |
+| AC2 contributor and timestamp recorded | TC-CMT-009 | `TestPost::test_the_owning_organiser_posts_and_the_coordinator_is_told`, `TestRead` (author role, deleted author, former coordinator); `event_comment_checks.sql` (`created_at` from the database); `EventDiscussion.spec.js` "shows each comment with its author, role and Singapore time"; `verify_live.py` TC-CMT-009 |
+| AC3 relevant parties notified | TC-CMT-010, TC-CMT-011 | `event_comment_checks.sql` (one notification each way, none to the author, none when unassigned); `TestPost` (notification message per role) |
+| AC4 stored as part of event history | TC-CMT-012, TC-CMT-013 | `TestRead::test_both_parties_read_the_thread_oldest_first`; `event_comment_checks.sql` (no update or delete through RLS); `eventCommentsStore.spec.js` |
+
+**Automated coverage today.** The API suite mocks the repository, so the function's atomicity, notifications and RLS are covered by `supabase/verification/event_comment_checks.sql`, run against the live project with `verify_live.py --record` (passed 2026-10-02, `runs/2026-10-02-1949-api-db-c7d0736.md`). `verify_live.py` reads the fixture's thread as both parties and checks the 403s, without posting. TC-CMT-001, 002, 004 and 012 post to or change shared data, and layout at phone width needs a person's eye, so they stay manual. TC-CMT-006 and 007 need a second organiser and coordinator, which the seed doesn't have, so `pytest` covers them.

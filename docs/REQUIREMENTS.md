@@ -674,7 +674,7 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 
 > **Superseded in part by the Event Coordinator Lead (customer clarification of 2026-10-05, QA row to be added).** The customer has introduced a new internal role, the **Event Coordinator Lead**. Newly submitted requests are no longer assigned directly to a coordinator: they enter an **unassigned queue** that the Lead can view. The Lead reviews basic event information, assigns a suitable coordinator, and can reassign. Coordinators manage only the events assigned to them; the Lead can view all coordinator assignments and the active events under their supervision. Relevant users are notified of assignments and reassignments.
 >
-> This replaces automatic assignment (AS-R1, AS-R3) and the "Awaiting assignment" alert on every coordinator dashboard (AS-R5), and it contradicts "no manager exists (QA-3)" below. The rules beneath are kept for the record until the story that builds the Lead role rewrites this section. Already applied: the coordinator dashboard no longer shows or receives an unassigned count (SCRUM-72, §6.21). Still open: §9 item 18.
+> This replaces automatic assignment (AS-R1, AS-R3) and the "Awaiting assignment" alert on every coordinator dashboard (AS-R5), and it contradicts "no manager exists (QA-3)" below. The rules beneath are kept for the record until the story that builds the Lead role rewrites this section. Already applied: the coordinator dashboard no longer shows or receives an unassigned count (SCRUM-72, §6.21). Still open: §9 item 19.
 
 **Automatic assignment** (QA-5, QA-54, QA-79, QA2-7). Coordinators don't claim requests and no manager exists (QA-3). The customer named "round-robin or load-based" and left the detailed criteria to us (QA2-7).
 
@@ -1072,7 +1072,7 @@ Each dashboard composes widgets from the feature stores. **Build a widget only w
 |---|---|
 | Organiser | Drafts · Returned requests needing my amendment · My requests with status · Upcoming confirmed events · Decided change requests |
 | Coordinator | My events needing action (resubmitted, change or cancellation requested, booking or equipment decided, re-review outcomes, issues) · My events by status · Readiness gaps in the next 14 days. No unassigned figure: unassigned events are the Event Coordinator Lead's queue (§6.5) |
-| Event Coordinator Lead | The unassigned queue · all coordinator assignments and active events under their supervision. **Not built yet**; to be specified with the Lead story (§6.5, §9 item 18) |
+| Event Coordinator Lead | The unassigned queue · all coordinator assignments and active events under their supervision. **Not built yet**; to be specified with the Lead story (§6.5, §9 item 19) |
 | Venue staff | Pending holds (oldest first) · Bookings in re-review · Active and upcoming blocks · Venues (active/inactive). **All venues**, since staff are a pool (AUTH-R5). |
 | Tech support | Pending and re-review equipment lines · Events needing technical readiness · Equipment in maintenance · Upcoming reservations (7 days) |
 | Attendee | My upcoming registrations and waitlist invitations · Browse open events |
@@ -1100,9 +1100,9 @@ Ties break by **soonest event date**, then by longest wait, then by ID for stabl
 
 **What the server derives** (`GET /events/dashboard/coordinator`, `events.service.coordinator_dashboard`). Only events assigned to the caller, never drafts (DR-R2). `awaiting_review` is an `under_review` event with no answered amendment; `resubmitted` is one whose latest amendment has `resubmitted_at`. Kinds with no data source yet (change and cancellation requests, booking and equipment decisions, re-review outcomes) are never produced, so their widgets stay empty rather than invented.
 
-- **[Assumption]** `arrangement_issue` is produced for a `planning` or `confirmed` event whose `technical_readiness` is `issue`, the one arrangement problem the system records today. The event also carries the flag `technical_issue`. See §9 item 15.
-- **[Assumption]** Equipment readiness is `not_required` when the event lists no preliminary equipment needs, `ready` once it has at least one `confirmed` or `completed` reservation, and `pending` otherwise. §6.6's "every request reserved" needs SCRUM-24's per-event equipment requests, which don't exist yet. See §9 item 16.
-- **Unassigned events are not shown.** The coordinator dashboard carries no unassigned count or alert: unassigned events are the Event Coordinator Lead's queue (customer clarification of 2026-10-05, QA row to be added, §6.5). This replaces the earlier [Assumption] about counting them (§9 item 17).
+- **[Assumption]** `arrangement_issue` is produced for a `planning` or `confirmed` event whose `technical_readiness` is `issue`, the one arrangement problem the system records today. The event also carries the flag `technical_issue`. See §9 item 16.
+- **[Assumption]** Equipment readiness is `not_required` when the event lists no preliminary equipment needs, `ready` once it has at least one `confirmed` or `completed` reservation, and `pending` otherwise. §6.6's "every request reserved" needs SCRUM-24's per-event equipment requests, which don't exist yet. See §9 item 17.
+- **Unassigned events are not shown.** The coordinator dashboard carries no unassigned count or alert: unassigned events are the Event Coordinator Lead's queue (customer clarification of 2026-10-05, QA row to be added, §6.5). This replaces the earlier [Assumption] about counting them (§9 item 18).
 
 **[Team decision]** The coordinator dashboard follows the organiser dashboard's layout (§6.21.2): **Overview** and **Events** views chosen from the sidebar (`?tab=`), the same header card, category tiles, status cards and event cards. The AC1 prioritised list and the readiness gaps stay on Overview. Category tiles and status headings open Events filtered to them, and every event opens `/coordinator/events/:id`. Reason: the developer asked for one consistent look across the two event dashboards.
 
@@ -1250,7 +1250,7 @@ These are the Week 1 features outside the core 20. They stay in Jira at `priorit
 | Event programme and agenda | Sessions and breaks. Timing changes that move the event window are significant (QA-98). | `event_sessions` |
 | Multi-session events | Different timings per session; venue rules TBD after Week 4 (QA-115). Release 1 is one venue and one date per event (QA-116, QA-135). | `event_sessions` |
 | Recurring or similar events | Clone a past event's baseline data; each copy keeps its own dates and requirements (QA-99, QA-120). Filtering rules are a team choice; retrigger rules pending (QA-57, QA-63). SCRUM-66. | `events` service |
-| Comments and discussion | Attached to the event record; offline conversations recorded manually by staff (QA-100, QA2-27); @mentions and resolve are optional (QA-131, QA-132); **not** progression blockers (QA-133). Session 2 named comments as the organiser–coordinator channel (for example asking for a site recce); no floor-plan feature is required (QA2-27). SCRUM-61. | `event_comments` |
+| Comments and discussion | **Built in SCRUM-61.** Attached to the event record; offline conversations recorded manually by staff (QA-100, QA2-27); @mentions and resolve are optional (QA-131, QA-132) and not built; **not** progression blockers (QA-133). Session 2 named comments as the organiser–coordinator channel (for example asking for a site recce); no floor-plan feature is required (QA2-27). **[Team decision]** Readers and posters are the owning organiser and the assigned coordinator, each in that active role (QA2-27; venue staff and tech support wait until bookings and equipment requests link them to an event). Posting is open from `submitted` to `confirmed`; `rejected`, `cancelled` and `completed` keep a read-only thread; a `draft` has none. Comments are append-only (no edit or delete), and each one notifies the other party (`comment_added`; nobody when no coordinator is assigned yet, **[Assumption]**). An offline conversation is recorded as an ordinary comment. Length cap: §9 Q15. | `event_comments`, `add_event_comment` |
 | Supporting documents | Attachments (Supabase Storage) | `event_documents` |
 | Venue photo library | The profile's carousel is built and its `photos` contract is live, but nothing populates it; layout schematics stand in (VC-R8). Needs a `venue_photos` table, a storage bucket with RLS, and an upload path in the venue edit screen | `venue_photos` |
 | Tentative venue holding | **Now core behaviour** (§6.12, QA-6) | – |
@@ -1276,6 +1276,28 @@ These are the Week 1 features outside the core 20. They stay in Jira at `priorit
 | Event reports, venue usage reports, registration reports, export | Venue usage covers bookings, utilisation, and activity over a period (QA-67). Registration export uses participant lists; consent mechanism is a team choice (QA-109). | `reports` |
 | Email / SMS / WhatsApp notifications; .ics export | Channel is a team choice (QA-11, QA-39); SCRUM-69, SCRUM-58 | `notifications` |
 
+### 8.1 Reuse a previous or recurring event *(SCRUM-66)*
+
+**User story**
+
+As an Event Organiser, I want to create a new request based on a previous or recurring event, so that I do not have to re-enter unchanged information.
+
+**Behaviour and rules**
+
+- An organiser can choose one of their own previous event requests as a template while starting a new request.
+- The new draft copies reusable request information: name, purpose, expected attendance, location and layout preferences, required facilities, accessibility needs, preliminary equipment needs, and registration settings.
+- Event-specific or workflow-owned data is not copied: event ID, status, owner identity, coordinator assignment, dates and times, venue bookings, equipment reservations, registrations, notifications, comments, and history.
+- The new request starts as a new draft with its own identity and audit trail. Editing or submitting it never changes the source event.
+- All copied values remain editable before submission, subject to the normal draft validation and submission rules in §6.2.
+- Only the organiser's own eligible event requests can be selected as templates in SCRUM-66. Drafts remain visible only to their owner, and `organisation_name` from SCRUM-80 is descriptive profile data, not an authorisation relationship. Shared access to another organiser's events is deferred to a future client-organisation story because client organisations are outside the first-release core scope.
+- **[Team decision]** The first version supports an explicit “Use as template” action. Automatic recurrence scheduling and automatic retriggering of bookings, equipment reservations, registrations, or notifications are out of scope.
+
+**Acceptance criteria**
+
+- **Given** I am an authenticated Event Organiser and select an eligible event with **Use as template**, **then** exactly one new draft is created with reusable request fields pre-filled; if no eligible event exists, I can still start a blank request. The source event's ID, status, owner, coordinator, dates, bookings, reservations, registrations, notifications, comments, and history are not copied.
+- **Given** the template draft is created, **when** I edit its copied fields, dates, or requirements and submit it, **then** the changes are validated by the normal event-request rules, saved only on the new draft, and the source event remains unchanged. The new draft has a distinct event ID and follows the normal submission and review lifecycle.
+- **Given** another organiser owns an event, **then** it is not available as a template, even when both organisers have the same `organisation_name`; the source event's details are not disclosed.
+
 ---
 
 ## 9. Open questions for the customer
@@ -1296,13 +1318,14 @@ These are the Week 1 features outside the core 20. They stay in Jira at `priorit
 6. **Organiser edits under review:** QA2-4 says organisers "edit/resubmit their requests only". We read that as editing only while `returned` (§6.7). Can an organiser also edit directly while the request is `under_review`, before any return?
 10. ~~**Dual roles (QA2-24)**~~ — **Resolved by SCRUM-74/75/78** (see ACC-R4): the schema and UI now support an account holding 2+ roles via a session-scoped active-role switcher, plus a persistent "All Roles" list on the profile page. Still open: which role combinations are expected beyond Coordinator + Venue Staff (the seeded example), and whether a user acting as both may approve their own booking or equipment request. **[Assumption]** No rule against self-approval has been added, so it is treated as allowed until a story says otherwise — the customer left this unanswered, and self-approval is now technically reachable now that a single account can hold both a requesting and an approving role.
 11. **Coordinator cancellation boundary:** is "until the event's start time" (LC-R5) an acceptable rule, given the customer asked us to choose one with a rationale (QA2-5)?
-12. **Comments:** Session 2 named event comments as the organiser–coordinator channel (QA2-27) but also allowed it to happen offline. Is the comments thread (§8, SCRUM-61) expected in release 1?
+12. **Comments:** Session 2 named event comments as the organiser–coordinator channel (QA2-27) but also allowed it to happen offline. Is the comments thread (§8, SCRUM-61) expected in release 1? **Answered by the team:** yes. SCRUM-61 was planned into Sprint 2 and built as the organiser–coordinator thread (§8).
 13. **Rejection reason length (SCRUM-52):** Jira sets no maximum. We capped it at 1000 characters (§6.4) as a reasonable bound for a free-text field feeding both the history table and a notification message. Is a different limit expected?
 14. **Return message and resubmission note length (SCRUM-33):** **[Assumption]** Both are capped at 1000 characters, checked after trimming, exactly as the API checks a rejection reason (`EventRejectRequest`; the §6.4 wording "checked on the raw value" doesn't match the code, which strips first). Jira sets no bound; both values reach `event_status_history.reason` and a notification message. Is a different limit expected?
-15. **Arrangement issues (SCRUM-72):** **[Assumption]** A technical readiness of `issue` on a planning or confirmed event is shown as an arrangement issue, the coordinator's most urgent action (§6.21.1). Are there other "issues" the coordinator must see before change requests and re-review exist?
-16. **Equipment readiness before SCRUM-24 (SCRUM-72):** **[Assumption]** Ready once any reservation exists for the event (or `not_required` when none was asked for). Is that close enough until per-line equipment requests exist?
-17. ~~**Awaiting-assignment count (SCRUM-72)**~~ — **Resolved by the Event Coordinator Lead clarification** (customer clarification of 2026-10-05, QA row to be added): coordinators no longer see unassigned events at all; the Lead's queue does (§6.5).
-18. **Event Coordinator Lead (§6.5):** the clarification leaves open: whether the Lead can also act as a coordinator on events (approve, reject, return); what "basic event information" the queue shows; whether a coordinator can still hand over an event themselves (AS-R4) or only the Lead reassigns; whether submission stays `draft → under_review` or a request waits in `submitted` until assigned; and who exactly is notified on assignment and reassignment (organiser, new coordinator, previous coordinator).
+15. **Comment length (SCRUM-61):** **[Assumption]** A comment is capped at 1000 characters after trimming, the same cap as a rejection reason and a return message. Jira sets no bound. Is a different limit expected?
+16. **Arrangement issues (SCRUM-72):** **[Assumption]** A technical readiness of `issue` on a planning or confirmed event is shown as an arrangement issue, the coordinator's most urgent action (§6.21.1). Are there other "issues" the coordinator must see before change requests and re-review exist?
+17. **Equipment readiness before SCRUM-24 (SCRUM-72):** **[Assumption]** Ready once any reservation exists for the event (or `not_required` when none was asked for). Is that close enough until per-line equipment requests exist?
+18. ~~**Awaiting-assignment count (SCRUM-72)**~~ — **Resolved by the Event Coordinator Lead clarification** (customer clarification of 2026-10-05, QA row to be added): coordinators no longer see unassigned events at all; the Lead's queue does (§6.5).
+19. **Event Coordinator Lead (§6.5):** the clarification leaves open: whether the Lead can also act as a coordinator on events (approve, reject, return); what "basic event information" the queue shows; whether a coordinator can still hand over an event themselves (AS-R4) or only the Lead reassigns; whether submission stays `draft → under_review` or a request waits in `submitted` until assigned; and who exactly is notified on assignment and reassignment (organiser, new coordinator, previous coordinator).
 
 ---
 

@@ -81,6 +81,7 @@ DB_SCRIPTS = [
     ("event_review_checks.sql", "SCRUM-34/52 grants"),
     ("event_history_checks.sql", "TC-REV-015, TC-REV-016"),
     ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
+    ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
 ]
 
 
@@ -499,6 +500,29 @@ def _(ctx: Context) -> None:
 
 
 # --- Sign-up (SCRUM-80) ----------------------------------------------------
+
+
+FIXTURE_EVENT = "e0000000-0000-4000-8000-000000000201"  # supabase/seed.sql: under_review, assigned
+
+
+@check("TC-CMT-009", "The organiser and the assigned coordinator both read the event's comment thread")
+def _(ctx: Context) -> None:
+    for role in ("event_organiser", "event_coordinator"):
+        response = ctx.client.get(f"{ctx.api}/events/{FIXTURE_EVENT}/comments", headers=ctx.shared(role).headers)
+        expect_status(response, 200)
+        comments = response.json().get("comments")
+        expect(isinstance(comments, list), f"{role}: response has no comments list")
+        for comment in comments:
+            expect({"id", "body", "created_at", "author"} <= comment.keys(), f"{role}: comment is missing fields")
+
+
+@check("TC-CMT-008", "Venue staff, tech support and attendees can neither read nor post comments")
+def _(ctx: Context) -> None:
+    url = f"{ctx.api}/events/{FIXTURE_EVENT}/comments"
+    for role in ("venue_staff", "tech_support", "attendee"):
+        headers = ctx.shared(role).headers
+        expect_status(ctx.client.get(url, headers=headers), 403)
+        expect_status(ctx.client.post(url, headers=headers, json={"body": "live check"}), 403)
 
 
 def expect_field_error(response: httpx.Response, field_name: str, msg: str | None = None) -> None:

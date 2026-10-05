@@ -1025,7 +1025,85 @@ Not a Jira story. An enabler on `chore/automated-live-checks`. It makes every ru
 - **Not verified:** the artifact upload itself, which first runs on this branch's PR. A run on Windows: the npm scripts avoid shell-specific syntax, but the `E2E_*` variables in the README examples are written for a POSIX shell.
 
 
-### 4.23. SCRUM-72 — Coordinator dashboard on real data, in the organiser's layout
+### 4.23. SCRUM-61 — Comment and discuss on my event (exact Jira record)
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-61` |
+| Summary | Comment and discuss on my event |
+| Issue type | Story |
+| Status | In Progress (at time of writing this entry) |
+| Parent epic | `SCRUM-14` — Event Information Management |
+| Sprint | SCRUM Sprint 2 |
+| Priority | Medium |
+
+**User story and criteria as they stood in Jira (verbatim):**
+
+> As an Event Organiser, I want to add comments and questions to my event record, so that planning conversations are retained alongside the event rather than scattered across email.
+>
+> Organiser and authorised staff can add comments/questions to an event record.
+>
+> * Each comment records the contributor and timestamp.
+> * Relevant parties are notified of new comments.
+> * All discussions are stored as part of the event history.
+
+The criteria are not yet in Given/When/Then form on the issue (Definition of Done, Phase 1); they are numbered AC1–AC4 here and in `docs/test-cases/events.md`.
+
+#### Decisions taken with the developer
+
+- **"Authorised staff"** is the event's assigned coordinator. Readers and posters are the owning organiser and the assigned coordinator, each in that active role, the same readers as the status history (QA2-27 names comments as the organiser–coordinator channel). Venue staff and tech support wait until bookings and equipment requests link them to an event. **[Team decision]**
+- **Notifications (AC3)** are written as `comment_added` rows for the other party. There is still no read API or bell; that remains SCRUM-27. **[Team decision]**
+- **History (AC4)** is a separate, permanent Discussion thread beside the status timeline, not merged into it; a unified change log remains SCRUM-62. **[Team decision]**
+- **When posting is open:** `submitted` to `confirmed`. Rejected, cancelled and completed events keep a read-only thread; a draft has none. **[Team decision]**
+- **Body:** plain text, trimmed, 1–1000 characters (**[Assumption]**, REQUIREMENTS §9 Q15). Comments are append-only. No @mentions or resolve (optional per QA-131/132). REQUIREMENTS §9 Q12 (are comments in release 1?) is answered yes.
+
+Design and plan: `docs/superpowers/specs/2026-10-02-scrum-61-event-comments-design.md`, `docs/superpowers/plans/2026-10-02-scrum-61-event-comments.md`.
+
+#### What was built
+
+1. **Data** — migration `20261002120000`: `event_comments` (append-only, author kept as `null` if the profile is deleted), select-only RLS for the organiser and assigned coordinator in their active roles, and `add_event_comment`, a `security definer` function callable only by the backend that locks the event, refuses drafts and closed events by returning no row, and writes the comment and the other party's notification in one transaction. Applied to the live project on 2026-10-02.
+2. **API** — `GET` and `POST /events/{id}/comments`, gated by `require_roles(["event_organiser", "event_coordinator"])` and the same `_visible_event` check as `/history`. The comment's `author.role` is derived from the event (owner or assigned coordinator), never from `profiles.role`, so a dual-role account is labelled by the part it plays on that event.
+3. **UI** — `EventDiscussion` on the organiser's `EventDetailView` (hidden on drafts) and on `CoordinatorEventView`, backed by `useEventCommentsStore` and the pure rules in `features/events/comments.js`.
+4. **Fixtures** — `event_review_fixture_reset.sql` now also clears the two fixtures' comments.
+
+**Found while building:** adding a second `<textarea>` to the coordinator page broke two existing view tests that picked the first one on the page; they now select the modal's as `[role="dialog"] textarea`. The product was unaffected.
+
+**Fixed after the whole-branch review, each written red first:** (1) a 1000-character word stretched the organiser page to about 7,100px at 1440px wide, because `break-words` doesn't lower an element's min-content width inside the page grid; the body now uses `[overflow-wrap:anywhere]`, re-measured in a real browser at 1440px and 375px. (2) Posting on one event and opening another before the reply left **Post** stuck on "Posting…" on every later event page until a reload; switching events now clears the flag. (3) After the comment was committed, the API re-read the whole thread just to get the author's name, so a failed read reported a saved, already-notified comment as an error and invited a duplicate retry; the name now comes from the caller's verified profile.
+
+#### Verification
+
+- **Written red first:** `test_events_repository.py` comment wrappers (`AttributeError`), `test_event_comments_api.py` (404 from the missing routes), `comments.spec.js`, `eventCommentsStore.spec.js`, `EventDiscussion.spec.js` (unresolved imports), and the view tests (panel absent).
+- **Suites (after the review fixes):** backend `pytest` 470 passed; frontend Vitest 474 passed in 40 files; `npm run build` succeeds.
+- **Real system:** `verify_live.py -k TC-CMT` against this branch's backend and the live database: TC-CMT-008 and TC-CMT-009 pass, which also proves the author embed through `event_comments_author_id_fkey` works on the real schema.
+- **Advisors:** no new security findings; the only new performance notes are INFO "unused index" on the two new, still-empty `event_comments` indexes.
+- **Recorded live runs (after updating the Supabase CLI from v2.48.3 to v2.119.0):** `verify_live.py --record` 42/42, including `event_comment_checks.sql` (function, notifications, refusals, RLS) — `runs/2026-10-02-1949-api-db-c7d0736.md`; Playwright 36/36 — `runs/2026-10-02-1951-e2e-c7d0736.md`.
+- **Manual browser pass (developer, 2026-10-03):** TC-CMT-001, 002, 003, 009, 012, the empty-state wording and both pages at 375px pass — `runs/2026-10-03-0830-manual-c06f7f3.md`.
+- **Not verified by hand:** TC-CMT-004 (closed event read-only), which needs the fixture set to `rejected` by SQL; it is covered by `TestPost::test_a_closed_event_refuses_new_comments` and `EventDiscussion.spec.js`.
+
+### 4.24. SCRUM-66 — Reuse a previous or recurring event
+
+**User story:**
+
+> As an Event Organiser, I want to create a new request based on a previous or recurring event, so that I do not have to re-enter unchanged information.
+
+**Scope decision.** The first-release implementation lets an organiser reuse only their own events. `profiles.organisation_name` is descriptive data, not an authorisation relationship, so same-organisation sharing is deferred until client organisations are implemented. The clone creates a draft template; it does not automatically schedule or submit a recurring event.
+
+**What was built:**
+
+1. **API** — `POST /api/v1/events/{event_id}/clone`, guarded by the active `event_organiser` role and the existing owner check. It copies reusable request fields through `service.clone` and creates a new draft through the existing repository path. Dates, registration windows, assignments, workflow state, registrations, notifications, comments, and history are not copied.
+2. **Frontend** — `eventsApi.clone`, `useEventsStore.clone`, and **Use as template** actions on organiser event cards. The returned draft is opened in the existing event request form for normal editing and submission.
+3. **Traceability** — manual cases TC-EVENT-040–042 were added to `docs/test-cases/events.md`.
+
+#### Verification
+
+- **Written red first:** backend clone tests initially failed with the expected missing-route `404`; the frontend store test initially failed because `store.clone` did not exist.
+- Backend focused SCRUM-66 tests: **5 passed** (clone creation, source independence after edit/submit, owner denial, missing-event denial, and non-organiser role denial); full backend suite: **477 passed** with 3 existing deprecation warnings.
+- Frontend focused SCRUM-66 tests: **35 passed** across the API adapter, store, organiser dashboard, and mobile menu; full frontend suite: **480 passed** across 41 files; `npm run build` succeeds.
+- Browser verification (2026-10-04): the inline copy icon is visible, its action box is `52px` square like **Edit draft**, and clicking it opens a new draft form with copied name and blank date/time fields. At 375px, the two action buttons collapse into a three-dot menu with visible **Edit draft** and **Use as template** options. The throwaway draft was deleted after verification.
+- SCRUM-66 clone-specific implementation paths are **100% exercised**: API adapter success/denial, store success/error state, dashboard copy navigation, backend creation, field exclusions, source independence, ownership denial, missing-event denial, and active-role denial. Whole-file reports remain below 100% (`events.js` **98.44%**, `OrganiserDashboard.vue` **97.3%**) because those modules contain unrelated SCRUM-8/33/71 branches; whole-repository 100% coverage is not claimed.
+- **Not verified:** live same-organisation/non-owner API denial and the full manual TC-EVENT-041 edit/save/submit flow. No database migration was needed.
+
+### 4.25. SCRUM-72 — Coordinator dashboard on real data, in the organiser's layout
 
 Finishes SCRUM-72 on `feature/scrum-72-coordinator-dashboard-api`. The acceptance criteria are as recorded verbatim in §4.5 (the developer confirmed they are current; the Jira MCP was not connected).
 
@@ -1037,7 +1115,7 @@ Finishes SCRUM-72 on `feature/scrum-72-coordinator-dashboard-api`. The acceptanc
 - It produces three action kinds: `awaiting_review`, `resubmitted` (AC1's clarification response, QA-22/QA-77), and `arrangement_issue` when technical readiness is `issue`.
 - Readiness uses two new service reads, `venues.service.booking_statuses_by_event` and `equipment.service.reserved_event_ids`, so no module reads another's tables.
 - The route is declared above `/{event_id}`, which would otherwise answer 422.
-- Three rules had no customer answer and are recorded as **[Assumption]** in REQUIREMENTS §6.21.1 and §9 items 15–17: the arrangement-issue signal, equipment readiness before SCRUM-24, and the unassigned count before SCRUM-12. The other action kinds have no data source yet, so they are never produced; nothing is faked.
+- Three rules had no customer answer and are recorded as **[Assumption]** in REQUIREMENTS §6.21.1 and §9 items 16–18: the arrangement-issue signal, equipment readiness before SCRUM-24, and the unassigned count before SCRUM-12. The other action kinds have no data source yet, so they are never produced; nothing is faked.
 
 **Frontend.**
 - Every event on the dashboard links to its review page.
@@ -1062,10 +1140,10 @@ Finishes SCRUM-72 on `feature/scrum-72-coordinator-dashboard-api`. The acceptanc
   - 403 as the organiser, 403 after switching to Venue Staff, 401 with no token.
   - `verify_live.py -k TC-DASH`: TC-DASH-013–018 **6/6 passed**.
 - **Real browser** (Vite on 5180 against that API): Overview and Events at 1280px and 390px, compared with the organiser's Overview. No horizontal scroll, no console errors. Playwright TC-DASH-001 and 022 passed.
-- **Found (DEFECTS D17, open):** TC-DASH-019 failed in 2 of 5 runs. The link was right, but the review page's first two parallel requests both answered 500 (`httpx.ReadError`, WinError 10035, inside `get_current_user` on the shared Supabase client), and the page showed "Failed to fetch" (D10). The code is unchanged by this branch. It is recorded rather than fixed here.
+- **Found (DEFECTS D18, open):** TC-DASH-019 failed in 2 of 5 runs. The link was right, but the review page's first two parallel requests both answered 500 (`httpx.ReadError`, WinError 10035, inside `get_current_user` on the shared Supabase client), and the page showed "Failed to fetch" (D10). The code is unchanged by this branch. It is recorded rather than fixed here.
 - **Recorded runs** (commit `ff5925e`, servers on 8010/5180):
   - `runs/2026-09-30-1914-api-db-ff5925e.md`: **45/45 passed**.
-  - `runs/2026-09-30-1915-e2e-ff5925e.md`: **37 passed, 2 failed**. TC-DASH-019 and TC-ROLE-005 both failed on server errors in the shared Supabase client (the review page, then the dashboard and a role switch), not on anything they assert about. That is recorded under D17. Neither was re-run to make it pass.
+  - `runs/2026-09-30-1915-e2e-ff5925e.md`: **37 passed, 2 failed**. TC-DASH-019 and TC-ROLE-005 both failed on server errors in the shared Supabase client (the review page, then the dashboard and a role switch), not on anything they assert about. That is recorded under D18. Neither was re-run to make it pass.
 - **Not verified:** TC-DASH-020 (return and resubmit a fixture, because it changes shared data) and the arrangement-issue path in a browser (nothing in the UI can set technical readiness yet; it is covered by pytest only). The visual cases TC-DASH-002, 003, 005 and 024 are waiting on the developer's manual pass.
 - **Noticed, not fixed:** `IMPLEMENTATION_MAP.md` still says `modules/equipment/` is an empty package and lists the equipment branches as unmerged, but the equipment module is on `main`.
 
@@ -1074,7 +1152,8 @@ Finishes SCRUM-72 on `feature/scrum-72-coordinator-dashboard-api`. The acceptanc
 - A code review then found what that left behind: the view spec still expected the alert (the frontend suite failed), the test cases still described it, and the endpoint still ran a count query every load for a figure nothing showed.
 - Now removed end to end: `unassigned_count` from `CoordinatorDashboard`, `count_unassigned` and `UNASSIGNED_STATUSES` from the events module, and `unassignedCount` from the store.
 - TC-DASH-012 and TC-DASH-015 now check that the coordinator sees nothing about unassigned events, and the live check TC-DASH-015 asserts the response has no such field.
-- REQUIREMENTS §6.5 records the clarification as superseding AS-R1, AS-R3 and AS-R5 until the Lead story rewrites that section. §9 item 17 is resolved, and item 18 lists what the clarification leaves open.
+- REQUIREMENTS §6.5 records the clarification as superseding AS-R1, AS-R3 and AS-R5 until the Lead story rewrites that section. §9 item 18 is resolved, and item 18 lists what the clarification leaves open.
 - **Verification:** the tests were changed first and failed for the expected reasons (15 backend, because the service still called the removed query, and 1 store case), then passed. `pytest` **448 passed**, `npm test` **39 files, 476 passed**, `npm run build` passed. Live checks at `db0f8c4`, on a freshly started backend on 8010:
   - `runs/2026-10-05-1102-api-db-db0f8c4.md`: **45/45 passed**, including the reworded TC-DASH-015.
-  - `runs/2026-10-05-1103-e2e-db0f8c4.md`: **37 passed, 2 failed**. TC-DASH-019 and TC-ROLE-003 failed on server errors in the shared Supabase client (D17), which occurred on the review page and on a role switch. Neither was re-run to make it pass.
+  - `runs/2026-10-05-1103-e2e-db0f8c4.md`: **37 passed, 2 failed**. TC-DASH-019 and TC-ROLE-003 failed on server errors in the shared Supabase client (D18), which occurred on the review page and on a role switch. Neither was re-run to make it pass.
+- **Merged with `main`** before opening the PR: SCRUM-61 (comments) and SCRUM-66 (clone) had changed the same events files, so their code was kept alongside the dashboard. `main` had already used D17 and §9 item 15, so this branch's defect became **D18** and its §9 items became 16–19. Commit messages and the run logs above still say D17 for the shared-client defect, because they were written before the merge.

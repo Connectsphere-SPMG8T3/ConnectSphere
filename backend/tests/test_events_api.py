@@ -64,6 +64,17 @@ def mock_event_repository(monkeypatch, request):
         }
         if "valid_draft_can_be_submitted_without_coordinator_assignment" in request.node.name:
             row.update(COMPLETE_REQUEST)
+        if event_id == EVENT_ID and (
+            "clone" in request.node.name or "independent_draft" in request.node.name
+        ):
+            row.update(
+                COMPLETE_REQUEST,
+                status="confirmed",
+                coordinator_id="44444444-4444-4444-4444-444444444444",
+                starts_at="2026-10-10T14:00:00+08:00",
+                ends_at="2026-10-10T17:00:00+08:00",
+                submitted_at=now,
+            )
         return row
 
     store = {
@@ -78,7 +89,7 @@ def mock_event_repository(monkeypatch, request):
         return deepcopy(store.get(event_id))
 
     def create_event(organiser_id, values):
-        row = event_row("new-event", organiser_id)
+        row = event_row("e0000000-0000-4000-8000-000000000003", organiser_id)
         row.update(values)
         store[row["id"]] = row
         return deepcopy(row)
@@ -177,6 +188,79 @@ class TestEventDrafts:
 
         assert response.status_code == 200
         assert all(event["organiser_id"] == "11111111-1111-1111-1111-111111111111" for event in response.json())
+
+    def test_organiser_can_create_an_independent_draft_from_their_event(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+
+        response = client.post(f"/api/v1/events/{EVENT_ID}/clone", headers=auth_headers)
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["id"] != EVENT_ID
+        assert body["organiser_id"] == "11111111-1111-1111-1111-111111111111"
+        assert body["status"] == "draft"
+        assert body["name"] == "Regional Planning Workshop"
+        assert body["purpose"] == "Coordinate the regional planning workshop."
+        assert body["expected_attendance"] == 150
+        assert body["starts_at"] is None
+        assert body["ends_at"] is None
+        assert body["coordinator_id"] is None
+        assert body["submitted_at"] is None
+
+    def test_cloned_draft_can_be_edited_and_submitted_without_changing_source(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+
+        clone_response = client.post(f"/api/v1/events/{EVENT_ID}/clone", headers=auth_headers)
+        cloned_id = clone_response.json()["id"]
+
+        update_response = client.patch(
+            f"/api/v1/events/{cloned_id}",
+            json={**COMPLETE_REQUEST, "name": "Updated recurring workshop"},
+            headers=auth_headers,
+        )
+        submit_response = client.post(f"/api/v1/events/{cloned_id}/submit", headers=auth_headers)
+        source_response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert update_response.status_code == 200
+        assert submit_response.status_code == 200
+        assert submit_response.json()["status"] == "under_review"
+        assert source_response.json()["id"] == EVENT_ID
+        assert source_response.json()["name"] == "Regional Planning Workshop"
+        assert source_response.json()["status"] == "confirmed"
+
+    def test_organiser_cannot_clone_another_organisers_event(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser", user_id="22222222-2222-2222-2222-222222222222")
+
+        response = client.post(f"/api/v1/events/{EVENT_ID}/clone", headers=auth_headers)
+
+        assert response.status_code == 404
+
+    def test_organiser_cannot_clone_a_missing_event(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+
+        response = client.post(
+            "/api/v1/events/00000000-0000-4000-8000-000000000099/clone",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 404
+
+    def test_non_organiser_cannot_clone_an_event(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_coordinator")
+
+        response = client.post(f"/api/v1/events/{EVENT_ID}/clone", headers=auth_headers)
+
+        assert response.status_code == 403
 
     def test_organiser_can_read_their_event(self, client, auth_headers, authenticate_as):
         authenticate_as("event_organiser")
