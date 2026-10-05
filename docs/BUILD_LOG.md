@@ -1329,7 +1329,8 @@ Built on `feature/scrum-45-equipment-request`, branched from `main` at `f9852a8`
   - `runs/2026-10-05-2250-api-db-3fff160.md`: **62/62 passed**, including TC-EQR-001, 002, 004, 008, 009 and `equipment_request_checks.sql`. TC-EQR-002 exercised the real PostgREST embeds and deleted its line; the live table was empty afterwards.
   - `runs/2026-10-05-2253-e2e-3fff160.md`: **41 passed, 1 failed**. Both SCRUM-45 specs passed. TC-ROLE-003 failed because `POST /auth/active-role` answered 500 (`httpx.RemoteProtocolError: Server disconnected` in the shared Supabase client), which is D18. In the same run, the coordinator event page's two new equipment reads also answered 500 once during TC-BOOK-008, which still passed. Not re-run to get a pass.
   - Local `node_modules` had no `@playwright/test` (SCRUM-19 added it); `npm install` from the unchanged lockfile and `npx playwright install chromium` fixed that.
-- **Not verified yet:** the manual browser pass (TC-EQR-003 counter, TC-EQR-005 wording and placement, TC-EQR-012 phone width, TC-EQR-013 list states), requested from the developer.
+- **Manual browser pass** by the developer: TC-EQR-003, 005, 006, 012 and 013 all **passed** (`runs/2026-10-05-2332-manual-a9bd1a9.md`). It submitted five lines on the planning event *test approve*, not on a fixture.
+- **Not verified:** a coordinator who isn't assigned to the event, against the live API, because the seed has only one coordinator (`pytest` and `equipment_request_checks.sql` cover it).
 - **Noticed, not fixed:**
   - **D19**: the SCRUM-23 equipment tables' write policies don't follow the active role.
   - No data module maps a Supabase outage to 503 (only auth does), so an outage here is a 500, like everywhere else.
