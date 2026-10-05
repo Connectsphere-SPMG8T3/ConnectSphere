@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.modules.events import repository
+from app.modules.venues import repository as venues_repository
 from tests.conftest import make_table_mock
 
 ORGANISER_ID = "a0000000-0000-4000-8000-000000000001"
@@ -58,6 +59,8 @@ def events(monkeypatch):
 
     monkeypatch.setattr(repository, "get_event", get_event)
     monkeypatch.setattr(repository, "transition_event", transition_event)
+    # A coordinator's read also looks up the event's venue booking (SCRUM-19).
+    monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)
     return {"store": store, "calls": calls}
 
 

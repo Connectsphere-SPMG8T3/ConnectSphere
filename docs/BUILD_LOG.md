@@ -1157,3 +1157,111 @@ Finishes SCRUM-72 on `feature/scrum-72-coordinator-dashboard-api`. The acceptanc
   - `runs/2026-10-05-1102-api-db-db0f8c4.md`: **45/45 passed**, including the reworded TC-DASH-015.
   - `runs/2026-10-05-1103-e2e-db0f8c4.md`: **37 passed, 2 failed**. TC-DASH-019 and TC-ROLE-003 failed on server errors in the shared Supabase client (D18), which occurred on the review page and on a role switch. Neither was re-run to make it pass.
 - **Merged with `main`** before opening the PR: SCRUM-61 (comments) and SCRUM-66 (clone) had changed the same events files, so their code was kept alongside the dashboard. `main` had already used D17 and §9 item 15, so this branch's defect became **D18** and its §9 items became 16–19. Commit messages and the run logs above still say D17 for the shared-client defect, because they were written before the merge.
+
+### 4.26. SCRUM-19 — Venue booking request
+
+| Field | Value |
+|---|---|
+| Issue key | `SCRUM-19` |
+| Summary | Venue Booking Request |
+| Issue type | Story (1 point) |
+| Status | To Do (at time of writing this entry) |
+| Parent epic | none |
+| Sprint | SCRUM Sprint 2 (ends 2026-10-05; carries over) |
+| Priority | Medium |
+
+**User story as it stood in Jira (verbatim):**
+
+> An Event Coordinator can submit a request to book a venue for an event. The request should contain the relevant event timing and venue requirements needed by Venue Staff to assess the booking.
+
+The issue had no acceptance criteria. Six were written from REQUIREMENTS §6.12 with the developer and added to the issue on 2026-10-05, each citing its `QA-<row>`. They are AC1–AC6 here and in `docs/test-cases/venues.md`. They cover the tentative hold, overlap refusal including blocks, first come first served, one venue per event, planning only, and the assigned coordinator acting as coordinator.
+
+#### Decisions taken with the developer
+
+- **Trimmed to the 1-point core** after comparing the full §6.12 scope with past estimates:
+  - Suitability (BR-R3) moves to SCRUM-18.
+  - The venue-staff request page moves to SCRUM-20/36.
+  - Cancelling a hold (BR-R5) becomes a follow-up story, which the developer is raising.
+  - The block check stayed in, because it is one query and SCRUM-21 has no owner. Recorded in REQUIREMENTS §6.12 (scope note, BR-R7–R9).
+- **The period is the event's own**, never the client's (BR-R7). **[Team decision]**
+- **Every refusal is decided in the database** under a lock on the event, so concurrent requests resolve first come, first served (BR-R8). **[Team decision]**
+- **The note** is optional, ≤ 1000 characters after trimming (BR-R9, §9 Q20). **[Assumption]**
+- **Venue staff are notified as a pool:** every `venue_staff` holder except the requester (AUTH-R5, NT-R1).
+- **Organisers don't see booking state** on their event read (AUTH-R2). **[Team decision]**
+- **Test seams agreed with the developer:**
+  - the HTTP API (pytest, repositories faked);
+  - the database function (a rolled-back SQL script against the live project);
+  - the frontend store's `request()` (Vitest).
+
+  The Vue templates are covered by the e2e and the manual pass.
+
+#### What was built
+
+1. **Data**
+   - Migration `20261005120000`: `venue_bookings.request_note` and `requested_by`.
+   - `request_venue_booking`, a `security definer` function callable only by the backend. It locks the event, then refuses with an outcome code in this order:
+     - a missing event;
+     - a `returned` event;
+     - any other non-planning event;
+     - a caller who isn't the assigned coordinator;
+     - an event with no start and end time (`no_period`);
+     - an unknown venue;
+     - an event that already has a venue;
+     - an overlapping block.
+   - It then inserts the `held` booking over the event's period. DB-1's exclusion violation becomes `held_by_other`, as does a deadlock between two simultaneous overlapping inserts. The unique-index violation becomes `already_booked`.
+   - It notifies venue staff in the same transaction.
+2. **API**
+   - `POST /venue-bookings`, gated on the active role `event_coordinator`, checks the assigned coordinator through `events.service.assigned_event` (new public wrapper) and maps each outcome to 201 / 409 / 403 / 404.
+   - The coordinator's `GET /events/{id}` now carries `venue_booking`.
+3. **UI**
+   - A **Venue** panel on `CoordinatorEventView`.
+   - `/venues?event=<id>`, which pre-fills the search from the event in Singapore time and offers **Request this venue** on available results only while the search checks the event's own period.
+   - `RequestVenueModal`, which takes a note and shows a refusal inline.
+   - `useVenueBookingStore`, `features/venues/bookingRequest.js`, and an `actions` slot on `VenueResultCard`.
+4. **Checks**
+   - `supabase/verification/venue_booking_request_checks.sql`.
+   - `verify_live.py` TC-BOOK-001–007, which create throwaway "live-check …" events in 2031 and delete them before and after the run.
+   - Playwright `bookings.e2e.js` TC-BOOK-008.
+
+**Found while building:** two existing tests (`test_event_review_api.py`, `test_event_amendment_api.py`) read an event as a coordinator. Once that read also looked up the venue booking, they reached for the real network. Their fixtures now fake `venues.repository.get_active_booking` like every other repository call.
+
+#### Verification
+
+- **Written red first, each for the expected reason:**
+  - **SQL checks, one slice at a time:**
+    - the function didn't exist;
+    - the overlap raised `23P01`;
+    - a request into a maintenance block was accepted;
+    - a second venue raised `23505`;
+    - a returned event was accepted;
+    - no notification was written.
+
+    The grant check was added after the grant and was never red.
+  - **API tests:**
+    - the repository function was missing;
+    - the outcomes were ignored, so the booking was built from `null`;
+    - lifecycle and race outcomes were unmapped;
+    - `venue_booking` was missing.
+  - **Store spec:** the module was missing.
+  - **Tests that passed on first run:** the authorisation and body-validation tests reuse existing guards, so they were green immediately. A mutation check (letting `venue_staff` through the router guard) made the role tests fail as they should.
+- **Suites:** backend `pytest` 535 passed; frontend Vitest 44 files, 510 passed; `npm run build` succeeds.
+- **Database:** the migration and `venue_booking_request_checks.sql` pass together inside one rolled-back transaction on the live project. Afterwards the live database has no new column or function.
+- **Manual browser pass (developer, 2026-10-05):** TC-BOOK-008–013 all pass, at desktop and 375px. The run log is `runs/2026-10-05-1900-manual-f9852a8.md`. The migration, advisors and recorded automated runs are below.
+- **Safety review before applying the migration**, at the developer's request. It found two gaps, now fixed:
+  - **A planning event without times** had an unbounded period. It was wrongly refused as `blocked` by an unrelated block, and on a venue with no blocks it would have raised a check-constraint error (500). This was written red first: the SQL check failed with outcome `blocked`. It is now the `no_period` outcome, answered with a 409. No live event is affected today, because submission requires times.
+  - **A deadlock between two truly simultaneous overlapping inserts.** An exclusion constraint is checked after the insert, so Postgres can end that race with `40P01` instead of the exclusion violation. The deadlock is now caught as `held_by_other`. A single session can't produce it, so it wasn't written red. TC-BOOK-007 exercises it live.
+- **Also checked in the review:**
+  - The columns are nullable, and the 4 existing rows pass the new constraints.
+  - The `venue_bookings` lock lasts only for the `ALTER` on a 4-row table.
+  - RLS on `venue_bookings` (internal staff read only, no write policies) covers the new columns.
+  - The function is `service_role` only, with a pinned `search_path`.
+  - Locks are taken in the same order as `transition_event` (event row, then bookings).
+  - The migration ledger matched the local files with only `20261005120000` pending.
+  - Every existing script in `supabase/verification/` passes with the migration applied in one rolled-back transaction.
+  - Advisor baseline before applying: 9 WARN `auth_rls_initplan`, 1 WARN leaked-password protection, 5 INFO unused index, all pre-existing.
+- **Applied to the live project** on 2026-10-05 with `supabase db push` (dry run first: only this migration, no seeds); the ledger now lists `20261005120000` as remote. `venue_booking_request_checks.sql` passes against the applied function. **Advisors after:** one new finding, INFO "unused index" on the new `venue_bookings_requested_by_idx`; no new security or WARN findings.
+- **Recorded live runs** (servers on 8010/5177, working tree uncommitted on top of `f9852a8`, so the logs name that commit):
+  - `runs/2026-10-05-1851-api-db-f9852a8.md`: **56/56 passed**, including TC-BOOK-001–007 and the simultaneous-request race. Afterwards no "live-check" event or block was left, and `venue_bookings` was back to its 4 rows.
+  - `runs/2026-10-05-1853-e2e-f9852a8.md`: **39 passed, 1 failed**. TC-BOOK-008 passed. TC-DASH-019 failed with "Failed to fetch" on the review page. The backend log shows 5 server errors, all `httpx.ReadError: [Errno 35]` in the shared Supabase client (`resolve_active_role`, `events.repository.get_event`), none in the new booking code. This is D18, now also seen on macOS, and was not re-run to make it pass.
+- **Fixture reset extended.** The manual pass requested a venue for review fixture `…-0201` after approving it, which left a hold the reset script didn't know about: it would have reset the event to `under_review` while it still held Boardroom Orchid. `event_review_fixture_reset.sql` now also deletes any booking on the two fixtures other than the seeded `d0000000-…-0201`.
+

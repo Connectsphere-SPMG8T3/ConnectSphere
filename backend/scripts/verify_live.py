@@ -13,6 +13,11 @@ connectsphere.dev. Every such account, and everything it owns, is deleted
 through `supabase db query` before the checks start and after they finish, so
 the seeded data is never touched. --skip-db skips these checks too.
 
+Venue booking checks (SCRUM-19) likewise create throwaway events named
+"live-check ..." (owned by the seeded organiser, assigned to the seeded
+coordinator, dated 2031) and throwaway venue blocks noted "live-check". Those
+events, their bookings and those blocks are deleted before and after the run.
+
 Usage, from backend/ with the virtualenv active and the backend running:
 
     python scripts/verify_live.py                       # print results only
@@ -82,6 +87,7 @@ DB_SCRIPTS = [
     ("event_history_checks.sql", "TC-REV-015, TC-REV-016"),
     ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
+    ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
 ]
 
 
@@ -525,6 +531,161 @@ def _(ctx: Context) -> None:
         expect_status(ctx.client.post(url, headers=headers, json={"body": "live check"}), 403)
 
 
+# --- Venue booking request (SCRUM-19) ------------------------------------------
+
+BOOKINGS = "/venue-bookings"
+PLANNING_FIXTURE = "e0000000-0000-4000-8000-000000000202"  # supabase/seed.sql: planning, already holds a venue
+INNOVATION_LAB = "b0000000-0000-4000-8000-000000000006"
+HERITAGE_HALL = "b0000000-0000-4000-8000-000000000007"
+VENUE_STAFF_ID = "a0000000-0000-4000-8000-000000000003"
+THROWAWAY_EVENT_PREFIX = "live-check "
+THROWAWAY_BLOCK_NOTE = "live-check"
+
+
+def throwaway_event(ctx: Context, case: str, starts: str, ends: str, *, status: str = "planning",
+                    assigned: bool = True) -> str:
+    """A throwaway event in 2031, deleted with its bookings when the run ends."""
+    coordinator = "'a0000000-0000-4000-8000-000000000002'" if assigned else "null"
+    rows = db_query(
+        "insert into public.events (organiser_id, coordinator_id, status, name, starts_at, ends_at) values "
+        f"('a0000000-0000-4000-8000-000000000001', {coordinator}, '{status}', "
+        f"'{THROWAWAY_EVENT_PREFIX}{ctx.run_id} {case}', '{starts}', '{ends}') returning id"
+    )
+    return rows[0]["id"]
+
+
+def delete_throwaway_bookings() -> int:
+    """Deletes the booking checks' events (their bookings first: that foreign key
+    restricts) and blocks. Their history and notifications cascade."""
+    like = f"'{THROWAWAY_EVENT_PREFIX}%'"
+    db_query(f"delete from public.venue_bookings where event_id in (select id from public.events where name like {like})")
+    db_query(f"delete from public.venue_blocks where notes = '{THROWAWAY_BLOCK_NOTE}'")
+    return len(db_query(f"delete from public.events where name like {like} returning id"))
+
+
+def request_venue(ctx: Context, session: Session, event_id: str, venue_id: str, note: str | None = None):
+    return ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=session.headers,
+                           json={"event_id": event_id, "venue_id": venue_id, "note": note})
+
+
+@check("TC-BOOK-001", "Requesting a free venue holds it for the event's period and notifies venue staff", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "001", "2031-05-20 14:00+08", "2031-05-20 17:00+08")
+    coordinator = ctx.shared("event_coordinator")
+
+    response = request_venue(ctx, coordinator, event_id, INNOVATION_LAB, "  Early access at 13:00  ")
+    expect_status(response, 201)
+    body = response.json()
+    expect(body["status"] == "held" and body["note"] == "Early access at 13:00", f"unexpected booking {body}")
+
+    [stored] = db_query(
+        "select status::text as status, lower(occupied_period) = '2031-05-20 14:00+08' "
+        "and upper(occupied_period) = '2031-05-20 17:00+08' as event_period, request_note "
+        f"from public.venue_bookings where id = '{body['id']}'"
+    )
+    expect(stored["status"] == "held" and stored["event_period"] is True, f"stored booking is {stored}")
+    notified = db_query(
+        "select recipient_id from public.notifications "
+        f"where event_id = '{event_id}' and type = 'venue_booking_requested'"
+    )
+    expect([row["recipient_id"] for row in notified] == [VENUE_STAFF_ID],
+           f"venue_booking_requested went to {notified} (want venue staff only, not the coordinator)")
+
+    event = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=coordinator.headers).json()
+    expect((event.get("venue_booking") or {}).get("status") == "held", f"event shows {event.get('venue_booking')}")
+    queue = ctx.client.get(f"{ctx.api}/venues/dashboard/venue-staff", headers=ctx.shared("venue_staff").headers).json()
+    expect(any(b["id"] == body["id"] for b in queue["pending_holds"]), "the hold is not in the venue-staff queue")
+
+
+@check("TC-BOOK-002", "An overlapping request is refused; a back-to-back one is accepted", needs_db=True)
+def _(ctx: Context) -> None:
+    first = throwaway_event(ctx, "002-x", "2031-05-21 14:00+08", "2031-05-21 17:00+08")
+    overlapping = throwaway_event(ctx, "002-y", "2031-05-21 16:00+08", "2031-05-21 18:00+08")
+    back_to_back = throwaway_event(ctx, "002-z", "2031-05-21 17:00+08", "2031-05-21 19:00+08")
+    coordinator = ctx.shared("event_coordinator")
+
+    expect_status(request_venue(ctx, coordinator, first, INNOVATION_LAB), 201)
+    refused = request_venue(ctx, coordinator, overlapping, INNOVATION_LAB)
+    expect_status(refused, 409)
+    expect_detail(refused, "Venue already held for this time by another event.")
+    expect_status(request_venue(ctx, coordinator, back_to_back, INNOVATION_LAB), 201)
+
+
+@check("TC-BOOK-003", "A request overlapping a venue block is refused", needs_db=True)
+def _(ctx: Context) -> None:
+    db_query(
+        "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values "
+        f"('{HERITAGE_HALL}', tstzrange('2031-05-22 10:00+08', '2031-05-22 12:00+08', '[)'), "
+        f"'maintenance', '{THROWAWAY_BLOCK_NOTE}')"
+    )
+    event_id = throwaway_event(ctx, "003", "2031-05-22 11:00+08", "2031-05-22 13:00+08")
+
+    response = request_venue(ctx, ctx.shared("event_coordinator"), event_id, HERITAGE_HALL)
+    expect_status(response, 409)
+    expect_detail(response, "Venue blocked for this time.")
+
+
+@check("TC-BOOK-004", "An event that already holds a venue can't request another")
+def _(ctx: Context) -> None:
+    response = request_venue(ctx, ctx.shared("event_coordinator"), PLANNING_FIXTURE, HERITAGE_HALL)
+    expect_status(response, 409)
+    expect_detail(response, "This event already has a venue booking.")
+
+
+@check("TC-BOOK-005", "A returned or under-review event can't request a venue", needs_db=True)
+def _(ctx: Context) -> None:
+    returned = throwaway_event(ctx, "005", "2031-05-23 09:00+08", "2031-05-23 10:00+08", status="returned")
+    coordinator = ctx.shared("event_coordinator")
+
+    response = request_venue(ctx, coordinator, returned, HERITAGE_HALL)
+    expect_status(response, 409)
+    expect_detail(response, "Requirements are still being amended.")
+    response = request_venue(ctx, coordinator, FIXTURE_EVENT, HERITAGE_HALL)
+    expect_status(response, 409)
+    expect_detail(response, "Cannot request a venue for an event that is under review.")
+
+
+@check("TC-BOOK-006", "Only the event's assigned coordinator, acting as coordinator, can request", needs_db=True)
+def _(ctx: Context) -> None:
+    unassigned = throwaway_event(ctx, "006-other", "2031-05-24 09:00+08", "2031-05-24 10:00+08", assigned=False)
+    mine = throwaway_event(ctx, "006-mine", "2031-05-24 11:00+08", "2031-05-24 12:00+08")
+    expect_status(request_venue(ctx, ctx.shared("event_coordinator"), unassigned, HERITAGE_HALL), 403)
+    for role in ("event_organiser", "venue_staff", "tech_support", "attendee"):
+        expect_status(request_venue(ctx, ctx.shared(role), mine, HERITAGE_HALL), 403)
+
+    # SCRUM-76: the seeded coordinator also holds venue_staff; acting as it, their own event is refused.
+    session = ctx.login("event_coordinator")
+    switched = ctx.client.post(f"{ctx.api}/auth/active-role", json={"role": "venue_staff"}, headers=session.headers)
+    expect_status(switched, 200)
+    expect_status(request_venue(ctx, session, mine, HERITAGE_HALL), 403)
+    expect(not db_query(f"select 1 from public.venue_bookings where event_id in ('{unassigned}', '{mine}')"),
+           "a refused request left a booking behind")
+
+
+@check("TC-BOOK-007", "Two simultaneous overlapping requests leave exactly one hold", needs_db=True)
+def _(ctx: Context) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    left = throwaway_event(ctx, "007-a", "2031-05-25 14:00+08", "2031-05-25 17:00+08")
+    right = throwaway_event(ctx, "007-b", "2031-05-25 15:00+08", "2031-05-25 18:00+08")
+    coordinator = ctx.shared("event_coordinator")
+
+    # Separate clients so the two requests really are in flight together.
+    def fire(event_id: str) -> int:
+        with httpx.Client(timeout=30) as client:
+            return client.post(f"{ctx.api}{BOOKINGS}", headers=coordinator.headers,
+                               json={"event_id": event_id, "venue_id": INNOVATION_LAB}).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes = sorted(pool.map(fire, [left, right]))
+    expect(codes == [201, 409], f"expected one 201 and one 409, got {codes}")
+    [count] = db_query(
+        "select count(*)::int as n from public.venue_bookings "
+        f"where event_id in ('{left}', '{right}') and status = 'held'"
+    )
+    expect(count["n"] == 1, f"{count['n']} holds exist")
+
+
 def expect_field_error(response: httpx.Response, field_name: str, msg: str | None = None) -> None:
     expect_status(response, 422)
     errors = [e for e in response.json().get("detail", []) if e.get("loc") == ["body", field_name]]
@@ -809,11 +970,15 @@ def main() -> int:
                     left_over = delete_throwaway_accounts()
                     if left_over:
                         print(f"  (deleted {left_over} sign-up check account(s) left by an earlier run)")
+                    left_over = delete_throwaway_bookings()
+                    if left_over:
+                        print(f"  (deleted {left_over} booking check event(s) left by an earlier run)")
                 results += run_api_checks(ctx, args.keyword, skip_accounts=args.skip_db)
             finally:
                 ctx.logout_all()
                 if not args.skip_db:
                     delete_throwaway_accounts()
+                    delete_throwaway_bookings()
 
     if not args.skip_db:
         print(f"Database checks (rolled back) on Supabase project {PROJECT_REF}")

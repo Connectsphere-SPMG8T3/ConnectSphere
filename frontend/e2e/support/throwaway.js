@@ -1,4 +1,5 @@
-// Throwaway accounts for the sign-up specs. They share one email pattern with
+// Throwaway accounts for the sign-up specs, and throwaway events for the venue
+// booking spec (SCRUM-19). They share one email pattern with
 // backend/scripts/verify_live.py, and every account matching it is deleted,
 // along with everything it owns, before and after a run.
 import { execFileSync } from "node:child_process";
@@ -31,4 +32,33 @@ export function deleteThrowawayAccounts() {
     ],
     { cwd: REPO_ROOT, stdio: "pipe" },
   );
+}
+
+function query(sql) {
+  const out = execFileSync(
+    "supabase",
+    ["db", "query", "--linked", "--project-ref", PROJECT_REF, "-o", "json", sql],
+    { cwd: REPO_ROOT, stdio: "pipe", encoding: "utf8" },
+  );
+  return JSON.parse(out.slice(out.indexOf("{"))).rows ?? [];
+}
+
+// Same "live-check " name prefix as backend/scripts/verify_live.py, so either
+// run's cleanup removes both runs' leftovers.
+const EVENT_PREFIX = "live-check ";
+
+/** A planning event owned by the seeded organiser and assigned to the seeded coordinator. */
+export function createThrowawayEvent(tag, startsAt, endsAt) {
+  const [row] = query(
+    "insert into public.events (organiser_id, coordinator_id, status, name, starts_at, ends_at, expected_attendance) values " +
+      "('a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002', 'planning', " +
+      `'${EVENT_PREFIX}e2e-${runId} ${tag}', '${startsAt}', '${endsAt}', 20) returning id, name`,
+  );
+  return row;
+}
+
+/** Deletes the throwaway events and their bookings (that foreign key restricts). */
+export function deleteThrowawayEvents() {
+  query(`delete from public.venue_bookings where event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);
+  query(`delete from public.events where name like '${EVENT_PREFIX}%'`);
 }

@@ -1,7 +1,7 @@
 import { rmSync } from "node:fs";
 
 import { API_URL, SIGN_IN_REFUSED_FLAG } from "./fixtures.js";
-import { deleteThrowawayAccounts } from "./throwaway.js";
+import { deleteThrowawayAccounts, deleteThrowawayEvents } from "./throwaway.js";
 
 // Fail in one clear line when a server isn't running, rather than letting
 // every spec time out on its first navigation.
@@ -24,6 +24,11 @@ export default async function globalSetup(config) {
 
   // Sign-up specs create live-check+… accounts; clear any an interrupted
   // run left behind, and clear this run's when it finishes.
+  // The booking spec creates "live-check …" events; same treatment.
   deleteThrowawayAccounts();
-  return () => deleteThrowawayAccounts();
+  deleteThrowawayEvents();
+  return () => {
+    deleteThrowawayAccounts();
+    deleteThrowawayEvents();
+  };
 }

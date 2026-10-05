@@ -7,8 +7,9 @@ the two in step (REQUIREMENTS §6.8 lists the values as a [Team decision]).
 from datetime import datetime, time
 from enum import Enum
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class VenueLayout(str, Enum):
@@ -283,3 +284,30 @@ class VenueSearchResponse(BaseModel):
     results: list[VenueSearchResult]
     included_count: int
     excluded_count: int
+
+
+BOOKING_NOTE_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as the other free-text fields
+
+
+class VenueBookingCreate(BaseModel):
+    """A coordinator's booking request (SCRUM-19). No period: the hold always
+    covers the event's own start and end, read by the database function."""
+
+    event_id: UUID
+    venue_id: UUID
+    note: str | None = Field(default=None, max_length=BOOKING_NOTE_MAX_LENGTH)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _blank_note_is_none(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+
+class VenueBooking(BaseModel):
+    id: str
+    event_id: str
+    venue_id: str
+    status: str
+    note: str | None = None

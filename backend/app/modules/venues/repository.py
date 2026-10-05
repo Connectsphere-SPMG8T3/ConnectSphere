@@ -1,4 +1,4 @@
-"""All Supabase reads for the venues module.
+"""All Supabase access for the venues module.
 
 This is the module's only I/O seam (REQUIREMENTS §3.3 `repository.py`); the
 service and the search rules never see a Supabase client. Tests patch the
@@ -292,3 +292,42 @@ def list_booking_statuses(event_ids: Iterable[str]) -> list[dict]:
         .execute()
     )
     return response.data or []
+
+
+def request_booking(event_id: str, venue_id: str, actor_id: str, note: str | None, *,
+                    notify_message: str) -> dict:
+    """Run `public.request_venue_booking` (SCRUM-19): the hold and venue staff's
+    notifications in one transaction. Returns `{outcome, booking_id}`; every
+    refusal is an outcome code, never a raised database error."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "request_venue_booking",
+            {
+                "p_event_id": event_id,
+                "p_venue_id": venue_id,
+                "p_actor_id": actor_id,
+                "p_note": note,
+                "p_notify_message": notify_message,
+            },
+        )
+        .execute()
+    )
+    rows = response.data or []
+    return rows[0]
+
+
+def get_active_booking(event_id: str) -> dict | None:
+    """The event's one occupying booking (BR-R1 allows at most one), with its
+    venue's name, or None."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_bookings")
+        .select("id, venue_id, status, venues!venue_bookings_venue_id_fkey(name)")
+        .eq("event_id", event_id)
+        .in_("status", list(OCCUPYING_STATUSES))
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    return rows[0] if rows else None

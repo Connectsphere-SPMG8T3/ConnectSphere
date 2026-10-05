@@ -2,7 +2,7 @@
 
 Shared environment, seeded accounts and the priority key are in [README.md](README.md).
 
-**In scope:** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, the `/venues` search page and the `/venues/:id` profile page.
+**In scope:** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, `POST /api/v1/venue-bookings`, the `/venues` search page, the `/venues/:id` profile page and the Venue panel on the coordinator's event page.
 
 ## Venue catalogue, search and availability (SCRUM-39)
 
@@ -91,3 +91,36 @@ For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cove
 | "Can view a summary of the venue's upcoming confirmed and tentative bookings from this profile" | TC-VENUE-043, TC-VENUE-044, TC-VENUE-045, TC-VENUE-047; `pytest` `::test_confirmed_tentative_and_re_review_bookings_are_all_listed`, `::test_upcoming_bookings_name_their_event`, `::test_a_booking_whose_event_row_is_missing_keeps_a_null_name`; Vitest `venueProfile.spec.js` (`groupUpcomingBookings`, `defaultBookingGroupKey`) and the view specs "summarises upcoming confirmed and tentative bookings, each naming its event (AC3)", "opens on the first status that actually has bookings, not always Confirmed", "says None rather than going blank on a status with no bookings", "moves between status tabs with the arrow keys" |
 | Layout: carousel, schematics and tabs (VC-R7, VC-R8) | TC-VENUE-051, TC-VENUE-052, TC-VENUE-053, TC-VENUE-054; `pytest` `::test_the_profile_declares_a_photos_field_that_is_empty`; Vitest `VenueLayoutDiagram.spec.js` (all six layouts distinct) and `venueProfile.spec.js` (`venueProfileTabs`, `venueSlides`, `stepIndex`) and the view specs "opens on Capacity & hours and switches panels on click", "counts what is behind the time-based tabs…", "moves between tabs with the arrow keys", "leads with an empty state instead of stock imagery…", "runs a slideshow once photos exist, wrapping at both ends" |
 | Authorisation (REQUIREMENTS §2) | TC-VENUE-048, TC-VENUE-010; `pytest` `::test_a_coordinator_reads_the_same_profile`, `TestVenueDetail::test_organiser_cannot_read_detail` |
+
+## Venue booking request (SCRUM-19)
+
+**Preconditions for every case in this section:** migration `20261005120000_venue_booking_requests.sql` applied. Signed in as the **Event Coordinator** (`coordinator@connectsphere.dev` / `Cs1234`) unless stated. All times are Singapore time. The automated checks create their own throwaway events named "live-check …" in May 2031 and delete them afterwards; for a manual run, use a planning event assigned to the coordinator that holds no venue yet (create one with the SQL in the case, and delete it afterwards with `delete from public.venue_bookings where event_id = '<id>'; delete from public.events where id = '<id>';`).
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-BOOK-001 | Requesting a free venue holds it and notifies venue staff (AC1) | A planning event assigned to the coordinator, 20 May 2031 14:00–17:00, no venue | `POST /api/v1/venue-bookings` | `{event_id, venue_id: Innovation Lab, note: "  Early access at 13:00  "}` | 201, `status: "held"`, note trimmed. The stored booking's period is exactly the **event's** 14:00–17:00. One `venue_booking_requested` notification to `venue.staff@connectsphere.dev` and **none** to the coordinator (who also holds venue_staff). The event's `GET` shows `venue_booking.status = "held"`, and the hold is in the venue-staff dashboard's pending holds. | 🔴 |
+| TC-BOOK-002 | An overlapping request is refused; back-to-back is allowed (AC2) | Event X holds Innovation Lab 14:00–17:00 on 21 May 2031 | Request Innovation Lab for event Y (16:00–18:00), then for event Z (17:00–19:00) | — | Y: 409 "Venue already held for this time by another event.", no booking stored. Z: 201 (half-open periods, zero turnaround, QA-28). | 🔴 |
+| TC-BOOK-003 | A request overlapping a venue block is refused (AC2) | A maintenance block on Heritage Hall, 22 May 2031 10:00–12:00 | Request Heritage Hall for an event 11:00–13:00 that day | — | 409 "Venue blocked for this time.", no booking stored. | 🔴 |
+| TC-BOOK-004 | One venue per event (AC4) | Fixture `e0000000-…-0202` already holds Boardroom Orchid | Request Heritage Hall for `…-0202` | — | 409 "This event already has a venue booking." | 🔴 |
+| TC-BOOK-005 | Only a planning event can request (AC5) | A returned event; fixture `e0000000-…-0201` (under review) | Request a venue for each | — | Returned: 409 "Requirements are still being amended." Under review: 409 "Cannot request a venue for an event that is under review." | 🔴 |
+| TC-BOOK-006 | Only the assigned coordinator, acting as coordinator (AC6) | A planning event assigned to no one; one assigned to the coordinator | 1. As the coordinator, request for the unassigned one. 2. As organiser, venue staff, tech support, attendee, request for the assigned one. 3. As the coordinator **switched to venue staff**, request for the assigned one. | — | 403 every time; no booking stored. | 🔴 |
+| TC-BOOK-007 | Two simultaneous overlapping requests leave one hold (AC3) | Two planning events on the same day, 14:00–17:00 and 15:00–18:00 | Send both `POST`s for Innovation Lab at the same instant | — | Exactly one 201 and one 409; exactly one `held` booking between them. | 🔴 |
+| TC-BOOK-008 | Find and request a venue from the event page (AC1) | A planning event assigned to the coordinator with no venue | 1. Open `/coordinator/events/<id>`. 2. In **Venue**, click **Find a venue**. 3. On Innovation Lab, click **Request this venue**. 4. Add a note, click **Request venue**. | Note: "Early access at 09:30 please" | Step 2 opens `/venues?event=<id>` with a blue "Requesting a venue for <event>" card and the date, times, attendance, layout and facilities pre-filled from the event. Step 4 returns to the event page with a toast; the Venue panel shows **Innovation Lab** with a yellow **Tentative hold** badge and no **Find a venue** button. | 🔴 |
+| TC-BOOK-009 | The Venue panel explains when a venue can't be requested yet | Fixture `…-0201` (under review); any returned event | Open each event's page | — | Under review: "A venue can be requested once the request is approved for planning." Returned: "Requirements are still being amended." Neither offers **Find a venue**. | 🟠 |
+| TC-BOOK-010 | Request is only offered for the event's own period | TC-BOOK-008 step 2 | Change the search's end time, search again | — | The **Request this venue** buttons disappear and the event card says "Search the event's own date and times to request a venue for it." Restoring the times brings them back. | 🟠 |
+| TC-BOOK-011 | A refusal is shown in the dialog | Two browser windows as the coordinator on two overlapping planning events' searches | Request Innovation Lab in the first, then in the second without reloading | — | The second dialog stays open and shows "Venue already held for this time by another event." in red; nothing else changes. | 🟠 |
+| TC-BOOK-012 | The hold appears for venue staff (AC1, calendar) | TC-BOOK-008 done | Sign in as Venue Staff, open the dashboard, find 26 May 2031 on the calendar | — | The request is in **Pending holds** and the calendar shows it as a tentative hold on that day. | 🔴 |
+| TC-BOOK-013 | Layout at phone width | TC-BOOK-008 at 375 px wide | Walk through TC-BOOK-008 | — | The event card, result buttons, dialog (note box, counter, buttons) and Venue panel fit without horizontal scrolling; dialog buttons stack. | 🟢 |
+
+`backend/scripts/verify_live.py` automates TC-BOOK-001–007; `frontend/e2e/bookings.e2e.js` automates TC-BOOK-008. `supabase/verification/venue_booking_request_checks.sql` proves the database half of TC-BOOK-001–007 in a rolled-back transaction. TC-BOOK-009–013 are manual.
+
+### Traceability — SCRUM-19
+
+| Acceptance criterion (Jira SCRUM-19) | Covered by |
+|---|---|
+| AC1 Request creates a tentative hold, shown on the calendar, venue staff notified | TC-BOOK-001, TC-BOOK-008, TC-BOOK-012; `pytest` `TestRequest::test_the_assigned_coordinator_holds_a_venue_and_venue_staff_are_told`, `TestEventShowsItsBooking`; Vitest `venueBookingStore.spec.js`; SQL checks (hold, notification fan-out) |
+| AC2 Overlapping requests refused (incl. blocks); back-to-back allowed | TC-BOOK-002, TC-BOOK-003, TC-BOOK-011; `pytest` `::test_a_refusal_from_the_database_is_answered_with_its_message[held_by_other / blocked]`; SQL checks |
+| AC3 First come, first served under concurrency | TC-BOOK-007; SQL checks (exclusion constraint) |
+| AC4 One venue per event | TC-BOOK-004; `pytest` `[already_booked]`; SQL checks |
+| AC5 Only while planning | TC-BOOK-005, TC-BOOK-009; `pytest` `[returned]`, `::test_an_event_outside_planning_is_refused_naming_its_status`; SQL checks |
+| AC6 Only the assigned coordinator, acting as coordinator | TC-BOOK-006; `pytest` `TestWhoMayRequest`; SQL checks (`not_assigned`, grants) |

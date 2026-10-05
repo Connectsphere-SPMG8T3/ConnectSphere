@@ -1,23 +1,110 @@
 <script setup>
-import { onMounted } from "vue";
+import { computed, ref, watch } from "vue";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import RequestVenueModal from "@/components/venues/RequestVenueModal.vue";
 import VenueCriteriaForm from "@/components/venues/VenueCriteriaForm.vue";
 import VenueResultCard from "@/components/venues/VenueResultCard.vue";
+import { showToast } from "@/composables/useToast";
+import { criteriaFromEvent, venuePanelState } from "@/features/venues/bookingRequest";
+import { useVenueBookingStore } from "@/features/venues/venueBookingStore";
 import { useVenuesStore } from "@/features/venues/venueSearchStore";
+import { eventsApi } from "@/services/api";
+import { useAuthStore } from "@/stores/auth";
 
+const route = useRoute();
+const router = useRouter();
 const venuesStore = useVenuesStore();
+const bookingStore = useVenueBookingStore();
+const authStore = useAuthStore();
+
+// Opened from an event (`/venues?event=<id>`, SCRUM-19): the search is
+// pre-filled from the event and each available venue can be requested for it.
+const bookingEvent = ref(null);
+const eventCriteria = ref(null);
+const eventError = ref(null);
+const requestedVenue = ref(null);
+
+const canRequest = computed(() => venuePanelState(bookingEvent.value).kind === "can-request");
+
+// The hold always covers the event's own period, so a venue is only offered
+// while the search is checking that same period; otherwise "Available" would
+// describe a different time from the one being held.
+const searchMatchesEvent = computed(() => {
+  const wanted = eventCriteria.value;
+  const current = venuesStore.criteria;
+  return Boolean(
+    wanted?.date &&
+      current.date === wanted.date &&
+      current.startTime === wanted.startTime &&
+      current.endTime === wanted.endTime,
+  );
+});
+
+const eventPeriod = computed(() => {
+  const event = bookingEvent.value;
+  if (!event?.starts_at || !event?.ends_at) return "";
+  const format = new Intl.DateTimeFormat("en-SG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: event.event_timezone || "Asia/Singapore",
+  });
+  return `${format.format(new Date(event.starts_at))} – ${format.format(new Date(event.ends_at))}`;
+});
+
+async function loadEventContext(eventId) {
+  eventError.value = null;
+  bookingEvent.value = null;
+  eventCriteria.value = null;
+  try {
+    const event = await authStore.withSession((token) => eventsApi.get(eventId, token));
+    bookingEvent.value = event;
+    eventCriteria.value = criteriaFromEvent(event);
+    venuesStore.criteria = criteriaFromEvent(event);
+    venuesStore.fieldErrors = {};
+  } catch (error) {
+    eventError.value = error.message;
+  }
+  venuesStore.search();
+}
 
 // First visit lists the whole catalogue; coming back from a detail page keeps
 // the previous search (the store outlives the view).
-onMounted(() => {
-  if (!venuesStore.hasSearched) venuesStore.search();
-});
+watch(
+  () => route.query.event,
+  (eventId) => {
+    if (eventId) {
+      loadEventContext(String(eventId));
+    } else {
+      bookingEvent.value = null;
+      eventCriteria.value = null;
+      if (!venuesStore.hasSearched) venuesStore.search();
+    }
+  },
+  { immediate: true },
+);
 
 function handleReset() {
   venuesStore.resetCriteria();
   venuesStore.search();
+}
+
+function openRequest(venue) {
+  bookingStore.error = null;
+  requestedVenue.value = venue;
+}
+
+async function confirmRequest(note) {
+  try {
+    await bookingStore.request(bookingEvent.value.id, requestedVenue.value.id, note);
+    requestedVenue.value = null;
+    showToast("Venue requested. It is held while venue staff decide.");
+    router.push({ name: "coordinator-event", params: { id: bookingEvent.value.id } });
+  } catch {
+    // Kept open so the coordinator sees why, beside the venue they picked.
+  }
 }
 </script>
 
@@ -30,6 +117,28 @@ function handleReset() {
         Enter the event's requirements. Every filter you set is strict; venues that miss one are listed separately with
         the reason.
       </p>
+    </BauhausCard>
+
+    <BauhausCard v-if="route.query.event" background="blue" accent="none" class="mb-10 text-canvas" data-testid="booking-event-context">
+      <p v-if="eventError" role="alert" class="text-sm font-bold">{{ eventError }}</p>
+      <template v-else-if="bookingEvent">
+        <p class="text-xs font-bold uppercase tracking-widest opacity-80">Requesting a venue for</p>
+        <p class="mt-1 text-2xl font-black uppercase tracking-tight">{{ bookingEvent.name }}</p>
+        <p class="mt-1 text-sm font-medium">{{ eventPeriod }}</p>
+        <p v-if="!canRequest" class="mt-3 text-sm font-bold">
+          {{ venuePanelState(bookingEvent).reason ?? "This event already has a venue." }}
+        </p>
+        <p v-else-if="!searchMatchesEvent" class="mt-3 text-sm font-bold">
+          Search the event's own date and times to request a venue for it.
+        </p>
+        <RouterLink
+          :to="{ name: 'coordinator-event', params: { id: bookingEvent.id } }"
+          class="mt-4 inline-block text-xs font-bold uppercase tracking-widest underline decoration-2 underline-offset-4"
+        >
+          Back to the event
+        </RouterLink>
+      </template>
+      <p v-else class="text-sm font-bold uppercase tracking-widest">Loading event…</p>
     </BauhausCard>
 
     <BauhausCard background="white" accent="none" class="mb-10">
@@ -72,7 +181,13 @@ function handleReset() {
       </p>
 
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <VenueResultCard v-for="result in venuesStore.includedResults" :key="result.venue.id" :result="result" />
+        <VenueResultCard v-for="result in venuesStore.includedResults" :key="result.venue.id" :result="result">
+          <template v-if="canRequest && searchMatchesEvent && result.availability === 'available'" #actions>
+            <BauhausButton variant="primary" :aria-label="`Request ${result.venue.name}`" @click="openRequest(result.venue)">
+              Request this venue
+            </BauhausButton>
+          </template>
+        </VenueResultCard>
       </div>
 
       <template v-if="venuesStore.showExcluded && venuesStore.excludedResults.length">
@@ -82,5 +197,17 @@ function handleReset() {
         </div>
       </template>
     </section>
+
+    <RequestVenueModal
+      v-if="bookingEvent && requestedVenue"
+      :open="Boolean(requestedVenue)"
+      :venue-name="requestedVenue.name"
+      :event-name="bookingEvent.name"
+      :period="eventPeriod"
+      :busy="bookingStore.isRequesting"
+      :error="bookingStore.error"
+      @confirm="confirmRequest"
+      @cancel="requestedVenue = null"
+    />
   </main>
 </template>
