@@ -1287,7 +1287,7 @@ Built on `feature/scrum-45-equipment-request`, branched from `main` at `f9852a8`
 - **Status is per line, submitted as a batch** (lines share a `submission_id`), not a request-level status. This matches the data model, §6.6 readiness and SCRUM-24.
 - **Out of scope this sprint:** notifying tech support, editing or deleting pending lines (EQ-R4), and tech support's sortable queue. Tech support get a read-only list instead.
 - AC1 and AC7 are revisited next sprint with the Event Coordinator Lead's assignment queue (§6.5).
-- **Don't merge SCRUM-19** (under review) into this branch. Rebase onto `main` once it lands. Because the live project already has SCRUM-19's migration, the developer chose to **wait for SCRUM-19** before applying this story's migration.
+- **Don't merge SCRUM-19** (under review) into this branch. Rebase onto `main` once it lands. Because the live project already had SCRUM-19's migration, the developer chose to **wait for SCRUM-19** before applying this story's migration. Once SCRUM-19 merged (PR #40), the branch was rebased onto `main` (`3fff160`): only docs conflicted, plus `events.service.assigned_event`, which both stories had added with the same behaviour, so `main`'s was kept. The §9 assumptions became item 21 and this entry §4.27, because SCRUM-19 had used item 20 and §4.26.
 - Five smaller rules had no answer and are recorded as **[Assumption]**s in REQUIREMENTS §9 item 21: one line per item, 50 items at most, "submitting" read as "assigned" coordinator, retired items not requestable, and closed events' lines hidden from tech support.
 
 #### What was built
@@ -1323,10 +1323,13 @@ Built on `feature/scrum-45-equipment-request`, branched from `main` at `f9852a8`
   - `features/equipment/__tests__/equipmentRequest.spec.js` (29) and `equipmentRequestStore.spec.js` (8). Both failed because the modules didn't exist.
   - `components/equipment/__tests__/EquipmentRequestPanel.spec.js` (13)
   - three new `techSupportDashboard.spec.js` cases. They failed on the placeholder.
-- **Full suites:** `pytest` **574 passed**, including the active-role matrix over the four new routes. `npm test` **46 files, 560 passed**. `npm run build` passed.
-- **Not verified:**
-  - The migration isn't applied to the live project, so nothing has run against the real system: not `equipment_request_checks.sql`, the live checks, the e2e spec, the Supabase advisors, or the manual browser pass. All of it waits for SCRUM-19 to merge.
-  - The PostgREST embeds in `REQUEST_LINE_SELECT` are untested against PostgREST, because the API suite mocks the repository.
+- **Full suites:** `pytest` **574 passed**, including the active-role matrix over the four new routes. `npm test` **46 files, 560 passed**. `npm run build` passed. After the rebase onto SCRUM-19: `pytest` **606 passed**, `npm test` **47 files, 563 passed**, build passed.
+- **Live project** (after the rebase): `supabase db push --dry-run` listed only `20261006120000`; it was applied with `supabase db push` and `supabase migration list --linked` matches. `supabase db advisors --linked` reports nothing on the new table or function; its 9 `auth_rls_initplan` warnings are all on the SCRUM-23 write policies (D19), plus the known leaked-password-protection warning.
+- **Recorded runs** (commit `3fff160`, servers on 8010/5180):
+  - `runs/2026-10-05-2250-api-db-3fff160.md`: **62/62 passed**, including TC-EQR-001, 002, 004, 008, 009 and `equipment_request_checks.sql`. TC-EQR-002 exercised the real PostgREST embeds and deleted its line; the live table was empty afterwards.
+  - `runs/2026-10-05-2253-e2e-3fff160.md`: **41 passed, 1 failed**. Both SCRUM-45 specs passed. TC-ROLE-003 failed because `POST /auth/active-role` answered 500 (`httpx.RemoteProtocolError: Server disconnected` in the shared Supabase client), which is D18. In the same run, the coordinator event page's two new equipment reads also answered 500 once during TC-BOOK-008, which still passed. Not re-run to get a pass.
+  - Local `node_modules` had no `@playwright/test` (SCRUM-19 added it); `npm install` from the unchanged lockfile and `npx playwright install chromium` fixed that.
+- **Not verified yet:** the manual browser pass (TC-EQR-003 counter, TC-EQR-005 wording and placement, TC-EQR-012 phone width, TC-EQR-013 list states), requested from the developer.
 - **Noticed, not fixed:**
   - **D19**: the SCRUM-23 equipment tables' write policies don't follow the active role.
   - No data module maps a Supabase outage to 503 (only auth does), so an outage here is a 500, like everywhere else.
