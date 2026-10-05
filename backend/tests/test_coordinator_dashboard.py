@@ -2,8 +2,9 @@
 
 The SPA's store (`frontend/src/features/events/store.js`) already fixes the
 response shape and does the ranking, so these tests pin what the server
-derives: which action items exist, each event's readiness, the unassigned
-count, and that nothing outside the caller's own assignments leaks in.
+derives: which action items exist, each event's readiness, and that nothing
+outside the caller's own assignments leaks in. Unassigned events belong to the
+Event Coordinator Lead's queue, so a coordinator's dashboard says nothing about them.
 """
 
 from types import SimpleNamespace
@@ -13,7 +14,7 @@ import pytest
 
 from app.modules.equipment import service as equipment_service
 from app.modules.events import repository, service
-from app.modules.events.service import ACTIVE_COORDINATOR_STATUSES, UNASSIGNED_STATUSES
+from app.modules.events.service import ACTIVE_COORDINATOR_STATUSES
 from app.modules.venues import service as venues_service
 
 COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
@@ -41,7 +42,6 @@ def data(monkeypatch):
     state = SimpleNamespace(
         events=[],
         resubmissions={},
-        unassigned=0,
         bookings={},
         reserved=set(),
         calls={},
@@ -51,13 +51,8 @@ def data(monkeypatch):
         state.calls["events"] = (coordinator_id, set(statuses))
         return state.events
 
-    def count_unassigned(statuses):
-        state.calls["unassigned"] = set(statuses)
-        return state.unassigned
-
     monkeypatch.setattr(repository, "list_coordinator_events", list_coordinator_events)
     monkeypatch.setattr(repository, "list_latest_resubmissions", lambda ids: state.resubmissions)
-    monkeypatch.setattr(repository, "count_unassigned", count_unassigned)
     monkeypatch.setattr(venues_service, "booking_statuses_by_event", lambda ids: state.bookings)
     monkeypatch.setattr(equipment_service, "reserved_event_ids", lambda ids: state.reserved)
     return state
@@ -85,7 +80,6 @@ class TestScope:
 
         assert dashboard.action_items == []
         assert dashboard.active_events == []
-        assert dashboard.unassigned_count == 0
 
 
 class TestActionItems:
@@ -177,17 +171,17 @@ class TestReadiness:
             assert self.readiness(data, row).technical.value == value
 
 
-class TestUnassignedCount:
-    def test_counts_every_non_draft_non_terminal_status(self, data):
-        data.unassigned = 7
+class TestUnassignedEvents:
+    """Unassigned events are the Event Coordinator Lead's queue (customer
+    clarification, REQUIREMENTS §6.5), not something a coordinator acts on."""
 
+    def test_the_dashboard_carries_no_unassigned_figure(self, data):
         dashboard = service.coordinator_dashboard(COORDINATOR_ID)
 
-        assert dashboard.unassigned_count == 7
-        # Until SCRUM-12 assigns on submission, unassigned events sit in
-        # under_review or planning, not only in `submitted` (AS-R5).
-        assert data.calls["unassigned"] == set(UNASSIGNED_STATUSES)
-        assert set(UNASSIGNED_STATUSES) == {"submitted", "under_review", "returned", "planning", "confirmed"}
+        assert "unassigned_count" not in dashboard.model_dump()
+
+    def test_no_query_counts_other_coordinators_or_unassigned_events(self):
+        assert not hasattr(repository, "count_unassigned")
 
 
 def chainable_query(rows, count=None) -> MagicMock:
@@ -240,17 +234,6 @@ class TestRepositoryQueries:
         assert repository.list_latest_resubmissions([]) == {}
         admin.table.assert_not_called()
 
-    def test_unassigned_count_is_counted_by_postgres(self, monkeypatch):
-        query = chainable_query([], count=7)
-        admin = MagicMock()
-        admin.table.return_value = query
-        monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: admin)
-
-        assert repository.count_unassigned(["submitted", "under_review"]) == 7
-        query.select.assert_called_once_with("id", count="exact", head=True)
-        query.is_.assert_called_once_with("coordinator_id", "null")
-        query.in_.assert_called_once_with("status", ["submitted", "under_review"])
-
 
 class TestCrossModuleReads:
     def test_booking_statuses_are_grouped_by_event(self, monkeypatch):
@@ -290,14 +273,13 @@ class TestApi:
     def test_coordinator_gets_the_dashboard(self, client, auth_headers, authenticate_as, data):
         authenticate_as("event_coordinator", COORDINATOR_ID)
         data.events = [event_row("e-050", "under_review")]
-        data.unassigned = 2
 
         response = client.get(DASHBOARD_URL, headers=auth_headers)
 
         # 200, not 422: the route is declared above `/{event_id}`, which is typed UUID.
         assert response.status_code == 200
         body = response.json()
-        assert body["unassigned_count"] == 2
+        assert set(body) == {"action_items", "active_events"}
         assert body["action_items"] == [{
             "event_id": "e-050",
             "event_name": "Event 050",

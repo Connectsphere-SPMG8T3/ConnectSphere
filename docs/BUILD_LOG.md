@@ -1068,3 +1068,12 @@ Finishes SCRUM-72 on `feature/scrum-72-coordinator-dashboard-api`. The acceptanc
   - `runs/2026-09-30-1915-e2e-ff5925e.md`: **37 passed, 2 failed**. TC-DASH-019 and TC-ROLE-005 both failed on server errors in the shared Supabase client (the review page, then the dashboard and a role switch), not on anything they assert about. That is recorded under D17. Neither was re-run to make it pass.
 - **Not verified:** TC-DASH-020 (return and resubmit a fixture, because it changes shared data) and the arrangement-issue path in a browser (nothing in the UI can set technical readiness yet; it is covered by pytest only). The visual cases TC-DASH-002, 003, 005 and 024 are waiting on the developer's manual pass.
 - **Noticed, not fixed:** `IMPLEMENTATION_MAP.md` still says `modules/equipment/` is an empty package and lists the equipment branches as unmerged, but the equipment module is on `main`.
+
+**Follow-up on the same branch: unassigned events move to the Event Coordinator Lead** (customer clarification of 2026-10-05, QA row to be added). The customer introduced an Event Coordinator Lead who assigns submitted requests from an unassigned queue, so a coordinator no longer needs to see unassigned events. The branch is now `fix/scrum-72-coordinator-dashboard-api`.
+- The developer removed the "Urgent — awaiting assignment" alert from the Overview (`b9065e5`).
+- A code review then found what that left behind: the view spec still expected the alert (the frontend suite failed), the test cases still described it, and the endpoint still ran a count query every load for a figure nothing showed.
+- Now removed end to end: `unassigned_count` from `CoordinatorDashboard`, `count_unassigned` and `UNASSIGNED_STATUSES` from the events module, and `unassignedCount` from the store.
+- TC-DASH-012 and TC-DASH-015 now check that the coordinator sees nothing about unassigned events, and the live check TC-DASH-015 asserts the response has no such field.
+- REQUIREMENTS §6.5 records the clarification as superseding AS-R1, AS-R3 and AS-R5 until the Lead story rewrites that section. §9 item 17 is resolved, and item 18 lists what the clarification leaves open.
+- **Verification:** the tests were changed first and failed for the expected reasons (15 backend, because the service still called the removed query, and 1 store case), then passed. `pytest` **448 passed**, `npm test` **39 files, 476 passed**, `npm run build` passed. See the run log below for the live checks.
+

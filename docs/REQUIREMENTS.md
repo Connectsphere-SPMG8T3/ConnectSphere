@@ -672,6 +672,10 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 
 ### 6.5 Coordinator assignment *(SCRUM-12, SCRUM-68)*
 
+> **Superseded in part by the Event Coordinator Lead (customer clarification of 2026-10-05, QA row to be added).** The customer has introduced a new internal role, the **Event Coordinator Lead**. Newly submitted requests are no longer assigned directly to a coordinator: they enter an **unassigned queue** that the Lead can view. The Lead reviews basic event information, assigns a suitable coordinator, and can reassign. Coordinators manage only the events assigned to them; the Lead can view all coordinator assignments and the active events under their supervision. Relevant users are notified of assignments and reassignments.
+>
+> This replaces automatic assignment (AS-R1, AS-R3) and the "Awaiting assignment" alert on every coordinator dashboard (AS-R5), and it contradicts "no manager exists (QA-3)" below. The rules beneath are kept for the record until the story that builds the Lead role rewrites this section. Already applied: the coordinator dashboard no longer shows or receives an unassigned count (SCRUM-72, §6.21). Still open: §9 item 18.
+
 **Automatic assignment** (QA-5, QA-54, QA-79, QA2-7). Coordinators don't claim requests and no manager exists (QA-3). The customer named "round-robin or load-based" and left the detailed criteria to us (QA2-7).
 
 - **AS-R1:** On submission, the system assigns the **least-loaded active coordinator**. Load is the number of assigned events in `under_review`, `returned`, `planning`, or `confirmed`. Ties go to whoever was least recently assigned, then to the lowest ID. **[Team decision]** QA-54 says "by system load/availability", and schedules are out of scope (QA-14), so load is the measure.
@@ -1067,7 +1071,8 @@ Each dashboard composes widgets from the feature stores. **Build a widget only w
 | Role | Widgets (in priority order) |
 |---|---|
 | Organiser | Drafts · Returned requests needing my amendment · My requests with status · Upcoming confirmed events · Decided change requests |
-| Coordinator | My events needing action (resubmitted, change or cancellation requested, booking or equipment decided, re-review outcomes, issues) · My events by status · Readiness gaps in the next 14 days · "Awaiting assignment" alert (AS-R5) |
+| Coordinator | My events needing action (resubmitted, change or cancellation requested, booking or equipment decided, re-review outcomes, issues) · My events by status · Readiness gaps in the next 14 days. No unassigned figure: unassigned events are the Event Coordinator Lead's queue (§6.5) |
+| Event Coordinator Lead | The unassigned queue · all coordinator assignments and active events under their supervision. **Not built yet**; to be specified with the Lead story (§6.5, §9 item 18) |
 | Venue staff | Pending holds (oldest first) · Bookings in re-review · Active and upcoming blocks · Venues (active/inactive). **All venues**, since staff are a pool (AUTH-R5). |
 | Tech support | Pending and re-review equipment lines · Events needing technical readiness · Equipment in maintenance · Upcoming reservations (7 days) |
 | Attendee | My upcoming registrations and waitlist invitations · Browse open events |
@@ -1097,7 +1102,7 @@ Ties break by **soonest event date**, then by longest wait, then by ID for stabl
 
 - **[Assumption]** `arrangement_issue` is produced for a `planning` or `confirmed` event whose `technical_readiness` is `issue`, the one arrangement problem the system records today. The event also carries the flag `technical_issue`. See §9 item 15.
 - **[Assumption]** Equipment readiness is `not_required` when the event lists no preliminary equipment needs, `ready` once it has at least one `confirmed` or `completed` reservation, and `pending` otherwise. §6.6's "every request reserved" needs SCRUM-24's per-event equipment requests, which don't exist yet. See §9 item 16.
-- **[Assumption]** The awaiting-assignment alert (AS-R5) counts every non-draft, non-terminal event with no coordinator, not only `submitted` ones. Until SCRUM-12 assigns on submission, submitted events sit in `under_review` (or later) with no coordinator. See §9 item 17.
+- **Unassigned events are not shown.** The coordinator dashboard carries no unassigned count or alert: unassigned events are the Event Coordinator Lead's queue (customer clarification of 2026-10-05, QA row to be added, §6.5). This replaces the earlier [Assumption] about counting them (§9 item 17).
 
 **[Team decision]** The coordinator dashboard follows the organiser dashboard's layout (§6.21.2): **Overview** and **Events** views chosen from the sidebar (`?tab=`), the same header card, category tiles, status cards and event cards. The AC1 prioritised list and the readiness gaps stay on Overview. Category tiles and status headings open Events filtered to them, and every event opens `/coordinator/events/:id`. Reason: the developer asked for one consistent look across the two event dashboards.
 
@@ -1296,7 +1301,8 @@ These are the Week 1 features outside the core 20. They stay in Jira at `priorit
 14. **Return message and resubmission note length (SCRUM-33):** **[Assumption]** Both are capped at 1000 characters, checked after trimming, exactly as the API checks a rejection reason (`EventRejectRequest`; the §6.4 wording "checked on the raw value" doesn't match the code, which strips first). Jira sets no bound; both values reach `event_status_history.reason` and a notification message. Is a different limit expected?
 15. **Arrangement issues (SCRUM-72):** **[Assumption]** A technical readiness of `issue` on a planning or confirmed event is shown as an arrangement issue, the coordinator's most urgent action (§6.21.1). Are there other "issues" the coordinator must see before change requests and re-review exist?
 16. **Equipment readiness before SCRUM-24 (SCRUM-72):** **[Assumption]** Ready once any reservation exists for the event (or `not_required` when none was asked for). Is that close enough until per-line equipment requests exist?
-17. **Awaiting-assignment count (SCRUM-72):** **[Assumption]** Counts every active event with no coordinator, because submission doesn't assign one yet (SCRUM-12). Once SCRUM-12 lands, should it go back to counting only `submitted`?
+17. ~~**Awaiting-assignment count (SCRUM-72)**~~ — **Resolved by the Event Coordinator Lead clarification** (customer clarification of 2026-10-05, QA row to be added): coordinators no longer see unassigned events at all; the Lead's queue does (§6.5).
+18. **Event Coordinator Lead (§6.5):** the clarification leaves open: whether the Lead can also act as a coordinator on events (approve, reject, return); what "basic event information" the queue shows; whether a coordinator can still hand over an event themselves (AS-R4) or only the Lead reassigns; whether submission stays `draft → under_review` or a request waits in `submitted` until assigned; and who exactly is notified on assignment and reassignment (organiser, new coordinator, previous coordinator).
 
 ---
 

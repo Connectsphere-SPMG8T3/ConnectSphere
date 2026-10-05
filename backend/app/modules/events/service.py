@@ -34,12 +34,6 @@ DEFAULT_EVENT_TIMEZONE = "Asia/Singapore"
 # are private to their organiser (DR-R2) and terminal statuses aren't active.
 ACTIVE_COORDINATOR_STATUSES = ("under_review", "returned", "planning", "confirmed")
 
-# [Assumption] REQUIREMENTS §6.21.1: the awaiting-assignment alert (AS-R5) counts
-# every non-draft, non-terminal event with no coordinator. AS-R5 names only
-# `submitted`, but until SCRUM-12 assigns on submission, unassigned events sit in
-# `under_review` or later.
-UNASSIGNED_STATUSES = ("submitted", *ACTIVE_COORDINATOR_STATUSES)
-
 
 class EventNotFoundError(HTTPException):
     def __init__(self) -> None:
@@ -364,8 +358,4 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
             )
         )
 
-    return CoordinatorDashboard(
-        action_items=action_items,
-        active_events=active_events,
-        unassigned_count=repository.count_unassigned(UNASSIGNED_STATUSES),
-    )
+    return CoordinatorDashboard(action_items=action_items, active_events=active_events)

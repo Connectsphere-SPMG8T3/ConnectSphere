@@ -64,19 +64,6 @@ def list_latest_resubmissions(event_ids: Iterable[str]) -> dict[str, str]:
     return latest
 
 
-def count_unassigned(statuses: Iterable[str]) -> int:
-    """How many events in these statuses have no coordinator, counted by Postgres."""
-    response = (
-        get_supabase_admin_client()
-        .table("events")
-        .select("id", count="exact", head=True)
-        .is_("coordinator_id", "null")
-        .in_("status", list(statuses))
-        .execute()
-    )
-    return response.count or 0
-
-
 def list_event_names(event_ids: Iterable[str]) -> dict[str, str]:
     """`{event_id: name}` for the ids given, skipping any that no longer exist.
 

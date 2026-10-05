@@ -292,8 +292,6 @@ const cardSections = computed(() => [
 
     <!-- Overview -->
     <template v-if="activeTab === 'overview' && isLoaded">
-      <!-- Urgent alert: AS-R5, shown on every coordinator dashboard. -->
-
       <section class="mb-10" aria-labelledby="needs-action">
         <div class="mb-5 flex items-baseline justify-between gap-4">
           <h2 id="needs-action" class="text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">

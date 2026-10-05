@@ -258,5 +258,5 @@ class CoordinatorActiveEvent(BaseModel):
 class CoordinatorDashboard(BaseModel):
     action_items: list[CoordinatorActionItem] = []
     active_events: list[CoordinatorActiveEvent] = []
-    # Every coordinator sees the same figure (AS-R5): these events belong to no one yet.
-    unassigned_count: int = 0
+    # No unassigned figure: unassigned events are the Event Coordinator Lead's
+    # queue, not a coordinator's (customer clarification, REQUIREMENTS §6.5).

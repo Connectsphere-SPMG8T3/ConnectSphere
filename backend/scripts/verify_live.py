@@ -466,14 +466,11 @@ def _(ctx: Context) -> None:
             expect(not kinds, f"{event['event_id']} is returned but has action items {kinds}")
 
 
-@check("TC-DASH-015", "The awaiting-assignment count matches the database", needs_db=True)
+@check("TC-DASH-015", "A coordinator's dashboard says nothing about unassigned events")
 def _(ctx: Context) -> None:
+    # Unassigned events are the Event Coordinator Lead's queue (REQUIREMENTS §6.5).
     body = coordinator_dashboard(ctx)
-    [row] = db_query(
-        "select count(*)::int as n from public.events where coordinator_id is null "
-        "and status in ('submitted','under_review','returned','planning','confirmed')"
-    )
-    expect(body["unassigned_count"] == row["n"], f"API says {body['unassigned_count']}, database says {row['n']}")
+    expect(set(body) == {"action_items", "active_events"}, f"unexpected fields: {sorted(body)}")
 
 
 @check("TC-DASH-016", "An organiser can't read the coordinator dashboard")

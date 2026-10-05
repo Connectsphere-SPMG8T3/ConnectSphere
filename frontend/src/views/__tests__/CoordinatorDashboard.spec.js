@@ -54,7 +54,6 @@ const PAYLOAD = {
       readiness: { venue: "ready", equipment: "ready", technical: "ready" },
     },
   ],
-  unassigned_count: 7,
 };
 
 async function flush() {
@@ -98,7 +97,7 @@ describe("CoordinatorDashboard", () => {
   });
 
   describe("Overview (the default view)", () => {
-    it("shows the coordinator's header, counts and alert from the payload", async () => {
+    it("shows the coordinator's header and counts from the payload", async () => {
       const { el } = await mountDashboard();
 
       expect(el.textContent).toContain("Event Coordinator Dashboard");
@@ -106,7 +105,9 @@ describe("CoordinatorDashboard", () => {
       expect(el.textContent).not.toContain("Awaiting data");
       const awaiting = el.querySelector('[aria-label="Show Awaiting approval events"]');
       expect(awaiting.textContent).toContain("1");
-      expect(el.querySelector('[data-testid="unassigned-alert"]').textContent).toContain("7");
+      // Unassigned events are the Event Coordinator Lead's queue, not this dashboard's.
+      expect(el.querySelector('[data-testid="unassigned-alert"]')).toBeNull();
+      expect(el.textContent.toLowerCase()).not.toContain("awaiting assignment");
     });
 
     it("withholds every count until the first load settles (TC-DASH-003)", async () => {
