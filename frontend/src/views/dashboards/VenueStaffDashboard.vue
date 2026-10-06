@@ -193,7 +193,7 @@ function emptyDetail(clearText) {
       {{ dashboard.error }}
     </p>
 
-    <div class="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
       <!-- Only the one tile that leads anywhere is a link, and it says so on
            hover rather than carrying a standing label: the tiles are read as a
            row of figures, and a permanent instruction on one of them competes
@@ -212,10 +212,12 @@ function emptyDetail(clearText) {
             : ''
         "
       >
-        <BauhausCard :background="tile.background" :accent="tile.accent" :accent-color="tile.accentColor">
-          <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ tile.label }}</p>
+        <BauhausCard class="h-full" :background="tile.background" :accent="tile.accent" :accent-color="tile.accentColor">
+          <!-- Two lines keep the figures aligned when a label wraps. These
+               are minimums, so larger text can still grow without clipping. -->
+          <p class="min-h-8 text-xs font-bold uppercase leading-4 tracking-widest opacity-80">{{ tile.label }}</p>
           <p class="mt-2 text-5xl font-black tracking-tighter">{{ tile.value }}</p>
-          <p class="mt-2 flex items-baseline gap-2 text-xs font-medium text-ink/60">
+          <p class="mt-2 flex min-h-8 items-baseline gap-2 text-xs font-medium leading-4 text-ink/60">
             {{ tile.detail }}
             <!-- Hidden by opacity, not by `v-if`: it stays in the accessible
                  name, so a screen reader still hears where the link goes. -->

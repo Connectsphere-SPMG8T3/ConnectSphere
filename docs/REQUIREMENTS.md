@@ -1210,6 +1210,8 @@ SCRUM-70 asks for "the venues I'm in charge of", but staff allocation to venues 
 | 3 | Active and upcoming blocks | `venue_blocks` ending after now |
 | 4 | Venues, split active / inactive | `venues` |
 
+**[Team decision] Summary cards align within each row when text wraps** (D20, approved 2026-10-06). Reserve at least two lines for headings and descriptions, stretch each card to the row height, and allow content to grow rather than truncating it. Use one column on phones, two from 768px, and four from 1280px so the sidebar does not squeeze the labels.
+
 **[Team decision] The calendar carries blocks, holds and re-reviews only.** An `approved` booking is settled work, not a decision waiting on staff; it belongs on the per-venue availability calendar of §6.9 (SCRUM-16). The legend states this, so the omission does not read as missing data.
 
 **[Team decision] The week starts on Monday** (ISO and Singapore convention; it also keeps the weekend adjacent).
