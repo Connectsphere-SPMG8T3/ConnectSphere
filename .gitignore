@@ -39,3 +39,8 @@ frontend/playwright-report/
 # JUnit reports written by the CI test steps
 backend/reports/
 frontend/reports/
+
+# Coverage data and reports (docs/CI.md §4 item 2)
+backend/.coverage
+backend/htmlcov/
+frontend/coverage/

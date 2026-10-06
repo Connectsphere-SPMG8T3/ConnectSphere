@@ -40,18 +40,32 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run tests
-        run: pytest --junitxml=reports/junit.xml
+      # --cov reads backend/.coveragerc, whose fail_under is the coverage
+      # floor: a change that lowers coverage fails this step (docs/CI.md §4
+      # item 2).
+      - name: Run tests with coverage
+        run: pytest --junitxml=reports/junit.xml --cov --cov-report=term-missing:skip-covered --cov-report=xml:reports/coverage.xml
 
-      # The per-test results of this run, kept as the automated suite's
-      # execution record (docs/test-cases/runs/README.md). Uploaded even when
-      # tests fail, since that is when the record matters most.
+      # The coverage table on the run's summary page. --fail-under=0 so a
+      # coverage drop is reported once, by the step above, not twice.
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('backend/.coverage') != '' }}
+        run: |
+          echo "### Backend coverage" >> "$GITHUB_STEP_SUMMARY"
+          coverage report --format=markdown --fail-under=0 >> "$GITHUB_STEP_SUMMARY"
+
+      # The per-test results and the coverage report of this run, kept as the
+      # automated suite's execution record (docs/test-cases/runs/README.md).
+      # Uploaded even when tests fail, since that is when the record matters
+      # most.
       - name: Upload test report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: backend-test-report
-          path: backend/reports/junit.xml
+          path: |
+            backend/reports/junit.xml
+            backend/reports/coverage.xml
           retention-days: 90
 
   frontend:
@@ -73,15 +87,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test -- --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml
+      # Coverage settings and the floor (thresholds.lines) are in
+      # vite.config.js; a change that lowers coverage fails this step.
+      - name: Run tests with coverage
+        run: npm run test:coverage -- --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml
 
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('frontend/coverage/coverage-summary.json') != '' }}
+        run: |
+          node -e '
+            const t = require("./coverage/coverage-summary.json").total;
+            const row = (k) => `| ${k} | ${t[k].pct}% | ${t[k].covered} / ${t[k].total} |`;
+            const lines = ["### Frontend coverage", "", "| Metric | Covered | Count |", "|---|---|---|"];
+            for (const k of ["lines", "statements", "branches", "functions"]) lines.push(row(k));
+            for (const l of lines) console.log(l);
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      # frontend/coverage/ holds the HTML report: open index.html to see the
+      # uncovered lines of each file.
       - name: Upload test report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: frontend-test-report
-          path: frontend/reports/junit.xml
+          path: |
+            frontend/reports/junit.xml
+            frontend/coverage/
           retention-days: 90
 
       # Vite reads .env at build time; the example file holds placeholders

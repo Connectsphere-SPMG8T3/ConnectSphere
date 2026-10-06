@@ -1448,3 +1448,25 @@ Not a backlog story. An enabler on `chore/docs-scrum-playbook`, 2026-10-06. From
 
 - **Verified:** every relative link in the changed files resolves, apart from the made-up run file in the test-case template's example row. A search for "Jira" in the current-process docs finds only deliberate history notes and the Sprint 2 plan in `ROADMAP.md` §C4. No code, migration or test changed, so the suites weren't re-run.
 - **Not verified:** whether the Sheet's column names and status values still match the playbook §4.1–4.2 and the 2026-10-06 sheet snapshot these docs were written from. Nothing is enforced by tooling yet: branch protection is still off (`CI.md` §4 item 1), and coverage isn't reported (item 2).
+
+### 4.32. Chore — Coverage reporting and a coverage floor in CI
+
+Not a backlog story. An enabler on `chore/coverage-reporting`, branched from `chore/docs-scrum-playbook` (§4.31) because both edit `docs/CI.md`. 2026-10-06. The new DoD requires 100% coverage, and §4.31 set the target, but nothing measured coverage, so no reviewer could check that item.
+
+1. **Backend.** `pytest-cov==7.1.0` is added to `requirements.txt`. The new `backend/.coveragerc` measures line coverage of `app/` and sets `fail_under = 92`. Plain `pytest` doesn't measure coverage, so running a single test file isn't affected.
+2. **Frontend.** `@vitest/coverage-v8` was already a dev dependency (added in SCRUM-66) but was never configured. `vite.config.js` now has a `coverage` block: v8, `src/**`, the default test-file exclusions plus `src/main.js`, and `thresholds.lines: 94`. `npm run test:coverage` runs it, and `npm test` is unchanged.
+3. **CI.** Both jobs run their suites with coverage and fail below the floor. Each adds a coverage table to the run's summary page, and uploads its coverage report (`coverage.xml`, or the `frontend/coverage/` HTML) in the existing `*-test-report` artifact. The coverage output folders are gitignored.
+4. **Baseline (2026-10-06).** Backend 92.63% of lines (1,635 / 1,765). Frontend 94.52% (8,799 / 9,309). The floors are these numbers rounded down, raised at the end of each sprint towards 100% for the Sprint 4 showcase.
+5. **Exclusions.** Only `frontend/src/main.js`, which only mounts the app in a browser and is exercised by every Playwright run. Everything else that can be unit-tested stays in the count, including the 0% files.
+6. **Docs.** `CI.md` §1 and §4 item 2 cover the commands, baseline, floors, exclusions and where the gaps are. The DoD's "Checked by people" row now says what CI doesn't check: which lines a PR changed. The commands are added to `DEVELOPMENT_WORKFLOW.md` §2, `AGENTS.md`, `README.md` and `IMPLEMENTATION_MAP.md` §5.
+
+- **Verified:**
+  - Both CI test commands run locally as written: backend 634 passed with "Required test coverage of 92.0% reached", frontend 578 passed above its 94% threshold.
+  - Each floor was then raised to 99 and the run failed: backend exit 1, "Required test coverage of 99.0% not reached"; frontend exit 1, "Coverage for lines (94.52%) does not meet global threshold (99%)". The floors were put back afterwards.
+  - Both summary commands produced their Markdown tables.
+  - `npm test` and `npm run build` still pass.
+  - The workflow YAML parses.
+- **Not verified:** the steps on GitHub's runner itself, which first run on this branch's PR: `$GITHUB_STEP_SUMMARY`, `hashFiles` and the multi-path artifact upload. The runner's Python 3.11 and Node 20 could also measure slightly differently from this machine. The local run used Python 3.11.1.
+- **Noticed, not fixed:**
+  - `backend/app/db/session.py` is imported nowhere (0%). It should be deleted rather than tested.
+  - The three backend repository modules (44–66%) can only be covered honestly by real-database tests (`CI.md` §4 item 3).
