@@ -1335,3 +1335,53 @@ Built on `feature/scrum-45-equipment-request`, branched from `main` at `f9852a8`
   - **D19**: the SCRUM-23 equipment tables' write policies don't follow the active role.
   - No data module maps a Supabase outage to 503 (only auth does), so an outage here is a 500, like everywhere else.
   - `TechSupportDashboard`'s maintenance times are formatted in UTC, not Singapore time.
+
+### 4.28. SCRUM-63 — Update venue capacity and facilities information
+
+Built on `feature/scrum-63-edit-venue-details`, branched from `main` at `f9852a8`. The developer pasted the user story and acceptance criteria directly; the Jira MCP was not available in this environment.
+
+**Story.** As a Venue Staff, I want to update a venue's detail, so that I don't get booking requests based on outdated details that I then have to reject or renegotiate.
+
+**Acceptance criteria (as given).**
+1. Can edit details for an existing venue.
+2. Changes are reflected immediately in future venue searches and suitability checks.
+3. Reducing capacity below the expected attendance of an existing tentative/confirmed booking triggers a warning.
+4. Previous values remain visible in the venue's change history.
+
+#### Decisions taken with the developer
+
+- **Edit scope: the full profile**, not just capacity and facilities (the title's narrowest reading) — name, location, capacity, per-layout capacity, facilities, accessibility, hours and description. `is_active` is excluded; REQUIREMENTS §6.8 implies that is its own story (SCRUM-64, deactivate/reactivate).
+- **Warning scope: the full VC-R2 rule**, not just the capacity-vs-attendance case the acceptance criteria describe. Capacity, a dropped required facility, a dropped preferred layout, or hours that no longer cover a booking's time all warn, each compared against what the edit newly breaks (not a pre-existing mismatch).
+- **Added `venues.version` for optimistic concurrency** (DB-5), matching `events.version` — IMPLEMENTATION_MAP flagged that as "the only pattern so far — copy it, don't invent a second scheme."
+- These were presented as a short in-chat design (the brainstorming skill's **bounded** path: an existing, well-established module being extended, not a new subsystem) and approved before any code was written.
+
+#### What was built
+
+- **Database** (`20261006130000_venue_edit_and_history.sql` — renamed from an initial `20261006100000` once rebasing onto `main` revealed two migrations, from the now-merged SCRUM-19 and SCRUM-45, with later 2026-10-06 timestamps already live):
+  - `venues.version`
+  - table `venue_edit_history` (`venue_id`, `actor_id` set null, `before jsonb`, `after jsonb`, `created_at`); select-only RLS, same readers as `venues`
+  - `public.update_venue(...)` returning `setof venues` — `security definer`, `service_role` only, same one-transaction shape as `transition_event`: version-checked update, replaces `venue_layouts`/`venue_facilities`, inserts the history row, inserts a `venue_updated_affects_booking` notification per affected event's coordinator
+- **Backend** (`modules/venues`):
+  - `impact.py` (pure, no I/O): `affected_bookings(before, after, bookings)` — diffs *before* vs *after* venue state per booking and reports only newly-broken rules, so a pre-existing mismatch the edit didn't cause is never reported. Reuses a new shared `search.effective_capacity` (extracted from `search._criteria_reasons`, which previously inlined the same per-layout-capacity lookup VS-R6 already names)
+  - `events.service.planning_context_by_id(ids)` / `events.repository.list_planning_context` — the cross-module lookup `venues.service` uses to get each booking's event's `expected_attendance`/`layout_preference`/`facilities_required`/`coordinator_id`, following the same pattern as the existing `names_by_id`
+  - `PATCH /venues/{venue_id}` (venue staff only) and `GET /venues/{venue_id}/history` (coordinator or venue staff) — `venues.service.update_venue`/`venue_history`
+  - `VenueConflictError` (409) added to `core/exceptions.py`, not as a module-local class (unlike `events.service.EventConflictError`, an existing inconsistency not copied here)
+- **Frontend:**
+  - `VenueEditView` at `/venues/:id/edit` (venue-staff only route), built from `BauhausInput`/`BauhausCheckboxGroup`
+  - `VenueEditWarningModal`, a sibling of `RejectEventModal`, naming the affected events and reasons
+  - `useVenueEditStore` (load/submit/loadHistory, mirroring `eventReviewStore`'s stale-response-drop pattern)
+  - `venueToEditForm`/`editFormToPayload`/`summariseEditHistoryEntry` added to `venueProfile.js`
+  - An **Edit venue** link (venue staff only) and a **History** tab added to `VenueDetailView`
+- **Verification assets:** `supabase/verification/venue_edit_checks.sql`, rolled back after it runs; `verify_live.py` DB_SCRIPTS entry; `docs/test-cases/venues.md` TC-VENUE-056–064 plus a Traceability — SCRUM-63 table.
+
+#### A stale fixture found during live verification
+
+The first full `verify_live.py --record` run (before this story's own migration, just after rebasing onto the merged SCRUM-19/45) failed two unrelated cases — TC-BOOK-005 and TC-EQR-008 — both expecting fixture event `e0000000-…-0201` to still be `under_review`. It was found in `planning` with a stray `held` booking on Heritage Hall, most likely left over from an SCRUM-19/45 manual pass that didn't run the reset script afterwards. `supabase/verification/event_review_fixture_reset.sql` (pre-existing, documented exactly for this) fixed it; the re-run passed 63/63. Not this story's bug, but worth recording since it could otherwise read as one.
+
+#### Verification
+
+- **Written red first:** `backend/tests/test_venue_impact.py` (18 cases, failed on the missing module), additions to `backend/tests/test_venues_api.py` (`TestVenueEdit`, `TestVenueEditHistory`), `frontend/src/features/venues/__tests__/venueProfile.spec.js` and a new `venueEditStore.spec.js`.
+- **Full suites, after merging the now-updated `main` in:** `pytest` **634 passed**. `npm test` **578 passed** (one `TopBar.spec.js` timeout under full parallel load, confirmed a pure flake by an isolated re-run). `npm run build` passed.
+- **Live project:** migration applied with `supabase db push` (`supabase migration list --linked` matches). `venue_edit_checks.sql` passed in a rolled-back transaction, including the RLS checks (coordinator and venue staff read the history, organiser and anon do not). Full `verify_live.py --record`: **63/63 passed** (`runs/2026-10-06-1733-api-db-fd4f351.md`). `npm run test:e2e:record`: **40/42 passed**; the two failures (`TC-EQR-005/006`, `TC-ROLE-003/004` — neither touches venues) were confirmed a parallel-load flake by an isolated re-run (9/9 passed) (`runs/2026-10-06-1745-e2e-fd4f351.md`).
+- **Not verified:** no dedicated e2e spec exercises the new edit screen itself (the warning dialog, the confirm round trip, the History tab) — covered by `pytest`, Vitest and the SQL check, but not by Playwright. The manual browser pass (TC-VENUE-056, 057, 060, 062, 063) is the developer's, per root AGENTS.md.
+- **Noticed, not fixed:** the IMPLEMENTATION_MAP rows for SCRUM-19 and SCRUM-45 still say "not yet merged" although both are on `main` (PRs #40, #41) — stale, left alone as out of this story's scope.
