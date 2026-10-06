@@ -1426,3 +1426,38 @@ Follow-up on `fix/venue-dashboard-card-alignment`, after D20 (`1a96aa9`), 2026-1
 **Noticed, not fixed.** D22: tech-support’s existing inventory search/status-filter row overflows the page at 768px (`sm:grid-cols-[1fr_14rem]` plus intrinsic input width beside the sidebar). It is independent of the summary row, which fits and aligns. Recorded for follow-up rather than changing the form as part of this fix.
 
 **Remaining verification/integration.** Full database-dependent API/browser suites require the Supabase CLI. PR, teammate review, merge and Jira updates remain developer-owned.
+
+### 4.31. Fix — D18, concurrent requests failing on the shared Supabase client
+
+Fixed on `fix/d18-supabase-http1-client`, branched from `main` at `37f2d0b`. D18 only, as the developer chose; D10 (a 500 losing its CORS headers) stays open.
+
+**Symptom.** Some API requests answered 500 at random, and the browser showed "Failed to fetch". Every recorded Playwright run since 30 Sep had one or two of these failures: TC-DASH-019, TC-ROLE-003 and TC-ROLE-005, on several endpoints, on Windows and macOS.
+
+**Reproduction.**
+- The first version of the regression check sent 4 rounds of 25 concurrent requests to a freshly started `main` backend. It **passed**, with no errors in the backend log, so concurrency and volume alone weren't the trigger. That version was replaced and its run log discarded.
+- A probe of parallel bursts after growing idle gaps found the real trigger. After 0, 15, 30 and 60 s idle, every request passed. After **120 s idle, 5 of 6 answered 500**, and after 180 s, 3 of 6. All 8 failures were `httpx.RemoteProtocolError: Server disconnected`.
+- The regression check TC-AUTH-049 (six parallel `GET`s, 150 s idle, six more) failed on `main`: **5 of 12** answered 500 (`runs/2026-10-06-1934-api-db-37f2d0b.md`).
+
+**Root cause.**
+- supabase-py 2.31 builds its database and auth clients with `httpx.Client(http2=True)`.
+- `get_supabase_admin_client()` and `get_supabase_anon_client()` are cached, so every request thread shared one HTTP/2 connection per client.
+- After about two minutes with no requests, Supabase closed that connection. The client reused it anyway, and every request multiplexed on it failed together. That's why failures arrived in clusters on one page load.
+
+**Fix** (`backend/app/db/supabase.py`).
+- New `create_http_client()`: an `httpx.Client` with `http2=False`, `follow_redirects=True`, and postgrest-py's own 120 s timeout.
+- It's passed through `SyncClientOptions(httpx_client=...)` by all three factories. supabase-py hands that client to the database, auth, storage and functions clients.
+- On HTTP/1.1, each request in flight has its own pooled connection, and an idle connection the server closed is discarded rather than reused.
+- No other module changed, since everything already goes through these factories.
+- One side effect: auth calls on these clients now use the 120 s timeout instead of httpx's 5 s default.
+
+#### Verification
+
+- **Written red first:** `backend/tests/test_supabase_clients.py` (4 cases) failed because `create_http_client` didn't exist and the clients had no HTTP client passed in. They now pass. Full `pytest`: **638 passed**.
+- **Live, on a freshly started backend running the fix** (8010, frontend 5180):
+  - `runs/2026-10-06-1937-api-db-37f2d0b.md`: **64/64 passed**, including TC-AUTH-049 after its 150 s idle gap.
+  - `runs/2026-10-06-1942-e2e-37f2d0b.md`: **42/42 passed**, the first fully green recorded browser run since 30 Sep. TC-DASH-019, TC-ROLE-003 and TC-ROLE-005 all passed.
+  - The backend log for both runs: 391 requests, **0** server errors, **0** `httpx` errors.
+  - The run logs name `37f2d0b` because they ran on the uncommitted fix on top of it.
+- No manual browser pass: nothing visible changed.
+- **Idle probe on the fixed backend:** the 120 s and 180 s gaps that failed before (5/6, 3/6) both answered **6/6**. Not recorded as a run log; it was a scratch script.
+- **Not verified:** that D18 can never recur. It was intermittent, so the evidence is the reproduced failure before the fix and clean runs after it.

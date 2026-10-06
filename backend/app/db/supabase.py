@@ -1,9 +1,31 @@
 from functools import lru_cache
 
+import httpx
+from postgrest.constants import DEFAULT_POSTGREST_CLIENT_TIMEOUT
 from supabase import Client, create_client
 from supabase.lib.client_options import SyncClientOptions
 
 from app.core.config import get_settings
+
+
+def create_http_client() -> httpx.Client:
+    """The HTTP client every Supabase client here sends its requests through.
+
+    HTTP/1.1, not the HTTP/2 supabase-py would build itself (DEFECTS D18). The
+    shared clients below serve every request thread, and on HTTP/2 they shared
+    one connection: once Supabase closed it after about two minutes idle, the
+    client reused it and every request of the next page load failed together
+    ("Server disconnected"). On HTTP/1.1 each request in flight has its own
+    pooled connection, and an idle one that was closed is replaced.
+
+    The timeout is postgrest-py's own default, which its client used before; auth
+    calls share it (they had httpx's 5 s default).
+    """
+    return httpx.Client(
+        http2=False,
+        follow_redirects=True,
+        timeout=httpx.Timeout(DEFAULT_POSTGREST_CLIENT_TIMEOUT),
+    )
 
 
 @lru_cache
@@ -16,7 +38,11 @@ def get_supabase_anon_client() -> Client:
     use `create_auth_client()` for that.
     """
     settings = get_settings()
-    return create_client(settings.supabase_url, settings.supabase_publishable_key)
+    return create_client(
+        settings.supabase_url,
+        settings.supabase_publishable_key,
+        options=SyncClientOptions(httpx_client=create_http_client()),
+    )
 
 
 def create_auth_client() -> Client:
@@ -31,7 +57,11 @@ def create_auth_client() -> Client:
     return create_client(
         settings.supabase_url,
         settings.supabase_publishable_key,
-        options=SyncClientOptions(persist_session=False, auto_refresh_token=False),
+        options=SyncClientOptions(
+            persist_session=False,
+            auto_refresh_token=False,
+            httpx_client=create_http_client(),
+        ),
     )
 
 
@@ -44,4 +74,8 @@ def get_supabase_admin_client() -> Client:
     auth calls.
     """
     settings = get_settings()
-    return create_client(settings.supabase_url, settings.supabase_secret_key)
+    return create_client(
+        settings.supabase_url,
+        settings.supabase_secret_key,
+        options=SyncClientOptions(httpx_client=create_http_client()),
+    )
