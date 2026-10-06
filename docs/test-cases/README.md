@@ -44,13 +44,20 @@ Every run, automated or manual, is recorded in [runs/](runs/README.md). That fol
 ## Adding cases for a new story
 
 1. Put the story in the file for its area. Start a new file only for a new area, and add it to the table above.
-2. Give it a `## <Story name> (SCRUM-<n>)` section: preconditions, then the case table, then `### Traceability — SCRUM-<n>`, then a short note naming the automated tests that cover each case.
+2. Give it a `## <Story name> (<PBI ID>)` section, where the PBI ID is `SCRUM-<n>` or `NEW-<nn>` as the Product backlog shows it. The section has the preconditions, then the case table, then `### Traceability — <PBI ID>`, then a short note naming the automated tests that cover each case.
 3. Continue the area's ID prefix and numbering. Never renumber or reuse an existing ID; other docs and tests cite them.
 4. Where a case's outcome can be checked by a request or a browser assertion without changing shared data, add an automated check for it, named with its ID (root `AGENTS.md`, "Live checks and the manual browser pass").
 
-Case table columns:
+Case table columns, for cases added from 2026-10-06:
 
 ```markdown
-| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
-|----|-------|----------------|------------|-------------|------------------|----------|
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-EVENT-040 | … | E2E | … | … | … | … | 🔴 | 2026-10-08 | 2026-10-09 · Pass · [run](runs/2026-10-09-1430-e2e-abc1234.md) |
 ```
+
+- **Type** is how the case is run: **Unit**, **Integration** (an API or database check, including `verify_live.py`), **E2E** (a Playwright spec), or **Manual**. Use the type of the strongest check that runs it.
+- **Created** is the date the case was written.
+- **Last run** is the date, result and run file of the most recent recorded run (Pass, Fail or Blocked, as in [runs/](runs/README.md)). Update it when you commit a new run log that includes the case.
+
+Cases written before 2026-10-06 use the older seven columns and are not backfilled here. The team copies every case into the Test cases sheet before submission. Playbook §9.4 asks the sheet to show, for each case, its PBI ID, the acceptance criterion, the test type, the expected result and the latest status. The traceability table supplies the PBI ID and acceptance criterion, and the run files supply who ran each run and when.

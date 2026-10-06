@@ -4,7 +4,7 @@
 
 This file is the single reference for ConnectSphere's automated checks. It sits apart from `DEFINITION_OF_DONE.md` (which says what *a task* must clear) because CI is a standing property of the repository that changes on its own schedule.
 
-_Last updated: 2026-09-28 — §1: both jobs upload a JUnit report as a run artifact, kept 90 days, as the unit suites' execution record (`docs/test-cases/runs/README.md`). 2026-09-27 — §3: Playwright specs and a live-check script now exist, run locally rather than in CI (`chore/automated-live-checks`). 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
+_Last updated: 2026-10-06 — §4 item 2: the team's coverage target (100% of `backend/app/` and `frontend/src/`, exclusions stated) and how CI will get there; Definition of Done references now point at its new sections and `DEVELOPMENT_WORKFLOW.md` (`chore/docs-scrum-playbook`). 2026-09-28 — §1: both jobs upload a JUnit report as a run artifact, kept 90 days, as the unit suites' execution record (`docs/test-cases/runs/README.md`). 2026-09-27 — §3: Playwright specs and a live-check script now exist, run locally rather than in CI (`chore/automated-live-checks`). 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
 
 ---
 
@@ -55,7 +55,7 @@ That gap is not theoretical. It has already cost this project three times:
 - **SCRUM-48 and defect D1** — both passed a fully mocked suite and appeared only against the real Supabase project (root `AGENTS.md`, "Verification").
 - **`PGRST201`** — a PostgREST embed that fails the whole query when a table has two foreign keys to the same target. `IMPLEMENTATION_MAP.md` §5 records it plainly: *"Mocked tests cannot catch this; it only appears against a real database."*
 
-So: **CI is a regression gate, not an integration gate.** Until §4 item 3 lands, "verified against the real system" in `DEFINITION_OF_DONE.md` Phase 2 stays a human step that no workflow checks.
+So: **CI is a regression gate, not an integration gate.** Until §4 item 3 lands, "verified against the real system" (`DEFINITION_OF_DONE.md`, Testing; `DEVELOPMENT_WORKFLOW.md` §2) stays a human step that no workflow checks.
 
 ---
 
@@ -66,7 +66,7 @@ Each of these was considered when the pipeline was built and left out for a stat
 | Not included | Why | Cost to add |
 |---|---|---|
 | `ruff` (lint) | Has never run over this codebase. Blocking on it would have held the first pipeline red pending an open-ended cleanup, delaying the evidence that CI exists at all. | ~half a day including the first cleanup |
-| Coverage reporting | Needs `pytest-cov` (not in `requirements.txt`) and a threshold the team agrees on. | ~1 hour to report; the threshold is a team decision |
+| Coverage reporting | Needs `pytest-cov` (not in `requirements.txt`) and `@vitest/coverage-v8`. The target is now decided (§4 item 2); the tools are not added yet. | ~1 hour to report |
 | Integration tests against a real database | The largest item, and better placed before Sprint 3's database-heavy stories than bolted on after. See §4. | ~half a day |
 | End-to-end browser tests | Playwright is installed, and `frontend/e2e/` runs sign-in, session, logout, route-guard and role-switch specs, but **locally, against the live project**, next to `backend/scripts/verify_live.py` (`docs/test-cases/runs/README.md`). They need running servers and real credentials, and item 3 below keeps the hosted project out of CI. Running them in CI waits on the local stack from item 3. | ~2 hours once item 3 exists |
 | Branch protection | Not part of CI at all — a repository setting, needing admin rights. See §4 item 1. | ~5 minutes |
@@ -79,13 +79,29 @@ Ordered by cost-to-value, with the sprint each belongs in.
 
 ### 1. Branch protection — 5 minutes, needs repo admin
 
-**Branch protection is not part of the CI pipeline.** CI is the workflow that runs the checks; branch protection is the repository setting that makes them *binding*. The pipeline works either way. Without protection, a pull request with a red run can still be merged, so "CI is green on the PR" in `DEFINITION_OF_DONE.md` Phase 4 is advisory rather than enforced.
+**Branch protection is not part of the CI pipeline.** CI is the workflow that runs the checks; branch protection is the repository setting that makes them *binding*. The pipeline works either way. Without protection, a pull request with a red run can still be merged, so "merged only after CI passes" in `DEFINITION_OF_DONE.md` (Code) is checked by the reviewer rather than enforced.
 
 Suggested settings on `main`: require the status checks `Backend (pytest)` and `Frontend (vitest + build)`, require a pull request with 1 approving review, and leave *Include administrators* off so there is an escape hatch.
 
-### 2. Coverage reporting — ~1 hour
+### 2. Coverage reporting — ~1 hour, next on `chore/coverage-reporting`
 
-Add `pytest-cov` and run `pytest --cov=app --cov-report=term-missing`, printing the summary on the PR. Report before enforcing: agree a threshold once the team can see the real number. This is the first half of the item parked under "Not yet enforceable" in `DEFINITION_OF_DONE.md`.
+**The target — [Team decision], 2026-10-06.** 100% line coverage of everything we write: `backend/app/` and `frontend/src/`. The only exclusions are listed in the table below, each with the reason it can't be covered. The team's Definition of Done says "100% code coverage". The course rubric's top band for "Testing and traceability" says *"100% coverage unless not possible and stated why"*. The target covers both layers because neither says backend only, and the frontend holds real logic in its stores, composables and components.
+
+**What a PBI must meet** (`DEFINITION_OF_DONE.md`, Testing): its new and changed code is fully covered, or the PR lists each uncovered line and the reason.
+
+**How CI gets there:**
+
+1. Report first. Add `pytest-cov` and run `pytest --cov=app --cov-report=term-missing`. Add `@vitest/coverage-v8` and run `vitest run --coverage`. Print both summaries in the job logs and upload them with the JUnit reports, so every PR shows the number.
+2. Then stop it going down. Set `--cov-fail-under` (and Vitest's `coverage.thresholds`) to the measured baseline, so a PR that lowers coverage fails.
+3. Raise the floor each sprint, reaching 100% for the Sprint 4 showcase (3 Nov). Turning on a 100% gate now would fail every open PR, because the current number isn't known yet.
+
+**Standing exclusions**, each with its reason, filled in when the report lands:
+
+| Path | Why it isn't covered |
+|---|---|
+| *(none yet)* | |
+
+Candidates to assess: `backend/app/main.py` (app wiring, exercised by every API test but not by a unit test of its own) and `frontend/src/main.js` (mounts the app; it only runs in the browser). Each needs its reason written here, or it counts against the target.
 
 ### 3. Endpoint smoke test against a real database — ~half a day, start of Sprint 3 (6 Oct)
 
@@ -183,7 +199,8 @@ cd frontend && npm run build
 
 ## Related
 
-- `docs/DEFINITION_OF_DONE.md` — where "CI is green on the PR" sits as a Phase 4 gate, and the targets still parked as unenforceable.
+- `docs/DEFINITION_OF_DONE.md` — where "merged only after CI passes" and the coverage target sit, and its "Checked by people, not tools (yet)" table.
+- `docs/DEVELOPMENT_WORKFLOW.md` §4 — the review step where CI must pass before a PR moves to In Review.
 - `docs/archive/2026-09-13-design-review.md` A3 item 9 — the original recommendation, with what shipped and what did not.
 - `docs/IMPLEMENTATION_MAP.md` §5 — the one-paragraph version for someone starting a story.
 - `docs/adr/0001` and `0002` — structural rules CI does **not** check, and why they remain review checks.
