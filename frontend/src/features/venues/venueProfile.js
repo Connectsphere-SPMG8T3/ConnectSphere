@@ -1,4 +1,4 @@
-import { LAYOUTS } from "@/features/venues/venueSearchStore";
+import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS } from "@/features/venues/venueSearchStore";
 
 /**
  * Pure presentation logic for the venue profile page (SCRUM-67).
@@ -12,6 +12,8 @@ import { LAYOUTS } from "@/features/venues/venueSearchStore";
  */
 
 const LAYOUT_LABELS = Object.fromEntries(LAYOUTS.map((entry) => [entry.value, entry.label]));
+const FACILITY_LABELS = Object.fromEntries(FACILITIES.map((entry) => [entry.value, entry.label]));
+const ACCESSIBILITY_LABELS = Object.fromEntries(ACCESSIBILITY_FEATURES.map((entry) => [entry.value, entry.label]));
 
 /**
  * The slides in the profile's carousel, in reading order (SCRUM-67).
@@ -164,6 +166,9 @@ export const VENUE_PROFILE_TABS = [
   { key: "facilities", label: "Facilities & access", counted: false },
   { key: "bookings", label: "Upcoming bookings", counted: true },
   { key: "blocks", label: "Blocks", counted: true },
+  // VC-R3 (SCRUM-63): not time-sensitive the way the two tabs above are, so
+  // it carries no count, matching the attribute tabs' reasoning.
+  { key: "history", label: "History", counted: false },
 ];
 
 /**
@@ -200,6 +205,102 @@ export function venueProfileTabs(venue) {
 export function stepIndex(current, length, delta) {
   if (!length || length <= 0) return 0;
   return (((current + delta) % length) + length) % length;
+}
+
+/**
+ * The edit form's initial state from a loaded venue (SCRUM-63).
+ *
+ * Layouts split into `selectedLayouts` (for the checkbox group) and
+ * `layoutCapacities` (one optional number per layout), because the API's
+ * `layouts` shape — a list of `{layout, capacity_for_layout}` — isn't what a
+ * checkbox group plus per-item inputs bind to directly.
+ */
+export function venueToEditForm(venue) {
+  const layouts = venue?.layouts ?? [];
+  return {
+    name: venue?.name ?? "",
+    location: venue?.location ?? "",
+    capacity: venue?.capacity != null ? String(venue.capacity) : "",
+    selectedLayouts: layouts.map((entry) => entry.layout),
+    layoutCapacities: Object.fromEntries(
+      layouts.map((entry) => [entry.layout, entry.capacity_for_layout != null ? String(entry.capacity_for_layout) : ""]),
+    ),
+    facilities: [...(venue?.facilities ?? [])],
+    accessibilityFeatures: [...(venue?.accessibility_features ?? [])],
+    opensAt: venue?.opens_at ? venue.opens_at.slice(0, 5) : "",
+    closesAt: venue?.closes_at ? venue.closes_at.slice(0, 5) : "",
+    description: venue?.description ?? "",
+  };
+}
+
+/** The edit form's state, as the PATCH body SCRUM-63's endpoint expects. */
+export function editFormToPayload(form, { confirm = false } = {}) {
+  return {
+    name: form.name.trim(),
+    location: form.location.trim(),
+    capacity: Number(form.capacity),
+    layouts: form.selectedLayouts.map((layout) => ({
+      layout,
+      capacity_for_layout: form.layoutCapacities[layout] ? Number(form.layoutCapacities[layout]) : null,
+    })),
+    facilities: [...form.facilities],
+    accessibility_features: [...form.accessibilityFeatures],
+    opens_at: `${form.opensAt}:00`,
+    closes_at: `${form.closesAt}:00`,
+    description: form.description.trim() ? form.description.trim() : null,
+    confirm,
+  };
+}
+
+const EDIT_HISTORY_FIELD_LABELS = {
+  name: "Name",
+  location: "Location",
+  capacity: "Capacity",
+  layouts: "Layouts",
+  facilities: "Facilities",
+  accessibility_features: "Accessibility",
+  opens_at: "Opens",
+  closes_at: "Closes",
+  description: "Description",
+};
+
+function formatHistoryValue(field, value) {
+  if (value == null || value === "") return "None recorded";
+  if (field === "layouts") {
+    const list = Array.isArray(value) ? value : [];
+    if (!list.length) return "None";
+    return list
+      .map((entry) => `${LAYOUT_LABELS[entry.layout] ?? entry.layout}${entry.capacity_for_layout ? ` (${entry.capacity_for_layout})` : ""}`)
+      .join(", ");
+  }
+  if (field === "facilities") {
+    const list = Array.isArray(value) ? value : [];
+    return list.length ? list.map((f) => FACILITY_LABELS[f] ?? f).join(", ") : "None";
+  }
+  if (field === "accessibility_features") {
+    const list = Array.isArray(value) ? value : [];
+    return list.length ? list.map((a) => ACCESSIBILITY_LABELS[a] ?? a).join(", ") : "None";
+  }
+  if (field === "opens_at" || field === "closes_at") return String(value).slice(0, 5);
+  return String(value);
+}
+
+/**
+ * One `venue_edit_history` row (VC-R3), reduced to only the fields that
+ * actually changed — a field identical in `before` and `after` is noise a
+ * reader has to filter out themselves, so this module filters it instead.
+ */
+export function summariseEditHistoryEntry(entry) {
+  const before = entry?.before ?? {};
+  const after = entry?.after ?? {};
+  return Object.keys(EDIT_HISTORY_FIELD_LABELS)
+    .filter((field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null))
+    .map((field) => ({
+      field,
+      label: EDIT_HISTORY_FIELD_LABELS[field],
+      before: formatHistoryValue(field, before[field]),
+      after: formatHistoryValue(field, after[field]),
+    }));
 }
 
 /**

@@ -22,6 +22,7 @@ from app.modules.events.schemas import (
     EventCreateRequest,
     EventHistoryEntry,
     EventHistoryResponse,
+    EventPlanningContext,
     EventResponse,
     EventResubmitRequest,
     EventReturnRequest,
@@ -74,6 +75,27 @@ def names_by_id(event_ids: Iterable[str]) -> dict[str, str]:
     needs names asks here rather than reading another module's table.
     """
     return repository.list_event_names(event_ids)
+
+
+def planning_context_by_id(event_ids: Iterable[str]) -> dict[str, EventPlanningContext]:
+    """`{event_id: EventPlanningContext}` for the ids given — the events module's
+    answer to "what does this event need?" for a module that only holds an
+    `event_id` (SCRUM-63: `venues.service` uses this to judge whether a venue
+    edit newly breaks one of its upcoming bookings).
+
+    No ownership check, for the same reason as `names_by_id`: callers are
+    already behind their own role and relationship guards.
+    """
+    return {
+        row["id"]: EventPlanningContext(
+            name=row.get("name"),
+            coordinator_id=row.get("coordinator_id"),
+            expected_attendance=row.get("expected_attendance"),
+            layout_preference=row.get("layout_preference"),
+            facilities_required=row.get("facilities_required") or [],
+        )
+        for row in repository.list_planning_context(event_ids)
+    }
 
 
 def _to_response(row: dict) -> EventResponse:

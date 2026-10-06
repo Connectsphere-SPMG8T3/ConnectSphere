@@ -17,6 +17,7 @@ from app.modules.venues.schemas import (
     Period,
     Reason,
     ReasonCode,
+    VenueLayout,
     VenueSearchCriteria,
     VenueSearchResult,
     VenueSummary,
@@ -25,6 +26,17 @@ from app.modules.venues.schemas import (
 
 # Booking statuses that occupy the venue (§6.14); anything else is ignored.
 OCCUPYING_STATUSES = frozenset({"held", "approved", "re_review"})
+
+
+def effective_capacity(venue: VenueSummary, layout: VenueLayout | None) -> int:
+    """The capacity rule shared by search (VS-R6) and edit-impact checking
+    (VC-R2): the per-layout figure when the venue records one for the
+    requested layout, otherwise the venue-wide capacity."""
+    if layout is not None:
+        for option in venue.layouts:
+            if option.layout == layout and option.capacity_for_layout is not None:
+                return option.capacity_for_layout
+    return venue.capacity
 
 
 def _format_period(period: Period, tz: tzinfo) -> str:
@@ -46,11 +58,8 @@ def _criteria_reasons(venue: VenueSummary, criteria: VenueSearchCriteria) -> lis
     if criteria.min_capacity is not None:
         # Per-layout capacity wins when the coordinator asked for that layout
         # and the venue records a figure for it (§6.11 capacity rule).
-        layout_capacity = layouts.get(criteria.layout) if criteria.layout is not None else None
-        if layout_capacity is not None:
-            capacity, subject = layout_capacity, f"{label(criteria.layout).capitalize()} capacity"
-        else:
-            capacity, subject = venue.capacity, "Capacity"
+        capacity = effective_capacity(venue, criteria.layout)
+        subject = f"{label(criteria.layout).capitalize()} capacity" if criteria.layout in layouts and layouts.get(criteria.layout) is not None else "Capacity"
         if capacity < criteria.min_capacity:
             reasons.append(
                 Reason(

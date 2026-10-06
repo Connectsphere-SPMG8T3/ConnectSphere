@@ -6,19 +6,25 @@ import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import VenueGallery from "@/components/venues/VenueGallery.vue";
 import { blockReasonLabel, formatEventReference } from "@/features/venues/dashboard";
+import { useVenueEditStore } from "@/features/venues/venueEditStore";
 import {
   defaultBookingGroupKey,
   formatTurnaround,
   groupUpcomingBookings,
   lastEditorName,
   stepIndex,
+  summariseEditHistoryEntry,
   venueProfileTabs,
   venueSlides,
 } from "@/features/venues/venueProfile";
 import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS, useVenuesStore } from "@/features/venues/venueSearchStore";
+import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const venuesStore = useVenuesStore();
+const venueEditStore = useVenueEditStore();
+const authStore = useAuthStore();
+const canEdit = computed(() => authStore.role === "venue_staff");
 
 const labelFor = (list) => Object.fromEntries(list.map((entry) => [entry.value, entry.label]));
 const layoutLabels = labelFor(LAYOUTS);
@@ -72,6 +78,13 @@ function moveTab(delta) {
   const next = stepIndex(keys.indexOf(activeTab.value), keys.length, delta);
   activeTab.value = keys[next];
 }
+
+// History entries load on demand, the first time the tab opens, rather than
+// on every page load — most visits never open it (SCRUM-63).
+const historyEntries = computed(() => venueEditStore.history.map((entry) => ({ entry, diff: summariseEditHistoryEntry(entry) })));
+watch(activeTab, (tab) => {
+  if (tab === "history" && route.params.id) venueEditStore.loadHistory(route.params.id);
+});
 
 // The booking statuses are tabbed too, one level in. The selection follows the
 // data rather than defaulting to "Confirmed": a venue whose only commitment is
@@ -143,6 +156,13 @@ watch(() => route.params.id, load);
         <p class="mt-4 text-xs font-bold uppercase tracking-widest text-ink/70">
           Last updated {{ lastUpdated.at }} · by {{ lastUpdated.by }}
         </p>
+        <RouterLink
+          v-if="canEdit"
+          :to="{ name: 'venue-edit', params: { id: venue.id } }"
+          class="mt-4 inline-block border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold uppercase tracking-widest text-ink shadow-hard active-press sm:border-4"
+        >
+          Edit venue
+        </RouterLink>
       </BauhausCard>
 
       <div
@@ -302,7 +322,7 @@ watch(() => route.params.id, load);
       </BauhausCard>
 
       <BauhausCard
-        v-else
+        v-else-if="activeTab === 'blocks'"
         id="panel-blocks"
         role="tabpanel"
         aria-labelledby="tab-blocks"
@@ -323,6 +343,37 @@ watch(() => route.params.id, load);
             <span v-if="block.notes" class="text-ink/70">{{ block.notes }}</span>
           </li>
           <li v-if="!venue.upcoming_blocks.length" class="font-medium">No blocks scheduled.</li>
+        </ul>
+      </BauhausCard>
+
+      <BauhausCard
+        v-else
+        id="panel-history"
+        role="tabpanel"
+        aria-labelledby="tab-history"
+        background="white"
+        accent="none"
+        data-testid="edit-history"
+      >
+        <h2 class="mb-4 text-lg font-black uppercase tracking-tight">History</h2>
+        <p class="mb-4 text-xs font-medium text-ink/70">Every saved edit to this venue's details, newest first.</p>
+
+        <BauhausEmptyState
+          v-if="!venueEditStore.isLoading && historyEntries.length === 0"
+          title="No edits recorded"
+          detail="This venue's details have not been changed since it was added."
+        />
+        <ul v-else class="flex flex-col gap-3 text-sm">
+          <li v-for="{ entry, diff } in historyEntries" :key="entry.id" class="border-2 border-ink px-3 py-2">
+            <p class="font-bold uppercase tracking-wide">
+              {{ formatInstant(entry.at) }} · {{ entry.actor?.full_name ?? "Unknown user" }}
+            </p>
+            <ul class="mt-2 flex flex-col gap-1">
+              <li v-for="change in diff" :key="change.field" class="text-ink/80">
+                <span class="font-bold">{{ change.label }}:</span> {{ change.before }} → {{ change.after }}
+              </li>
+            </ul>
+          </li>
         </ul>
       </BauhausCard>
     </template>

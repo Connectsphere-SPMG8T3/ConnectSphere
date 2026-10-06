@@ -1,16 +1,24 @@
-"""Venue module use cases: search the catalogue, read one venue."""
+"""Venue module use cases: search the catalogue, read one venue, edit one."""
 
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
-from app.core.exceptions import VenueNotFoundError
+from app.core.exceptions import VenueConflictError, VenueNotFoundError
 from app.modules.events import service as events_service
-from app.modules.venues import repository, search
+from app.modules.events.schemas import EventPlanningContext
+from app.modules.venues import impact, repository, search
 from app.modules.venues.schemas import (
+    BookingImpactContext,
+    Editor,
     VenueDetail,
+    VenueEditHistoryEntry,
+    VenueEditHistoryResponse,
     VenueSearchCriteria,
     VenueSearchResponse,
     VenueStaffDashboard,
+    VenueSummary,
+    VenueUpdateRequest,
+    VenueUpdateResponse,
 )
 
 # What the venue-staff dashboard tracks. `approved` is deliberately absent:
@@ -62,6 +70,157 @@ def get_venue(venue_id: str) -> VenueDetail:
         upcoming_blocks=repository.list_upcoming_blocks(venue_id, now),
         upcoming_bookings=bookings,
     )
+
+
+def _to_impact_context(booking, contexts: dict[str, EventPlanningContext]) -> BookingImpactContext:
+    context = contexts.get(booking.event_id) or EventPlanningContext()
+    return BookingImpactContext(
+        booking_id=booking.id,
+        event_id=booking.event_id,
+        period=booking.period,
+        event_name=context.name,
+        coordinator_id=context.coordinator_id,
+        expected_attendance=context.expected_attendance,
+        layout_preference=context.layout_preference,
+        facilities_required=context.facilities_required,
+    )
+
+
+def _snapshot(venue: VenueSummary) -> dict:
+    """A JSON-safe dict of every editable field, for both the impact check's
+    "after" state and the `venue_edit_history` row (VC-R3)."""
+    return {
+        "name": venue.name,
+        "location": venue.location,
+        "capacity": venue.capacity,
+        "layouts": [{"layout": o.layout.value, "capacity_for_layout": o.capacity_for_layout} for o in venue.layouts],
+        "facilities": [f.value for f in venue.facilities],
+        "accessibility_features": [a.value for a in venue.accessibility_features],
+        "opens_at": venue.opens_at.isoformat(),
+        "closes_at": venue.closes_at.isoformat(),
+        "description": venue.description,
+    }
+
+
+def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> VenueUpdateResponse:
+    """Save a venue edit (SCRUM-63).
+
+    Compares the current attributes with the submitted ones against every
+    upcoming occupying booking (VC-R2). If that newly breaks something a
+    booking's event relies on and the caller has not yet set `confirm: true`,
+    nothing is written — the warning comes back instead, so the SPA can show
+    it before the staff member commits. Saving never un-books anything;
+    resolution stays manual (VC-R2).
+    """
+    current = repository.get_venue(venue_id)
+    if current is None:
+        raise VenueNotFoundError()
+
+    before = VenueSummary(
+        id=current.id,
+        name=current.name,
+        location=current.location,
+        capacity=current.capacity,
+        layouts=current.layouts,
+        facilities=current.facilities,
+        accessibility_features=current.accessibility_features,
+        opens_at=current.opens_at,
+        closes_at=current.closes_at,
+        is_active=current.is_active,
+        description=current.description,
+    )
+    after = VenueSummary(
+        id=current.id,
+        name=body.name,
+        location=body.location,
+        capacity=body.capacity,
+        layouts=body.layouts,
+        facilities=body.facilities,
+        accessibility_features=body.accessibility_features,
+        opens_at=body.opens_at,
+        closes_at=body.closes_at,
+        is_active=current.is_active,
+        description=body.description,
+    )
+
+    now = datetime.now(timezone.utc)
+    bookings = repository.list_upcoming_bookings(venue_id, now)
+    contexts_by_event = events_service.planning_context_by_id(b.event_id for b in bookings) if bookings else {}
+    impact_contexts = [_to_impact_context(b, contexts_by_event) for b in bookings]
+    warnings = impact.affected_bookings(before, after, impact_contexts)
+
+    if warnings and not body.confirm:
+        return VenueUpdateResponse(saved=False, venue=None, warnings=warnings)
+
+    notifications = [
+        {
+            "recipient_id": contexts_by_event[w.event_id].coordinator_id,
+            "event_id": w.event_id,
+            "message": (
+                f'Venue "{after.name}" changed in a way that may affect '
+                f'"{w.event_name or "your event"}": ' + " ".join(w.reasons)
+            ),
+        }
+        for w in warnings
+        if w.event_id in contexts_by_event and contexts_by_event[w.event_id].coordinator_id
+    ]
+
+    after_snapshot = _snapshot(after)
+    updated = repository.update_venue(
+        venue_id,
+        actor_id,
+        current.version,
+        name=after.name,
+        location=after.location,
+        capacity=after.capacity,
+        opens_at=after.opens_at,
+        closes_at=after.closes_at,
+        description=after.description,
+        accessibility_features=after_snapshot["accessibility_features"],
+        layouts=after_snapshot["layouts"],
+        facilities=after_snapshot["facilities"],
+        before=_snapshot(before),
+        after=after_snapshot,
+        notifications=notifications,
+    )
+    if updated is None:
+        raise VenueConflictError()
+
+    for booking in bookings:
+        booking.event_name = (contexts_by_event.get(booking.event_id) or EventPlanningContext()).name
+    venue = VenueDetail(
+        **updated.model_dump(),
+        upcoming_blocks=repository.list_upcoming_blocks(venue_id, now),
+        upcoming_bookings=bookings,
+    )
+    return VenueUpdateResponse(saved=True, venue=venue, warnings=warnings)
+
+
+def _history_actor(row: dict) -> Editor | None:
+    actor = row.get("actor")
+    if isinstance(actor, list):
+        actor = actor[0] if actor else None
+    if not actor:
+        return None
+    return Editor(id=actor["id"], full_name=actor.get("full_name"))
+
+
+def venue_history(venue_id: str) -> VenueEditHistoryResponse:
+    """VC-R3: every saved edit, newest first, with its before/after snapshot
+    and who made it."""
+    if repository.get_venue(venue_id) is None:
+        raise VenueNotFoundError()
+    entries = [
+        VenueEditHistoryEntry(
+            id=row["id"],
+            actor=_history_actor(row),
+            before=row["before"],
+            after=row["after"],
+            at=row["created_at"],
+        )
+        for row in repository.list_edit_history(venue_id)
+    ]
+    return VenueEditHistoryResponse(entries=entries)
 
 
 def venue_staff_dashboard(now: datetime | None = None) -> VenueStaffDashboard:

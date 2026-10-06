@@ -91,6 +91,16 @@ class EventTransitionError(HTTPException):
         )
 
 
+class VenueConflictError(HTTPException):
+    """Lost an optimistic-concurrency race on a venue edit (DB-5, SCRUM-63)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This venue was updated by someone else. Reload.",
+        )
+
+
 class NotAssignedCoordinatorError(HTTPException):
     def __init__(self) -> None:
         super().__init__(

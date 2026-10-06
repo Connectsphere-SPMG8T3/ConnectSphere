@@ -80,6 +80,13 @@ export const venuesApi = {
   venueStaffDashboard(token) {
     return request("/venues/dashboard/venue-staff", { token });
   },
+  // SCRUM-63: `saved: false` means a warning came back instead of being written.
+  update(venueId, payload, token) {
+    return request(`/venues/${encodeURIComponent(venueId)}`, { method: "PATCH", body: payload, token });
+  },
+  history(venueId, token) {
+    return request(`/venues/${encodeURIComponent(venueId)}/history`, { token });
+  },
 };
 
 export const eventsApi = {

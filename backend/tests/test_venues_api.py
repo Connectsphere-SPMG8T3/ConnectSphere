@@ -26,6 +26,18 @@ from app.modules.venues.schemas import (
     VenueSummary,
 )
 
+VALID_EDIT_PAYLOAD = {
+    "name": "Hall A",
+    "location": "Bukit Timah Campus",
+    "capacity": 150,
+    "layouts": [{"layout": "theatre", "capacity_for_layout": None}],
+    "facilities": ["projector"],
+    "accessibility_features": ["wheelchair_access"],
+    "opens_at": "08:00:00",
+    "closes_at": "22:00:00",
+    "description": None,
+}
+
 SGT = timezone(timedelta(hours=8))
 HALL_A_ID = "b0000000-0000-4000-8000-000000000001"
 HALL_B_ID = "b0000000-0000-4000-8000-000000000002"
@@ -56,13 +68,22 @@ SEED_EVENT_ID = "e0000000-0000-4000-8000-000000000101"
 
 def make_venue_profile(venue_id: str, name: str, **overrides) -> VenueProfile:
     """A venue as its own profile page reads it: catalogue fields plus the
-    audit stamp SCRUM-67 shows."""
+    audit stamp SCRUM-67 shows and the version SCRUM-63 edits against.
+
+    `overrides` may name either a base catalogue field (e.g. `capacity`) or a
+    profile-only field (`updated_at`, `updated_by`, `version`) — each goes to
+    whichever `VenueProfile(...)` call it belongs to, so a test never has to
+    care which layer a field lives on.
+    """
+    base = make_venue(venue_id, name).model_dump()
     fields = {
         "updated_at": datetime(2026, 9, 18, 10, 30, tzinfo=SGT),
         "updated_by": Editor(id=VENUE_STAFF_ID, full_name="Val Staff"),
+        "version": 0,
     }
-    fields.update(overrides)
-    return VenueProfile(**make_venue(venue_id, name).model_dump(), **fields)
+    for key, value in overrides.items():
+        (base if key in base else fields)[key] = value
+    return VenueProfile(**base, **fields)
 
 
 @pytest.fixture()
@@ -571,3 +592,199 @@ class TestVenueStaffDashboardPayload:
         assert response.status_code == 200
         body = response.json()
         assert body["venues"] == body["pending_holds"] == body["re_review_bookings"] == body["blocks"] == []
+
+
+COORDINATOR_ID = "a0000000-0000-4000-8000-000000000099"
+EVENT_ID = "e0000000-0000-4000-8000-000000000201"
+
+
+class TestVenueEdit:
+    """SCRUM-63: edit a venue's details, with a VC-R2 warning before saving
+    anything that would newly affect an upcoming booking, and a VC-R3 history
+    row once the edit is saved."""
+
+    @pytest.fixture()
+    def profile(self, monkeypatch):
+        current = make_venue_profile(HALL_A_ID, "Hall A", version=3)
+        monkeypatch.setattr(repository, "get_venue", lambda venue_id: current if venue_id == HALL_A_ID else None)
+        monkeypatch.setattr(repository, "list_upcoming_bookings", lambda venue_id, since: [])
+        monkeypatch.setattr(repository, "list_upcoming_blocks", lambda venue_id, since: [])
+        monkeypatch.setattr(events_repository, "list_planning_context", lambda ids: [])
+        calls = {"update_venue": []}
+
+        def _update_venue(venue_id, actor_id, expected_version, **kwargs):
+            calls["update_venue"].append({"venue_id": venue_id, "actor_id": actor_id, "version": expected_version, **kwargs})
+            saved = make_venue_profile(
+                venue_id,
+                kwargs["name"],
+                version=expected_version + 1,
+                capacity=kwargs["capacity"],
+                updated_by=Editor(id=actor_id),
+            )
+            return saved
+
+        monkeypatch.setattr(repository, "update_venue", _update_venue)
+        return calls
+
+    def test_venue_staff_can_save_an_edit_with_no_affected_bookings(self, client, auth_headers, authenticate_as, profile):
+        actor = authenticate_as("venue_staff")
+
+        response = client.patch(f"/api/v1/venues/{HALL_A_ID}", json=VALID_EDIT_PAYLOAD, headers=auth_headers)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["saved"] is True
+        assert body["warnings"] == []
+        assert body["venue"]["capacity"] == 150
+        assert len(profile["update_venue"]) == 1
+        assert profile["update_venue"][0]["actor_id"] == actor["id"]
+        assert profile["update_venue"][0]["version"] == 3
+
+    def test_coordinator_cannot_edit(self, client, auth_headers, authenticate_as, profile):
+        authenticate_as("event_coordinator")
+
+        response = client.patch(f"/api/v1/venues/{HALL_A_ID}", json=VALID_EDIT_PAYLOAD, headers=auth_headers)
+
+        assert response.status_code == 403
+        assert profile["update_venue"] == []
+
+    def test_unknown_venue_is_404(self, client, auth_headers, authenticate_as, profile):
+        authenticate_as("venue_staff")
+        response = client.patch(
+            "/api/v1/venues/b0000000-0000-4000-8000-0000000000ff", json=VALID_EDIT_PAYLOAD, headers=auth_headers
+        )
+        assert response.status_code == 404
+
+    def test_closes_at_before_opens_at_is_422(self, client, auth_headers, authenticate_as, profile):
+        authenticate_as("venue_staff")
+        response = client.patch(
+            f"/api/v1/venues/{HALL_A_ID}",
+            json={**VALID_EDIT_PAYLOAD, "opens_at": "22:00:00", "closes_at": "08:00:00"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+    def test_a_lost_concurrency_race_is_409(self, client, auth_headers, authenticate_as, profile, monkeypatch):
+        authenticate_as("venue_staff")
+        monkeypatch.setattr(repository, "update_venue", lambda *a, **k: None)
+
+        response = client.patch(f"/api/v1/venues/{HALL_A_ID}", json=VALID_EDIT_PAYLOAD, headers=auth_headers)
+
+        assert response.status_code == 409
+
+    class TestWarnings:
+        @pytest.fixture()
+        def booking_at_risk(self, monkeypatch, profile):
+            """Hall A holds one approved booking for an event expecting 120 pax."""
+            booking = BookingSummary(
+                id="d0000000-0000-4000-8000-000000000050",
+                event_id=EVENT_ID,
+                period=Period(starts_at=datetime(2026, 10, 10, 9, tzinfo=SGT), ends_at=datetime(2026, 10, 10, 12, tzinfo=SGT)),
+                status="approved",
+            )
+            monkeypatch.setattr(repository, "list_upcoming_bookings", lambda venue_id, since: [booking])
+            monkeypatch.setattr(events_repository, "list_event_names", lambda ids: {EVENT_ID: "Annual Gala"})
+            monkeypatch.setattr(
+                events_repository,
+                "list_planning_context",
+                lambda ids: [
+                    {
+                        "id": EVENT_ID,
+                        "name": "Annual Gala",
+                        "coordinator_id": COORDINATOR_ID,
+                        "expected_attendance": 120,
+                        "layout_preference": "theatre",
+                        "facilities_required": ["projector"],
+                    }
+                ],
+            )
+            return profile
+
+        def test_reducing_capacity_below_attendance_warns_without_saving(
+            self, client, auth_headers, authenticate_as, booking_at_risk
+        ):
+            authenticate_as("venue_staff")
+
+            response = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "capacity": 100}, headers=auth_headers
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["saved"] is False
+            assert body["venue"] is None
+            assert len(body["warnings"]) == 1
+            assert body["warnings"][0]["event_name"] == "Annual Gala"
+            assert "120" in body["warnings"][0]["reasons"][0]
+            assert booking_at_risk["update_venue"] == []
+
+        def test_confirming_saves_and_notifies_the_coordinator(
+            self, client, auth_headers, authenticate_as, booking_at_risk
+        ):
+            authenticate_as("venue_staff")
+
+            response = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}",
+                json={**VALID_EDIT_PAYLOAD, "capacity": 100, "confirm": True},
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["saved"] is True
+            assert body["venue"]["capacity"] == 100
+            assert len(body["warnings"]) == 1
+
+            call = booking_at_risk["update_venue"][0]
+            assert len(call["notifications"]) == 1
+            assert call["notifications"][0]["recipient_id"] == COORDINATOR_ID
+            assert call["notifications"][0]["event_id"] == EVENT_ID
+
+        def test_a_reduction_that_still_covers_attendance_does_not_warn(
+            self, client, auth_headers, authenticate_as, booking_at_risk
+        ):
+            authenticate_as("venue_staff")
+
+            response = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "capacity": 130}, headers=auth_headers
+            )
+
+            body = response.json()
+            assert body["saved"] is True
+            assert body["warnings"] == []
+
+
+class TestVenueEditHistory:
+    @pytest.fixture()
+    def history(self, monkeypatch):
+        monkeypatch.setattr(repository, "get_venue", lambda venue_id: make_venue_profile(HALL_A_ID, "Hall A"))
+        entries = [
+            {
+                "id": "h0000000-0000-4000-8000-000000000001",
+                "before": {"capacity": 150},
+                "after": {"capacity": 100},
+                "created_at": "2026-10-06T10:00:00+08:00",
+                "actor": {"id": "a0000000-0000-4000-8000-000000000003", "full_name": "Val Staff"},
+            }
+        ]
+        monkeypatch.setattr(repository, "list_edit_history", lambda venue_id: entries)
+        return entries
+
+    def test_venue_staff_can_read_it(self, client, auth_headers, authenticate_as, history):
+        authenticate_as("venue_staff")
+        response = client.get(f"/api/v1/venues/{HALL_A_ID}/history", headers=auth_headers)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["entries"][0]["before"] == {"capacity": 150}
+        assert body["entries"][0]["after"] == {"capacity": 100}
+        assert body["entries"][0]["actor"]["full_name"] == "Val Staff"
+
+    def test_coordinator_can_read_it_too(self, client, auth_headers, authenticate_as, history):
+        authenticate_as("event_coordinator")
+        response = client.get(f"/api/v1/venues/{HALL_A_ID}/history", headers=auth_headers)
+        assert response.status_code == 200
+
+    def test_organiser_cannot_read_it(self, client, auth_headers, authenticate_as, history):
+        authenticate_as("event_organiser")
+        response = client.get(f"/api/v1/venues/{HALL_A_ID}/history", headers=auth_headers)
+        assert response.status_code == 403
