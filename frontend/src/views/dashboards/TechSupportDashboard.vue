@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
-import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import PendingEquipmentRequests from "@/components/equipment/PendingEquipmentRequests.vue";
 import { ApiError, checkEquipmentAvailability, equipmentApi } from "@/services/api";
@@ -244,19 +244,18 @@ function formatDate(value) {
         {{ inventoryError }}
       </p>
 
-      <div class="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <BauhausCard
+      <div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+        <BauhausSummaryCard
           v-for="tile in tiles"
           :key="tile.key"
           data-testid="tile"
+          :label="tile.label"
+          :value="tile.value"
+          :detail="tile.detail"
           :background="tile.background"
           :accent="tile.accent"
           :accent-color="tile.accentColor"
-        >
-          <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ tile.label }}</p>
-          <p class="mt-2 text-5xl font-black tracking-tighter">{{ tile.value }}</p>
-          <p class="mt-2 text-xs font-medium text-ink/60">{{ tile.detail }}</p>
-        </BauhausCard>
+        />
       </div>
 
       <section class="mb-6" aria-labelledby="inventory-heading">

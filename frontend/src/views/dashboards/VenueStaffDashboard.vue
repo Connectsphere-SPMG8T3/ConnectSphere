@@ -15,7 +15,7 @@
 import { computed, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 
-import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import VenueCalendar from "@/components/venues/VenueCalendar.vue";
 import {
@@ -193,7 +193,7 @@ function emptyDetail(clearText) {
       {{ dashboard.error }}
     </p>
 
-    <div class="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
       <!-- Only the one tile that leads anywhere is a link, and it says so on
            hover rather than carrying a standing label: the tiles are read as a
            row of figures, and a permanent instruction on one of them competes
@@ -212,21 +212,24 @@ function emptyDetail(clearText) {
             : ''
         "
       >
-        <BauhausCard :background="tile.background" :accent="tile.accent" :accent-color="tile.accentColor">
-          <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ tile.label }}</p>
-          <p class="mt-2 text-5xl font-black tracking-tighter">{{ tile.value }}</p>
-          <p class="mt-2 flex items-baseline gap-2 text-xs font-medium text-ink/60">
+        <BauhausSummaryCard
+          :label="tile.label"
+          :value="tile.value"
+          :background="tile.background"
+          :accent="tile.accent"
+          :accent-color="tile.accentColor"
+        >
+          <template #detail>
             {{ tile.detail }}
-            <!-- Hidden by opacity, not by `v-if`: it stays in the accessible
-                 name, so a screen reader still hears where the link goes. -->
+            <!-- Opacity keeps the cue in the accessible name at rest. -->
             <span
               v-if="tile.href"
               class="font-bold uppercase tracking-widest text-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
             >
               See the list ↓
             </span>
-          </p>
-        </BauhausCard>
+          </template>
+        </BauhausSummaryCard>
       </component>
     </div>
 

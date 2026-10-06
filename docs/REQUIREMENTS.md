@@ -1090,6 +1090,8 @@ Each dashboard composes widgets from the feature stores. **Build a widget only w
 | Tech support | Pending and re-review equipment lines · Events needing technical readiness · Equipment in maintenance · Upcoming reservations (7 days) |
 | Attendee | My upcoming registrations and waitlist invitations · Browse open events |
 
+**[Team decision] Dashboard summary cards align within each row when text wraps** (D20/D21, developer approved 2026-10-06). All roles reuse the shared summary-card component, with equal outer heights and at least two lines reserved for headings and optional details. Longer text can grow without truncation. Summary grids use one column below 768px, two from 768px, and three or four from 1280px according to the number of metrics, accounting for the sidebar.
+
 #### 6.21.1 Coordinator dashboard prioritisation *(SCRUM-72)*
 
 SCRUM-72 asks for a **prioritised** list but does not define priority, and the customer ruled out SLA timers and review deadlines on every status (LC-R4, QA-55, QA-68). Ordering by how long something has waited would reintroduce exactly the deadline pressure the customer rejected.
@@ -1209,6 +1211,8 @@ SCRUM-70 asks for "the venues I'm in charge of", but staff allocation to venues 
 | 2 | Bookings in re-review | `venue_bookings` where `status = 're_review'` |
 | 3 | Active and upcoming blocks | `venue_blocks` ending after now |
 | 4 | Venues, split active / inactive | `venues` |
+
+**[Team decision] Summary cards align within each row when text wraps** (D20, approved 2026-10-06). Reserve at least two lines for headings and descriptions, stretch each card to the row height, and allow content to grow rather than truncating it. Use one column on phones, two from 768px, and four from 1280px so the sidebar does not squeeze the labels.
 
 **[Team decision] The calendar carries blocks, holds and re-reviews only.** An `approved` booking is settled work, not a decision waiting on staff; it belongs on the per-venue availability calendar of §6.9 (SCRUM-16). The legend states this, so the omission does not read as missing data.
 

@@ -19,6 +19,7 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
@@ -300,21 +301,20 @@ const cardSections = computed(() => [
           <span class="text-sm font-bold uppercase tracking-widest">{{ summary.total }} total</span>
         </div>
 
-        <div class="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
-          <BauhausCard
+        <div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <BauhausSummaryCard
             v-for="category in ACTION_CATEGORIES"
             :key="category.key"
             :aria-label="`Show ${category.label} events`"
+            :label="category.label"
+            :value="summary[category.key]"
             :background="category.background"
             :accent="category.accent"
             :accent-color="category.accentColor"
             :class="category.hoverClass"
             clickable
             @click="openEvents({ action: category.key })"
-          >
-            <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ category.label }}</p>
-            <p class="mt-2 text-5xl font-black tracking-tighter">{{ summary[category.key] }}</p>
-          </BauhausCard>
+          />
         </div>
 
         <ol v-if="dashboard.prioritisedActions.length" class="space-y-3">

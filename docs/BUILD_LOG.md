@@ -1385,3 +1385,44 @@ The first full `verify_live.py --record` run (before this story's own migration,
 - **Live project:** migration applied with `supabase db push` (`supabase migration list --linked` matches). `venue_edit_checks.sql` passed in a rolled-back transaction, including the RLS checks (coordinator and venue staff read the history, organiser and anon do not). Full `verify_live.py --record`: **63/63 passed** (`runs/2026-10-06-1733-api-db-fd4f351.md`). `npm run test:e2e:record`: **40/42 passed**; the two failures (`TC-EQR-005/006`, `TC-ROLE-003/004` — neither touches venues) were confirmed a parallel-load flake by an isolated re-run (9/9 passed) (`runs/2026-10-06-1745-e2e-fd4f351.md`).
 - **Not verified:** no dedicated e2e spec exercises the new edit screen itself (the warning dialog, the confirm round trip, the History tab) — covered by `pytest`, Vitest and the SQL check, but not by Playwright. The manual browser pass (TC-VENUE-056, 057, 060, 062, 063) is the developer's, per root AGENTS.md.
 - **Noticed, not fixed:** the IMPLEMENTATION_MAP rows for SCRUM-19 and SCRUM-45 still say "not yet merged" although both are on `main` (PRs #40, #41) — stale, left alone as out of this story's scope.
+
+
+### 4.29. D20 — Align venue-staff summary cards when text wraps
+
+Built on `fix/venue-dashboard-card-alignment` from current `origin/main` at `37f2d0b`, 2026-10-06. The developer reported unequal summary-card heights with a screenshot and approved equal-height rows with two-line heading/detail space and responsive columns.
+
+**Reproduction and cause.** The new real-browser case TC-VSD-035 failed before the implementation: at 1440px the cards differed by 16px. Grid wrappers filled their row, but the inner `BauhausCard` borders followed their own content heights, and a wrapped heading pushed its figure down. A further boundary check reproduced misaligned figures at 640px because the desktop sidebar squeezed two columns.
+
+**Change.** Reused `BauhausCard` without changing its shared API: `h-full` on these four instances, `min-h-8` / `leading-4` on their labels and details, and one/two/four columns at base/md/xl breakpoints. Minimum heights preserve wrapping and content growth. Existing text, counts, accents and the pending-list link remain intact. REQUIREMENTS §6.21.2 records the approved layout decision; IMPLEMENTATION_MAP and dashboards.md now reference D20/TC-VSD-035.
+
+**Verification.**
+
+- Full frontend unit suite: **578 passed**; production build passed, including after the final breakpoint adjustment.
+- Full backend suite: **634 passed**, three dependency deprecation warnings. The initial sandbox run stalled on its first test and was interrupted; the host run completed normally.
+- Chromium regression measures actual card heights, number/detail alignment, clipping and page overflow at **1440, 1280, 1100, 768, 640, 375 and 320px**, after sidebar transitions settle. Also checks the existing focus cue does not change the tile height and Enter still opens `#pending-requests`. Desktop screenshot inspected; no page JavaScript errors.
+- Final recorded focused browser run: **2/2 passed**, TC-VSD-035 and the existing coordinator dashboard route-denial case TC-RBAC-003 (`runs/2026-10-06-1936-e2e-37f2d0b.md`). A temporary local config disabled global setup only for these read-only cases, with session logout still performed by fixtures; it is not shipped.
+- Available live API cases: **40/40 passed** with `--skip-db --record` (`runs/2026-10-06-1933-api-db-37f2d0b.md`). Database-dependent signup and booking cases were skipped explicitly.
+- Live Supabase tables and all 21 migrations inspected through MCP. Existing advisor warnings remain: leaked-password protection disabled and nine equipment-policy initplan warnings (D19), plus informational unused indexes. No schema or data changes were made by this fix.
+
+**Not verified.** Both required full live commands were attempted, but the Supabase CLI is absent (`ENOENT`): the full API/database script stopped before recording and Playwright stopped in global setup. Its new run record (`runs/2026-10-06-1932-e2e-37f2d0b.md`) explicitly records the block instead of the reporter's known misleading “0/0 passed” (D17). Full database-dependent verification still needs a configured CLI. The developer was asked to check TC-VSD-035 (desktop alignment), TC-VSD-015 (375px readability) and TC-VSD-034 (hover/focus feel); no manual verdict has been supplied yet. No manual pass is claimed. PR, review, merge and Jira updates remain developer-owned.
+
+
+### 4.30. D21 — Align summary cards across every role dashboard
+
+Follow-up on `fix/venue-dashboard-card-alignment`, after D20 (`1a96aa9`), 2026-10-06. The developer asked to check other dashboards for the same wrapping issue and add the rule to `frontend/AGENTS.md`.
+
+**Audit and reproduction.** The existing new browser regressions were written and run before the shared implementation. All four additional dashboards failed with a **16px** number-position difference: organiser, coordinator and attendee at 1100px, tech support at 1280px. Their direct grid cards already stretched to equal outer heights, but wrapped headings pushed figures down; column breakpoints also squeezed labels beside the sidebar. Event-list/status panels use different content and baseline-aligned headings; the matching defect was in summary tiles.
+
+**Change.** Added `components/common/BauhausSummaryCard.vue`, composed from `BauhausCard`, with required `label` and `value`, optional `detail`/named `detail` slot, two-line minimum text space and full row height. Appearance props, ARIA attributes and click listeners pass through to the existing card. All five role dashboards now reuse it, including venue staff’s pending-list detail cue. Summary grids switch from one to two columns at `md`, then three or four at `xl`. `frontend/AGENTS.md` now requires aligned summary rows, readable wrapping, sidebar-aware breakpoints, shared-component reuse and real-browser checks. Existing placeholder attendee metrics remain the known D8; this fix only changes their layout.
+
+**Verification.**
+
+- New cases TC-ORG-010, TC-DASH-025, TC-ATT-001 and TC-TSD-017 measure real card/paragraph positions at 1440, 1280, 1100, 768, 640, 375 and 320px, after layout transitions settle. They assert summary-row bounds and readable content independently of unrelated page overflow.
+- Recorded Chromium layout and role-guard run: **13/13 passed** (`runs/2026-10-06-1947-e2e-1a96aa9.md`), including the venue D20 regression and all existing access specs. Final four-role run also verifies organiser Enter-key navigation and coordinator mouse navigation through the shared card: **4/4 passed** (`runs/2026-10-06-1948-e2e-1a96aa9.md`). Screenshots captured, no page JavaScript errors in the layout cases.
+- Full suites: **578 frontend tests passed**, **634 backend tests passed** (three existing dependency deprecation warnings); production build passed.
+- Available live API checks: **40/40 passed** with recording and `--skip-db` (`runs/2026-10-06-1947-api-db-1a96aa9.md`). Full CLI-dependent verification remains unavailable because Supabase CLI is absent, as already reproduced and recorded in §4.29; temporary browser config bypassed only global setup for the selected read-only cases and was removed before commit. No database changes.
+- **Developer manual pass: all four new dashboard cases passed**, desktop and 375px, including organiser/coordinator filtered-Events navigation (`runs/2026-10-06-1948-manual-1a96aa9.md`). The earlier venue-staff manual request remains pending; this verdict is not extended to it.
+
+**Noticed, not fixed.** D22: tech-support’s existing inventory search/status-filter row overflows the page at 768px (`sm:grid-cols-[1fr_14rem]` plus intrinsic input width beside the sidebar). It is independent of the summary row, which fits and aligns. Recorded for follow-up rather than changing the form as part of this fix.
+
+**Remaining verification/integration.** Full database-dependent API/browser suites require the Supabase CLI. PR, teammate review, merge and Jira updates remain developer-owned.

@@ -37,6 +37,8 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 | TC-DASH-024 | The dashboard looks like it belongs next to the organiser's | Open `/dashboard/organiser` as the organiser in another window | Compare both Overview views, then both Events views | — | Same header card, tile row, status cards (hover lift, underlined headings, pager), filter bar and event cards: same borders, shadows, type and colours. | 🟠 |
 | TC-DASH-020 | AC1 — an amended and resubmitted request shows as a clarification response | Fixture `…-0201` in `under_review`. **Changes shared data:** reset the fixtures with `event_review_fixture_reset.sql` afterwards | As the coordinator, return `…-0201` for amendment. As `organiser@connectsphere.dev`, amend and resubmit it. As the coordinator, reload the dashboard | message and note of your choice | The event is listed under **Clarification responses** (count 1) with the "Amended and resubmitted" badge, ranked above any "Awaiting first review" item, and no longer counted under Awaiting approval. | 🔴 |
 
+| TC-DASH-025 | Summary cards align when labels wrap (D21) | Logged in as the dashboard’s role | Open `/dashboard/coordinator`; resize to 1440, 1280, 1100, 768, 640, 375 and 320px; inspect the summary row, especially Clarification responses | — | Equal card heights and aligned figures/details within each row. Summary text remains visible; its row stays inside the viewport. One/two/three-or-four columns follow available space. Existing category actions still work. | 🟠 |
+
 ### Traceability — SCRUM-72
 
 | Acceptance criterion / rule | Covered by |
@@ -112,6 +114,8 @@ Unlike the coordinator dashboard above, no stubbing is needed: `venues`, `venue_
 | TC-VSD-033 | AC2/AC3 — both list panels scroll instead of pushing the page down | Seed applied; enough rows to overflow (all 8 venues, and more holds than fit) | Read the "All venues" and "Pending requests" panels at a desktop width, then scroll inside each | — | Each list is capped at the same height with its own scrollbar, so every row is reachable without the panel running past the fold, and each row's hard shadow stays visible rather than being clipped at the right edge. Each panel's heading — and the venue filter row — stays put while its list scrolls. Because both caps match, the two columns stay level once either one fills. | 🟠 |
 | TC-VSD-034 | AC3 — the pending-requests tile takes you to the list it counts | Seed applied | Hover the "Pending requests" tile, then Tab to it, then press it | — | On hover the tile picks up the same hard shadow every other clickable card uses and "See the list ↓" fades in beside "Awaiting your approval"; nothing is shown before hover, so the tile reads as a figure at rest. Tabbing to it shows the identical cue, and a screen reader hears it either way (it is hidden by opacity, not removed). Pressing it scrolls to the "Pending requests" section with its heading clear of the sticky top bar, and the URL gains `#pending-requests`, so Back returns to the top. Middle-click opens it as an ordinary link. The other three tiles have no hover cue and are not links. | 🟠 |
 
+| TC-VSD-035 | Summary cards align when text wraps (D20) | Signed in as venue staff | Open `/dashboard/venue-staff`; resize to 1440, 1280, 1100, 768, 640, 375 and 320px. Inspect the four summary tiles; focus Pending requests | Existing dashboard data | Equal border heights and aligned numbers/descriptions within each row; one column below 768px, two below 1280px, four above. Text remains readable without clipping or horizontal scrolling; revealing the link cue causes no height jump. | 🟠 |
+
 ### Traceability — SCRUM-70
 
 | Acceptance criterion / rule | Covered by |
@@ -134,7 +138,7 @@ Unlike the coordinator dashboard above, no stubbing is needed: `venues`, `venue_
 | SCRUM-74/75 (guards read the session's active role) | TC-VSD-005 |
 | RBAC (venue staff only) | TC-VSD-006 |
 | REQUIREMENTS §4 (stored UTC, displayed Asia/Singapore) | TC-VSD-016 |
-| NFR-U1 (desktop and mobile friendly) | TC-VSD-015 |
+| NFR-U1 (desktop and mobile friendly), D20 wrapping regression | TC-VSD-015, TC-VSD-035 |
 | DEFECTS D8 (fabricated metrics) | TC-VSD-002 |
 | Reliability (an outage is not rendered as "nothing to do") | TC-VSD-004 |
 
@@ -143,6 +147,8 @@ Automated equivalents live in `frontend/src/features/venues/__tests__/` and `bac
 TC-VSD-023–030 were added when SCRUM-70's user story was restated, to pin the acceptance criteria's own wording rather than only the widgets built for it. Their automated equivalents, where they exist: `backend/tests/test_venue_dashboard.py::TestCrossVenueReads` covers TC-VSD-025's cut-off (blocks are filtered on an open-ended range in Postgres, so a finished one never leaves the database) and TC-VSD-026's server half (every row names its venue); `dashboard.spec.js::venueStatuses` covers TC-VSD-024's and TC-VSD-028's status transitions, including a block that ends exactly now. TC-VSD-023 (login through to a settled queue), TC-VSD-027 (no creator column to filter on), TC-VSD-029 (deep link) and TC-VSD-030 (the re-review gap) are end-to-end or documentary and remain manual.
 
 TC-VSD-031–034 cover the venue-list filter, its scrolling and the tile jump. `dashboard.spec.js::venueStatusFilterOptions` and `::filterVenueStatuses` cover the pure half — the option order and counts, that an absent status is never offered, and that an unknown key falls back to every row rather than to none — and `views/__tests__/venueStaffDashboard.spec.js` covers the wiring: the controls' labels and counts, narrowing and restoring the list, the capped scrolling container, and the tile's `#pending-requests` anchor with a target that clears the sticky bar. What stays manual is what only a browser shows: that the scrollbar is reachable and the shadows are not clipped (TC-VSD-033), and that the jump lands with the heading visible (TC-VSD-034).
+
+TC-VSD-035 is automated in `frontend/e2e/venue-dashboard-layout.e2e.js` against the real venue-staff API. It measures card and paragraph positions after resize transitions settle, checks responsive column counts and overflow, and confirms the focus cue and fragment link still work. Human judgment of spacing/readability remains manual alongside TC-VSD-015 and TC-VSD-034.
 
 ## Event Organiser dashboard (SCRUM-71)
 
@@ -159,6 +165,8 @@ TC-VSD-031–034 cover the venue-list filter, its scrolling and the tile jump. `
 | TC-ORG-007 | Dashboard remains usable on a mobile viewport | Set the viewport to 390 × 844 and inspect the page and controls | Filters stack without horizontal scrolling, card text and actions remain readable, and no controls overlap. | 🟠 |
 | TC-ORG-008 | Loading is distinct from empty data | Delay the owned-events response, then inspect the dashboard before it resolves; resolve it with no events | A loading state is shown while the request is pending; Drafts/Requests empty states are not shown until the successful empty response arrives. | 🔴 |
 | TC-ORG-009 | Coordinator assignment state is clear and non-duplicated | Inspect an unassigned submitted/under-review request and an assigned request | The unassigned request shows **Awaiting assignment** once, while an assigned request shows **Coordinator assigned**. | 🟠 |
+
+| TC-ORG-010 | Summary cards align when labels wrap (D21) | Logged in as the dashboard’s role | Open `/dashboard/organiser`; resize to 1440, 1280, 1100, 768, 640, 375 and 320px; inspect the summary row, especially Returned for amendments | — | Equal card heights and aligned figures/details within each row. Summary text remains visible; its row stays inside the viewport. One/two/three-or-four columns follow available space. Existing category actions still work. | 🟠 |
 
 ### Traceability — SCRUM-71
 
@@ -212,6 +220,8 @@ The two maintenance records are PA Systems 08:00–13:00 UTC ("Amplifier inspect
 | TC-TSD-016 | The tiles summarise the inventory and never guess | Seed applied | Open the dashboard; then repeat with the backend stopped | — | Four tiles: Out of stock **1** (PA Systems), Under repair **1** (4K Projector), Maintenance scheduled **2**, Equipment types **5** with the total units underneath. With the backend stopped, each tile shows **—**, not 0. | 🟠 |
 | TC-TSD-015 | Badges use the shared status colours | Seed applied | Open **Inventory**; run an availability check that is sufficient and one that is not | — | OUT OF STOCK red, UNDER REPAIR yellow, PARTIALLY RESERVED blue, AVAILABLE green (the same green as the venue-staff ACTIVE badge). SCHEDULED maintenance is white, IN_PROGRESS yellow, COMPLETED grey. The check result badge is green for SUFFICIENT and red for INSUFFICIENT, and the result only shows on the Availability view. No orange anywhere. | 🟡 |
 
+| TC-TSD-017 | Summary cards align when labels wrap (D21) | Logged in as the dashboard’s role | Open `/dashboard/tech-support`; resize to 1440, 1280, 1100, 768, 640, 375 and 320px; inspect the summary row, especially Maintenance scheduled | — | Equal card heights and aligned figures/details within each row. Summary text remains visible; its row stays inside the viewport. One/two/three-or-four columns follow available space. Existing category actions still work. | 🟠 |
+
 ### Traceability — SCRUM-73
 
 | Acceptance criterion / rule | Covered by |
@@ -227,3 +237,16 @@ The two maintenance records are PA Systems 08:00–13:00 UTC ("Amplifier inspect
 | REQUIREMENTS §4 (stored UTC, displayed Asia/Singapore) | TC-TSD-004 |
 
 **Automated coverage today.** `backend/tests/test_active_role_access.py` covers the server half of TC-TSD-009 and TC-TSD-010 for both endpoints — it enumerates every registered route, so `/equipment/maintenance` and `/equipment/inventory` are both parametrised into it automatically. Everything else in this section is **manual only**: `get_equipment_maintenance` has no functional test, and there is no `TechSupportDashboard` component spec, so TC-TSD-001 through 008, 011 and 012 have no automated equivalent yet. That gap is the first thing to close if this dashboard gains more logic.
+
+
+## Attendee dashboard — layout audit (D21)
+
+The attendee dashboard remains a placeholder with existing hardcoded metrics (known D8); this case checks layout only and does not validate those figures or implement registrations.
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-ATT-001 | Summary cards align when labels wrap (D21) | Signed in as attendee on `/dashboard/attendee` | Resize to 1440, 1280, 1100, 768, 640, 375 and 320px; inspect Upcoming Registrations and Public Events Available | — | Equal card heights and aligned figures within each row, readable text without truncation, and summary row within the viewport. | 🟠 |
+
+### Traceability — dashboard layout fixes D20/D21
+
+`frontend/e2e/dashboard-summary-layout.e2e.js` automates TC-ORG-010, TC-DASH-025, TC-TSD-017 and TC-ATT-001: real rendered positions after resize transitions settle, summary-row bounds, readable content, and organiser/coordinator tile navigation. The venue equivalent remains TC-VSD-035. These implement NFR-U1 and the approved REQUIREMENTS §6.21 layout decision; no new story acceptance criteria are inferred. A developer still judges spacing and readability at desktop/375px. Tech-support’s unrelated inventory-filter page overflow is D22; the summary row is tested independently.
