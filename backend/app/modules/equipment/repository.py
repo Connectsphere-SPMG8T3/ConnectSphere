@@ -178,3 +178,77 @@ def list_reserved_event_ids(event_ids: Iterable[str], statuses: Iterable[str]) -
         .execute()
     )
     return [row["event_id"] for row in response.data or []]
+
+
+# --- SCRUM-45 equipment request lines -----------------------------------------
+
+# A retired item has left the catalogue: it can't be requested any more.
+REQUESTABLE_EQUIPMENT_STATUSES = ("active", "maintenance")
+
+# One line with the names the screens show. The FK names are spelled out
+# because `equipment_requests` points at both `events` and `profiles`.
+REQUEST_LINE_SELECT = (
+    "id, submission_id, event_id, equipment_id, quantity, technical_requirements, status, "
+    "requested_by, created_at, "
+    "equipment:equipment!equipment_requests_equipment_id_fkey(name), "
+    "requester:profiles!equipment_requests_requested_by_fkey(id, full_name), "
+    "event:events!equipment_requests_event_id_fkey(name, starts_at, status)"
+)
+
+
+def list_catalogue(equipment_ids: Iterable[str] | None = None) -> list[dict]:
+    """Requestable catalogue items by name, optionally narrowed to `equipment_ids`."""
+    query = (
+        get_supabase_admin_client()
+        .table("equipment")
+        .select("id, name, equipment_type, total_quantity, status")
+        .in_("status", list(REQUESTABLE_EQUIPMENT_STATUSES))
+    )
+    if equipment_ids is not None:
+        ids = sorted({str(i) for i in equipment_ids})
+        if not ids:
+            return []
+        query = query.in_("id", ids)
+    return query.order("name").execute().data or []
+
+
+def submit_request(event_id: str, actor_id: str, items: list[dict]) -> tuple[str, list[dict]]:
+    """Run `public.submit_equipment_request`: every line pending, all or none.
+    Returns `(outcome, inserted rows)`; a refusal is an outcome code, never a
+    raised database error."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "submit_equipment_request",
+            {"p_event_id": event_id, "p_actor_id": actor_id, "p_items": items},
+        )
+        .execute()
+    )
+    row = (response.data or [{}])[0]
+    return row.get("outcome", ""), row.get("lines") or []
+
+
+def list_event_requests(event_id: str) -> list[dict]:
+    """Every line for one event, oldest first."""
+    response = (
+        get_supabase_admin_client()
+        .table("equipment_requests")
+        .select(REQUEST_LINE_SELECT)
+        .eq("event_id", event_id)
+        .order("created_at")
+        .execute()
+    )
+    return response.data or []
+
+
+def list_pending_requests() -> list[dict]:
+    """Every pending line across all events (tech support are a pool, AUTH-R5)."""
+    response = (
+        get_supabase_admin_client()
+        .table("equipment_requests")
+        .select(REQUEST_LINE_SELECT)
+        .eq("status", "pending")
+        .order("created_at")
+        .execute()
+    )
+    return response.data or []

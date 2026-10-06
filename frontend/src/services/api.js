@@ -89,6 +89,14 @@ export const venuesApi = {
   },
 };
 
+export const venueBookingsApi = {
+  // SCRUM-19: a tentative hold over the event's own period. The body carries no
+  // times; the API reads them from the event.
+  request(payload, token) {
+    return request("/venue-bookings", { method: "POST", body: payload, token });
+  },
+};
+
 export const eventsApi = {
   coordinatorDashboard(token) {
     return request("/events/dashboard/coordinator", { token });
@@ -157,6 +165,19 @@ export const equipmentApi = {
   },
   maintenance(token) {
     return request("/equipment/maintenance", { token });
+  },
+  // SCRUM-45 equipment request lines.
+  catalogue(token) {
+    return request("/equipment/catalogue", { token });
+  },
+  submitRequest(payload, token) {
+    return request("/equipment/requests", { method: "POST", body: payload, token });
+  },
+  eventRequests(eventId, token) {
+    return request(`/equipment/requests/event/${encodeURIComponent(eventId)}`, { token });
+  },
+  pendingRequests(token) {
+    return request("/equipment/requests/pending", { token });
   },
 };
 

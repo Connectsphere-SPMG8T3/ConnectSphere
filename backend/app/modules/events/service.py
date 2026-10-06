@@ -28,6 +28,7 @@ from app.modules.events.schemas import (
     EventReturnRequest,
     EventStatus,
     EventUpdateRequest,
+    EventVenueBooking,
     Readiness,
     ReadinessState,
 )
@@ -134,6 +135,14 @@ def _assigned_event(event_id: str, coordinator_id: str) -> dict:
     if row.get("coordinator_id") != coordinator_id:
         raise NotAssignedCoordinatorError()
     return row
+
+
+def assigned_event(event_id: str, coordinator_id: str) -> dict:
+    """The event row for its assigned coordinator, for other modules acting on
+    the coordinator's behalf (SCRUM-19's venue booking request, SCRUM-45's
+    equipment request). Same answers as every coordinator action here: 404 for a
+    missing event or a draft, 403 for a coordinator who isn't assigned."""
+    return _assigned_event(event_id, coordinator_id)
 
 
 def _transition(row: dict, actor_id: str, action: str, *, reason: str | None,
@@ -278,7 +287,12 @@ def _visible_event(event_id: str, user_id: str, role: str) -> dict:
 
 
 def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
-    return _with_amendment(_visible_event(event_id, user_id, role))
+    response = _with_amendment(_visible_event(event_id, user_id, role))
+    if role == "event_coordinator":
+        booking = venues_service.active_booking_for_event(event_id)
+        if booking:
+            response.venue_booking = EventVenueBooking(**booking)
+    return response
 
 
 def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:

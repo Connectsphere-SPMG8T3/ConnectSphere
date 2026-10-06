@@ -129,6 +129,15 @@ class AmendmentRequest(BaseModel):
     returned_at: datetime
 
 
+class EventVenueBooking(BaseModel):
+    """The venue an event holds or has booked (SCRUM-19). Coordinator view only."""
+
+    id: str
+    venue_id: str
+    venue_name: str | None = None
+    status: str
+
+
 class EventResponse(EventFields):
     id: str
     organiser_id: str
@@ -142,6 +151,10 @@ class EventResponse(EventFields):
     # The open amendment while the event is returned (SCRUM-33); null otherwise
     # and on list responses.
     amendment: AmendmentRequest | None = None
+    # The event's held, approved or re-review booking, on the assigned
+    # coordinator's single-event read (SCRUM-19); null otherwise. Organisers
+    # don't get it: booking state is internal planning detail (AUTH-R2).
+    venue_booking: EventVenueBooking | None = None
 
 
 class EventListResponse(BaseModel):

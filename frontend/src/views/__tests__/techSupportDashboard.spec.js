@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  equipmentApi: { checkEquipmentAvailability: vi.fn(), inventory: vi.fn(), maintenance: vi.fn() },
+  equipmentApi: { checkEquipmentAvailability: vi.fn(), inventory: vi.fn(), maintenance: vi.fn(), pendingRequests: vi.fn() },
 }));
 
 const mountedApps = [];
@@ -61,6 +61,7 @@ describe("TechSupportDashboard tabs", () => {
       ],
     });
     equipmentApi.maintenance.mockResolvedValue({ items: [] });
+    equipmentApi.pendingRequests.mockResolvedValue({ lines: [] });
   });
 
   it("opens on the inventory, loads it, and has no tab bar or welcome card of its own", async () => {
@@ -117,5 +118,59 @@ describe("TechSupportDashboard tabs", () => {
     const badge = [...el.querySelectorAll("span")].find((span) => span.textContent.trim() === "AVAILABLE");
     expect(badge.className).toContain("bg-bauhaus-green");
     expect(el.innerHTML).not.toMatch(/bg-(green|orange)-\d/);
+  });
+});
+
+describe("TechSupportDashboard active requests (SCRUM-45)", () => {
+  const PENDING = {
+    id: "l1", submission_id: "s1", event_id: "event-1", equipment_id: "e1", equipment_name: "4K Projector",
+    quantity: 4, technical_requirements: "HDMI to the lectern", status: "pending",
+    requested_by: { id: "m1", full_name: "Marcus Lim" }, created_at: "2026-10-06T02:00:00Z",
+    event_name: "Year-End Dinner", event_starts_at: "2026-11-05T10:00:00Z",
+  };
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+    equipmentApi.inventory.mockResolvedValue({ items: [] });
+    equipmentApi.maintenance.mockResolvedValue({ items: [] });
+  });
+
+  it("lists each pending line with its event, quantity and technical requirements", async () => {
+    equipmentApi.pendingRequests.mockResolvedValue({ lines: [PENDING] });
+
+    const { el } = await mountDashboard();
+    await vi.waitFor(() => expect(el.textContent).toContain("Year-End Dinner"));
+
+    const section = el.querySelector('[aria-labelledby="incoming-requests-heading"]');
+    expect(section.textContent).toContain("4K Projector");
+    expect(section.textContent).toContain("× 4");
+    expect(section.textContent).toContain("Pending");
+    expect(section.textContent).toContain("HDMI to the lectern");
+    expect(section.textContent).toContain("Marcus Lim");
+    expect(section.textContent).not.toContain("No request workflow yet");
+  });
+
+  it("says when nothing is waiting", async () => {
+    equipmentApi.pendingRequests.mockResolvedValue({ lines: [] });
+
+    const { el } = await mountDashboard();
+    await vi.waitFor(() => expect(equipmentApi.pendingRequests).toHaveBeenCalled());
+    await settle();
+
+    expect(el.textContent).toContain("No pending requests");
+  });
+
+  it("shows the error, not an empty queue, when the requests can't load (D15)", async () => {
+    equipmentApi.pendingRequests.mockRejectedValue(new Error("Service unavailable"));
+
+    const { el } = await mountDashboard();
+    await vi.waitFor(() => expect(el.textContent).toContain("Service unavailable"));
+
+    expect(el.textContent).not.toContain("No pending requests");
   });
 });
