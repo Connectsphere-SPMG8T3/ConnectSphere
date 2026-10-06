@@ -33,7 +33,9 @@ _VENUE_COLUMNS = (
 # whom (SCRUM-67 AC2). The embed names its constraint even though `venues` has
 # only one foreign key to `profiles` today: a second one (an owner, a creator)
 # would otherwise break this query with PGRST201 rather than the new column.
-_VENUE_PROFILE_COLUMNS = _VENUE_COLUMNS + ", updated_at, updated_by, profiles!venues_updated_by_fkey(id, full_name)"
+_VENUE_PROFILE_COLUMNS = (
+    _VENUE_COLUMNS + ", updated_at, updated_by, version, profiles!venues_updated_by_fkey(id, full_name)"
+)
 
 # PostgREST renders a tstzrange as e.g. ["2026-10-10 06:00:00+00","2026-10-10 09:00:00+00")
 _RANGE_PATTERN = re.compile(r'^[\[(]"?([^",]+)"?,"?([^")\]]+)"?[)\]]$')
@@ -135,7 +137,76 @@ def get_venue(venue_id: str) -> VenueProfile | None:
         **_to_venue(row).model_dump(),
         updated_at=row["updated_at"],
         updated_by=_to_editor(row),
+        version=row.get("version", 0),
     )
+
+
+def update_venue(
+    venue_id: str,
+    actor_id: str,
+    expected_version: int,
+    *,
+    name: str,
+    location: str,
+    capacity: int,
+    opens_at,
+    closes_at,
+    description: str | None,
+    accessibility_features: list[str],
+    layouts: list[dict],
+    facilities: list[str],
+    before: dict,
+    after: dict,
+    notifications: list[dict],
+) -> VenueProfile | None:
+    """Run `public.update_venue`: the version-checked update, the layouts/
+    facilities replace, the history row, and any affected-booking
+    notifications, all in one transaction (SCRUM-63). Returns the saved
+    profile, or None when the venue had moved on (lost the race), which the
+    service reports as 409.
+    """
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "update_venue",
+            {
+                "p_venue_id": venue_id,
+                "p_actor_id": actor_id,
+                "p_expected_version": expected_version,
+                "p_name": name,
+                "p_location": location,
+                "p_capacity": capacity,
+                "p_opens_at": opens_at.isoformat() if hasattr(opens_at, "isoformat") else opens_at,
+                "p_closes_at": closes_at.isoformat() if hasattr(closes_at, "isoformat") else closes_at,
+                "p_description": description,
+                "p_accessibility_features": accessibility_features,
+                "p_layouts": layouts,
+                "p_facilities": facilities,
+                "p_before": before,
+                "p_after": after,
+                "p_notifications": notifications,
+            },
+        )
+        .execute()
+    )
+    rows = response.data or [] if response else []
+    if not rows:
+        return None
+    return get_venue(venue_id)
+
+
+def list_edit_history(venue_id: str) -> list[dict]:
+    """Newest first. The actor is embedded through the FK named in the
+    migration, like `event_status_history`'s pattern (SCRUM-63, VC-R3)."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_edit_history")
+        .select("id, before, after, created_at, actor:profiles!venue_edit_history_actor_id_fkey(id, full_name)")
+        .eq("venue_id", venue_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return response.data or []
 
 
 def list_occupants(period: Period) -> dict[str, list[Occupant]]:

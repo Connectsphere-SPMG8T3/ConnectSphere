@@ -89,6 +89,7 @@ DB_SCRIPTS = [
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
     ("equipment_request_checks.sql", "TC-EQR-002, 003, 006, 007, 008, 009 (database half)"),
+    ("venue_edit_checks.sql", "TC-VENUE-058, 059, 061 (database half)"),
 ]
 
 

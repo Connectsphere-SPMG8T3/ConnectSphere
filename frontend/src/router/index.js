@@ -90,6 +90,14 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["event_coordinator", "venue_staff"] },
   },
   {
+    // SCRUM-63: venue staff manage the catalogue (QA-101); coordinators only
+    // read and search it, so editing is narrower than the detail page above.
+    path: "/venues/:id/edit",
+    name: "venue-edit",
+    component: () => import("@/views/venues/VenueEditView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["venue_staff"] },
+  },
+  {
     // A placeholder until SCRUM-19/20 build the request view and the
     // approve/reject decision. Venue staff only for now: the coordinator side
     // of this page arrives with those stories, and granting access to an empty

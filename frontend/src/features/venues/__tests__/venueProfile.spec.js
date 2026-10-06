@@ -4,12 +4,15 @@ import {
   BOOKING_GROUPS,
   VENUE_PROFILE_TABS,
   defaultBookingGroupKey,
+  editFormToPayload,
   formatTurnaround,
   groupUpcomingBookings,
   lastEditorName,
   stepIndex,
+  summariseEditHistoryEntry,
   venueProfileTabs,
   venueSlides,
+  venueToEditForm,
 } from "@/features/venues/venueProfile";
 
 const booking = (id, status, startHour) => ({
@@ -101,9 +104,9 @@ describe("venueProfileTabs", () => {
     upcoming_blocks: [{ id: "c1" }],
   };
 
-  it("returns the four profile tabs in a fixed order", () => {
+  it("returns the profile tabs in a fixed order", () => {
     expect(venueProfileTabs(venue).map((t) => t.key)).toEqual(VENUE_PROFILE_TABS.map((t) => t.key));
-    expect(venueProfileTabs(venue).map((t) => t.key)).toEqual(["capacity", "facilities", "bookings", "blocks"]);
+    expect(venueProfileTabs(venue).map((t) => t.key)).toEqual(["capacity", "facilities", "bookings", "blocks", "history"]);
   });
 
   it("counts what is behind the time-based tabs, so a closed tab still shows there is something in it", () => {
@@ -118,6 +121,7 @@ describe("venueProfileTabs", () => {
 
     expect(byKey.capacity).toBeNull();
     expect(byKey.facilities).toBeNull();
+    expect(byKey.history).toBeNull();
   });
 
   it("counts zero for an empty venue, and tolerates a missing venue", () => {
@@ -216,5 +220,101 @@ describe("venueSlides", () => {
     const keys = venueSlides(venue).map((s) => s.key);
 
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("venueToEditForm / editFormToPayload (SCRUM-63)", () => {
+  const venue = {
+    name: "Hall A",
+    location: "Bukit Timah Campus",
+    capacity: 150,
+    layouts: [
+      { layout: "theatre", capacity_for_layout: null },
+      { layout: "banquet", capacity_for_layout: 100 },
+    ],
+    facilities: ["projector"],
+    accessibility_features: ["wheelchair_access"],
+    opens_at: "08:00:00",
+    closes_at: "22:00:00",
+    description: "The main hall.",
+  };
+
+  it("builds a form the edit view can bind to directly", () => {
+    const form = venueToEditForm(venue);
+
+    expect(form.selectedLayouts).toEqual(["theatre", "banquet"]);
+    expect(form.layoutCapacities).toEqual({ theatre: "", banquet: "100" });
+    expect(form.opensAt).toBe("08:00");
+    expect(form.closesAt).toBe("22:00");
+  });
+
+  it("round-trips back into the API's PATCH shape", () => {
+    const payload = editFormToPayload(venueToEditForm(venue));
+
+    expect(payload).toEqual({
+      name: "Hall A",
+      location: "Bukit Timah Campus",
+      capacity: 150,
+      layouts: [
+        { layout: "theatre", capacity_for_layout: null },
+        { layout: "banquet", capacity_for_layout: 100 },
+      ],
+      facilities: ["projector"],
+      accessibility_features: ["wheelchair_access"],
+      opens_at: "08:00:00",
+      closes_at: "22:00:00",
+      description: "The main hall.",
+      confirm: false,
+    });
+  });
+
+  it("sends confirm:true once the caller has seen the warnings", () => {
+    const payload = editFormToPayload(venueToEditForm(venue), { confirm: true });
+    expect(payload.confirm).toBe(true);
+  });
+
+  it("trims text fields and sends null for an emptied description", () => {
+    const form = venueToEditForm({ ...venue, description: null });
+    form.name = "  Hall A  ";
+    form.description = "   ";
+
+    const payload = editFormToPayload(form);
+
+    expect(payload.name).toBe("Hall A");
+    expect(payload.description).toBeNull();
+  });
+
+  it("handles a venue with no layouts or facilities recorded", () => {
+    const form = venueToEditForm({ ...venue, layouts: [], facilities: [], accessibility_features: [] });
+    expect(editFormToPayload(form).layouts).toEqual([]);
+  });
+});
+
+describe("summariseEditHistoryEntry (SCRUM-63, VC-R3)", () => {
+  it("reports only the fields that actually changed", () => {
+    const entry = {
+      before: { capacity: 150, name: "Hall A", facilities: ["projector"] },
+      after: { capacity: 100, name: "Hall A", facilities: ["projector"] },
+    };
+
+    const diff = summariseEditHistoryEntry(entry);
+
+    expect(diff).toEqual([{ field: "capacity", label: "Capacity", before: "150", after: "100" }]);
+  });
+
+  it("formats layouts and facilities as readable lists", () => {
+    const entry = {
+      before: { layouts: [] },
+      after: { layouts: [{ layout: "theatre", capacity_for_layout: 100 }] },
+    };
+
+    const diff = summariseEditHistoryEntry(entry);
+
+    expect(diff).toEqual([{ field: "layouts", label: "Layouts", before: "None", after: "Theatre (100)" }]);
+  });
+
+  it("reports nothing when nothing changed", () => {
+    const entry = { before: { capacity: 150 }, after: { capacity: 150 } };
+    expect(summariseEditHistoryEntry(entry)).toEqual([]);
   });
 });

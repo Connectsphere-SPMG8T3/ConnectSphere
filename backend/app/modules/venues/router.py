@@ -9,9 +9,12 @@ from app.modules.venues.schemas import (
     VenueBooking,
     VenueBookingCreate,
     VenueDetail,
+    VenueEditHistoryResponse,
     VenueSearchCriteria,
     VenueSearchResponse,
     VenueStaffDashboard,
+    VenueUpdateRequest,
+    VenueUpdateResponse,
 )
 
 router = APIRouter(prefix="/venues", tags=["venues"])
@@ -74,6 +77,24 @@ def read_venue_staff_dashboard(current_user: VenueStaffOnly) -> VenueStaffDashbo
 def read_venue(venue_id: UUID, current_user: VenueReader) -> VenueDetail:
     """One venue with its upcoming blocks and occupying bookings."""
     return service.get_venue(str(venue_id))
+
+
+@router.patch("/{venue_id}", response_model=VenueUpdateResponse, status_code=status.HTTP_200_OK)
+def update_venue(venue_id: UUID, body: VenueUpdateRequest, current_user: VenueStaffOnly) -> VenueUpdateResponse:
+    """Edit a venue's details (SCRUM-63; QA-101: venue staff manage the catalogue).
+
+    `saved` is `false` without `confirm: true` when the edit would newly
+    affect an upcoming booking (VC-R2) — nothing is written in that case, so
+    the SPA can show the warning and let staff decide. `409` means the
+    venue's `version` had already moved on (DB-5); reload and retry.
+    """
+    return service.update_venue(str(venue_id), current_user.id, body)
+
+
+@router.get("/{venue_id}/history", response_model=VenueEditHistoryResponse, status_code=status.HTTP_200_OK)
+def read_venue_history(venue_id: UUID, current_user: VenueReader) -> VenueEditHistoryResponse:
+    """Every saved edit to this venue, newest first (VC-R3)."""
+    return service.venue_history(str(venue_id))
 
 
 # Booking requests sit in the venues module, which owns `venue_bookings`, under

@@ -165,6 +165,9 @@ class VenueProfile(VenueSummary):
     # Null until the venue is edited through a path that records the editor
     # (SCRUM-63/64), or when that account has since been removed.
     updated_by: Editor | None = None
+    # Optimistic concurrency (DB-5), same pattern as `events.version`: an edit
+    # reads this, then writes conditioned on it being unchanged (SCRUM-63).
+    version: int = 0
 
 
 class VenuePhoto(BaseModel):
@@ -270,6 +273,87 @@ class VenueSearchCriteria(BaseModel):
 class Reason(BaseModel):
     code: ReasonCode
     message: str
+
+
+class BookingImpactContext(BaseModel):
+    """One occupying booking plus the event fields needed to judge whether an
+    edit to the venue (VC-R2) newly breaks something that booking relies on.
+
+    Assembled by `venues.service` from its own `BookingSummary` plus
+    `events.service.planning_context_by_id` — the cross-module lookup, never
+    a direct read of the events table (REQUIREMENTS §3.3 module rules).
+    """
+
+    booking_id: str
+    event_id: str
+    event_name: str | None = None
+    coordinator_id: str | None = None
+    period: Period
+    expected_attendance: int | None = None
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] = []
+
+
+class AffectedBooking(BaseModel):
+    """A booking whose event has a new problem because of this edit (VC-R2)."""
+
+    booking_id: str
+    event_id: str
+    event_name: str | None = None
+    period: Period
+    reasons: list[str]
+
+
+class VenueUpdateRequest(BaseModel):
+    """The full venue-edit form (SCRUM-63), not a partial patch: venue staff
+    see every field pre-filled and submit the whole record, so this mirrors
+    the table's own constraints directly rather than merging deltas onto a
+    freshly-read row. `is_active` is excluded — SCRUM-64 (deactivate/
+    reactivate) owns that switch.
+    """
+
+    name: str = Field(min_length=1, max_length=150)
+    location: str = Field(min_length=1, max_length=255)
+    capacity: int = Field(gt=0)
+    layouts: list[LayoutOption] = []
+    facilities: list[Facility] = []
+    accessibility_features: list[AccessibilityFeature] = []
+    opens_at: time
+    closes_at: time
+    description: str | None = None
+    # Set once the caller has seen the warnings below and still wants to save
+    # (VC-R2: "resolution is manual" — a warning never blocks the edit).
+    confirm: bool = False
+
+    @model_validator(mode="after")
+    def _check_hours(self):
+        if self.closes_at <= self.opens_at:
+            raise ValueError("closes_at must be after opens_at")
+        return self
+
+
+class VenueUpdateResponse(BaseModel):
+    """`saved=False` means nothing was written: `warnings` named at least one
+    newly-affected booking and the caller had not yet set `confirm=true`."""
+
+    saved: bool
+    venue: VenueDetail | None = None
+    warnings: list[AffectedBooking] = []
+
+
+class VenueEditHistoryEntry(BaseModel):
+    """One saved edit (VC-R3): the whole before/after snapshot of whatever
+    fields changed, who changed it, and when."""
+
+    id: str
+    actor: Editor | None = None
+    before: dict
+    after: dict
+    at: datetime
+
+
+class VenueEditHistoryResponse(BaseModel):
+    entries: list[VenueEditHistoryEntry] = []
 
 
 class VenueSearchResult(BaseModel):

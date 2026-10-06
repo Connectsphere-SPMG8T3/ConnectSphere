@@ -77,6 +77,24 @@ def list_event_names(event_ids: Iterable[str]) -> dict[str, str]:
     return {row["id"]: row["name"] for row in response.data or []}
 
 
+def list_planning_context(event_ids: Iterable[str]) -> list[dict]:
+    """The event fields another module needs to judge an event's requirements
+    (SCRUM-63): name, assigned coordinator, expected attendance, preferred
+    layout and required facilities. Skips any id that no longer exists.
+    """
+    ids = sorted({str(event_id) for event_id in event_ids if event_id})
+    if not ids:
+        return []
+    response = (
+        get_supabase_admin_client()
+        .table("events")
+        .select("id, name, coordinator_id, expected_attendance, layout_preference, facilities_required")
+        .in_("id", ids)
+        .execute()
+    )
+    return response.data or []
+
+
 def get_event(event_id: str) -> dict | None:
     response = (
         get_supabase_admin_client()

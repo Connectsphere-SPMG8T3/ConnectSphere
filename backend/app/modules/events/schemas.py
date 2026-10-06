@@ -19,6 +19,19 @@ class EventStatus(str, Enum):
     completed = "completed"
 
 
+class EventPlanningContext(BaseModel):
+    """What another module needs to judge an event's requirements without
+    reading the `events` table itself (SCRUM-63; `venues.impact` uses this to
+    decide whether a venue edit newly breaks a booking's event).
+    """
+
+    name: str | None = None
+    coordinator_id: str | None = None
+    expected_attendance: int | None = None
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] = []
+
+
 class TechnicalReadiness(str, Enum):
     not_required = "not_required"
     pending = "pending"
