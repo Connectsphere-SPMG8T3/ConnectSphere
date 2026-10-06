@@ -1405,3 +1405,24 @@ Built on `fix/venue-dashboard-card-alignment` from current `origin/main` at `37f
 - Live Supabase tables and all 21 migrations inspected through MCP. Existing advisor warnings remain: leaked-password protection disabled and nine equipment-policy initplan warnings (D19), plus informational unused indexes. No schema or data changes were made by this fix.
 
 **Not verified.** Both required full live commands were attempted, but the Supabase CLI is absent (`ENOENT`): the full API/database script stopped before recording and Playwright stopped in global setup. Its new run record (`runs/2026-10-06-1932-e2e-37f2d0b.md`) explicitly records the block instead of the reporter's known misleading “0/0 passed” (D17). Full database-dependent verification still needs a configured CLI. The developer was asked to check TC-VSD-035 (desktop alignment), TC-VSD-015 (375px readability) and TC-VSD-034 (hover/focus feel); no manual verdict has been supplied yet. No manual pass is claimed. PR, review, merge and Jira updates remain developer-owned.
+
+
+### 4.30. D21 — Align summary cards across every role dashboard
+
+Follow-up on `fix/venue-dashboard-card-alignment`, after D20 (`1a96aa9`), 2026-10-06. The developer asked to check other dashboards for the same wrapping issue and add the rule to `frontend/AGENTS.md`.
+
+**Audit and reproduction.** The existing new browser regressions were written and run before the shared implementation. All four additional dashboards failed with a **16px** number-position difference: organiser, coordinator and attendee at 1100px, tech support at 1280px. Their direct grid cards already stretched to equal outer heights, but wrapped headings pushed figures down; column breakpoints also squeezed labels beside the sidebar. Event-list/status panels use different content and baseline-aligned headings; the matching defect was in summary tiles.
+
+**Change.** Added `components/common/BauhausSummaryCard.vue`, composed from `BauhausCard`, with required `label` and `value`, optional `detail`/named `detail` slot, two-line minimum text space and full row height. Appearance props, ARIA attributes and click listeners pass through to the existing card. All five role dashboards now reuse it, including venue staff’s pending-list detail cue. Summary grids switch from one to two columns at `md`, then three or four at `xl`. `frontend/AGENTS.md` now requires aligned summary rows, readable wrapping, sidebar-aware breakpoints, shared-component reuse and real-browser checks. Existing placeholder attendee metrics remain the known D8; this fix only changes their layout.
+
+**Verification.**
+
+- New cases TC-ORG-010, TC-DASH-025, TC-ATT-001 and TC-TSD-017 measure real card/paragraph positions at 1440, 1280, 1100, 768, 640, 375 and 320px, after layout transitions settle. They assert summary-row bounds and readable content independently of unrelated page overflow.
+- Recorded Chromium layout and role-guard run: **13/13 passed** (`runs/2026-10-06-1947-e2e-1a96aa9.md`), including the venue D20 regression and all existing access specs. Final four-role run also verifies organiser Enter-key navigation and coordinator mouse navigation through the shared card: **4/4 passed** (`runs/2026-10-06-1948-e2e-1a96aa9.md`). Screenshots captured, no page JavaScript errors in the layout cases.
+- Full suites: **578 frontend tests passed**, **634 backend tests passed** (three existing dependency deprecation warnings); production build passed.
+- Available live API checks: **40/40 passed** with recording and `--skip-db` (`runs/2026-10-06-1947-api-db-1a96aa9.md`). Full CLI-dependent verification remains unavailable because Supabase CLI is absent, as already reproduced and recorded in §4.29; temporary browser config bypassed only global setup for the selected read-only cases and was removed before commit. No database changes.
+- **Developer manual pass: all four new dashboard cases passed**, desktop and 375px, including organiser/coordinator filtered-Events navigation (`runs/2026-10-06-1948-manual-1a96aa9.md`). The earlier venue-staff manual request remains pending; this verdict is not extended to it.
+
+**Noticed, not fixed.** D22: tech-support’s existing inventory search/status-filter row overflows the page at 768px (`sm:grid-cols-[1fr_14rem]` plus intrinsic input width beside the sidebar). It is independent of the summary row, which fits and aligns. Recorded for follow-up rather than changing the form as part of this fix.
+
+**Remaining verification/integration.** Full database-dependent API/browser suites require the Supabase CLI. PR, teammate review, merge and Jira updates remain developer-owned.

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
@@ -279,21 +280,20 @@ onMounted(() => eventsStore.load().catch(() => {}));
               {{ overview.needsAction.total }} total
             </span>
           </div>
-          <div class="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
-            <BauhausCard
+          <div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <BauhausSummaryCard
               v-for="item in overviewGroups[0].items"
               :key="item.label"
               :aria-label="`Show ${item.label} events`"
+              :label="item.label"
+              :value="item.value"
               :background="item.background"
               :accent="item.accent"
               :accent-color="item.accentColor"
               :clickable="activeTab === 'overview'"
               :class="item.hoverClass"
               @click="openActionCategory(item.status)"
-            >
-              <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ item.label }}</p>
-              <p class="mt-2 text-5xl font-black tracking-tighter">{{ item.value }}</p>
-            </BauhausCard>
+            />
           </div>
 
         </section>

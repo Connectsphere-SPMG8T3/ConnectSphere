@@ -1,5 +1,6 @@
 <script setup>
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import { useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
@@ -24,17 +25,16 @@ const metrics = [
       </p>
     </BauhausCard>
 
-    <div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
-      <BauhausCard
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+      <BauhausSummaryCard
         v-for="metric in metrics"
         :key="metric.label"
+        :label="metric.label"
+        :value="metric.value"
         :background="metric.background"
         :accent="metric.accent"
         :accent-color="metric.accentColor"
-      >
-        <p class="text-xs font-bold uppercase tracking-widest opacity-80">{{ metric.label }}</p>
-        <p class="mt-2 text-5xl font-black tracking-tighter">{{ metric.value }}</p>
-      </BauhausCard>
+      />
     </div>
   </main>
 </template>

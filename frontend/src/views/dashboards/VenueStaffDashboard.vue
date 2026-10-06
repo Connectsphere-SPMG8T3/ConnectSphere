@@ -15,7 +15,7 @@
 import { computed, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 
-import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import VenueCalendar from "@/components/venues/VenueCalendar.vue";
 import {
@@ -212,23 +212,24 @@ function emptyDetail(clearText) {
             : ''
         "
       >
-        <BauhausCard class="h-full" :background="tile.background" :accent="tile.accent" :accent-color="tile.accentColor">
-          <!-- Two lines keep the figures aligned when a label wraps. These
-               are minimums, so larger text can still grow without clipping. -->
-          <p class="min-h-8 text-xs font-bold uppercase leading-4 tracking-widest opacity-80">{{ tile.label }}</p>
-          <p class="mt-2 text-5xl font-black tracking-tighter">{{ tile.value }}</p>
-          <p class="mt-2 flex min-h-8 items-baseline gap-2 text-xs font-medium leading-4 text-ink/60">
+        <BauhausSummaryCard
+          :label="tile.label"
+          :value="tile.value"
+          :background="tile.background"
+          :accent="tile.accent"
+          :accent-color="tile.accentColor"
+        >
+          <template #detail>
             {{ tile.detail }}
-            <!-- Hidden by opacity, not by `v-if`: it stays in the accessible
-                 name, so a screen reader still hears where the link goes. -->
+            <!-- Opacity keeps the cue in the accessible name at rest. -->
             <span
               v-if="tile.href"
               class="font-bold uppercase tracking-widest text-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
             >
               See the list ↓
             </span>
-          </p>
-        </BauhausCard>
+          </template>
+        </BauhausSummaryCard>
       </component>
     </div>
 

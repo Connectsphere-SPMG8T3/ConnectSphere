@@ -1090,6 +1090,8 @@ Each dashboard composes widgets from the feature stores. **Build a widget only w
 | Tech support | Pending and re-review equipment lines · Events needing technical readiness · Equipment in maintenance · Upcoming reservations (7 days) |
 | Attendee | My upcoming registrations and waitlist invitations · Browse open events |
 
+**[Team decision] Dashboard summary cards align within each row when text wraps** (D20/D21, developer approved 2026-10-06). All roles reuse the shared summary-card component, with equal outer heights and at least two lines reserved for headings and optional details. Longer text can grow without truncation. Summary grids use one column below 768px, two from 768px, and three or four from 1280px according to the number of metrics, accounting for the sidebar.
+
 #### 6.21.1 Coordinator dashboard prioritisation *(SCRUM-72)*
 
 SCRUM-72 asks for a **prioritised** list but does not define priority, and the customer ruled out SLA timers and review deadlines on every status (LC-R4, QA-55, QA-68). Ordering by how long something has waited would reintroduce exactly the deadline pressure the customer rejected.
