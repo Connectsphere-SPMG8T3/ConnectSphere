@@ -7,13 +7,13 @@ This file holds the course context, the customer briefing, the first-release sco
 - What each story actually built, in order: [`BUILD_LOG.md`](BUILD_LOG.md). The log was §4 of this file when it was `SCENARIO.md`, so the numbering below skips §4; references such as "§2.3" or "§5" made before the split still point at the right section.
 - What the system *should* do: [`REQUIREMENTS.md`](REQUIREMENTS.md). What exists now: [`IMPLEMENTATION_MAP.md`](IMPLEMENTATION_MAP.md).
 
-Sources for this document: `IS212 (AY2026/27, T1) — Scrum Project Instructions` (Week 4), `IS212 — Customer Briefing: Event Planning and Venue Booking System` (Week 1), and Jira exports for individual issues (e.g. `SCRUM-48`).
+Sources for this document: `IS212 (AY2026/27, T1) — Scrum Project Instructions` (Week 4), `IS212 — Customer Briefing: Event Planning and Venue Booking System` (Week 1), Jira exports for individual issues (e.g. `SCRUM-48`) from Sprints 1–2, and the team's Product backlog sheet from Sprint 3.
 
 ## 1. Course context
 
 This repository is the codebase for an **IS212 (Software Project Management) team project**: a term-long exercise in running an agile (Scrum) software project against a simulated customer, ConnectSphere. The grading rubric (Week 4 instructions) weighs the Scrum *process* — sprint evidence, estimation, backlog quality, retrospectives — at least as heavily as the delivered software, and explicitly penalises "an AI-generated solution that you cannot explain/justify." Practically, this means:
 
-- Every change in this repo should be traceable back to a specific backlog item (a Jira issue like `SCRUM-48`) and, ultimately, back to a piece of the customer briefing.
+- Every change in this repo should be traceable back to a specific backlog item (a PBI such as `SCRUM-48` or `NEW-03` in the Product backlog sheet) and, ultimately, back to a piece of the customer briefing.
 - Code should be something the team can explain and defend in a 20-minute instructor Q&A, not just something that passes.
 - Test coverage and traceability from requirement → code → test matters as much as the feature working.
 

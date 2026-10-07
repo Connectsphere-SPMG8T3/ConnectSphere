@@ -2,7 +2,7 @@
 
 **What each story, fix and enabler actually built, in the order it landed.** Append-only.
 
-This is the requirement → code → test trail the course rubric rewards. Each entry quotes its Jira issue verbatim and records how the ticket was interpreted, what was built, and how it was verified.
+This is the requirement → code → test trail the course rubric rewards. Each entry quotes its backlog record verbatim (the Jira issue until Sprint 2, the Product backlog sheet row from Sprint 3) and records how the ticket was interpreted, what was built, and how it was verified.
 
 - It was §4 of `docs/SCENARIO.md` until 2026-09-28. **Entries keep their `4.N` numbers**, so a citation like "SCENARIO §4.17" in Jira or an old commit is the same entry as "BUILD_LOG §4.17" here. Number 4.9 was used twice: the first 4.9 is SCRUM-70, the second SCRUM-8.
 - Inside entries, a bare "§1"–"§3" or "§5"–"§7" means [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md); a bare "§4.N" means this file.
@@ -10,32 +10,33 @@ This is the requirement → code → test trail the course rubric rewards. Each 
 
 ## How to add an entry
 
-When a story is completed, copy the template below, fill it in from the Jira issue (don't paraphrase the user story or acceptance criteria — quote them verbatim, the same way SCRUM-48's entry does), and add it as a new `###` subsection *after* the most recent entry, so the log reads chronologically. Do not delete or rewrite prior entries when requirements change later — instead, add a new entry for the story that changes them, and note in that new entry which earlier entry/behaviour it supersedes. This keeps the log an honest history of what was built and when, which is exactly the kind of requirement → code traceability the course rubric ([`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) §1) rewards.
+When a story is completed, copy the template below, fill it in from the PBI's row in the Product backlog sheet (Jira for stories before Sprint 3) (don't paraphrase the user story or acceptance criteria — quote them verbatim, the same way SCRUM-48's entry does), and add it as a new `###` subsection *after* the most recent entry, so the log reads chronologically. Do not delete or rewrite prior entries when requirements change later — instead, add a new entry for the story that changes them, and note in that new entry which earlier entry/behaviour it supersedes. This keeps the log an honest history of what was built and when, which is exactly the kind of requirement → code traceability the course rubric ([`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) §1) rewards.
 
 <details>
 <summary><strong>Template for a new entry (click to expand)</strong></summary>
 
 ```markdown
-### 4.N. SCRUM-XX — <issue summary> (exact Jira record)
+### 4.N. SCRUM-XX / NEW-XX — <title> (exact backlog record)
 
 | Field | Value |
 |---|---|
-| Issue key | `SCRUM-XX` |
-| Summary | <copy from Jira> |
-| Issue type | Story / Bug / Task |
+| ID | `SCRUM-XX` or `NEW-XX` |
+| Title | <copy from the Product backlog> |
+| Type | US: Core feature / US: Non-core feature / Bug fix / Enhancement |
 | Status | <status at time of writing this entry> |
-| Parent epic | `SCRUM-Y` — <epic name> |
-| Sprint | <sprint name> |
-| Story point estimate | <n> |
-| Priority | <priority> |
+| Epic | <epic name> |
+| Sprint | <sprint number> |
+| Estimate | <n> story points |
+| Priority | P1–P5 |
+| Customer clarification | <session and date, or "none"> |
 
 **User story (verbatim):**
 
-> <paste exactly as written in Jira>
+> <paste exactly as written in the Product backlog>
 
-**Acceptance criteria (verbatim from Jira):**
+**Acceptance criteria (verbatim from the Product backlog):**
 
-> <paste exactly as written in Jira, including any typos — note them rather than silently fixing them>
+> <paste exactly as written, including any typos — note them rather than silently fixing them>
 
 #### How the implementation maps to the ticket
 
@@ -1461,3 +1462,23 @@ Fixed on `fix/d18-supabase-http1-client`, branched from `main` at `37f2d0b`. D18
 - No manual browser pass: nothing visible changed.
 - **Idle probe on the fixed backend:** the 120 s and 180 s gaps that failed before (5/6, 3/6) both answered **6/6**. Not recorded as a run log; it was a scratch script.
 - **Not verified:** that D18 can never recur. It was intermittent, so the evidence is the reproduced failure before the fix and clean runs after it.
+### 4.31. Chore — Adopt the team's Scrum playbook in the repository docs
+
+Not a backlog story. An enabler on `chore/docs-scrum-playbook`, 2026-10-06. From Sprint 3, the team's [Scrum playbook](https://docs.google.com/document/d/1wd96yzFLZQ1FNZQFfbxzSQvRzzqs9ZJkgrZUEBKbItg/edit) sets a new Definition of Done and moves the backlog from Jira to the Product backlog Google Sheet. The repository's process docs still described the Sprint 1–2 setup, so they were brought in line.
+
+1. **Definition of Done.** `docs/DEFINITION_OF_DONE.md` is now the playbook's DoD (General, Code, Testing, Quality), plus the checks this repository needs on top: security, database and paper trail. It is a checklist only. New items from the playbook:
+   - the PO approves the acceptance criteria after a demo;
+   - every sprint task for the PBI is Done;
+   - the build has no critical warnings;
+   - 100% code coverage;
+   - no crashes or unhandled errors, and no noticeable delay in the PO demo;
+   - a PBI that isn't Done at sprint end returns to the backlog and earns no velocity;
+   - the DoD is reviewed at every retrospective.
+2. **Development workflow.** The old Phases 1–4 moved to the new `docs/DEVELOPMENT_WORKFLOW.md`, rearranged by the playbook's board (Ready → In Progress → In Review → Done). It keeps the [A]/[D] owner tags and adds [PO]. It includes the Definition of Ready check, the In Review rules (CI passes and a reviewer is requested; a change request sends the work back to In Progress), the PO's acceptance before Done, and "a change to a Done PBI is a new linked PBI".
+3. **Jira replaced by the Product backlog sheet.** Updated in `AGENTS.md` (story intake, branch names, commit IDs, never editing the sheets unprompted), `README.md`, `docs/README.md`, `ROADMAP.md`, `REQUIREMENTS.md`, `PROJECT_OVERVIEW.md`, `CI.md`, `DEFECTS.md` (a defect being fixed also gets a Bug fix PBI) and `backend/AGENTS.md`. This log's template now uses the sheet's fields. Past entries, the archive, specs, plans and run logs are history and still say Jira.
+4. **PBI IDs and branches.** Sprint 1–2 stories keep `SCRUM-<n>` and `feature/scrum-<n>-<slug>`. The Week 7 stories use the sheet's `NEW-<nn>` IDs and `feature/new-<nn>-<slug>` branches. [Team decision] taken with the developer, since the playbook only names the `scrum-<n>` form.
+5. **Coverage target.** [Team decision]: 100% line coverage of `backend/app/` and `frontend/src/`, with any exclusion listed in `CI.md` §4 item 2 alongside its reason. It covers both layers because the course rubric (*"100% coverage unless not possible and stated why"*) and the team DoD don't say backend only. CI will report first, then stop coverage from going down, then raise the floor each sprint to reach 100% for the Sprint 4 showcase. The tooling (`pytest-cov`, `@vitest/coverage-v8`) is the next enabler, `chore/coverage-reporting`. `REQUIREMENTS.md` NFR-Q1 is updated to match.
+6. **Test cases.** These stay in Markdown. Cases written from now on add **Type**, **Created** and **Last run** columns (`docs/test-cases/README.md`), so the team can copy them into the Test cases sheet before submission. Existing cases are not backfilled.
+
+- **Verified:** every relative link in the changed files resolves, apart from the made-up run file in the test-case template's example row. A search for "Jira" in the current-process docs finds only deliberate history notes and the Sprint 2 plan in `ROADMAP.md` §C4. No code, migration or test changed, so the suites weren't re-run.
+- **Not verified:** whether the Sheet's column names and status values still match the playbook §4.1–4.2 and the 2026-10-06 sheet snapshot these docs were written from. Nothing is enforced by tooling yet: branch protection is still off (`CI.md` §4 item 1), and coverage isn't reported (item 2).
