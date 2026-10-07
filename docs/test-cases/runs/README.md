@@ -20,7 +20,7 @@ Automated checks sign in as the seeded accounts, never change seeded or shared d
 
 ## When to record a run
 
-- **At story or fix verification** (Definition of Done Phase 2): both automated runs with recording on, plus a manual log for the story's cases that need human judgement.
+- **At story or fix verification** ([`DEVELOPMENT_WORKFLOW.md`](../../DEVELOPMENT_WORKFLOW.md) §2): both automated runs with recording on, plus a manual log for the story's cases that need human judgement.
 - **At the end of each sprint**: both automated runs with recording on, as regression evidence for the sprint review. No full manual pass. Re-check a story by hand only if its area changed after it was verified.
 - Not while you're writing code. Run the checks without recording as often as you like.
 
@@ -74,7 +74,7 @@ Copy into `<date>-<time>-manual-<commit>.md`:
 
 | | |
 |---|---|
-| Story / fix | SCRUM-80 |
+| Story / fix | SCRUM-80 (PBI ID, or the defect ID) |
 | Commit | `abc1234` on `feature/scrum-80-organiser-signup` |
 | Environment | frontend http://localhost:5173, backend http://localhost:8000, live Supabase |
 | Browser | Chrome 141, desktop and 375×812 |

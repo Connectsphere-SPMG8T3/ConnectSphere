@@ -11,7 +11,7 @@ This repository implements a **Modular Monolith** architecture:
 
 For the full business context (roles, the Scrum item this implements, and the architectural reasoning behind it), see [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) (and [docs/README.md](docs/README.md) for every other doc). For a step-by-step local setup, see [docs/SETUP.md](docs/SETUP.md) (this README's [Getting started](#getting-started) is the short version).
 
-**Contributing?** [docs/DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md) is the checklist every story, fix, and enabler has to clear — through PR review, merge, and moving the Jira issue to Done. The working rules behind it (branch naming, test-first development, the security baseline) are in [AGENTS.md](AGENTS.md), which applies to human contributors as much as to AI agents.
+**Contributing?** The team's Scrum process is in the [Team A-HA! Scrum Playbook](https://docs.google.com/document/d/1wd96yzFLZQ1FNZQFfbxzSQvRzzqs9ZJkgrZUEBKbItg/edit), and the backlog is in the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit). [docs/DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md) is the checklist every backlog item has to clear before it counts as Done. [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md) walks through each step from Ready to Done: PR review, the PO's acceptance, merge, and setting the item to Done in the backlog. The working rules behind it (branch naming, test-first development, the security baseline) are in [AGENTS.md](AGENTS.md), which applies to human contributors as much as to AI agents.
 
 ## Current scope: SCRUM-48 — Secure Login & Role-Based Dashboards
 

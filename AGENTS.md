@@ -15,18 +15,26 @@ ConnectSphere is a regional event planning and venue booking platform for Singap
 
 Layer-specific rules (tech stack, conventions, design system) live in **`backend/AGENTS.md`** and **`frontend/AGENTS.md`**. Read the one for the layer you're touching, in addition to this file.
 
+## How the team works
+
+The team's Scrum process is set by the [Team A-HA! Scrum Playbook](https://docs.google.com/document/d/1wd96yzFLZQ1FNZQFfbxzSQvRzzqs9ZJkgrZUEBKbItg/edit): its board workflow, Definition of Ready, Definition of Done, estimation and change management. This repository's process docs follow it, and the playbook wins if the two disagree.
+
+From Sprint 3 (6 Oct 2026), the backlog lives in the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit), not Jira. Its **Product backlog** tab holds every PBI: user story, acceptance criteria, priority, estimate, status and customer clarifications. Each sprint has its own tab with the sprint's tasks and burndown. Jira's Sprint 1–2 records are kept only as exports in the shared drive.
+
+**PBI IDs.** Stories from Sprints 1–2 keep their Jira number: row `12` in the sheet is `SCRUM-12`. Stories added from the Week 7 changes use the sheet's own IDs, `NEW-<nn>`. Cite whichever the sheet shows.
+
 ## Start every task: Scrum story or fix?
 
 Before exploring or changing code, ask the developer which kind of work this is (skip the question if they've already said):
 
-1. **Scrum story**
-   - Ask for the Jira key (`SCRUM-<n>`).
-   - Fetch the issue through the Jira (Atlassian) MCP: user story, acceptance criteria, parent epic, and sprint.
-   - If the Jira MCP is unavailable or the fetch fails, ask the developer to paste the **user story** and **acceptance criteria**. Never work from the ticket title alone, and never invent acceptance criteria.
+1. **Scrum story** (or enhancement)
+   - Ask for the PBI ID (`SCRUM-<n>` or `NEW-<nn>`).
+   - Read its row in the Product backlog sheet through the Google Sheets connector: user story, acceptance criteria, epic, priority, estimate, sprint and customer clarifications. **Read only.** Never edit the sheet unless the developer asks.
+   - If the sheet can't be read, ask the developer to paste the **user story** and **acceptance criteria**. Never work from the title alone, and never invent acceptance criteria.
    - **Suggest planning first.** In Claude Code, recommend switching to plan mode before any code is written. In other tools, write the plan out and get the developer's agreement. The plan maps every acceptance criterion to the files, tests, and verification that will satisfy it, and names anything from `docs/IMPLEMENTATION_MAP.md` it will reuse.
-   - Branch: `feature/scrum-<n>-<short-slug>`.
+   - Branch: `feature/scrum-<n>-<short-slug>`, or `feature/new-<nn>-<short-slug>` for a `NEW-<nn>` ID.
 2. **Fix**
-   - Ask for the defect ID from `docs/DEFECTS.md` (D1, D2, …), or the observed vs expected behaviour and how to reproduce it.
+   - Ask for the defect ID from `docs/DEFECTS.md` (D1, D2, …), or the observed vs expected behaviour and how to reproduce it. A fix is also a Bug fix PBI in the backlog. Ask for its ID if one exists.
    - Reproduce the defect first, then write a failing regression test before changing code.
    - Branch: `fix/<short-slug>`.
 
@@ -46,6 +54,7 @@ Read, in this order:
 6. `docs/DEFECTS.md` — known defects (D1, D2, …) and their status.
 7. `docs/test-cases/` — existing manual test cases, one file per area (start at its `README.md`).
 8. `docs/DEFINITION_OF_DONE.md` — the checklist this task has to clear before it counts as done.
+9. `docs/DEVELOPMENT_WORKFLOW.md` — how a PBI moves from Ready to Done, step by step, and which steps belong to a person.
 
 Customer rules take precedence in this order: session Q&A answers (`QA-<row>`), then the Week 4 core features, then the Week 1 briefing.
 
@@ -60,13 +69,13 @@ Plan any change that spans more than one file or layer before writing code.
 ## Git workflow
 
 - **Never commit to `main`.** Branch from an up-to-date `main`:
-  - stories: `feature/scrum-<n>-<short-slug>`
+  - stories and enhancements: `feature/scrum-<n>-<short-slug>`, or `feature/new-<nn>-<short-slug>` for a `NEW-<nn>` ID
   - bugs: `fix/<short-slug>`
   - enablers: `chore/<short-slug>`
 - Run `git status` first. Never discard or overwrite uncommitted work you didn't create.
 - Commit only what the task changed, staging files by name — never `.env`, keys, or tokens. `.claude/` and `docs/prompts/` are gitignored local workflow aids.
-- Commit message: an imperative summary line (`fix(auth): …`, `feat(events): …`), then a body explaining *why*, with the Jira key or defect ID.
-- Don't push, open PRs, or change Jira without the user asking. When the user does ask for Jira updates, cite the `QA-<row>` behind any requirement change.
+- Commit message: an imperative summary line (`fix(auth): …`, `feat(events): …`), then a body explaining *why*, with the PBI ID or defect ID.
+- Don't push, open PRs, or edit the team's Google Sheets (backlog, sprint tabs, test cases) without the user asking. When the user does ask for a backlog update, record any requirement change in the PBI's **Customer clarification** column, citing the `QA-<row>` and its session.
 
 ## Security baseline (applies to every layer)
 
@@ -74,7 +83,7 @@ Plan any change that spans more than one file or layer before writing code.
 - **Authorise by the session's *active* role, never by every role the account holds.** An account can hold several roles (`user_roles`) but acts as one at a time (`session_active_roles`). Every new endpoint, dependency, RLS policy, and page or route guard must gate on the active role: in the API use `require_roles([...])` / `CurrentUser.role`, in RLS use `private.current_user_role()`, and in the frontend use the store's active `role`. Never check membership in `user_roles`, `CurrentUser.roles`, or `profiles.role` to grant access. A user acting as role Y must get 403 on role-X-only resources even if they also hold X. Any new page, module, or policy needs a test that proves this denial, ideally with a raw request that bypasses the UI (SCRUM-76).
 - Never trust client-supplied identity or privilege data: request bodies, sign-up metadata, or query params claiming a role or owner. Derive identity from the verified JWT.
 - The secret key never goes into the frontend, a `VITE_*` variable, logs, docs, screenshots, or commits.
-- In anything visible to others (PRs, Jira, docs), describe security bugs by *class*, never as step-by-step exploits.
+- In anything visible to others (PRs, the backlog, docs), describe security bugs by *class*, never as step-by-step exploits.
 
 ## Scope discipline
 
@@ -100,7 +109,9 @@ Write the test before the implementation, for any new feature or bugfix:
 3. Write the minimum code to make it pass.
 4. Refactor with the test suite green.
 
-This applies at whatever layer the change lives in — `pytest` in `backend/tests/` for backend/API behaviour, component/unit tests for frontend logic, and `docs/test-cases/` entries for user-facing behaviour that needs a manual trace to a Jira key. Don't write the implementation first and backfill tests afterward — that's covered by "Definition of done" below but the order matters, not just the coverage.
+This applies at whatever layer the change lives in — `pytest` in `backend/tests/` for backend/API behaviour, component/unit tests for frontend logic, and `docs/test-cases/` entries for user-facing behaviour that needs a manual trace to a PBI ID. Don't write the implementation first and backfill tests afterward — that's covered by "Definition of done" below but the order matters, not just the coverage.
+
+The team's DoD sets the coverage bar: 100% of new and changed code in `backend/app/` and `frontend/src/`, or each uncovered line is listed with the reason (`docs/CI.md` §4 item 2).
 
 ## Verification: "it imports" is not "it works"
 
@@ -130,7 +141,7 @@ Commit the run logs with the story, since they are the evidence that it was test
 
 - `docs/IMPLEMENTATION_MAP.md`: **after implementing anything that changes what exists**, update the map in the same branch. That includes a story or fix, a module, endpoint, table, or migration, a reusable component, store, or helper, or a changed contract (request/response shape, guard, enum). Unlike `BUILD_LOG.md`, this file is edited in place: update the status table, add the new pieces to the reuse tables, remove what no longer exists, and record any "know before you build" notes the next developer needs. Replace its "Last updated" line with this change: one entry, not a running list (the history belongs in `BUILD_LOG.md`).
 - `docs/BUILD_LOG.md` §4: append an entry for each completed story or bug fix, following the existing template. Never rewrite past entries.
-- `docs/test-cases/<area>.md`: add manual cases for new behaviour, traced to Jira keys and acceptance criteria.
+- `docs/test-cases/<area>.md`: add manual cases for new behaviour, traced to PBI IDs and acceptance criteria, with the Type, Created and Last run columns (`docs/test-cases/README.md`). The team copies them into the Test cases sheet before submission, so don't write to that sheet.
 - `docs/REQUIREMENTS.md`: update it when a rule, assumption, or design decision changes.
 - `docs/DEFECTS.md`: mark defects fixed, with the branch or commit, and add any new defect as the next number.
 
@@ -148,16 +159,21 @@ Commit the run logs with the story, since they are the evidence that it was test
 
 ## Definition of done (every task)
 
-**`docs/DEFINITION_OF_DONE.md` is the full checklist** — for humans and agents both, across all four phases (before coding → code complete → paper trail → review, merge, Jira). Read it there; it is the source of truth, and this section is only the agent-facing summary of its Phases 1–3.
+Two files, both for humans and agents:
 
-- [ ] For a story: every acceptance criterion from Jira (or as supplied by the developer) is met and traced to a test or verification step.
+- **`docs/DEFINITION_OF_DONE.md`** is the team's checklist: what a PBI must meet to count as Done. It is the playbook's DoD, plus the checks specific to this repository.
+- **`docs/DEVELOPMENT_WORKFLOW.md`** is how to get there. It follows the board (Ready → In Progress → In Review → Done) and marks which steps are the developer's.
+
+This section is only the agent-facing summary of the workflow's §1–3.
+
+- [ ] For a story: every acceptance criterion from the PBI's Product backlog row (or as supplied by the developer) is met and traced to a test or verification step.
 - [ ] Behaviour matches `docs/REQUIREMENTS.md`, or any deviation is recorded there.
 - [ ] Reusable pieces were extended or extracted rather than duplicated, and `docs/IMPLEMENTATION_MAP.md` reflects the new state.
-- [ ] Automated tests cover the happy path, boundaries, failures, and authorisation denials, and the full suite passes.
+- [ ] Automated tests cover the happy path, boundaries, conflicts, failures, and authorisation denials, new and changed code is fully covered (or the gaps are stated), and the full suite passes.
 - [ ] The change is verified against the real system wherever it crosses an integration boundary.
 - [ ] The live checks were run with recording on, and the developer was asked for the manual browser pass, with the results recorded in `docs/test-cases/runs/`.
 - [ ] Database changes show no new security or performance advisories.
 - [ ] Docs are updated per "Keep the paper trail current" above. The work is on a non-`main` branch, committed with a *why*-focused message.
 - [ ] The final report covers: what changed, how it was verified, what wasn't verified, and follow-ups.
 
-Stopping here is correct for an agent: **Phase 4 (PR, teammate review, merge, moving the Jira issue to Done) is the developer's**, and an agent only does it when asked. Say so in the final report, so the story is not left merged with its ticket still In Progress.
+Stopping here is correct for an agent. **The workflow's §4–5 are the developer's**: the PR, the teammate review, the PO's acceptance, the merge, and setting the PBI to Done in the Product backlog. An agent only does them when asked. Say so in the final report, so the PBI is not left merged with its status still In Sprint.

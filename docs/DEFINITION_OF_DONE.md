@@ -1,91 +1,89 @@
 # ConnectSphere — Definition of Done
 
-**The single checklist a story, fix, or enabler must clear before anyone calls it done.**
+**What a Product Backlog Item (PBI) must meet before it counts as Done.** Use it as a checklist when you review a PBI.
 
-This file is the one source of truth. Root `AGENTS.md` and `docs/ROADMAP.md` point here rather than keeping their own copies — if a rule changes, it changes here first.
+The team agreed this DoD in the [Team A-HA! Scrum Playbook](https://docs.google.com/document/d/1wd96yzFLZQ1FNZQFfbxzSQvRzzqs9ZJkgrZUEBKbItg/edit) §6, which applies from Sprint 3 (6 Oct 2026). The **General**, **Code**, **Testing** and **Quality** sections below are that DoD, with each item spelt out for this repository. **ConnectSphere specifics** adds the checks this codebase needs on top of it.
 
-It covers **both** halves of the work: what an AI agent or a developer does while building, and what a human does afterwards to close the loop (review, merge, Jira). Every item is tagged with who owns it:
+This file says *what* to check. *How* to get there (branching, TDD, the live checks, who does each step) is in [`DEVELOPMENT_WORKFLOW.md`](DEVELOPMENT_WORKFLOW.md).
 
-| Tag | Who |
-|---|---|
-| **[A]** | The AI agent (or whoever writes the code) |
-| **[D]** | A developer — a human step an agent must not do unprompted |
-| **[A/D]** | Either, depending on who is driving |
-
-Agents never push, open PRs, or change Jira unless the developer asks (root `AGENTS.md`, "Git workflow"). Phase 4 is therefore where the work is handed back to a person — an agent that stops after Phase 3 has done its job, but the *story* is not done.
-
-_Last updated: 2026-09-27 — Phase 2 adds recorded live checks and the developer's manual browser pass; Phase 3 adds the run logs in `docs/test-cases/runs/` (`chore/automated-live-checks`). 2026-09-22 — "CI is green on the PR" moved from "Not yet enforceable" into Phase 4, now that `.github/workflows/ci.yml` exists. First version (same day) consolidated the checklist in root `AGENTS.md` and the Sprint 2 proposal in `docs/ROADMAP.md` §C4._
+_Last updated: 2026-10-06 — rewritten to the playbook's DoD; the step-by-step phases moved to `DEVELOPMENT_WORKFLOW.md` (`chore/docs-scrum-playbook`)._
 
 ---
 
-## Phase 1 — Before writing code
+## The rules
 
-- [ ] **[A/D]** The work is identified as a **story** (`SCRUM-<n>`), a **fix** (defect `D<n>` in `docs/DEFECTS.md`), or an **enabler** (docs, tooling, config).
-- [ ] **[A/D]** For a story: the user story and acceptance criteria come from Jira (or are pasted by the developer). Never work from the ticket title alone, and never invent acceptance criteria.
-- [ ] **[D]** Acceptance criteria are written in **Given/When/Then** form on the Jira issue before the sprint starts.
-- [ ] **[A/D]** `docs/REQUIREMENTS.md`, `docs/IMPLEMENTATION_MAP.md`, and the live Supabase project have been checked — not just the migration files, which have drifted before.
-- [ ] **[A/D]** A plan exists for anything spanning more than one file or layer, mapping each acceptance criterion to the files, tests, and verification that will satisfy it, and naming what it reuses from `docs/IMPLEMENTATION_MAP.md`.
-- [ ] **[A/D]** Branched from an up-to-date `main`: `feature/scrum-<n>-<slug>`, `fix/<slug>`, or `chore/<slug>`. **Never commit to `main`.**
+- A PBI is Done only when it meets **every applicable item** below. An item that can't apply (for example, the database items for a PBI with no schema change) is skipped, not ticked.
+- A PBI that is not Done by the end of the sprint **returns to the Product Backlog**. It does not count towards velocity and is not part of the Increment. There is no partial credit.
+- Done is recorded by setting the PBI's **Status** to Done and filling **Met DoD?** in the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit).
 
-## Phase 2 — Code complete
+## General
 
-- [ ] **[A]** The failing test was written **first** and confirmed to fail for the expected reason, then made to pass (root `AGENTS.md`, "Test-driven development"). Order matters, not just coverage.
-- [ ] **[A]** Every acceptance criterion is met and traced to a named test or a written verification step.
-- [ ] **[A]** Tests cover the happy path, boundaries, failures, **and authorisation denials**.
-- [ ] **[A]** Authorisation is checked as **role *and* relationship to the resource**, gated on the session's **active** role, with a negative test proving a user holding another role gets 403 (SCRUM-76).
-- [ ] **[A]** The **full** suite passes, not only the new tests: `pytest` from `backend/`, `npm test` from `frontend/`.
-- [ ] **[A]** Anything crossing an integration boundary (Supabase Auth, PostgREST, RLS, the browser) is verified against the **real system**, not only against mocks. "It imports" is not "it works".
-- [ ] **[A]** The live checks were run with recording on (`backend/scripts/verify_live.py --record`, `npm run test:e2e:record`), and the story's new cases were automated where their outcome can be checked by a request or a browser assertion (root `AGENTS.md`, "Live checks and the manual browser pass").
-- [ ] **[D]** The developer ran the manual browser pass for the cases that need human judgement (layout, phone width, wording, feel) when the agent asked, and the results are recorded in `docs/test-cases/runs/`.
-- [ ] **[A]** Database changes: `supabase db push` runs clean, Supabase advisors show **no new** security or performance findings, and verification SQL is added under `supabase/verification/` in the style of `auth_security_checks.sql`.
-- [ ] **[A]** Behaviour matches `docs/REQUIREMENTS.md`, or the deviation is recorded there as **[Assumption]** or **[Team decision]** with its reason.
-- [ ] **[A]** Reusable pieces were extended or extracted rather than duplicated.
-- [ ] **[A]** No secrets in the diff: never `.env`, keys, or tokens; the secret key never reaches the frontend, a `VITE_*` variable, logs, docs, or screenshots.
+- [ ] All acceptance criteria are met, **demonstrated to the PO, and approved by the PO**.
+- [ ] All tasks broken down from the PBI in the sprint tab are Done.
 
-## Phase 3 — Paper trail (graded evidence)
+## Code
 
-- [ ] **[A]** `docs/IMPLEMENTATION_MAP.md` — updated **in place** in the same branch: status table, reuse tables, anything removed, "know before you build" notes, and the "Last updated" line.
-- [ ] **[A]** `docs/BUILD_LOG.md` §4 — a new entry **appended** using the existing template. Never rewrite past entries.
-- [ ] **[A]** `docs/test-cases/<area>.md` — manual cases for new user-facing behaviour, traced to the Jira key and its acceptance criteria.
-- [ ] **[A]** `docs/test-cases/runs/` — this story's run logs (automated and manual) committed on the branch.
-- [ ] **[A]** `docs/REQUIREMENTS.md` — updated when a rule, assumption, or design decision changed, citing the `QA-<row>` behind it.
-- [ ] **[A]** `docs/DEFECTS.md` — defects marked fixed, with the branch or commit.
-- [ ] **[A]** Committed on a non-`main` branch, staged **by file name**, with an imperative summary (`feat(events): …`) and a body explaining *why*, carrying the Jira key or defect ID.
-- [ ] **[A]** The final report states what changed, how it was verified, **what was not verified and why**, and any follow-ups.
+- [ ] The code is reviewed and **approved by at least one other Developer** on a GitHub pull request. Self-merging an unreviewed PR does not count. Review comments are resolved, or captured as new PBIs rather than dropped.
+- [ ] The pull request is merged into `main` **only after CI passes** and the review approval is given.
+- [ ] The build passes with **no critical warnings**: no warnings from our own code in the build, test or browser-console output (Vue warnings, unhandled promise rejections, deprecations in our code). Third-party warnings already listed under "Known warnings" in [`CI.md`](CI.md) §6 don't block.
 
-## Phase 4 — Review, merge, close
+## Testing
 
-This phase is human-owned. An agent does these steps only when the developer explicitly asks.
+- [ ] All unit and integration tests pass in the CI pipeline: the **full** backend (`pytest`) and frontend (Vitest) suites, not only the new tests.
+- [ ] Functional and UI behaviour is verified against the acceptance criteria:
+  - the live checks were run with recording on (`verify_live.py --record`, `npm run test:e2e:record`);
+  - the developer's manual browser pass is recorded;
+  - both go in [`test-cases/runs/`](test-cases/runs/README.md).
+- [ ] Developed **test-first** (red, green, refactor): a failing test, then the minimum code to pass it, then refactoring with the suite green. The playbook requires this for backend functions. This repository applies it to frontend logic too (root `AGENTS.md`, "Test-driven development").
+- [ ] **100% code coverage** of the new and changed code in `backend/app/` and `frontend/src/`, or every uncovered line is listed with the reason it can't be covered. This follows the course rubric: *"100% coverage unless not possible and stated why."* How coverage is measured, and the standing exclusions, are in [`CI.md`](CI.md) §4 item 2.
+- [ ] Tests cover the normal path, boundaries, conflicts, failures **and authorisation denials**. Every acceptance criterion traces to a test case (`TC-*`) and an automated test in the story's traceability table in [`test-cases/`](test-cases/README.md).
 
-- [ ] **[D]** A pull request is opened against `main`, linking the Jira issue, and describing security issues by *class* — never as step-by-step exploits.
-- [ ] **[D]** **CI is green on the PR.** The `CI` workflow (`.github/workflows/ci.yml`) runs the backend suite, the frontend suite, and the frontend build on every pull request into `main`. A red run blocks the merge; do not merge on the strength of a local green run alone.
-- [ ] **[D]** **At least one teammate has reviewed and approved the PR.** Self-merging an unreviewed PR does not clear this checklist.
-- [ ] **[D]** Review comments are resolved, or captured as follow-up issues rather than silently dropped.
-- [ ] **[D]** Migrations reach the shared Supabase project **through the merged PR**, never applied by hand.
-- [ ] **[D]** The branch is merged into `main` and then deleted.
-- [ ] **[D]** **The Jira issue is moved to Done and the PR is linked on it.** This is the step most often missed — a merged branch with the ticket still In Progress breaks the sprint burndown, which is graded evidence.
-- [ ] **[D]** Any customer clarification or scope change discovered during the work is recorded as a Jira comment citing its `QA-<row>`.
-- [ ] **[D]** Anything demo-able is noted for the sprint review (`docs/ROADMAP.md` §C4, "Scrum evidence").
+## Quality
+
+- [ ] During the PO demo, the application runs **without crashes or unhandled errors** (no uncaught errors in the browser console, no 5xx in the backend log), and pages load without noticeable delay.
+
+## ConnectSphere specifics
+
+**Security** (root `AGENTS.md`, "Security baseline")
+
+- [ ] Every new endpoint, RLS policy, page and route guard checks **role *and* the caller's relationship to the resource**, gated on the session's **active** role. A test proves that a user acting as another role gets 403 (SCRUM-76).
+- [ ] No secrets in the diff: never `.env`, keys or tokens. The secret key never reaches the frontend, a `VITE_*` variable, logs, docs or screenshots.
+
+**Database** (only when the PBI changes the schema)
+
+- [ ] The migration is in `supabase/migrations/` and reaches the shared Supabase project **through the merged PR**, never applied by hand.
+- [ ] `supabase db push` runs clean, and the Supabase advisors show **no new** security or performance findings.
+- [ ] Verification SQL is added under `supabase/verification/`, and anything that crosses an integration boundary (Supabase Auth, PostgREST, RLS, the browser) was verified against the real system, not only against mocks.
+
+**Paper trail** (graded evidence)
+
+- [ ] [`REQUIREMENTS.md`](REQUIREMENTS.md) matches the behaviour, or the deviation is recorded as **[Assumption]** or **[Team decision]**, citing the `QA-<row>` behind it.
+- [ ] [`IMPLEMENTATION_MAP.md`](IMPLEMENTATION_MAP.md) is updated in place.
+- [ ] A [`BUILD_LOG.md`](BUILD_LOG.md) §4 entry is appended.
+- [ ] [`DEFECTS.md`](DEFECTS.md) is updated for any defect found or fixed.
+- [ ] New test cases are in `test-cases/<area>.md` with their Type, Created and Last run columns, and the run logs are committed on the branch.
+- [ ] Any customer clarification found during the work is recorded in the Product backlog's **Customer clarification** column, with its session and date.
 
 ---
 
-## Not yet enforceable
+## Checked by people, not tools (yet)
 
-These were agreed as targets in `docs/ROADMAP.md` §C4 but **cannot be checked today**. They are listed separately on purpose: a checklist with unenforceable items on it teaches the team to ignore the whole list. Move an item up into the phases above on the day the tooling lands.
+Two items above are only as strong as the reviewer, because no tool enforces them today:
 
-| Target | Blocked on | Move up when |
+| Item | Why a tool doesn't enforce it | What closes the gap |
 |---|---|---|
-| "New domain code is at 100% line coverage (or the exclusion is justified)" | No coverage tooling is configured: `pytest-cov` is not in `backend/requirements.txt`, and Vitest runs without a coverage reporter. | Coverage is reported on the PR and a threshold is agreed. |
-| "Each acceptance criterion has an automated test named or tagged with the Jira key" | Partly practised, not consistent — tests are grouped in classes without Jira keys in their names. | The team agrees on a naming or marker convention and backfills it. |
+| Merge only after CI passes | Branch protection is off on `main`, so a PR with a failing run can still be merged ([`CI.md`](CI.md) §4 item 1). | A repo admin turns on branch protection. |
+| 100% coverage | CI doesn't report coverage yet. | `chore/coverage-reporting` adds the report to every PR ([`CI.md`](CI.md) §4 item 2). |
 
-Until then, Phase 2's "full suite passes" and "verified against the real system" are what actually gate a merge. CI now enforces the first of those automatically on every PR; the reviewer in Phase 4 remains the check that the real-system verification actually happened, since no workflow can prove it.
+Until those land, the reviewer checks both by hand and writes in the PR if they couldn't.
 
----
+## Maintaining the DoD
+
+The whole team agreed on this DoD. We review it at each sprint retrospective and update it when we find gaps, for example when a bug is found in an item already marked Done. Change the playbook first, then this file to match, on a `chore/` branch.
 
 ## Related
 
-- `docs/CI.md` — what the automated checks cover, what they deliberately do not, and the two targets below that are waiting on tooling described there.
+- [`DEVELOPMENT_WORKFLOW.md`](DEVELOPMENT_WORKFLOW.md) — how a PBI moves from Ready to Done, step by step, and who owns each step.
+- [`CI.md`](CI.md) — what the automated checks cover, how coverage is measured, and what is still waiting on tooling.
 - Root `AGENTS.md` — the working rules this checklist enforces (git workflow, TDD, security baseline, scope discipline).
-- `docs/ROADMAP.md` §C4 — the sprint plan and the Scrum evidence to capture alongside it.
-- `docs/IMPLEMENTATION_MAP.md` — what exists right now, to check before building and to update after.
-- `docs/REQUIREMENTS.md` — the behaviour specs, access matrix, and open questions (§9) this checklist tests against.
+- [Team A-HA! Scrum Playbook](https://docs.google.com/document/d/1wd96yzFLZQ1FNZQFfbxzSQvRzzqs9ZJkgrZUEBKbItg/edit) — the team's process: board workflow (§4.4), Definition of Ready (§5), this DoD (§6), estimation, change management.

@@ -2,7 +2,7 @@
 
 **The release plan across the four sprints, and the detailed plan for the current one.**
 
-Drafted in the 13 Sep 2026 design review ([`archive/2026-09-13-design-review.md`](archive/2026-09-13-design-review.md)), where it was Part C of `docs/PROJECT_REVIEW.md`; section labels C1–C4 are kept so older references still resolve. Behaviour specs cited as §x.y are in [`REQUIREMENTS.md`](REQUIREMENTS.md). Jira is the source of truth for current priority; this file records the plan and its reasoning.
+Drafted in the 13 Sep 2026 design review ([`archive/2026-09-13-design-review.md`](archive/2026-09-13-design-review.md)), where it was Part C of `docs/PROJECT_REVIEW.md`; section labels C1–C4 are kept so older references still resolve. Behaviour specs cited as §x.y are in [`REQUIREMENTS.md`](REQUIREMENTS.md). The [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit) is the source of truth for current priority (Jira was, until Sprint 2); this file records the plan and its reasoning.
 
 ### C1. Constraints
 
@@ -81,7 +81,7 @@ SCRUM-48 is done, so **Jie Ching has spare capacity** for the rest of the sprint
 - Manual test cases TC-EVT-0xx in `docs/test-cases/events.md`, linked to the Jira key.
 - `BUILD_LOG.md` entry.
 
-**Definition of Done** — the checklist this review proposed now lives in [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md), consolidated with the one in root `AGENTS.md` so the project has a single version. Agree on it at planning and paste it into the Jira board description. Two items from this review are parked in that file's "Not yet enforceable" table until the tooling exists: **CI green on the PR** (there is no CI) and **100% line coverage on new domain code** (no coverage tooling). Everything else applies as written, including the two this review added and `AGENTS.md` never had: **a teammate review on every PR**, and **moving the Jira issue to Done with the PR linked**.
+**Definition of Done** — from Sprint 3 the team's DoD is the one in the Scrum playbook §6, mirrored in [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md), with the step-by-step process in [`DEVELOPMENT_WORKFLOW.md`](DEVELOPMENT_WORKFLOW.md). It replaced the checklist this review proposed. CI now exists, and the 100% coverage target is set in [`CI.md`](CI.md) §4 item 2.
 
 **Sprint 2 risks:**
 - The notification centre (item 6) touches every module. Build the dispatcher contract on day 1 so other stories can publish events before the UI is ready.

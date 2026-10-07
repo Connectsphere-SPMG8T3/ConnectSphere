@@ -583,7 +583,7 @@ stateDiagram-v2
 
 ## 6. Core feature behaviour specifications
 
-Format: behaviour, business rules (with sources), edge cases, then acceptance criteria written as Given/When/Then. The acceptance criteria are meant to be copied into Jira and traced to tests (`TC-<AREA>-nnn` in `docs/test-cases/`).
+Format: behaviour, business rules (with sources), edge cases, then acceptance criteria written as Given/When/Then. The acceptance criteria are meant to be copied into the PBI's row in the Product backlog sheet (Jira until Sprint 2) and traced to tests (`TC-<AREA>-nnn` in `docs/test-cases/`).
 
 ### 6.1 User authorisation and authentication *(SCRUM-7; partly done by SCRUM-48 and SCRUM-80)*
 
@@ -1257,7 +1257,7 @@ The customer's principle: **the system detects and notifies; staff decide.** It 
 
 ## 8. Lower-priority backlog
 
-These are the Week 1 features outside the core 20. They stay in Jira at `priority = Low` (prof guidance). Any clarifications gathered so far are included.
+These are the Week 1 features outside the core 20. They stay in the Product backlog at a low priority, P4 or P5 (prof guidance; playbook §7). Any clarifications gathered so far are included.
 
 | Feature | Behaviour sketch (with clarifications) | Fits into |
 |---|---|---|
@@ -1361,7 +1361,7 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 | NFR-A2 | Data persists after events end | Soft delete (DB-6) | QA-123 |
 | NFR-M1 | Rules can change without a rebuild | Single state machine; pluggable suitability rules; configurable field classification; domain events | W1 §8g, prof guidance |
 | NFR-SC1 | Supports three-year growth (unquantified) | Stateless API; indexed Postgres; paginated lists | W1 §8e, QA-88 |
-| NFR-Q1 | Quality gates (graded) | CI on every PR: lint, unit and integration tests, coverage (target 100% of domain code, exclusions justified), frontend build | W4 rubric |
+| NFR-Q1 | Quality gates (graded) | CI on every PR: lint, unit and integration tests, coverage (target 100% of `backend/app/` and `frontend/src/`, exclusions stated with their reason in `docs/CI.md` §4 item 2), frontend build. **[Team decision]** 2026-10-06: both layers, because the rubric's "100% coverage unless not possible and stated why" and the team DoD don't limit it to backend domain code | W4 rubric, team DoD |
 
 ---
 
