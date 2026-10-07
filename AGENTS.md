@@ -154,6 +154,7 @@ Commit the run logs with the story, since they are the evidence that it was test
 | Start backend | `uvicorn app.main:app --reload --port 8000` | from `backend/` |
 | Start frontend | `npm run dev` | from `frontend/` |
 | Run tests | `pytest` | from `backend/` |
+| Coverage | `pytest --cov` / `npm run test:coverage` | from `backend/` / `frontend/`; full suite only, fails below the floor in `docs/CI.md` §4 item 2 |
 | Live API + database checks | `python scripts/verify_live.py --record` | from `backend/`; backend running, `supabase login` done |
 | Live browser checks | `npm run test:e2e:record` | from `frontend/`; both servers running; first time `npx playwright install chromium` |
 

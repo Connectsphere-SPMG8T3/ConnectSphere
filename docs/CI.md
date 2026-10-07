@@ -4,7 +4,7 @@
 
 This file is the single reference for ConnectSphere's automated checks. It sits apart from `DEFINITION_OF_DONE.md` (which says what *a task* must clear) because CI is a standing property of the repository that changes on its own schedule.
 
-_Last updated: 2026-10-06 — §4 item 2: the team's coverage target (100% of `backend/app/` and `frontend/src/`, exclusions stated) and how CI will get there; Definition of Done references now point at its new sections and `DEVELOPMENT_WORKFLOW.md` (`chore/docs-scrum-playbook`). 2026-09-28 — §1: both jobs upload a JUnit report as a run artifact, kept 90 days, as the unit suites' execution record (`docs/test-cases/runs/README.md`). 2026-09-27 — §3: Playwright specs and a live-check script now exist, run locally rather than in CI (`chore/automated-live-checks`). 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
+_Last updated: 2026-10-06 — §1, §4 item 2: both jobs now measure coverage, fail below a floor, and publish a summary and the reports (`chore/coverage-reporting`). Earlier the same day — §4 item 2: the team's coverage target (100% of `backend/app/` and `frontend/src/`, exclusions stated) and how CI will get there; Definition of Done references now point at its new sections and `DEVELOPMENT_WORKFLOW.md` (`chore/docs-scrum-playbook`). 2026-09-28 — §1: both jobs upload a JUnit report as a run artifact, kept 90 days, as the unit suites' execution record (`docs/test-cases/runs/README.md`). 2026-09-27 — §3: Playwright specs and a live-check script now exist, run locally rather than in CI (`chore/automated-live-checks`). 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
 
 ---
 
@@ -14,10 +14,10 @@ One workflow, `.github/workflows/ci.yml`, named **CI**. Two jobs run in parallel
 
 | Job | Steps | Measured |
 |---|---|---|
-| **Backend (pytest)** | Python 3.11 → `pip install -r requirements.txt` → `pytest --junitxml` → upload `backend-test-report` | 207 tests, 27s on the runner (14.5s locally) |
-| **Frontend (vitest + build)** | Node 20 → `npm ci` → `npm test` (JUnit reporter) → upload `frontend-test-report` → `cp .env.example .env` → `npm run build` | 312 tests across 23 files, 39s on the runner (46s locally) |
+| **Backend (pytest)** | Python 3.11 → `pip install -r requirements.txt` → `pytest --junitxml --cov` (fails below the coverage floor) → coverage table to the run summary → upload `backend-test-report` | 634 tests, 43s locally with coverage (2026-10-06). 207 tests took 27s on the runner on 2026-09-22. |
+| **Frontend (vitest + build)** | Node 20 → `npm ci` → `npm run test:coverage` (JUnit reporter; fails below the coverage floor) → coverage table to the run summary → upload `frontend-test-report` → `cp .env.example .env` → `npm run build` | 578 tests across 48 files (2026-10-06). 312 tests took 39s on the runner on 2026-09-22. |
 
-**Test reports.** Each job uploads its per-test results as a JUnit XML artifact (`backend-test-report`, `frontend-test-report`) on every run, including failed ones, kept for 90 days. Find them under the run's **Artifacts** in the Actions tab. They are the execution record for the mocked suites; runs against the real system are logged in `docs/test-cases/runs/`.
+**Test reports.** Each job uploads its per-test results as a JUnit XML artifact (`backend-test-report`, `frontend-test-report`) on every run, including failed ones, kept for 90 days. Each artifact also holds that job's coverage report: `coverage.xml` for the backend, and `coverage/` for the frontend (open `coverage/index.html` to see each file's uncovered lines). Both jobs also add a coverage table to the run's **Summary** page. Find them under the run's **Artifacts** in the Actions tab. They are the execution record for the mocked suites; runs against the real system are logged in `docs/test-cases/runs/`.
 
 **Triggers:** `pull_request` into `main`, and `push` to `main`. A push to a feature branch with no open PR runs nothing — deliberate, to keep intermediate pushes off the minute budget. A branch's first run therefore appears when its PR is opened.
 
@@ -66,7 +66,6 @@ Each of these was considered when the pipeline was built and left out for a stat
 | Not included | Why | Cost to add |
 |---|---|---|
 | `ruff` (lint) | Has never run over this codebase. Blocking on it would have held the first pipeline red pending an open-ended cleanup, delaying the evidence that CI exists at all. | ~half a day including the first cleanup |
-| Coverage reporting | Needs `pytest-cov` (not in `requirements.txt`) and `@vitest/coverage-v8`. The target is now decided (§4 item 2); the tools are not added yet. | ~1 hour to report |
 | Integration tests against a real database | The largest item, and better placed before Sprint 3's database-heavy stories than bolted on after. See §4. | ~half a day |
 | End-to-end browser tests | Playwright is installed, and `frontend/e2e/` runs sign-in, session, logout, route-guard and role-switch specs, but **locally, against the live project**, next to `backend/scripts/verify_live.py` (`docs/test-cases/runs/README.md`). They need running servers and real credentials, and item 3 below keeps the hosted project out of CI. Running them in CI waits on the local stack from item 3. | ~2 hours once item 3 exists |
 | Branch protection | Not part of CI at all — a repository setting, needing admin rights. See §4 item 1. | ~5 minutes |
@@ -83,25 +82,44 @@ Ordered by cost-to-value, with the sprint each belongs in.
 
 Suggested settings on `main`: require the status checks `Backend (pytest)` and `Frontend (vitest + build)`, require a pull request with 1 approving review, and leave *Include administrators* off so there is an escape hatch.
 
-### 2. Coverage reporting — ~1 hour, next on `chore/coverage-reporting`
+### 2. Coverage — done on `chore/coverage-reporting`, raised each sprint
 
 **The target — [Team decision], 2026-10-06.** 100% line coverage of everything we write: `backend/app/` and `frontend/src/`. The only exclusions are listed in the table below, each with the reason it can't be covered. The team's Definition of Done says "100% code coverage". The course rubric's top band for "Testing and traceability" says *"100% coverage unless not possible and stated why"*. The target covers both layers because neither says backend only, and the frontend holds real logic in its stores, composables and components.
 
-**What a PBI must meet** (`DEFINITION_OF_DONE.md`, Testing): its new and changed code is fully covered, or the PR lists each uncovered line and the reason.
+**What a PBI must meet** (`DEFINITION_OF_DONE.md`, Testing): its new and changed code is fully covered, or the PR lists each uncovered line and the reason. CI checks only the totals, so the reviewer checks this by looking at the changed files in the coverage report.
 
-**How CI gets there:**
+**How to measure it.** Always run the full suite, because a subset falls below the floor and fails.
 
-1. Report first. Add `pytest-cov` and run `pytest --cov=app --cov-report=term-missing`. Add `@vitest/coverage-v8` and run `vitest run --coverage`. Print both summaries in the job logs and upload them with the JUnit reports, so every PR shows the number.
-2. Then stop it going down. Set `--cov-fail-under` (and Vitest's `coverage.thresholds`) to the measured baseline, so a PR that lowers coverage fails.
-3. Raise the floor each sprint, reaching 100% for the Sprint 4 showcase (3 Nov). Turning on a 100% gate now would fail every open PR, because the current number isn't known yet.
+| Stack | Command | Settings |
+|---|---|---|
+| Backend | `pytest --cov` from `backend/` | `backend/.coveragerc`: source `app`, line coverage, `fail_under` |
+| Frontend | `npm run test:coverage` from `frontend/` | `coverage` in `frontend/vite.config.js`: `src/**`, the exclusions, `thresholds.lines`. Writes `frontend/coverage/` (gitignored). |
 
-**Standing exclusions**, each with its reason, filled in when the report lands:
+Plain `pytest` and `npm test` don't measure coverage, so day-to-day runs of a single test file aren't affected.
+
+**Baseline and floor.** The floor is the measured number rounded down. CI fails any run that drops below it.
+
+| Stack | Measured on 2026-10-06 | Floor |
+|---|---|---|
+| Backend `app/` | **92.63%** of lines (1,635 / 1,765). 91% with branches counted. | `fail_under = 92` |
+| Frontend `src/` | **94.52%** of lines (8,799 / 9,309). Branches 84.39%, functions 74.42%. | `thresholds.lines: 94` |
+
+**Raising the floor.** At the end of each sprint, set each floor to the new measured number, rounded down, and record it in the table above. The floors only go up, reaching 100 for the Sprint 4 showcase (3 Nov). Lowering one needs the team's agreement and a reason written here.
+
+**Standing exclusions.** Anything not listed here counts against the target.
 
 | Path | Why it isn't covered |
 |---|---|
-| *(none yet)* | |
+| `frontend/src/main.js` | It only mounts the app when a browser loads the page, so there is nothing for a unit test to call. Every Playwright run exercises it (`frontend/e2e/`). |
 
-Candidates to assess: `backend/app/main.py` (app wiring, exercised by every API test but not by a unit test of its own) and `frontend/src/main.js` (mounts the app; it only runs in the browser). Each needs its reason written here, or it counts against the target.
+The backend has no exclusions.
+
+**Where the gaps are** (2026-10-06):
+
+- **Backend.** Most of the 130 uncovered lines are in the three repository modules: venues 44%, equipment 62%, events 66%. These are the Supabase query wrappers that the mocked tests replace. Covering them honestly means tests against a real database (item 3), not more mocks. Two smaller gaps:
+  - `app/db/session.py` (0%) is imported nowhere. Delete it rather than test it.
+  - The `/health` endpoint in `app/main.py` has no test.
+- **Frontend.** These files are at 0%: `App.vue`, `components/common/Toast.vue` and `services/supabase.js`. `LoginView.vue`, `VenueSearchView.vue`, `services/api.js` and `stores/auth.js` are at 67–74%. The function figure (74%) is lower than the line figure mostly because of event handlers that no test triggers.
 
 ### 3. Endpoint smoke test against a real database — ~half a day, start of Sprint 3 (6 Oct)
 
@@ -199,7 +217,7 @@ cd frontend && npm run build
 
 ## Related
 
-- `docs/DEFINITION_OF_DONE.md` — where "merged only after CI passes" and the coverage target sit, and its "Checked by people, not tools (yet)" table.
+- `docs/DEFINITION_OF_DONE.md` — where "merged only after CI passes" and the coverage rule sit, and its "Checked by people, not tools (yet)" table.
 - `docs/DEVELOPMENT_WORKFLOW.md` §4 — the review step where CI must pass before a PR moves to In Review.
 - `docs/archive/2026-09-13-design-review.md` A3 item 9 — the original recommendation, with what shipped and what did not.
 - `docs/IMPLEMENTATION_MAP.md` §5 — the one-paragraph version for someone starting a story.

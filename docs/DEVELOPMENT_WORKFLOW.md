@@ -60,7 +60,7 @@ _Last updated: 2026-10-06 — first version: Phases 1–4 of the old `DEFINITION
 - [ ] **[A]** Tests cover the normal path, boundaries, conflicts, failures **and authorisation denials**.
 - [ ] **[A]** Authorisation is checked as **role *and* relationship to the resource**, gated on the session's **active** role. A negative test proves that a user holding another role gets 403 (SCRUM-76).
 - [ ] **[A]** The **full** suite passes, not only the new tests: `pytest` from `backend/` and `npm test` from `frontend/`.
-- [ ] **[A]** New and changed code is fully covered, or each uncovered line is listed with its reason in the PR ([`CI.md`](CI.md) §4 item 2).
+- [ ] **[A]** New and changed code is fully covered, or each uncovered line is listed with its reason in the PR. Measure it with the full suite: `pytest --cov` from `backend/` and `npm run test:coverage` from `frontend/` ([`CI.md`](CI.md) §4 item 2).
 - [ ] **[A]** Anything crossing an integration boundary (Supabase Auth, PostgREST, RLS, the browser) is verified against the **real system**, not only against mocks. "It imports" is not "it works".
 - [ ] **[A]** The live checks were run with recording on (`backend/scripts/verify_live.py --record`, `npm run test:e2e:record`). The story's new cases were automated wherever a request or a browser assertion can check their outcome (root `AGENTS.md`, "Live checks and the manual browser pass").
 - [ ] **[D]** When the agent asked, the developer ran the manual browser pass for the cases that need human judgement (layout, phone width, wording, feel). The results are recorded in `docs/test-cases/runs/`.

@@ -1,0 +1,12 @@
+# Coverage settings for `pytest --cov` (CI, and locally when you want the
+# number). The target and every exclusion's reason are in docs/CI.md §4 item 2.
+[run]
+source = app
+
+[report]
+show_missing = true
+skip_covered = true
+# The floor, not the target: the measured baseline, raised each sprint until it
+# reaches 100. A change that lowers coverage fails the run. Run the full suite
+# when measuring; a subset will fall below the floor.
+fail_under = 92

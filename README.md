@@ -106,6 +106,8 @@ cd backend
 pytest
 ```
 
+To measure coverage, run `pytest --cov` here, or `npm run test:coverage` in `frontend/`. Use the full suite each time: CI fails a run that drops below the floor in [docs/CI.md](docs/CI.md) §4 item 2.
+
 ## Run instructions
 
 | Step | Command | Notes |

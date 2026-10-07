@@ -73,7 +73,7 @@ Two items above are only as strong as the reviewer, because no tool enforces the
 | Item | Why a tool doesn't enforce it | What closes the gap |
 |---|---|---|
 | Merge only after CI passes | Branch protection is off on `main`, so a PR with a failing run can still be merged ([`CI.md`](CI.md) §4 item 1). | A repo admin turns on branch protection. |
-| 100% coverage | CI doesn't report coverage yet. | `chore/coverage-reporting` adds the report to every PR ([`CI.md`](CI.md) §4 item 2). |
+| 100% coverage of new and changed code | CI fails a run only when *total* coverage drops below the floor. It doesn't check which lines a PR changed. | The reviewer opens the run's coverage report and checks the changed files ([`CI.md`](CI.md) §4 item 2). |
 
 Until those land, the reviewer checks both by hand and writes in the PR if they couldn't.
 
