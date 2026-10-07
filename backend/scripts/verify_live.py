@@ -44,6 +44,7 @@ import subprocess
 import sys
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -333,6 +334,40 @@ def _(ctx: Context) -> None:
     response = ctx.client.get(f"{ctx.api}/auth/me", headers=session.headers)
     expect_status(response, 200)
     expect(response.json()["email"] == ACCOUNTS["event_organiser"], "a different profile came back")
+
+
+# DEFECTS D18: the backend once sent every database call over one shared HTTP/2
+# connection to Supabase. After about two minutes with no requests, Supabase
+# closed that connection, the client reused it anyway, and every request of the
+# next page load failed together ("Server disconnected"). Reproduced on 6 Oct
+# 2026: bursts after up to 60 s idle passed; after 120 s, 5 of 6 requests
+# answered 500. This check idles for longer than that between two bursts, so it
+# adds IDLE_SECONDS to the run.
+IDLE_SECONDS = 150
+PAGE_LOAD_PATHS = ("/auth/me", "/events/dashboard/coordinator", "/equipment/catalogue") * 2
+
+
+@check("TC-AUTH-049", "Parallel requests after the backend sits idle all succeed (D18)")
+def _(ctx: Context) -> None:
+    headers = ctx.shared("event_coordinator").headers
+    urls = [f"{ctx.api}{path}" for path in PAGE_LOAD_PATHS]
+    failures: list[str] = []
+
+    def get(client: httpx.Client, url: str) -> str:
+        try:
+            return str(client.get(url, headers=headers).status_code)
+        except httpx.HTTPError as exc:
+            return type(exc).__name__
+
+    # Its own client: these calls run in parallel threads.
+    with httpx.Client(timeout=60) as client, ThreadPoolExecutor(max_workers=len(urls)) as pool:
+        for label in ("first burst", f"after {IDLE_SECONDS}s idle"):
+            if label != "first burst":
+                time.sleep(IDLE_SECONDS)
+            for url, status in zip(urls, pool.map(lambda u: get(client, u), urls)):
+                if status != "200":
+                    failures.append(f"{label}: {url.removeprefix(ctx.api)} -> {status}")
+    expect(not failures, f"{len(failures)} of {2 * len(urls)} parallel requests failed: {failures}")
 
 
 # --- Logout and refresh ----------------------------------------------------
