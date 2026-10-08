@@ -139,6 +139,11 @@ class EventVenueBooking(BaseModel):
     status: str
 
 
+class EventCoordinator(BaseModel):
+    id: str
+    full_name: str
+
+
 class BookingReadiness(BaseModel):
     status: str
     flags: list[str] = []
@@ -153,6 +158,8 @@ class EventResponse(EventFields):
     id: str
     organiser_id: str
     coordinator_id: str | None = None
+    # Named on the single-event read; null when unassigned and on other responses.
+    coordinator: EventCoordinator | None = None
     status: EventStatus
     technical_readiness: TechnicalReadiness
     submitted_at: datetime | None = None

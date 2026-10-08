@@ -123,17 +123,17 @@ onMounted(async () => {
           <BauhausCard background="blue" accent="circle" accent-color="bauhaus-yellow">
             <h2 class="text-2xl font-black uppercase tracking-tight">Registration</h2>
             <p class="mt-4 text-sm font-bold uppercase tracking-wide">{{ event.registrationEnabled ? "Enabled" : "Not enabled" }}</p>
-            <p class="mt-2 text-xs font-bold uppercase tracking-widest text-canvas/70">{{ event.eventTimezone }}</p>
+            <p class="mt-2 text-xs font-bold uppercase tracking-widest text-ink/70">{{ event.eventTimezone }}</p>
             <dl v-if="event.registrationEnabled" class="mt-5 grid gap-4 text-sm">
-              <div><dt class="font-bold uppercase tracking-widest text-canvas/70">Capacity</dt><dd class="mt-1 font-medium">{{ displayValue(event.registrationCapacity) }}</dd></div>
-              <div><dt class="font-bold uppercase tracking-widest text-canvas/70">Opens</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.registrationOpensAt?.slice(0, 10), event.registrationOpensAt?.slice(11, 16), event.eventTimezone) }}</dd></div>
-              <div><dt class="font-bold uppercase tracking-widest text-canvas/70">Closes</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.registrationClosesAt?.slice(0, 10), event.registrationClosesAt?.slice(11, 16), event.eventTimezone) }}</dd></div>
+              <div><dt class="font-bold uppercase tracking-widest text-ink/70">Capacity</dt><dd class="mt-1 font-medium">{{ displayValue(event.registrationCapacity) }}</dd></div>
+              <div><dt class="font-bold uppercase tracking-widest text-ink/70">Opens</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.registrationOpensAt?.slice(0, 10), event.registrationOpensAt?.slice(11, 16), event.eventTimezone) }}</dd></div>
+              <div><dt class="font-bold uppercase tracking-widest text-ink/70">Closes</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.registrationClosesAt?.slice(0, 10), event.registrationClosesAt?.slice(11, 16), event.eventTimezone) }}</dd></div>
             </dl>
           </BauhausCard>
           <BauhausCard background="white" accent="none">
             <h2 class="text-2xl font-black uppercase tracking-tight">Planning status</h2>
             <p class="mt-3 text-sm font-medium">Your request is currently <strong class="uppercase">{{ statusLabel }}</strong>.</p>
-            <p class="mt-3 text-sm font-medium">Coordinator: {{ event.coordinatorId || "To be assigned" }}</p>
+            <p class="mt-3 text-sm font-medium">Coordinator: {{ event.coordinator?.full_name || (event.coordinatorId ? "Assigned" : "To be assigned") }}</p>
           </BauhausCard>
           <BauhausCard background="white" accent="none">
             <h2 class="mb-6 text-2xl font-black uppercase tracking-tight">History</h2>

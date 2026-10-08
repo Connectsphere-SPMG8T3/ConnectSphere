@@ -175,3 +175,60 @@ describe("EventDetailView decision and history (SCRUM-34, SCRUM-52)", () => {
     expect(el.querySelector('[data-testid="amendment-banner"]')).toBeNull();
   });
 });
+
+describe("EventDetailView sidebar (D23, D24)", () => {
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+  });
+
+  function registrationCard(el) {
+    const heading = [...el.querySelectorAll("h2")].find((h2) => h2.textContent.trim() === "Registration");
+    return heading.parentElement;
+  }
+
+  it("keeps the registration labels and timezone in ink, since the card's surface is white (D23)", async () => {
+    // BauhausCard draws its tone as an edge stripe on a white surface, so white
+    // (`text-canvas`) text inside it is invisible.
+    const el = await mountDetail(eventResponse({
+      registration_enabled: true,
+      registration_capacity: 80,
+      registration_opens_at: "2026-10-20T09:00:00+08:00",
+      registration_closes_at: "2026-10-30T18:00:00+08:00",
+    }));
+    const card = registrationCard(el);
+
+    for (const label of ["Capacity", "Opens", "Closes"]) expect(card.textContent).toContain(label);
+    expect(card.textContent).toContain("Asia/Singapore");
+    expect(card.querySelectorAll('[class*="text-canvas"]')).toHaveLength(0);
+  });
+
+  it("names the assigned coordinator instead of showing their account ID (D24)", async () => {
+    const el = await mountDetail(eventResponse({
+      status: "under_review",
+      coordinator_id: "c0000000-0000-4000-8000-000000000002",
+      coordinator: { id: "c0000000-0000-4000-8000-000000000002", full_name: "Marcus Lim" },
+    }));
+
+    expect(el.textContent).toContain("Coordinator: Marcus Lim");
+    expect(el.textContent).not.toContain("c0000000-0000-4000-8000-000000000002");
+  });
+
+  it("never falls back to the coordinator's ID when their name is missing (D24)", async () => {
+    // Only the single-event read carries the name; an edit response doesn't.
+    const el = await mountDetail(eventResponse({ coordinator_id: "c0000000-0000-4000-8000-000000000002" }));
+
+    expect(el.textContent).toContain("Coordinator: Assigned");
+    expect(el.textContent).not.toContain("c0000000-0000-4000-8000-000000000002");
+  });
+
+  it("says a coordinator is still to be assigned when there is none (D24)", async () => {
+    const el = await mountDetail(eventResponse({ coordinator_id: null, coordinator: null }));
+
+    expect(el.textContent).toContain("Coordinator: To be assigned");
+  });
+});

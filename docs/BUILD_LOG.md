@@ -1587,3 +1587,37 @@ What was actually built:
 **Verification setup findings:** the first browser run had a spare-origin CORS error; an overlapping API/browser cleanup also collided on shared throwaway prefixes. Failed/interrupted logs are retained. The backend was restarted using its existing CORS environment setting, then the suites ran serially. No feature code was changed for those environment issues.
 
 **Not verified / follow-ups:** developer manual cases TC-SAFE-020–026 remain pending. AC3's derived no-lines status awaits 24; AC9 expiry and AC10 persisted flags await CR-99/94/95; programme attachments await 89; confirmation and its notifications (AC6) await CR-104. Eileen's contract is prepared in design §9, not yet agreed with her. Safety review cancellation is flagged for 84, not built. No push, PR, merge or backlog change was made during implementation; teammate review and PO acceptance are still required.
+
+### 4.35. Fix — D23 and D24, the organiser's event page sidebar
+
+Fixed on `fix/organiser-event-page-defects`, branched from `main` at `1f6e3cb`, 2026-10-08. Both defects were found during the SCRUM-82 manual pass (TC-SAFE-024 screenshot) and predate 82. Numbered 4.35 because the SCRUM-82 branch, not yet merged, uses 4.34.
+
+**Symptoms.**
+- **D23:** the Registration card showed capacity and dates with no labels, and its timezone line was blank.
+- **D24:** the Planning status card read "Coordinator: a0000000-0000-4000-8000-000000000002".
+
+**Reproduction** (real browser on `main`, backend 8013 and frontend 5183, seeded organiser, fixture `…0201`): the timezone line computed to `rgba(255, 255, 255, 0.7)` on a card background of `rgb(255, 255, 255)`, and the coordinator line showed the raw ID. No console errors.
+
+**Root causes.**
+- **D23:** `BauhausCard` was changed from a flood fill to a white surface with a thin tone stripe. The Registration card (`background="blue"`) kept `text-canvas/70` on its timezone line and three labels, written for white-on-blue, so they became white on white.
+- **D24:** `EventDetailView` rendered `event.coordinatorId` because the organiser's event read carried only the ID.
+- **Why tests missed them:** jsdom computes no Tailwind colours, and no test looked at the card's text classes. The page tests always mocked `coordinator_id: null`, so the ID branch was never rendered.
+
+**Blast radius.** Every `text-canvas` in `frontend/src` was checked. All others sit on a genuinely filled red, blue or ink element, except `VenueSearchView`'s booking-context card, whose `text-canvas` is overridden by the card's own `text-ink`; measured in the browser it computes to `rgb(20, 20, 20)`, so it reads correctly and was left alone (noted in IMPLEMENTATION_MAP §5). No data is affected.
+
+**Fix.**
+- `EventDetailView.vue`: the four `text-canvas/70` classes are `text-ink/70`, matching the Request details labels. The coordinator line shows `coordinator.full_name`, "Assigned" when only the ID is present (an edit response carries no name), or "To be assigned".
+- `events/repository.get_event` selects `coordinator:profiles!events_coordinator_id_fkey(id, full_name)`. The FK is named because `events` references `profiles` twice (PGRST201). `EventResponse` gains `coordinator: EventCoordinator | None`. This is additive; no consumer changes. The organiser already sees the coordinator's name in the history panel, so nothing new is exposed.
+
+#### Verification
+
+- **Written red first:**
+  - Vitest (`EventDetailView.spec.js`): the D23 test failed on four white-text elements in the card; the D24 test failed showing the raw ID.
+  - pytest (`test_event_coordinator_name.py`): the select lacked the embed and the response had no `coordinator` key.
+  - All now pass, plus a fallback test for "Assigned".
+- **Full suites:** `pytest --cov` 645 passed, 92.73%; `npm run test:coverage` 588 passed (94.37% lines).
+- **Live, on this branch** (backend 8013, frontend 5183): the probe now reads `rgba(20, 20, 20, 0.7)` and "Coordinator: Marcus Lim", through the real PostgREST embed.
+  - `runs/2026-10-08-2349-api-db-1f6e3cb.md`: **64/64 passed**.
+  - `runs/2026-10-08-2353-e2e-1f6e3cb.md`: **49/49 passed**, including the new TC-EVENT-043 and TC-EVENT-044.
+  - The run logs name `1f6e3cb` because they ran on the uncommitted fix on top of it.
+- **Not verified live:** the three registration labels, because no seeded or owned event has registration enabled and the checks don't change shared data. They share the timezone line's class change and are covered by Vitest.
