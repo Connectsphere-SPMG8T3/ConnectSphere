@@ -240,3 +240,23 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
     });
   });
 });
+
+describe("Nav for the staff roles added in 12 AC12 and CR-103 AC5", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ["event_coordinator_lead", "/dashboard/coordinator-lead", "Event Coordinator Lead"],
+    ["safety_officer", "/dashboard/safety", "Safety Officer"],
+  ])("links %s to its dashboard and offers it in the role switcher", async (role, path, label) => {
+    const { el } = await mountNav({ id: "u1", role, roles: [role, "attendee"] });
+
+    expect(el.querySelector(`a[href="${path}"]`)).toBeTruthy();
+    const optionLabels = [...el.querySelectorAll('[data-testid="role-switcher"] option')].map((o) =>
+      o.textContent.trim(),
+    );
+    expect(optionLabels).toContain(label);
+  });
+});

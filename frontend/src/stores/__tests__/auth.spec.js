@@ -116,3 +116,22 @@ describe("auth store role switching (SCRUM-74/75)", () => {
     expect(store.role).toBe("event_coordinator");
   });
 });
+
+describe("staff roles added for 12 AC12 and CR-103 AC5", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ["event_coordinator_lead", "/dashboard/coordinator-lead", "Event Coordinator Lead"],
+    ["safety_officer", "/dashboard/safety", "Safety Officer"],
+  ])("lands %s on %s and labels it %s", async (role, path, label) => {
+    const store = await storeWithStoredSession();
+    store.profile = { ...PROFILE, role };
+    const { ROLE_LABELS } = await import("@/stores/auth");
+
+    expect(store.dashboardPath).toBe(path);
+    expect(ROLE_LABELS[role]).toBe(label);
+  });
+});

@@ -15,16 +15,20 @@ function isSessionRejected(err) {
 export const ROLE_DASHBOARD_ROUTES = {
   event_organiser: "/dashboard/organiser",
   event_coordinator: "/dashboard/coordinator",
+  event_coordinator_lead: "/dashboard/coordinator-lead",
   venue_staff: "/dashboard/venue-staff",
   tech_support: "/dashboard/tech-support",
+  safety_officer: "/dashboard/safety",
   attendee: "/dashboard/attendee",
 };
 
 export const ROLE_LABELS = {
   event_organiser: "Event Organiser",
   event_coordinator: "Event Coordinator",
+  event_coordinator_lead: "Event Coordinator Lead",
   venue_staff: "Venue Staff",
   tech_support: "Technical Support",
+  safety_officer: "Safety Officer",
   attendee: "Attendee",
 };
 

@@ -21,7 +21,15 @@ from app.main import app
 from tests.conftest import make_table_mock
 
 settings = get_settings()
-ROLES = ["event_organiser", "event_coordinator", "venue_staff", "tech_support", "attendee"]
+ROLES = [
+    "event_organiser",
+    "event_coordinator",
+    "event_coordinator_lead",
+    "venue_staff",
+    "tech_support",
+    "safety_officer",
+    "attendee",
+]
 USER_ID = "11111111-1111-1111-1111-111111111111"
 SESSION_ID = "22222222-2222-2222-2222-222222222222"
 # Auth endpoints are public or open to any signed-in user by design.
