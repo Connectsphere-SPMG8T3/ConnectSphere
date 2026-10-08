@@ -16,6 +16,10 @@ export function canReject(status) {
   return status === "under_review" || status === "planning";
 }
 
+export function canSendForSafetyCheck(event) {
+  return event?.status === "planning" && event.safety_readiness?.ready === true;
+}
+
 export function canReturn(status) {
   return status === "under_review";
 }
@@ -82,6 +86,20 @@ export const useEventReviewStore = defineStore("eventReview", {
         return this.history;
       } catch (error) {
         if (this.historyEventId !== eventId) return this.history;
+        throw error;
+      }
+    },
+
+    async sendForSafetyCheck() {
+      const eventId = this.event.id;
+      try {
+        return await this.act((token) => eventsApi.sendForSafetyCheck(eventId, token));
+      } catch (error) {
+        // Refresh a stale readiness result without losing the original refusal.
+        if (this.historyEventId === eventId || this.historyEventId === null) {
+          await this.load(eventId);
+          if (this.historyEventId === eventId) this.error = error.message;
+        }
         throw error;
       }
     },

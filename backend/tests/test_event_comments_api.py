@@ -14,7 +14,7 @@ OTHER_ORGANISER_ID = "a0000000-0000-4000-8000-000000000008"
 COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
 OTHER_COORDINATOR_ID = "a0000000-0000-4000-8000-000000000009"
 EVENT_ID = "e0000000-0000-4000-8000-000000000201"
-OPEN_STATUSES = ["submitted", "under_review", "returned", "planning", "confirmed"]
+OPEN_STATUSES = ["submitted", "under_review", "returned", "planning", "safety_review", "confirmed"]
 CLOSED_STATUSES = ["rejected", "cancelled", "completed"]
 URL = f"/api/v1/events/{EVENT_ID}/comments"
 

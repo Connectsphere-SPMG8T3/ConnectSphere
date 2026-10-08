@@ -530,7 +530,7 @@ erDiagram
 
 ## 5. Event lifecycle
 
-**Status set.** The answers conflict. QA-18 says "approved" and "confirmed" refer to the same thing, with process statuses requested / planning / confirmed / completed. QA-56 lists Approved as "initial check passed" and Confirmed as "venue/tech ready". QA-21 lists *approve* and *confirm* as separate coordinator actions. **We reconcile them** by treating *approve* as the action that moves an event into **`planning`**, which the UI labels "Planning". *Confirm* moves `planning` → `confirmed`. That gives two distinct actions (QA-21), a distinct "initial check passed" stage (QA-56), and no separate `approved` status (QA-18). **Session 2 confirmed this model** (QA2-8): the customer's status list is Under Review (coordinator evaluating or seeking clarification), Planning (feasibility check passed, venue and equipment planning underway), Confirmed/Approved as one status (essential venue and technical arrangements fully approved), Completed (event date/time passed), Rejected (venue or equipment unavailable, or a suitability issue), and Cancelled (organiser request, or the coordinator cancelled it). §9 Q1 is closed. **[Team decision]** Because the customer's "Approved" now means the final Confirmed status (QA2-8), no status other than `confirmed` is labelled or described as "approved" in the UI. `planning` was previously labelled "Approved – planning", which told organisers their event was settled before any venue or equipment was secured (the confusion W1 §2 lists: organisers "unsure whether an event … has been approved or confirmed"). Confirmation is tracked as its own story, SCRUM-82.
+**Status set.** The answers conflict. QA-18 says "approved" and "confirmed" refer to the same thing, with process statuses requested / planning / confirmed / completed. QA-56 lists Approved as "initial check passed" and Confirmed as "venue/tech ready". QA-21 lists *approve* and *confirm* as separate coordinator actions. **We reconcile them** by treating *approve* as the action that moves an event into **`planning`**, which the UI labels "Planning". *Confirm* moves `planning` → `confirmed`. That gives two distinct actions (QA-21), a distinct "initial check passed" stage (QA-56), and no separate `approved` status (QA-18). **Session 2 confirmed this model** (QA2-8): the customer's status list is Under Review (coordinator evaluating or seeking clarification), Planning (feasibility check passed, venue and equipment planning underway), Confirmed/Approved as one status (essential venue and technical arrangements fully approved), Completed (event date/time passed), Rejected (venue or equipment unavailable, or a suitability issue), and Cancelled (organiser request, or the coordinator cancelled it). §9 Q1 is closed. **[Team decision]** Because the customer's "Approved" now means the final Confirmed status (QA2-8), no status other than `confirmed` is labelled or described as "approved" in the UI. `planning` was previously labelled "Approved – planning", which told organisers their event was settled before any venue or equipment was secured (the confusion W1 §2 lists: organisers "unsure whether an event … has been approved or confirmed"). Confirmation is tracked as its own story, SCRUM-82. **W7 CR-06 adds `safety_review` between `planning` and `confirmed`:** the coordinator sends a ready event for the Operational Safety Check (SCRUM-82), and only the Safety Officer's approval confirms it (CR-104). The coordinator no longer confirms directly. [Assumption] The customer's "preparation" stage is our `confirmed`. **Status (groundwork, `feature/scrum-82-send-for-safety-check`):** the status and its five transitions (`send_to_safety`, `safety_approve`, `safety_request_changes`, `safety_reject`, `safety_withdraw`) exist in `events/lifecycle.py`; `send_to_safety` is now used by SCRUM-82; the remaining decisions await CR-104.
 
 ```mermaid
 stateDiagram-v2
@@ -543,7 +543,10 @@ stateDiagram-v2
   under_review --> planning : approve (coordinator)
   under_review --> rejected : reject with reason (coordinator)
   planning --> rejected : reject, essential requirements cannot be met (coordinator)
-  planning --> confirmed : confirm (coordinator, readiness guard, no override)
+  planning --> safety_review : send for safety check (coordinator, readiness guard, no override)
+  safety_review --> confirmed : approve (safety officer)
+  safety_review --> planning : request changes / reject the safety arrangement (safety officer)
+  safety_review --> planning : an arrangement stops being ready (system)
   confirmed --> planning : significant change approved, arrangements re-reviewed (system)
   under_review --> cancelled : cancellation request approved (coordinator)
   returned --> cancelled : cancellation request approved (coordinator)
@@ -565,7 +568,10 @@ stateDiagram-v2
 | returned → under_review | Owner organiser | Basic info still complete; resubmission note | `EventResubmitted`: notify coordinator | QA-22, QA-77 |
 | under_review → planning | Assigned coordinator | Status is `under_review` (so no open return) | `EventApproved`: notify organiser | QA-21, QA-22 |
 | under_review / planning → rejected | Assigned coordinator | Reason not empty | `EventRejected`: notify organiser. From `planning`: frees any held or approved booking and reservations. | QA-23, QA-34, QA-83, QA-95, QA2-6, QA2-8 |
-| planning → confirmed | Assigned coordinator | **Readiness (§6.6):** venue booking `approved`; every equipment request `reserved`; `technical_readiness = ready` or `not_required`. **No override.** | `EventConfirmed`: notify organiser, venue staff, tech support | QA-17, QA-49, QA-106, QA-118 |
+| planning → safety_review | Assigned coordinator, acting as coordinator | **Readiness (§6.6):** every active venue booking `approved` and none flagged; technical status Ready or Not required. **No override.** | `EventSentForSafetyCheck`: notify Safety Officers and organiser **[Team decision]**: matches other coordinator transitions and keeps the organiser informed (W1 §2) | SCRUM-82, W7 CR-06, QA-17, QA-49, QA-106, QA-118 |
+| safety_review → confirmed | Safety Officer | Status is `safety_review` | `EventConfirmed`: notify organiser, coordinator, venue staff, tech support | CR-104 AC1, W7 CR-06 |
+| safety_review → planning | Safety Officer: request changes (comment) or reject the safety arrangement (reason) | Comment or reason not empty | Arrangements marked for re-review or replacement; notify coordinator | CR-104 AC2, AC3 |
+| safety_review → planning | System | An arrangement stopped being ready | Notify coordinator and Safety Officers | CR-104 AC10 |
 | confirmed → planning | System | A significant change was approved (§6.19) | `EventReopened` | QA-2, QA-32, QA-98 |
 | non-terminal → cancelled | Assigned coordinator, approving the organiser's cancellation request (the coordinator may also **reject** the request, §6.19) | An open cancellation request exists | `CancellationApproved`: free bookings and reservations, cancel registrations, notify everyone involved | QA-12, QA-33, QA-114, QA2-6 |
 | planning / confirmed → cancelled | Assigned coordinator, **without** an organiser request | Reason not empty; `now() < starts_at` (LC-R5) | `EventCancelled`: same side effects as `CancellationApproved` | QA2-5, QA2-6 |
@@ -691,7 +697,7 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 - **Given** 10 simultaneous submissions and 2 equally loaded coordinators, **then** each event has exactly one coordinator, and the split is 5/5 (±1).
 - **Given** I hand over an event, **then** another coordinator is assigned, all three parties are notified, and I get `403` on actions.
 
-### 6.6 Event status management and readiness *(SCRUM-13: 65, 68)*
+### 6.6 Event status management and readiness *(SCRUM-13: 65, 68; SCRUM-82, W7 CR-06)*
 
 See §5 for the state machine.
 
@@ -700,22 +706,24 @@ See §5 for the state machine.
 - A **status timeline** from `event_status_history`.
 - Action buttons derived from the transitions allowed for *this user*.
 
-**Readiness** (QA-17, QA-49, QA-106, QA-118, QA-127, QA-128). An **Arrangements panel** on the event shows:
+**Readiness** (QA-17, QA-49, QA-106, QA-118, QA-127, QA-128). The coordinator's event page shows what still blocks **Send for safety check** (SCRUM-82). Once the event is `confirmed`, the organiser sees the confirmed arrangements (SCRUM-82 AC8).
 
 | Item | Ready when | Who updates it |
 |---|---|---|
-| Venue | Booking status `approved` | Venue staff, by approving the booking (QA-128) |
-| Equipment | Every equipment request `reserved`, or there are no requests | Tech support, by reserving |
-| Technical readiness | `technical_readiness` is `ready` (or `not_required` when the event has no equipment or technical needs) | Tech support set it explicitly (QA-128) |
-| Programme, registration setup | Shown for information only; **not blocking** (QA-17, QA-133) | Organiser or coordinator |
+| Venue | At least one active booking (`held`, `approved`, `re_review`), and every active booking `approved` and not flagged Affected, Conflict, Unsuitable or Expired (SCRUM-82 AC9, AC10). The at-least-one rule is an **[Assumption]**, §9 item 23. | Venue staff, by approving the booking (QA-128). The flags come from CR-94, CR-95 and CR-99. |
+| Technical status | `ready` or `not_required` (SCRUM-82 AC1, AC3). Read only through `events.service.technical_status(row)`, which reads `technical_readiness` until story 24 derives it from equipment lines (24 AC11: no lines gives `not_required`). Equipment is not a separate item: the 8 Oct clarification folds it into 24's technical status, so it isn't checked twice. | Tech support (QA-128), through story 24 |
+| Programme, registration setup | Shown for information only; **not blocking** (QA-17, QA-133). Programmes arrive as attachments with non-core story 89. | Organiser or coordinator |
 
-- **RD-R1:** "Confirm" is enabled only when every blocking item is ready. **No override** (QA-118).
-- **RD-R2:** Venue staff may add venue preparation notes, and tech support may add technical preparation notes (QA-81). These notes are internal only (AUTH-R2).
-- **RD-R3:** Tech support approve or reject each request on the availability of staff and equipment **as requested** (QA2-12). An event that needs only equipment, or only on-site support, is confirmable once whatever was requested is approved; the item that wasn't requested is `not_required`.
+- **RD-R1:** "Send for safety check" is enabled only when every blocking item is ready. The server repeats the check and names every missing item. **No override** (QA-118). Only the Safety Officer's approval confirms an event (CR-104).
+- **RD-R2:** Venue staff may add venue preparation notes, and tech support may add technical preparation notes (QA-81). These notes are internal only (AUTH-R2), including on the organiser's confirmed arrangements.
+- **RD-R3:** Tech support approve or reject each request on the availability of staff and equipment **as requested** (QA2-12). An event with no equipment lines has technical status `not_required` and is not blocked by the technical check (SCRUM-82 AC3). On-site support is no longer tracked separately (8 Oct clarification).
+- The readiness check runs before the transactional send, and booking changes don't bump the event's version, so an arrangement can stop being ready in between. The recovery is CR-104 AC10 (IMPLEMENTATION_MAP §5).
 
 **Acceptance criteria**
-- **Given** an approved booking and all equipment reserved, but technical readiness not set, **when** I try to confirm, **then** confirmation is blocked with "Technical readiness not marked ready."
-- **Given** all blocking items are ready, **when** I confirm, **then** the status is `confirmed`, and the organiser, venue staff, and tech support are notified.
+- **Given** an approved booking but a technical status other than Ready or Not required, **when** I send for safety check, **then** it is blocked with "Not ready for safety check: Technical status is not Ready."
+- **Given** a held, re-review or flagged booking, or no active booking, **when** I send for safety check directly through the API, **then** it returns `409` naming each missing item, and nothing changes.
+- **Given** all blocking items are ready, **when** I send for safety check as the assigned coordinator acting as coordinator, **then** the status is `safety_review`, the history records me and the time, and the organiser and every Safety Officer are notified.
+- **Given** an event in `safety_review`, **when** the Safety Officer approves it (CR-104), **then** the status is `confirmed`, and the organiser, venue staff, and tech support are notified. No coordinator action reaches `confirmed`.
 - **Given** any API call that attempts a transition not in §5, **then** it returns `409` and the status is unchanged.
 
 ### 6.7 Event information management and change history *(SCRUM-14: 62; QA-70)*
@@ -1111,11 +1119,11 @@ SCRUM-72 asks for a **prioritised** list but does not define priority, and the c
 
 Ties break by **soonest event date**, then by longest wait, then by ID for stable ordering. An action kind the SPA does not recognise ranks last but is never dropped — losing a coordinator's action item silently is worse than rendering it unstyled.
 
-**Mapping to SCRUM-72's acceptance criteria.** AC1 names three categories: *immediate action* (ranks 1–4), *awaiting initial approval/rejection* (rank 6), and *newly received client clarification responses* (rank 5). The third is the **return-for-amendment** cycle the customer confirmed (QA-22, QA-77, §6.4) — a resubmission *is* the clarification response. This supersedes the older "clarification thread" reading in SCRUM-33 (archive/2026-09-13-design-review §B2a). AC2 is the active-status overview, covering `under_review`, `returned`, `planning` and `confirmed`; `draft` is excluded by DR-R2 and terminal statuses are out of scope for an "active" view.
+**Mapping to SCRUM-72's acceptance criteria.** AC1 names three categories: *immediate action* (ranks 1–4), *awaiting initial approval/rejection* (rank 6), and *newly received client clarification responses* (rank 5). The third is the **return-for-amendment** cycle the customer confirmed (QA-22, QA-77, §6.4) — a resubmission *is* the clarification response. This supersedes the older "clarification thread" reading in SCRUM-33 (archive/2026-09-13-design-review §B2a). AC2 is the active-status overview, covering `under_review`, `returned`, `planning`, `safety_review` and `confirmed`; `draft` is excluded by DR-R2 and terminal statuses are out of scope for an "active" view.
 
 **What the server derives** (`GET /events/dashboard/coordinator`, `events.service.coordinator_dashboard`). Only events assigned to the caller, never drafts (DR-R2). `awaiting_review` is an `under_review` event with no answered amendment; `resubmitted` is one whose latest amendment has `resubmitted_at`. Kinds with no data source yet (change and cancellation requests, booking and equipment decisions, re-review outcomes) are never produced, so their widgets stay empty rather than invented.
 
-- **[Assumption]** `arrangement_issue` is produced for a `planning` or `confirmed` event whose `technical_readiness` is `issue`, the one arrangement problem the system records today. The event also carries the flag `technical_issue`. See §9 item 16.
+- **[Assumption]** `arrangement_issue` is produced for a `planning`, `safety_review` or `confirmed` event whose `technical_readiness` is `issue`, the one arrangement problem the system records today. The event also carries the flag `technical_issue`. See §9 item 16.
 - **[Assumption]** Equipment readiness is `not_required` when the event lists no preliminary equipment needs, `ready` once it has at least one `confirmed` or `completed` reservation, and `pending` otherwise. §6.6's "every request reserved" needs SCRUM-24's per-event equipment requests, which don't exist yet. See §9 item 17.
 - **Unassigned events are not shown.** The coordinator dashboard carries no unassigned count or alert: unassigned events are the Event Coordinator Lead's queue (customer clarification of 2026-10-05, QA row to be added, §6.5). This replaces the earlier [Assumption] about counting them (§9 item 18).
 
@@ -1141,7 +1149,7 @@ The organiser side navigation provides **Overview** and **Events** views, matchi
 
 Each count is a clickable route into the separate **Events** tab with the corresponding status filter applied. The Events tab contains the complete owned-event list, filters, sorting, and lifecycle-specific actions. It remains the source for events in statuses not represented by an Overview count, including cancelled events.
 
-The Events tab lists every owned event regardless of lifecycle status: `draft`, `submitted`, `under_review`, `returned`, `planning`, `confirmed`, `rejected`, `cancelled`, and `completed`. Drafts and submitted requests are clearly distinguished, either as separate **Drafts** and **Requests** sections/tabs or an equivalent presentation that makes the distinction unambiguous (DR-R4).
+The Events tab lists every owned event regardless of lifecycle status: `draft`, `submitted`, `under_review`, `returned`, `planning`, `safety_review`, `confirmed`, `rejected`, `cancelled`, and `completed`. Drafts and submitted requests are clearly distinguished, either as separate **Drafts** and **Requests** sections/tabs or an equivalent presentation that makes the distinction unambiguous (DR-R4).
 
 Each event row or card shows the external-safe summary:
 
@@ -1177,7 +1185,7 @@ Submitted events cannot be discarded or directly edited (ER-R3, DB-6). A returne
 
 **Acceptance criteria**
 
-- **Given** I am an authenticated Event Organiser, **when** I open the dashboard, **then** I see every event request I created, regardless of whether it is a draft, submitted, under review, returned, planning, confirmed, rejected, cancelled, or completed.
+- **Given** I am an authenticated Event Organiser, **when** I open the dashboard, **then** I see every event request I created, regardless of whether it is a draft, submitted, under review, returned, planning, safety review, confirmed, rejected, cancelled, or completed.
 - **Given** another organiser owns an event, **when** I open my dashboard or request that event through its ID, **then** the event is not returned to me (AUTH-R1).
 - **Given** I have drafts and submitted requests, **when** I open the dashboard, **then** drafts and submitted requests are clearly distinguishable and drafts remain private to me (DR-R2, DR-R4).
 - **Given** an event is displayed, **then** its title, status, date, time, timezone, attendance, venue assignment, and coordinator assignment state are visible when those values exist.
@@ -1339,14 +1347,19 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 13. **Rejection reason length (SCRUM-52):** Jira sets no maximum. We capped it at 1000 characters (§6.4) as a reasonable bound for a free-text field feeding both the history table and a notification message. Is a different limit expected?
 14. **Return message and resubmission note length (SCRUM-33):** **[Assumption]** Both are capped at 1000 characters, checked after trimming, exactly as the API checks a rejection reason (`EventRejectRequest`; the §6.4 wording "checked on the raw value" doesn't match the code, which strips first). Jira sets no bound; both values reach `event_status_history.reason` and a notification message. Is a different limit expected?
 15. **Comment length (SCRUM-61):** **[Assumption]** A comment is capped at 1000 characters after trimming, the same cap as a rejection reason and a return message. Jira sets no bound. Is a different limit expected?
-16. **Arrangement issues (SCRUM-72):** **[Assumption]** A technical readiness of `issue` on a planning or confirmed event is shown as an arrangement issue, the coordinator's most urgent action (§6.21.1). Are there other "issues" the coordinator must see before change requests and re-review exist?
+16. **Arrangement issues (SCRUM-72):** **[Assumption]** A technical readiness of `issue` on a planning, safety review or confirmed event is shown as an arrangement issue, the coordinator's most urgent action (§6.21.1). Are there other "issues" the coordinator must see before change requests and re-review exist?
 17. **Equipment readiness before SCRUM-24 (SCRUM-72):** **[Assumption]** Ready once any reservation exists for the event (or `not_required` when none was asked for). Is that close enough until per-line equipment requests exist? *(SCRUM-45 now creates per-line requests, but the dashboard still uses this assumption: switching it to "every line `reserved`" is a follow-up, IMPLEMENTATION_MAP §5.)*
 18. ~~**Awaiting-assignment count (SCRUM-72)**~~ — **Resolved by the Event Coordinator Lead clarification** (customer clarification of 2026-10-05, QA row to be added): coordinators no longer see unassigned events at all; the Lead's queue does (§6.5).
 19. **Event Coordinator Lead (§6.5):** the clarification leaves open: whether the Lead can also act as a coordinator on events (approve, reject, return); what "basic event information" the queue shows; whether a coordinator can still hand over an event themselves (AS-R4) or only the Lead reassigns; whether submission stays `draft → under_review` or a request waits in `submitted` until assigned; and who exactly is notified on assignment and reassignment (organiser, new coordinator, previous coordinator).
 20. **Booking request note length (SCRUM-19):** **[Assumption]** The coordinator's note to venue staff is capped at 1000 characters after trimming, the same cap as a comment. Jira sets no bound. Is a different limit expected?
 21. **Equipment request details (SCRUM-45):** **[Assumption]**s, none answered by the customer or Jira: (a) an item appears at most once per submission, so tech support decide one quantity per item ("combine the quantities"); (b) a submission holds at most 50 items; (c) "visible to the submitting coordinator" is read as the *assigned* coordinator, who is the same person until reassignment exists (§6.5); (d) a `retired` catalogue item can't be requested; (e) tech support's list leaves out lines on `rejected`, `cancelled` and `completed` events until SCRUM-24 releases them (§6.15 `released`). Are any of these wrong?
+22. **"Preparation" stage (SCRUM-82, CR-104, W7 CR-06):** **[Assumption]** The customer's "preparation" stage, which an event reaches on Safety Officer approval, is our `confirmed` status (§5). Is that right?
 
 ---
+
+**SCRUM-82 additions (2026-10-08):**
+23. **[Assumption]** An event needs at least one active venue booking before safety review; an empty set is not ready. This follows the physical venue checks in W7 CR-06. Every active booking must be approved.
+24. **[Team decision / dependency]** Until 24 lands, `technical_status` reads the unwritten column (default Not required). This preserves one contract for Eileen; derived technical readiness is not yet verified end to end. Contract text is in the SCRUM-82 design §9; teammate agreement remains pending.
 
 ## 10. Non-functional requirements
 

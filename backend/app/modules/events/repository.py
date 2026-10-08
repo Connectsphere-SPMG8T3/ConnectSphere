@@ -311,3 +311,16 @@ def add_comment(event_id: str, author_id: str, body: str, *, notify_message: str
         .execute()
     )
     return _first_row(response)
+
+
+def send_to_safety_review(
+    event_id: str, actor_id: str, from_statuses: list[str], to_status: str, expected_version: int,
+    *, organiser_message: str, officer_message: str,
+) -> dict | None:
+    """SCRUM-82: transition, history and both recipient groups in one transaction."""
+    response = get_supabase_admin_client().rpc("send_event_to_safety_review", {
+        "p_event_id": event_id, "p_actor_id": actor_id, "p_from_statuses": from_statuses,
+        "p_to_status": to_status, "p_expected_version": expected_version,
+        "p_organiser_message": organiser_message, "p_officer_message": officer_message,
+    }).execute()
+    return _first_row(response)

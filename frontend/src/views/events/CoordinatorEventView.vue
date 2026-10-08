@@ -13,13 +13,14 @@ import RejectEventModal from "@/components/events/RejectEventModal.vue";
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import { showToast } from "@/composables/useToast";
 import { STATUS_LABELS } from "@/features/events/dashboard";
-import { canApprove, canReject, canReturn, useEventReviewStore } from "@/features/events/eventReviewStore";
+import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { BOOKING_STATUS_LABELS, venuePanelState } from "@/features/venues/bookingRequest";
 
 const route = useRoute();
 const router = useRouter();
 const review = useEventReviewStore();
 
+const isSafetyOpen = ref(false);
 const isApproveOpen = ref(false);
 const isRejectOpen = ref(false);
 const isReturnOpen = ref(false);
@@ -38,6 +39,17 @@ function displayDateTime(value, timeZone) {
 
 function displayValue(value) {
   return value || "Not provided";
+}
+
+async function confirmSafety() {
+  if (review.isActing) return;
+  isSafetyOpen.value = false;
+  try {
+    await review.sendForSafetyCheck();
+    showToast("Sent for safety check");
+  } catch {
+    // The refreshed readiness and refusal appear in the page.
+  }
 }
 
 async function confirmApprove() {
@@ -103,7 +115,11 @@ watch(
           </div>
           <p class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard">{{ statusLabel }}</p>
         </div>
-        <div v-if="showApprove || showReject || showReturn" class="mt-6 flex flex-wrap gap-3">
+        <div v-if="showApprove || showReject || showReturn || event.status === 'planning'" class="mt-6 flex flex-wrap gap-3">
+          <BauhausButton v-if="event.status === 'planning'" variant="secondary" aria-label="Send for safety check"
+            :disabled="!canSendForSafetyCheck(event) || review.isActing"
+            :aria-describedby="event.safety_readiness?.missing.length ? 'safety-missing' : undefined"
+            @click="review.error = null; isSafetyOpen = true">Send for safety check</BauhausButton>
           <BauhausButton
             v-if="showApprove"
             variant="secondary"
@@ -134,6 +150,19 @@ watch(
         </div>
       </BauhausCard>
 
+      <BauhausCard v-if="event.status === 'planning'" background="white" accent="none" class="mb-8">
+        <div v-if="event.safety_readiness?.missing.length" id="safety-missing" class="mb-6">
+          <h2 class="text-xl font-black uppercase">Not ready for safety check</h2>
+          <ul class="mt-3 list-disc pl-5"><li v-for="missing in event.safety_readiness.missing" :key="missing">{{ missing }}</li></ul>
+        </div>
+        <h2 class="text-xl font-black uppercase">For information</h2>
+        <p class="mt-3">Registration: {{ event.registration_enabled ? 'Enabled' : 'Not enabled' }}</p>
+        <dl v-if="event.registration_enabled" class="mt-3 grid gap-3 sm:grid-cols-3">
+          <div><dt class="font-bold">Capacity</dt><dd>{{ event.registration_capacity ?? 'Not provided' }}</dd></div>
+          <div><dt class="font-bold">Opens</dt><dd>{{ displayDateTime(event.registration_opens_at, event.event_timezone) }}</dd></div>
+          <div><dt class="font-bold">Closes</dt><dd>{{ displayDateTime(event.registration_closes_at, event.event_timezone) }}</dd></div>
+        </dl>
+      </BauhausCard>
       <AmendmentBanner
         v-if="event.status === 'returned' && event.amendment"
         :amendment="event.amendment"
@@ -208,6 +237,9 @@ watch(
 
     <p v-else-if="review.isLoading" class="text-sm font-bold uppercase tracking-widest text-ink/70">Loading request…</p>
 
+    <ConfirmModal :open="isSafetyOpen" title="Send for safety check?"
+      message="The Safety Officer will check the venue and technical arrangements. Venue and equipment can't be requested again while it's in review."
+      confirm-label="Send" @confirm="confirmSafety" @stay="isSafetyOpen = false" />
     <ConfirmModal
       :open="isApproveOpen"
       title="Approve this request?"
