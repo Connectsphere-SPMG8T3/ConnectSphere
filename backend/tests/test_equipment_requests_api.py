@@ -18,7 +18,7 @@ PROJECTOR_ID = "b0000000-0000-4000-8000-000000000001"
 MIC_ID = "b0000000-0000-4000-8000-000000000002"
 RETIRED_ID = "b0000000-0000-4000-8000-000000000003"
 UNKNOWN_ID = "b0000000-0000-4000-8000-0000000000ff"
-NOT_PLANNING = ["submitted", "under_review", "confirmed", "rejected", "cancelled", "completed"]
+NOT_PLANNING = ["safety_review", "submitted", "under_review", "confirmed", "rejected", "cancelled", "completed"]
 SUBMIT_URL = "/api/v1/equipment/requests"
 EVENT_URL = f"/api/v1/equipment/requests/event/{EVENT_ID}"
 PENDING_URL = "/api/v1/equipment/requests/pending"
@@ -423,3 +423,12 @@ class TestTechSupportQueue:
         acting_as_another_role(monkeypatch, TECH_ID, holds="tech_support", acts_as="event_coordinator")
 
         assert client.get(PENDING_URL, headers=auth_headers).status_code == 403
+
+
+def test_safety_review_keeps_pending_equipment_visible(client, auth_headers, act_as, store):
+    """SCRUM-82: keep the technical queue open during safety review."""
+    act_as("event_coordinator", COORDINATOR_ID)
+    submit(client, auth_headers, [item(PROJECTOR_ID, 1)])
+    store["events"][EVENT_ID]["status"] = "safety_review"
+    act_as("tech_support", TECH_ID)
+    assert len(client.get(PENDING_URL, headers=auth_headers).json()["lines"]) == 1

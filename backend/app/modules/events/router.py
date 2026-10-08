@@ -87,6 +87,11 @@ def submit_event(
     return service.submit(str(event_id), current_user.id, body)
 
 
+@router.post("/{event_id}/send-for-safety-check", response_model=EventResponse)
+def send_for_safety_check(event_id: UUID, current_user: EventCoordinator) -> EventResponse:
+    return service.send_for_safety_check(str(event_id), current_user.id)
+
+
 @router.post("/{event_id}/approve", response_model=EventResponse)
 def approve_event(event_id: UUID, current_user: EventCoordinator) -> EventResponse:
     return service.approve(str(event_id), current_user.id)

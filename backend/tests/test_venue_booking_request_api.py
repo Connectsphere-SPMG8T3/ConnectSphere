@@ -53,6 +53,7 @@ def booking(monkeypatch):
         booking_id = BOOKING_ID if state["outcome"] == "ok" else None
         return {"outcome": state["outcome"], "booking_id": booking_id}
 
+    monkeypatch.setattr(venues_repository, "list_booking_statuses", lambda event_ids: [])
     monkeypatch.setattr(events_repository, "get_event",
                         lambda event_id: deepcopy(state["event"]) if event_id == EVENT_ID else None)
     monkeypatch.setattr(venues_repository, "request_booking", request_booking)

@@ -1,13 +1,13 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { canApprove, canReject, canReturn, REJECT_REASON_MAX_LENGTH, useEventReviewStore } from "@/features/events/eventReviewStore";
+import { canApprove, canReject, canReturn, canSendForSafetyCheck, REJECT_REASON_MAX_LENGTH, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { ApiError, eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn() },
+  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn() },
 }));
 
 const EVENT = { id: "event-1", name: "Partner Summit", status: "under_review", version: 3 };
@@ -20,6 +20,11 @@ function signedInCoordinator() {
 }
 
 describe("canApprove / canReject", () => {
+  it("SCRUM-82 sends only ready planning events", () => {
+    for (const [status, readiness, expected] of [["planning", true, true], ["planning", false, false], ["planning", null, false], ["safety_review", true, false]]) {
+      expect(canSendForSafetyCheck({status, safety_readiness: readiness === null ? null : {ready: readiness}})).toBe(expected);
+    }
+  });
   it("allows approve only from under_review (SCRUM-34)", () => {
     expect(canApprove("under_review")).toBe(true);
     for (const status of ["draft", "submitted", "returned", "planning", "confirmed", "rejected", "cancelled", "completed"]) {
@@ -54,6 +59,22 @@ describe("useEventReviewStore", () => {
     signedInCoordinator();
   });
 
+  it("SCRUM-82 sends and refreshes history", async () => {
+    const store = useEventReviewStore(); store.event = {...EVENT, status: "planning"};
+    eventsApi.sendForSafetyCheck.mockResolvedValue({...EVENT, status: "safety_review"});
+    eventsApi.history.mockResolvedValue({entries: [ENTRY]});
+    await store.sendForSafetyCheck();
+    expect(eventsApi.sendForSafetyCheck).toHaveBeenCalledWith("event-1", "access-token");
+    expect(store.event.status).toBe("safety_review"); expect(store.history).toEqual([ENTRY]);
+  });
+  it("SCRUM-82 reloads stale readiness while preserving the refusal", async () => {
+    const store = useEventReviewStore(); store.event = {...EVENT, status: "planning"}; store.historyEventId = EVENT.id;
+    eventsApi.sendForSafetyCheck.mockRejectedValue(new ApiError("Not ready", 409));
+    eventsApi.get.mockResolvedValue({...EVENT, status: "planning", safety_readiness: {ready: false, missing: ["Changed"]}});
+    eventsApi.history.mockResolvedValue({entries: []});
+    await expect(store.sendForSafetyCheck()).rejects.toThrow("Not ready");
+    expect(store.error).toBe("Not ready"); expect(store.event.safety_readiness.ready).toBe(false);
+  });
   it("returns the request with a trimmed message and the flagged fields, then refreshes history", async () => {
     const store = useEventReviewStore();
     store.event = { ...EVENT };

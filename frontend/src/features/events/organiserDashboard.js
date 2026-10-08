@@ -75,12 +75,13 @@ export function summariseOrganiserEvents(events = []) {
   const rejected = counts(["rejected"]);
   const underReview = counts(["submitted", "under_review"]);
   const planning = counts(["planning"]);
+  const safetyReview = counts(["safety_review"]);
   const confirmed = counts(["confirmed"]);
   const completed = counts(["completed"]);
 
   return {
     needsAction: { drafts, returned, rejected, total: drafts + returned + rejected },
-    myEvents: { underReview, planning, confirmed, completed, total: underReview + planning + confirmed + completed },
+    myEvents: { underReview, planning, safetyReview, confirmed, completed, total: underReview + planning + safetyReview + confirmed + completed },
   };
 }
 
@@ -91,6 +92,7 @@ export function groupOrganiserActiveEvents(events = []) {
   const groups = [
     { status: "under_review", label: "Under review", description: "Requests awaiting review or clarification." },
     { status: "planning", label: STATUS_LABELS.planning, description: "Events being arranged with ConnectSphere." },
+    { status: "safety_review", label: STATUS_LABELS.safety_review, description: "Events being checked by the Safety Officer." },
     { status: "confirmed", label: STATUS_LABELS.confirmed, description: "Events with confirmed arrangements." },
     { status: "completed", label: STATUS_LABELS.completed, description: "Events that have finished." },
   ];

@@ -13,6 +13,7 @@ class EventStatus(str, Enum):
     under_review = "under_review"
     returned = "returned"
     planning = "planning"
+    safety_review = "safety_review"
     confirmed = "confirmed"
     rejected = "rejected"
     cancelled = "cancelled"
@@ -138,6 +139,16 @@ class EventVenueBooking(BaseModel):
     status: str
 
 
+class BookingReadiness(BaseModel):
+    status: str
+    flags: list[str] = []
+
+
+class SafetyReadiness(BaseModel):
+    ready: bool
+    missing: list[str]
+
+
 class EventResponse(EventFields):
     id: str
     organiser_id: str
@@ -152,9 +163,11 @@ class EventResponse(EventFields):
     # and on list responses.
     amendment: AmendmentRequest | None = None
     # The event's held, approved or re-review booking, on the assigned
-    # coordinator's single-event read (SCRUM-19); null otherwise. Organisers
-    # don't get it: booking state is internal planning detail (AUTH-R2).
+    # coordinator's single-event read (SCRUM-19), and on the organiser's once
+    # the event is confirmed (SCRUM-82 AC8); null otherwise. Before then the
+    # organiser doesn't get it: booking state is internal planning detail (AUTH-R2).
     venue_booking: EventVenueBooking | None = None
+    safety_readiness: SafetyReadiness | None = None
 
 
 class EventListResponse(BaseModel):
@@ -295,7 +308,7 @@ COMMENT_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as a reject
 # public.add_event_comment and in the SPA's features/events/comments.js.
 COMMENTABLE_STATUSES = frozenset({
     EventStatus.submitted, EventStatus.under_review, EventStatus.returned,
-    EventStatus.planning, EventStatus.confirmed,
+    EventStatus.planning, EventStatus.safety_review, EventStatus.confirmed,
 })
 
 

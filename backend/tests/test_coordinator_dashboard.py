@@ -71,7 +71,7 @@ class TestScope:
 
         coordinator_id, statuses = data.calls["events"]
         assert coordinator_id == COORDINATOR_ID
-        assert statuses == {"under_review", "returned", "planning", "confirmed"}
+        assert statuses == {"under_review", "returned", "planning", "safety_review", "confirmed"}
         # Drafts are private to their organiser (DR-R2); terminal statuses aren't active.
         assert "draft" not in ACTIVE_COORDINATOR_STATUSES
 
@@ -309,3 +309,11 @@ class TestApi:
 
     def test_no_token_is_401(self, client, data):
         assert client.get(DASHBOARD_URL).status_code == 401
+
+
+def test_safety_review_remains_active_and_reports_technical_issues(data):
+    """SCRUM-82: sending does not remove the coordinator's event."""
+    data.events = [event_row("e-safe", "safety_review", technical_readiness="issue")]
+    dashboard = service.coordinator_dashboard(COORDINATOR_ID)
+    assert dashboard.active_events[0].status.value == "safety_review"
+    assert items_by_kind(dashboard) == {"arrangement_issue": ["e-safe"]}

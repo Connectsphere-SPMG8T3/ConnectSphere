@@ -150,7 +150,7 @@ describe("CoordinatorDashboard", () => {
       const { el } = await mountDashboard();
 
       const groups = [...el.querySelectorAll("[data-status-group]")].map((group) => group.dataset.statusGroup);
-      expect(groups).toEqual(["under_review", "returned", "planning", "confirmed"]);
+      expect(groups).toEqual(["under_review", "returned", "planning", "safety_review", "confirmed"]);
       const planning = el.querySelector('[data-status-group="planning"]');
       expect(planning.querySelector(`a[href="/coordinator/events/${PLANNING_ID}"]`).textContent).toContain(
         "Year-End Dinner",

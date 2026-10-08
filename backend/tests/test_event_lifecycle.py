@@ -102,3 +102,46 @@ def test_a_returned_event_cannot_be_approved_or_rejected(action):
         lifecycle.target(action, "returned")
 
     assert raised.value.status_code == 409
+
+
+# SCRUM-82 / CR-104 groundwork: the Operational Safety Check (W7 CR-06).
+SAFETY_TRANSITIONS = {
+    "send_to_safety": ("planning", EventStatus.safety_review),
+    "safety_approve": ("safety_review", EventStatus.confirmed),
+    "safety_request_changes": ("safety_review", EventStatus.planning),
+    "safety_reject": ("safety_review", EventStatus.planning),
+    "safety_withdraw": ("safety_review", EventStatus.planning),
+}
+
+
+@pytest.mark.parametrize("action", SAFETY_TRANSITIONS)
+def test_safety_action_moves_its_one_source_to_its_target(action):
+    source, destination = SAFETY_TRANSITIONS[action]
+
+    assert lifecycle.target(action, source) == destination
+    assert lifecycle.allowed_from(action) == [source]
+
+
+@pytest.mark.parametrize(
+    "action, status",
+    [(action, status) for action, (source, _) in SAFETY_TRANSITIONS.items() for status in ALL_STATUSES if status != source],
+)
+def test_safety_action_is_blocked_from_every_other_status(action, status):
+    with pytest.raises(EventTransitionError) as raised:
+        lifecycle.target(action, status)
+
+    assert raised.value.status_code == 409
+
+
+def test_the_blocked_message_names_the_action_in_words():
+    with pytest.raises(EventTransitionError) as raised:
+        lifecycle.target("send_to_safety", "safety_review")
+
+    assert raised.value.detail == "Cannot send to safety an event that is safety review"
+
+
+def test_only_safety_approval_reaches_confirmed():
+    """82 AC5, CR-104 AC5: the coordinator can no longer confirm an event."""
+    confirming = [action for action, (_, destination) in lifecycle.TRANSITIONS.items() if destination == EventStatus.confirmed]
+
+    assert confirming == ["safety_approve"]

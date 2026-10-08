@@ -41,6 +41,7 @@ const statusOptions = [
   "under_review",
   "returned",
   "planning",
+  "safety_review",
   "confirmed",
   "rejected",
   "cancelled",
@@ -95,6 +96,7 @@ const overviewGroups = computed(() => [
     items: [
       { label: "Under review", value: overview.value.myEvents.underReview, background: "blue", accent: "circle", accentColor: "bauhaus-yellow" },
       { label: "Planning", value: overview.value.myEvents.planning, background: "yellow", accent: "square", accentColor: "bauhaus-red" },
+      { label: "Safety review", value: overview.value.myEvents.safetyReview, background: "white", accent: "circle", accentColor: "bauhaus-blue" },
       { label: "Confirmed", value: overview.value.myEvents.confirmed, background: "blue", accent: "triangle", accentColor: "bauhaus-yellow" },
       { label: "Completed", value: overview.value.myEvents.completed, background: "white", accent: "circle", accentColor: "bauhaus-blue" },
     ],

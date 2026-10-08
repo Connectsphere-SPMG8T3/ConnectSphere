@@ -120,6 +120,8 @@ def mock_event_repository(monkeypatch, request):
         row.update(status=to_status, submitted_at=now, version=expected_version + 1)
         return deepcopy(row)
 
+    from app.modules.venues import repository as venues_repository
+    monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)
     monkeypatch.setattr(repository, "list_events", list_events)
     monkeypatch.setattr(repository, "get_event", get_event)
     monkeypatch.setattr(repository, "create_event", create_event)

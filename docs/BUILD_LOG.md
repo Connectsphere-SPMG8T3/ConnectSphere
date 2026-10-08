@@ -1529,3 +1529,61 @@ Work from the Product backlog sheet (Jira is no longer used), on `feature/cr-103
   - Joyce rebases onto the migration and drops any enum migration of her own.
   - The CR-103 queue and CR-104 decision stories grant the Safety Officer its first real access.
   - `supabase db push` on a fresh database would run this file normally, but the live project's history says it was applied by the MCP at `20261008122253`.
+
+### 4.34. SCRUM-82 — Send event for safety check once essential arrangements are approved
+
+| Field | Value |
+|---|---|
+| ID | SCRUM-82 |
+| Title | Send event for safety check once essential arrangements are approved |
+| Type | US: Core feature |
+| Status | IN PROGRESS; implementation verified, developer manual acceptance pending |
+| Epic | Event status management |
+| Sprint | 3 (6 October - 20 October) |
+| Estimate | 3 story points |
+| Priority | 3 |
+| Customer clarification | W7 CR-01 to CR-04, CR-06: reworked on 06/10. The coordinator sends the event to Safety review; only Safety Officer approval (CR-104) confirms it (replaces the old Confirm action and AC9 'Safety check not approved'). AC1-AC2 updated 08/10: technical status now comes from 24 (87 merged into 24), so the equipment check is no longer done twice. AC3 and AC10 updated 08/10: AC3 now uses 24's Not required status (on-site support is no longer tracked separately); AC10 adds CR-94's Unsuitable flag. |
+
+**User story (assembled from the sheet's three story fields):**
+
+> As an Event coordinator, I want to send an event for its Operational Safety Check once its venue and technical arrangements are approved, so that the Safety Officer can review it and, on approval, the event is confirmed and attendees can register.
+
+**Acceptance criteria (verbatim from the Product backlog):**
+
+> AC1. [W7 CR-06] Given an event in Planning that is assigned to me, where every active venue booking is approved and the event's technical status is Ready or Not required (24), when I select Send for safety check, then its status becomes Safety review and Safety Officers are notified.
+
+> AC2. If any of those items is not ready, Send for safety check is unavailable and a direct request is blocked, naming what is missing (for example "Technical status is not Ready"). There is no override (QA-17, QA-49, QA-106, QA-118).
+
+> AC3. An event with no equipment lines has technical status Not required (24 AC11), so it is not blocked by the technical check (QA2-12).
+
+> AC4. The programme and registration setup are shown for information but don't block sending for safety check (QA-17, QA-133).
+
+> AC5. [W7 CR-06] Send for safety check is available only from Planning, and only to the assigned coordinator acting as coordinator. Every other status or caller is blocked. The coordinator can no longer confirm an event directly.
+
+> AC6. [W7 CR-06] Confirmed is reached only through Safety Officer approval (CR-104), which notifies the organiser, venue staff and technical support (W1 §6).
+
+> AC7. Sending for safety check, who did it, and when are recorded in the event history (QA-70).
+
+> AC8. The organiser can see the confirmed arrangements once the event is Confirmed (W1 Step 10).
+
+> AC9. [W7 CR-03, CR-04] Every active venue booking on the event must be approved. An expired hold never counts as approved.
+
+> AC10. [W7 CR-01, CR-02] A venue booking flagged Affected (venue unavailable, CR-95), Conflict or Unsuitable (after a venue change, CR-94) counts as not ready.
+
+#### How the implementation maps to the ticket
+
+The developer approved design commit `7e14ef6` and implementation plan `dda5dd0`. [Assumption]: require at least one active venue booking; every active booking must be approved. [Team decision]: notify the organiser as well as Safety Officers, matching other coordinator transitions. The accepted Python check-then-act race and recovery dependency on CR-104 AC10 are in IMPLEMENTATION_MAP §5.
+
+What was actually built:
+
+1. `events/readiness.py`: one pure rule over active booking statuses/flags and technical status, shared by the assigned coordinator's Planning read and the send endpoint. Fixed-order missing reasons; no override. `technical_status(row)` is the single read seam for story 24 and the dashboard.
+2. `POST /events/{id}/send-for-safety-check`: active coordinator role and assignment required; Planning only; readiness rechecked; stale versions rejected. The coordinator read exposes `{ready, missing}`; the organiser's confirmed read exposes venue arrangements.
+3. `send_event_to_safety_review`: wrapper around `transition_event`, atomic history and organiser/officer notifications. Excludes the actor from the officer pool; succeeds with no officers. Migration `20261008150001` was pushed by the developer and verified against live schema/history.
+4. Coordinator send button, missing list, confirmation, success toast and stale-page refresh; registration information never blocks. Organiser confirmed Arrangements card. Safety review remains visible in coordinator/organiser dashboards, comments and the technical queue; new venue/equipment requests remain Planning-only.
+5. Cases TC-SAFE-001–004, 010–015 and 020–026; read-only live/browser checks and rolled-back SQL checks.
+
+**Verification:** backend 753 passed, 92.86% coverage; frontend 598 passed, 94.37% coverage; production build passed. No uncovered changed executable lines in the coverage audit. Recorded API/database regression: 68/68 (`runs/2026-10-08-2303-api-db-69d4bf9.md`); browser regression: 48/48 (`runs/2026-10-08-2308-e2e-5c7a294.md`). SQL covers successful send/history/notifications, actor exclusion/no officers, stale/wrong-status rejection, comments and anon/authenticated execute denial. Advisors show the existing leaked-password warning and nine existing equipment RLS performance warnings; none names the new or changed functions.
+
+**Verification setup findings:** the first browser run had a spare-origin CORS error; an overlapping API/browser cleanup also collided on shared throwaway prefixes. Failed/interrupted logs are retained. The backend was restarted using its existing CORS environment setting, then the suites ran serially. No feature code was changed for those environment issues.
+
+**Not verified / follow-ups:** developer manual cases TC-SAFE-020–026 remain pending. AC3's derived no-lines status awaits 24; AC9 expiry and AC10 persisted flags await CR-99/94/95; programme attachments await 89; confirmation and its notifications (AC6) await CR-104. Eileen's contract is prepared in design §9, not yet agreed with her. Safety review cancellation is flagged for 84, not built. No push, PR, merge or backlog change was made during implementation; teammate review and PO acceptance are still required.

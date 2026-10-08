@@ -43,3 +43,13 @@ describe("eventsApi.clone", () => {
     });
   });
 });
+
+describe("SCRUM-82 eventsApi.sendForSafetyCheck", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("posts to the encoded endpoint without a body and uses the session token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({status: 200, ok: true, json: async () => ({status: "safety_review"})});
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(eventsApi.sendForSafetyCheck("event/one", "access-token")).resolves.toEqual({status: "safety_review"});
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/api/v1/events/event%2Fone/send-for-safety-check", expect.objectContaining({method: "POST", body: undefined, headers: expect.objectContaining({Authorization: "Bearer access-token"})}));
+  });
+});
