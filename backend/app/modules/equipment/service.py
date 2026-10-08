@@ -154,7 +154,7 @@ RETURNED_MESSAGE = (
 
 # Tech support's queue leaves out lines on closed events. Releasing those lines
 # (6.15 `released`) is SCRUM-24's; until then they are only hidden.
-QUEUE_EVENT_STATUSES = ("planning", "confirmed")
+QUEUE_EVENT_STATUSES = ("planning", "safety_review", "confirmed")
 
 
 def _not_planning_message(status: str) -> str:

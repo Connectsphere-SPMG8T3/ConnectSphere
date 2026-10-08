@@ -306,7 +306,7 @@ COMMENT_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as a reject
 # public.add_event_comment and in the SPA's features/events/comments.js.
 COMMENTABLE_STATUSES = frozenset({
     EventStatus.submitted, EventStatus.under_review, EventStatus.returned,
-    EventStatus.planning, EventStatus.confirmed,
+    EventStatus.planning, EventStatus.safety_review, EventStatus.confirmed,
 })
 
 

@@ -37,7 +37,7 @@ DEFAULT_EVENT_TIMEZONE = "Asia/Singapore"
 
 # The statuses an assigned coordinator still has work in (SCRUM-72 AC2). Drafts
 # are private to their organiser (DR-R2) and terminal statuses aren't active.
-ACTIVE_COORDINATOR_STATUSES = ("under_review", "returned", "planning", "confirmed")
+ACTIVE_COORDINATOR_STATUSES = ("under_review", "returned", "planning", "safety_review", "confirmed")
 
 
 CLONE_FIELDS = (
@@ -354,6 +354,11 @@ def _equipment_readiness(row: dict, reserved: set[str]) -> ReadinessState:
     return ReadinessState.ready if row["id"] in reserved else ReadinessState.pending
 
 
+def technical_status(row: dict) -> ReadinessState:
+    """Single reader of technical status; SCRUM-24 replaces this with derived status."""
+    return ReadinessState(row["technical_readiness"])
+
+
 def _action_kind(row: dict, resubmitted_at: str | None) -> CoordinatorActionKind | None:
     status = row["status"]
     if status == "under_review":
@@ -362,7 +367,7 @@ def _action_kind(row: dict, resubmitted_at: str | None) -> CoordinatorActionKind
         return CoordinatorActionKind.resubmitted if resubmitted_at else CoordinatorActionKind.awaiting_review
     # [Assumption] REQUIREMENTS §6.21.1: tech support marking technical readiness
     # as `issue` is the one arrangement problem the system records today.
-    if status in ("planning", "confirmed") and row.get("technical_readiness") == "issue":
+    if status in ("planning", "safety_review", "confirmed") and technical_status(row) == ReadinessState.issue:
         return CoordinatorActionKind.arrangement_issue
     # `returned` is waiting on the organiser, not the coordinator.
     return None
@@ -402,7 +407,7 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
                 )
             )
 
-        technical = ReadinessState(row["technical_readiness"])
+        technical = technical_status(row)
         active_events.append(
             CoordinatorActiveEvent(
                 event_id=row["id"],
