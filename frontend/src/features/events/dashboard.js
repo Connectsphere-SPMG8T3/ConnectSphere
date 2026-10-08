@@ -21,6 +21,7 @@ export const STATUS_LABELS = {
   under_review: "Under review",
   returned: "Returned for amendment",
   planning: "Planning",
+  safety_review: "Safety review",
   confirmed: "Confirmed",
   rejected: "Rejected",
   cancelled: "Cancelled",
@@ -31,6 +32,7 @@ export const STATUS_DESCRIPTIONS = {
   under_review: "Waiting on your approval or rejection.",
   returned: "With the organiser for amendment.",
   planning: "Passed initial review — venue and equipment being arranged.",
+  safety_review: "Waiting on the Safety Officer's operational safety check.",
   confirmed: "All blocking arrangements are in place.",
 };
 

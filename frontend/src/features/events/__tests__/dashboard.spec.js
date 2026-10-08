@@ -193,6 +193,11 @@ describe("active event status overview (SCRUM-72 AC2)", () => {
     });
   });
 
+  it("labels the safety review status in plain language (SCRUM-82, W7 CR-06)", () => {
+    expect(STATUS_LABELS.safety_review).toBe("Safety review");
+    expect(STATUS_DESCRIPTIONS.safety_review).toBe("Waiting on the Safety Officer's operational safety check.");
+  });
+
   it("calls planning 'Planning', not 'Approved' (QA-18, QA2-8)", () => {
     expect(STATUS_LABELS.planning).toBe("Planning");
   });

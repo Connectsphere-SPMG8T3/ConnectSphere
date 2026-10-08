@@ -87,7 +87,7 @@ class EventTransitionError(HTTPException):
     def __init__(self, action: str, current_status: str) -> None:
         super().__init__(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cannot {action} an event that is {current_status.replace('_', ' ')}",
+            detail=f"Cannot {action.replace('_', ' ')} an event that is {current_status.replace('_', ' ')}",
         )
 
 

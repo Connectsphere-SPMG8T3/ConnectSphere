@@ -13,6 +13,7 @@ class EventStatus(str, Enum):
     under_review = "under_review"
     returned = "returned"
     planning = "planning"
+    safety_review = "safety_review"
     confirmed = "confirmed"
     rejected = "rejected"
     cancelled = "cancelled"
