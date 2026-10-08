@@ -139,6 +139,16 @@ class EventVenueBooking(BaseModel):
     status: str
 
 
+class BookingReadiness(BaseModel):
+    status: str
+    flags: list[str] = []
+
+
+class SafetyReadiness(BaseModel):
+    ready: bool
+    missing: list[str]
+
+
 class EventResponse(EventFields):
     id: str
     organiser_id: str
@@ -156,6 +166,7 @@ class EventResponse(EventFields):
     # coordinator's single-event read (SCRUM-19); null otherwise. Organisers
     # don't get it: booking state is internal planning detail (AUTH-R2).
     venue_booking: EventVenueBooking | None = None
+    safety_readiness: SafetyReadiness | None = None
 
 
 class EventListResponse(BaseModel):
@@ -263,16 +274,6 @@ class CoordinatorActionItem(BaseModel):
     starts_at: datetime | None = None
     occurred_at: datetime | None = None
     organiser_name: str | None = None
-
-
-class BookingReadiness(BaseModel):
-    status: str
-    flags: list[str] = []
-
-
-class SafetyReadiness(BaseModel):
-    ready: bool
-    missing: list[str]
 
 
 class Readiness(BaseModel):

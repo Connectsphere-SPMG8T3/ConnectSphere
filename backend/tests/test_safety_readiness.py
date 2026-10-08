@@ -54,3 +54,7 @@ def test_every_missing_item_is_listed_in_order():
     result = safety_readiness([B(status="re_review"), B(status="held")], T.issue)
     assert result.missing == [HELD, RE_REVIEW, TECH]
     assert result.ready is False
+
+
+def test_conflict_and_duplicate_status_reasons_are_reported_once():
+    assert safety_readiness([B(status="held", flags=["conflict"]), B(status="held", flags=["conflict"])], T.ready).missing == [HELD, "A venue booking is flagged Conflict."]

@@ -240,3 +240,18 @@ def test_add_comment_is_none_when_the_function_refuses(monkeypatch):
     monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
 
     assert repository.add_comment("event-1", "user-1", "Hi", notify_message="msg") is None
+
+
+def test_send_to_safety_review_passes_both_messages(monkeypatch):
+    """SCRUM-82 wrapper RPC contract."""
+    client = RpcClient([{"id": "e", "status": "safety_review"}])
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+    assert repository.send_to_safety_review("e", "c", ["planning"], "safety_review", 3,
+        organiser_message="o", officer_message="s") == {"id": "e", "status": "safety_review"}
+    assert client.calls == [("send_event_to_safety_review", {
+        "p_event_id": "e", "p_actor_id": "c", "p_from_statuses": ["planning"],
+        "p_to_status": "safety_review", "p_expected_version": 3,
+        "p_organiser_message": "o", "p_officer_message": "s"})]
+    client.rows = []
+    assert repository.send_to_safety_review("e", "c", ["planning"], "safety_review", 3,
+        organiser_message="o", officer_message="s") is None

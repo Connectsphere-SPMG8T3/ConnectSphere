@@ -9,9 +9,12 @@ from app.core.exceptions import NotAssignedCoordinatorError
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.equipment import service as equipment_service
 from app.modules.events import lifecycle, repository
+from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
 from app.modules.events.schemas import (
     COMMENTABLE_STATUSES,
+    BookingReadiness,
+    SafetyReadiness,
     AmendmentRequest,
     CoordinatorActionItem,
     CoordinatorActionKind,
@@ -157,6 +160,27 @@ def _transition(row: dict, actor_id: str, action: str, *, reason: str | None,
     return _to_response(updated)
 
 
+def _safety_readiness_for(row: dict) -> SafetyReadiness:
+    statuses = venues_service.booking_statuses_by_event([row["id"]]).get(row["id"], [])
+    return safety_readiness([BookingReadiness(status=s) for s in statuses], technical_status(row))
+
+
+def send_for_safety_check(event_id: str, coordinator_id: str) -> EventResponse:
+    row = _assigned_event(event_id, coordinator_id)
+    destination = lifecycle.target("send_to_safety", row["status"])
+    readiness = _safety_readiness_for(row)
+    if not readiness.ready:
+        raise EventConflictError("Not ready for safety check: " + " ".join(readiness.missing))
+    updated = repository.send_to_safety_review(
+        event_id, coordinator_id, lifecycle.allowed_from("send_to_safety"), destination.value, row["version"],
+        organiser_message=f'Your event "{row["name"]}" is with the Safety Officer for its operational safety check.',
+        officer_message=f'"{row["name"]}" is ready for its operational safety check.',
+    )
+    if not updated:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return _to_response(updated)
+
+
 def approve(event_id: str, coordinator_id: str) -> EventResponse:
     row = _assigned_event(event_id, coordinator_id)
     return _transition(
@@ -287,8 +311,11 @@ def _visible_event(event_id: str, user_id: str, role: str) -> dict:
 
 
 def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
-    response = _with_amendment(_visible_event(event_id, user_id, role))
-    if role == "event_coordinator":
+    row = _visible_event(event_id, user_id, role)
+    response = _with_amendment(row)
+    if role == "event_coordinator" and row["status"] == "planning":
+        response.safety_readiness = _safety_readiness_for(row)
+    if role == "event_coordinator" or row["status"] == "confirmed":
         booking = venues_service.active_booking_for_event(event_id)
         if booking:
             response.venue_booking = EventVenueBooking(**booking)

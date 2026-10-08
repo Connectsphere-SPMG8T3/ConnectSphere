@@ -61,6 +61,7 @@ def events(monkeypatch):
     monkeypatch.setattr(repository, "transition_event", transition_event)
     # A coordinator's read also looks up the event's venue booking (SCRUM-19).
     monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)
+    monkeypatch.setattr(venues_repository, "list_booking_statuses", lambda event_ids: [])
     return {"store": store, "calls": calls}
 
 

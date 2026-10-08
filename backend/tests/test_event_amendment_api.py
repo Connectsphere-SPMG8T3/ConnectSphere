@@ -96,6 +96,7 @@ def events(monkeypatch):
     monkeypatch.setattr(repository, "get_open_amendment", lambda event_id: deepcopy(state["amendment"]))
     # A coordinator's read also looks up the event's venue booking (SCRUM-19).
     monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)
+    monkeypatch.setattr(venues_repository, "list_booking_statuses", lambda event_ids: [])
     return state
 
 
