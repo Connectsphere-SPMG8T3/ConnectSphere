@@ -82,7 +82,7 @@ onMounted(async () => {
         </div>
       </BauhausCard>
 
-      <p v-if="event.status === 'safety_review'" class="mb-8 font-medium">Events being checked by the Safety Officer.</p>
+      <p v-if="event.status === 'safety_review'" class="mb-8 font-medium">Your event is with the Safety Officer for its operational safety check.</p>
       <BauhausCard v-if="event.status === 'confirmed'" background="white" accent="none" class="mb-8">
         <h2 class="text-2xl font-black uppercase">Arrangements</h2>
         <p class="mt-4">Venue: {{ event.venue_booking?.venue_name ?? 'Not provided' }}</p>

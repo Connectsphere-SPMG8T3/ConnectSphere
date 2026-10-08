@@ -697,23 +697,34 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 - **Given** 10 simultaneous submissions and 2 equally loaded coordinators, **then** each event has exactly one coordinator, and the split is 5/5 (±1).
 - **Given** I hand over an event, **then** another coordinator is assigned, all three parties are notified, and I get `403` on actions.
 
-### 6.6 Event status management and readiness *(SCRUM-82, W7 CR-06)*
+### 6.6 Event status management and readiness *(SCRUM-13: 65, 68; SCRUM-82, W7 CR-06)*
 
-See §5 for the state machine. Status labels, history and available actions follow the caller's active role and relationship.
+See §5 for the state machine.
 
-| Item | Ready when | Source |
+**User-facing behaviour**
+- A status badge with a plain-language explanation, for example "Planning: your coordinator is arranging venue and equipment" (W1 §7). Only `confirmed` may read as "approved" (§5, QA2-8).
+- A **status timeline** from `event_status_history`.
+- Action buttons derived from the transitions allowed for *this user*.
+
+**Readiness** (QA-17, QA-49, QA-106, QA-118, QA-127, QA-128). The coordinator's event page shows what still blocks **Send for safety check** (SCRUM-82). Once the event is `confirmed`, the organiser sees the confirmed arrangements (SCRUM-82 AC8).
+
+| Item | Ready when | Who updates it |
 |---|---|---|
-| Venue | At least one active booking; every active booking `approved`, none flagged Affected, Conflict, Unsuitable or Expired | Venue staff decisions and CR-94/95/99 flags. Active statuses: held, approved, re_review. No-booking rule is [Assumption], §9. |
-| Technical status | Ready or Not required | `events.service.technical_status(row)`; currently reads the existing column, replaced by story 24's derived status. No independent equipment blocker. |
-| Programme, registration setup | Information only; never blocking | Registration shown today; programme attachments depend on non-core story 89. |
+| Venue | At least one active booking (`held`, `approved`, `re_review`), and every active booking `approved` and not flagged Affected, Conflict, Unsuitable or Expired (SCRUM-82 AC9, AC10). The at-least-one rule is an **[Assumption]**, §9 item 23. | Venue staff, by approving the booking (QA-128). The flags come from CR-94, CR-95 and CR-99. |
+| Technical status | `ready` or `not_required` (SCRUM-82 AC1, AC3). Read only through `events.service.technical_status(row)`, which reads `technical_readiness` until story 24 derives it from equipment lines (24 AC11: no lines gives `not_required`). Equipment is not a separate item: the 8 Oct clarification folds it into 24's technical status, so it isn't checked twice. | Tech support (QA-128), through story 24 |
+| Programme, registration setup | Shown for information only; **not blocking** (QA-17, QA-133). Programmes arrive as attachments with non-core story 89. | Organiser or coordinator |
 
-- **RD-R1:** Send for safety check is enabled only when every blocking arrangement is ready. The server repeats the check; no override (QA-118). Every missing item is named.
-- **RD-R2:** Internal preparation notes stay internal (AUTH-R2); confirmed arrangements are visible to the organiser (AC8).
-- **RD-R3:** Technical Ready and Not required both pass. Story 24 AC11 supplies Not required for no equipment lines; on-site support is not tracked separately (08 Oct clarification).
-- A ready Planning event assigned to the caller moves to Safety review only when the caller acts as coordinator. Its history records actor/time, and organiser/Safety Officers are notified.
-- If a venue booking is held, under re-review, flagged, or technical status is Pending/Issue, a direct send returns 409 naming the missing arrangements, without a transition.
-- Confirmed is reached only through Safety Officer approval (CR-104), whose confirmation notifications are outside 82.
-- The Python check precedes the transactional wrapper; booking changes do not increment event version. The accepted race and CR-104 AC10 recovery are recorded in IMPLEMENTATION_MAP §5.
+- **RD-R1:** "Send for safety check" is enabled only when every blocking item is ready. The server repeats the check and names every missing item. **No override** (QA-118). Only the Safety Officer's approval confirms an event (CR-104).
+- **RD-R2:** Venue staff may add venue preparation notes, and tech support may add technical preparation notes (QA-81). These notes are internal only (AUTH-R2), including on the organiser's confirmed arrangements.
+- **RD-R3:** Tech support approve or reject each request on the availability of staff and equipment **as requested** (QA2-12). An event with no equipment lines has technical status `not_required` and is not blocked by the technical check (SCRUM-82 AC3). On-site support is no longer tracked separately (8 Oct clarification).
+- The readiness check runs before the transactional send, and booking changes don't bump the event's version, so an arrangement can stop being ready in between. The recovery is CR-104 AC10 (IMPLEMENTATION_MAP §5).
+
+**Acceptance criteria**
+- **Given** an approved booking but a technical status other than Ready or Not required, **when** I send for safety check, **then** it is blocked with "Not ready for safety check: Technical status is not Ready."
+- **Given** a held, re-review or flagged booking, or no active booking, **when** I send for safety check directly through the API, **then** it returns `409` naming each missing item, and nothing changes.
+- **Given** all blocking items are ready, **when** I send for safety check as the assigned coordinator acting as coordinator, **then** the status is `safety_review`, the history records me and the time, and the organiser and every Safety Officer are notified.
+- **Given** an event in `safety_review`, **when** the Safety Officer approves it (CR-104), **then** the status is `confirmed`, and the organiser, venue staff, and tech support are notified. No coordinator action reaches `confirmed`.
+- **Given** any API call that attempts a transition not in §5, **then** it returns `409` and the status is unchanged.
 
 ### 6.7 Event information management and change history *(SCRUM-14: 62; QA-70)*
 

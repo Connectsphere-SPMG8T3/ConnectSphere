@@ -163,8 +163,9 @@ class EventResponse(EventFields):
     # and on list responses.
     amendment: AmendmentRequest | None = None
     # The event's held, approved or re-review booking, on the assigned
-    # coordinator's single-event read (SCRUM-19); null otherwise. Organisers
-    # don't get it: booking state is internal planning detail (AUTH-R2).
+    # coordinator's single-event read (SCRUM-19), and on the organiser's once
+    # the event is confirmed (SCRUM-82 AC8); null otherwise. Before then the
+    # organiser doesn't get it: booking state is internal planning detail (AUTH-R2).
     venue_booking: EventVenueBooking | None = None
     safety_readiness: SafetyReadiness | None = None
 

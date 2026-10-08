@@ -66,7 +66,7 @@ describe("EventDetailView status", () => {
   it.each(["planning", "safety_review"])("SCRUM-82 hides confirmed arrangements in %s", async (status) => {
     const el = await mountDetail(eventResponse({status}));
     expect(el.textContent).not.toContain("Arrangements");
-    if (status === "safety_review") expect(el.textContent).toContain("Events being checked by the Safety Officer.");
+    if (status === "safety_review") expect(el.textContent).toContain("Your event is with the Safety Officer for its operational safety check.");
   });
   it("shows the discussion once the request is submitted (SCRUM-61)", async () => {
     const el = await mountDetail(eventResponse({ status: "under_review" }));
