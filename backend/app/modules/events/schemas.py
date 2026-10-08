@@ -265,6 +265,16 @@ class CoordinatorActionItem(BaseModel):
     organiser_name: str | None = None
 
 
+class BookingReadiness(BaseModel):
+    status: str
+    flags: list[str] = []
+
+
+class SafetyReadiness(BaseModel):
+    ready: bool
+    missing: list[str]
+
+
 class Readiness(BaseModel):
     """The blocking arrangements of REQUIREMENTS §6.6."""
 
