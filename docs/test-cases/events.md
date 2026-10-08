@@ -172,6 +172,15 @@ One case per acceptance criterion, in Jira order (SCRUM-34 AC1–6, then SCRUM-5
 
 **Automated coverage today.** `ReturnEventModal.spec.js` also pins the dialog's top alignment, after the real-system run found its heading unreachable at 375x812. The API suite mocks the repository, so the functions' own atomicity, notifications and RLS are covered by `supabase/verification/event_amendment_checks.sql`, run against the live project, rather than by `pytest`. TC-AMD-004's "after a reload" and the phone-width checks remain manual.
 
+## Organiser event page sidebar (D23, D24)
+
+Regressions for two defects found during the SCRUM-82 manual pass. Both checks are read-only on the seeded organiser's fixture event `e0000000-0000-4000-8000-000000000201`.
+
+| ID | Story / AC | Preconditions | Steps | Data | Expected | Type | Priority | Created | Last run |
+|---|---|---|---|---|---|---|---|---|---|
+| TC-EVENT-043 | DEFECTS D23 | Logged in as `organiser@connectsphere.dev`; fixture `…0201` | Open `/events/e0000000-0000-4000-8000-000000000201`; look at the Registration card. For the labels, use an owned event with registration enabled | — | The timezone line is dark text, readable on the white card. With registration enabled, Capacity, Opens and Closes labels are visible above their values | Browser | Medium | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2353-e2e-1f6e3cb.md)) |
+| TC-EVENT-044 | DEFECTS D24 | Same | Same page; look at the Planning status card | — | "Coordinator: Marcus Lim". Never an account ID; "To be assigned" when no coordinator is assigned | Browser | Medium | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2353-e2e-1f6e3cb.md)) |
+
 ## Event comments (SCRUM-61)
 
 **Preconditions for every case unless noted otherwise:** every migration applied (including `20261002120000_event_comments.sql`), fixture event `e0000000-…-0201` reset to `under_review` with `supabase/verification/event_review_fixture_reset.sql` (which also clears its comments), and assigned to `coordinator@connectsphere.dev` (Marcus Lim). The organiser is `organiser@connectsphere.dev` (Olivia Tan). Run the reset again afterwards: the cases below post to shared data.

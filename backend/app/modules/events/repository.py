@@ -95,11 +95,17 @@ def list_planning_context(event_ids: Iterable[str]) -> list[dict]:
     return response.data or []
 
 
+# The single-event read also names the assigned coordinator for the organiser's
+# page. The FK is named because `events` references `profiles` twice, and a bare
+# `profiles(...)` embed fails the whole query with PGRST201.
+_EVENT_READ_COLUMNS = _EVENT_COLUMNS + ", coordinator:profiles!events_coordinator_id_fkey(id, full_name)"
+
+
 def get_event(event_id: str) -> dict | None:
     response = (
         get_supabase_admin_client()
         .table("events")
-        .select(_EVENT_COLUMNS)
+        .select(_EVENT_READ_COLUMNS)
         .eq("id", event_id)
         .maybe_single()
         .execute()
