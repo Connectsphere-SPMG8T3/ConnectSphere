@@ -86,6 +86,7 @@ DB_SCRIPTS = [
     ("event_schema_checks.sql", "SCRUM-8 schema"),
     ("event_review_checks.sql", "SCRUM-34/52 grants"),
     ("event_history_checks.sql", "TC-REV-015, TC-REV-016"),
+    ("send_for_safety_check.sql", "TC-SAFE-010–015"),
     ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
@@ -228,6 +229,42 @@ def check(case_id: str, title: str, creates_accounts: bool = False, needs_db: bo
         return fn
 
     return register
+
+
+# --- SCRUM-82: read-only safety checks ----------------------------------------
+SAFE_EVENT = "e0000000-0000-4000-8000-000000000202"
+
+
+@check("TC-SAFE-001", "Only an active coordinator can send for safety check")
+def _(ctx: Context) -> None:
+    for role in ("event_organiser", "venue_staff", "tech_support"):
+        response = ctx.client.post(f"{ctx.api}/events/{SAFE_EVENT}/send-for-safety-check", headers=ctx.shared(role).headers)
+        expect_status(response, 403)
+
+
+def safety_fixture(ctx: Context) -> tuple[Session, dict]:
+    session = ctx.shared("event_coordinator")
+    response = ctx.client.get(f"{ctx.api}/events/{SAFE_EVENT}", headers=session.headers)
+    expect_status(response, 200)
+    event = response.json()
+    if event["status"] != "planning" or (event.get("venue_booking") or {}).get("status") != "held":
+        raise CheckBlocked("Fixture drift: needs Planning with its held booking; ask before event_review_fixture_reset.sql")
+    return session, event
+
+
+@check("TC-SAFE-002", "An unapproved booking blocks send without changing data")
+def _(ctx: Context) -> None:
+    session, _ = safety_fixture(ctx)
+    response = ctx.client.post(f"{ctx.api}/events/{SAFE_EVENT}/send-for-safety-check", headers=session.headers)
+    expect_status(response, 409)
+    expect("A venue booking is awaiting venue staff approval." in response.json()["detail"], "Missing booking reason")
+
+
+@check("TC-SAFE-003", "The coordinator read carries the same missing booking reason")
+def _(ctx: Context) -> None:
+    _, event = safety_fixture(ctx)
+    expect(event["safety_readiness"]["ready"] is False, "Fixture must not be ready")
+    expect("A venue booking is awaiting venue staff approval." in event["safety_readiness"]["missing"], "Missing booking reason")
 
 
 # --- Login -----------------------------------------------------------------
