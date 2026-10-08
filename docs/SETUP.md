@@ -83,6 +83,26 @@ All seeded accounts share the password `Cs1234`. Emails intentionally use the `@
 | Technical Support | tech.support@connectsphere.dev | Single role |
 | Attendee | attendee@connectsphere.dev | Single role |
 
+### Grant a staff role
+
+Staff accounts are created by hand (team decision), never through sign-up, which only ever produces an Event Organiser or an Attendee. This is how everyone creates the same kind of test account. It covers the two roles that have no seeded account, `event_coordinator_lead` and `safety_officer`, and works for any role.
+
+1. Make sure the database has the role: `supabase db push` (the roles were added by `20261008122253_staff_roles_enum.sql`).
+2. Create the account: sign up at `/signup` with an `@connectsphere.dev` email, or add a user under Authentication in the Supabase dashboard. Either way it starts as an Event Organiser.
+3. In the Supabase SQL editor (or `psql "$DATABASE_URL"`), run this with the account's email. It adds the role to what the account holds and makes it the role the account starts a new login as:
+
+```sql
+begin;
+insert into public.user_roles (profile_id, role)
+select id, 'safety_officer' from public.profiles where email = 'you@connectsphere.dev';
+update public.profiles set role = 'safety_officer' where email = 'you@connectsphere.dev';
+commit;
+```
+
+Replace `safety_officer` with the role you want (`event_coordinator_lead`, or any other). Leave out the `update` to keep the account's current default and reach the new role from the nav's role switcher instead. Keep both statements in one transaction, because `profiles.role` must match a row in `user_roles`. To take a role away, see TC-ROLE-011 to TC-ROLE-013.
+
+4. Sign in. A `safety_officer` lands on `/dashboard/safety` and an `event_coordinator_lead` on `/dashboard/coordinator-lead`.
+
 ## 4. Backend
 
 The backend and frontend each run in their own terminal. Only creating and activating the virtualenv differs between operating systems; every other command is the same everywhere. Commands are on separate lines rather than chained with `&&`, because Windows PowerShell 5.1 (the version built into Windows) doesn't support `&&`.

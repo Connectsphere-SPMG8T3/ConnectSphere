@@ -1504,3 +1504,28 @@ Not a backlog story. An enabler on `chore/coverage-reporting`, branched from `ch
 - **Noticed, not fixed:**
   - `backend/app/db/session.py` is imported nowhere (0%). It should be deleted rather than tested.
   - The three backend repository modules (44–66%) can only be covered honestly by real-database tests (`CI.md` §4 item 3).
+
+### 4.33. CR-103 AC5 and 12 AC12 — Safety Officer and Event Coordinator Lead roles
+
+Work from the Product backlog sheet (Jira is no longer used), on `feature/cr-103-staff-roles`, 2026-10-08. One shared change for two items: 12 AC12 (Lead role, Joyce) and CR-103 AC5 (Safety Officer role, Jie Ching). Context in `docs/proposals/week7-customer-changes.md` (local, untracked). The roles exist and can be held, switched into and landed on. They give access to nothing else yet.
+
+1. **Migration (`20261008122253_staff_roles_enum.sql`).** Adds `event_coordinator_lead` and `safety_officer` to `public.user_role`, and nothing else, because Postgres won't let a new enum value be used in the transaction that adds it. It uses `add value if not exists`, so Joyce's branch can rebase onto it either way. [Team decision] Jie Ching owns the migration and Joyce rebases onto it, so there is one file and no enum conflict.
+2. **No existing access list changed.** The RLS policies and `require_roles` aliases that name `event_coordinator`, `venue_staff` and `tech_support` are untouched. Each story that needs a new role grants it access and proves the denial for every other role, so nothing opens by accident. `handle_new_user()` still accepts only `event_organiser` and `attendee`.
+3. **Backend.** No code change: roles are plain strings and every endpoint's role list already leaves the new roles out. Both roles were added to the per-role matrix in `test_active_role_access.py`, the sign-up refusal list, and a new `TestActiveRole` case for `POST /auth/active-role`.
+4. **Frontend.** `ROLE_DASHBOARD_ROUTES` and `ROLE_LABELS` gain `/dashboard/coordinator-lead` ("Event Coordinator Lead") and `/dashboard/safety` ("Safety Officer"). Two placeholder views with no figures (the D8 lesson), one guarded route each. The nav needed no change: its Dashboard link and role switcher read the store. The new roles were added to `activeRoleAccess.spec.js`, with a test for each dashboard, and to `auth.spec.js` and `Nav.spec.js`.
+5. **Accounts.** Staff accounts are made by hand (team decision). `docs/SETUP.md` gains "Grant a staff role", a two-statement transaction, because `profiles.role` must match a `user_roles` row.
+6. **Database check.** `supabase/verification/auth_security_checks.sql` now also checks that sign-ups claiming either new role become `attendee`, and that the enum has both values.
+
+- **Verified:**
+  - Red first: 6 frontend tests failed for the right reasons (no route, `/login` fallback path, no nav link). The 133 backend tests touching the new roles passed immediately, as expected, because the backend denies unknown roles by default. They are guards against future regressions, not red tests.
+  - Full suites after the change: backend 642 passed, frontend 584 passed, `npm run build` succeeds.
+  - The migration was applied to the live project (recorded as version `20261008122253`, so the file was renamed to match). The live enum lists both roles, and `auth_security_checks.sql` printed `ALL AUTH SECURITY CHECKS PASSED` against it, leaving no test rows behind. The security advisor shows only the existing leaked-password-protection warning.
+- **Not verified:**
+  - `verify_live.py --record` and `npm run test:e2e:record`.
+  - The two dashboards in a real browser, as a hand-granted account (TC-ROLE-020 to TC-ROLE-022).
+  - The live Auth admin API path for sign-up metadata (TC-ROLE-023 checks the trigger only).
+  - A raw HTTP request to the running API as a new role (the mocked matrix covers it).
+- **Follow-ups:**
+  - Joyce rebases onto the migration and drops any enum migration of her own.
+  - The CR-103 queue and CR-104 decision stories grant the Safety Officer its first real access.
+  - `supabase db push` on a fresh database would run this file normally, but the live project's history says it was applied by the MCP at `20261008122253`.

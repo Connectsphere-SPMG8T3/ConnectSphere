@@ -72,6 +72,18 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["tech_support"] },
   },
   {
+    path: "/dashboard/coordinator-lead",
+    name: "dashboard-coordinator-lead",
+    component: () => import("@/views/dashboards/CoordinatorLeadDashboard.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["event_coordinator_lead"] },
+  },
+  {
+    path: "/dashboard/safety",
+    name: "dashboard-safety",
+    component: () => import("@/views/dashboards/SafetyDashboard.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["safety_officer"] },
+  },
+  {
     path: "/dashboard/attendee",
     name: "dashboard-attendee",
     component: () => import("@/views/dashboards/AttendeeDashboard.vue"),

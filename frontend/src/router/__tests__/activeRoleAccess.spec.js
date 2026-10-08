@@ -14,7 +14,15 @@ vi.mock("@/services/api", async (importOriginal) => ({
 }));
 
 const STORAGE_KEY = "connectsphere.session";
-const ROLES = ["event_organiser", "event_coordinator", "venue_staff", "tech_support", "attendee"];
+const ROLES = [
+  "event_organiser",
+  "event_coordinator",
+  "event_coordinator_lead",
+  "venue_staff",
+  "tech_support",
+  "safety_officer",
+  "attendee",
+];
 // Routes that need no allowedRoles: the public sign-in and sign-up pages
 // (a signed-in session is sent to its dashboard) and the shared profile.
 const OPEN_TO_ANY_ROLE = ["login", "signup", "profile"];
@@ -85,5 +93,21 @@ describe("route access follows the active role (SCRUM-76)", () => {
     await router.push("/dashboard/coordinator");
 
     expect(router.currentRoute.value.path).toBe("/dashboard/organiser");
+  });
+
+  // 12 AC12 / CR-103 AC5: each new staff role has a dashboard only it can open.
+  it.each([
+    ["event_coordinator_lead", "/dashboard/coordinator-lead"],
+    ["safety_officer", "/dashboard/safety"],
+  ])("gives %s a dashboard at %s that only that role opens", async (role, path) => {
+    const routes = await protectedRoutes();
+    const dashboard = routes.find((route) => route.path === path);
+
+    expect(dashboard, `no route at ${path}`).toBeTruthy();
+    expect(dashboard.allowedRoles).toEqual([role]);
+
+    const router = await loadAppActingAs(role);
+    await router.push(path);
+    expect(router.currentRoute.value.path).toBe(path);
   });
 });

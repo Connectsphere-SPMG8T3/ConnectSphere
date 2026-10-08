@@ -19,7 +19,12 @@ values
     ('c0000000-0000-4000-8000-0000000000a2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
      'verify.organiser@connectsphere.dev', '{"full_name":"Verify Organiser","role":"event_organiser"}', now(), now()),
     ('c0000000-0000-4000-8000-0000000000a3', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-     'verify.norole@connectsphere.dev', '{"full_name":"Verify No Role"}', now(), now());
+     'verify.norole@connectsphere.dev', '{"full_name":"Verify No Role"}', now(), now()),
+    -- 12 AC12 / CR-103 AC5: the two later staff roles are no more claimable at sign-up.
+    ('c0000000-0000-4000-8000-0000000000a4', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+     'verify.lead@connectsphere.dev', '{"full_name":"Verify Lead","role":"event_coordinator_lead"}', now(), now()),
+    ('c0000000-0000-4000-8000-0000000000a5', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+     'verify.safety@connectsphere.dev', '{"full_name":"Verify Safety","role":"safety_officer"}', now(), now());
 
 do $$
 begin
@@ -31,6 +36,16 @@ begin
     end if;
     if (select role from public.profiles where id = 'c0000000-0000-4000-8000-0000000000a3') <> 'attendee' then
         raise exception 'D2 FAIL: sign-up without a role did not default to attendee';
+    end if;
+    if (select role from public.profiles where id = 'c0000000-0000-4000-8000-0000000000a4') <> 'attendee' then
+        raise exception 'D2 FAIL: sign-up requesting event_coordinator_lead was granted a staff role';
+    end if;
+    if (select role from public.profiles where id = 'c0000000-0000-4000-8000-0000000000a5') <> 'attendee' then
+        raise exception 'D2 FAIL: sign-up requesting safety_officer was granted a staff role';
+    end if;
+    if not exists (select 1 from pg_enum where enumtypid = 'public.user_role'::regtype and enumlabel = 'event_coordinator_lead')
+       or not exists (select 1 from pg_enum where enumtypid = 'public.user_role'::regtype and enumlabel = 'safety_officer') then
+        raise exception '12 AC12 / CR-103 AC5 FAIL: public.user_role is missing event_coordinator_lead or safety_officer';
     end if;
     if has_function_privilege('anon', 'public.handle_new_user()', 'execute')
        or has_function_privilege('authenticated', 'public.handle_new_user()', 'execute') then

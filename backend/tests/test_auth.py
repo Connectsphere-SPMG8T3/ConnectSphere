@@ -547,6 +547,27 @@ class TestActiveRole:
             {"session_id": TEST_SESSION_ID, "profile_id": TEST_USER_ID, "role": "venue_staff"}
         )
 
+    @pytest.mark.parametrize("role", ["event_coordinator_lead", "safety_officer"])
+    def test_switching_to_a_held_staff_role_added_for_12_ac12_and_cr_103_ac5_succeeds(
+        self, client, monkeypatch, role
+    ):
+        admin_client = _make_table_mock(PROFILE_ROW, user_roles=[{"role": "event_coordinator"}, {"role": role}])
+        anon_client = _make_anon_client_with_claims(_valid_claims())
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
+        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
+
+        response = client.post(
+            "/api/v1/auth/active-role",
+            json={"role": role},
+            headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"},
+        )
+
+        assert response.status_code == 200
+        admin_client.table("session_active_roles").upsert.assert_called_once_with(
+            {"session_id": TEST_SESSION_ID, "profile_id": TEST_USER_ID, "role": role}
+        )
+
     def test_switching_to_a_role_not_held_is_rejected(self, client, monkeypatch):
         admin_client = _make_table_mock(PROFILE_ROW, user_roles=[{"role": "event_coordinator"}])
         anon_client = _make_anon_client_with_claims(_valid_claims())
@@ -749,7 +770,7 @@ class TestSignup:
     @pytest.mark.parametrize(
         "role",
         # Staff roles are system defaults (ACC-R3); attendee sign-up is SCRUM-83.
-        ["event_coordinator", "venue_staff", "tech_support", "attendee"],
+        ["event_coordinator", "event_coordinator_lead", "venue_staff", "tech_support", "safety_officer", "attendee"],
     )
     def test_signup_for_any_role_but_event_organiser_is_rejected_before_reaching_supabase(
         self, client, monkeypatch, role
