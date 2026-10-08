@@ -8,6 +8,7 @@ import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import EventDiscussion from "@/components/events/EventDiscussion.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
 import { hasThread } from "@/features/events/comments";
+import { BOOKING_STATUS_LABELS } from "@/features/venues/bookingRequest";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { useEventReviewStore } from "@/features/events/eventReviewStore";
 import { useEventsStore } from "@/stores/events";
@@ -81,6 +82,13 @@ onMounted(async () => {
         </div>
       </BauhausCard>
 
+      <p v-if="event.status === 'safety_review'" class="mb-8 font-medium">Events being checked by the Safety Officer.</p>
+      <BauhausCard v-if="event.status === 'confirmed'" background="white" accent="none" class="mb-8">
+        <h2 class="text-2xl font-black uppercase">Arrangements</h2>
+        <p class="mt-4">Venue: {{ event.venue_booking?.venue_name ?? 'Not provided' }}</p>
+        <p>Booking: {{ BOOKING_STATUS_LABELS[event.venue_booking?.status] ?? 'Not provided' }}</p>
+        <p>Technical status: {{ ({ready: 'Ready', not_required: 'Not required', pending: 'Pending', issue: 'Issue'})[event.technical_readiness] ?? 'Not provided' }}</p>
+      </BauhausCard>
       <AmendmentBanner v-if="event.status === 'returned' && event.amendment" :amendment="event.amendment" class="mb-8">
         <BauhausButton variant="primary" @click="router.push({ name: 'event-new', query: { id: event.id } })">Amend and resubmit</BauhausButton>
       </AmendmentBanner>

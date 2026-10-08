@@ -2,13 +2,14 @@ import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { eventsApi } from "@/services/api";
+import { toastState } from "@/composables/useToast";
+import { ApiError, eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), listComments: vi.fn(), addComment: vi.fn() },
+  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), listComments: vi.fn(), addComment: vi.fn() },
 }));
 
 function eventResponse(overrides = {}) {
@@ -61,6 +62,35 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     vi.clearAllMocks();
   });
 
+  it("SCRUM-82 disables send and names missing arrangements", async () => {
+    const el = await mountView(eventResponse({status: "planning", safety_readiness: {ready: false, missing: ["Technical status is not Ready."]}, registration_enabled: true, registration_capacity: 80}));
+    const send = button("Send for safety check"); expect(send.disabled).toBe(true);
+    expect(document.getElementById(send.getAttribute("aria-describedby")).textContent).toContain("Technical status is not Ready.");
+    expect(el.textContent).toContain("For information"); expect(el.textContent).toContain("80");
+  });
+  it("SCRUM-82 sends after confirmation and removes coordinator actions", async () => {
+    const el = await mountView(eventResponse({status: "planning", safety_readiness: {ready: true, missing: []}}));
+    eventsApi.sendForSafetyCheck.mockResolvedValue(eventResponse({status: "safety_review"}));
+    button("Send for safety check").click(); await nextTick();
+    expect(document.body.textContent).toContain("Send for safety check?");
+    button("Send").click(); await vi.waitFor(() => expect(el.textContent).toContain("Safety review"));
+    expect(button("Send for safety check")).toBeNull(); expect(eventsApi.sendForSafetyCheck).toHaveBeenCalledTimes(1);
+    expect(toastState.value.message).toBe("Sent for safety check");
+  });
+  it("SCRUM-82 refreshes missing arrangements after a stale-page refusal", async () => {
+    const ready = eventResponse({status: "planning", safety_readiness: {ready: true, missing: []}});
+    const el = await mountView(ready);
+    eventsApi.sendForSafetyCheck.mockRejectedValue(new ApiError("Not ready for safety check: Technical status is not Ready.", 409));
+    eventsApi.get.mockResolvedValue({...ready, safety_readiness: {ready: false, missing: ["Technical status is not Ready."]}});
+    button("Send for safety check").click(); await nextTick(); button("Send").click();
+    await vi.waitFor(() => expect(button("Send for safety check").disabled).toBe(true));
+    expect(el.textContent).toContain("Not ready for safety check: Technical status is not Ready.");
+    expect(eventsApi.get).toHaveBeenCalledTimes(2);
+  });
+  it("SCRUM-82 has no send or information block during safety review", async () => {
+    const el = await mountView(eventResponse({status: "safety_review"}));
+    expect(button("Send for safety check")).toBeNull(); expect(el.textContent).not.toContain("For information");
+  });
   it("shows the event's discussion thread (SCRUM-61)", async () => {
     const el = await mountView(eventResponse());
 

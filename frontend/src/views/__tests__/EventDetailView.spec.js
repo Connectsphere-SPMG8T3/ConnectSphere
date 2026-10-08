@@ -59,6 +59,15 @@ describe("EventDetailView status", () => {
     mountedApps.splice(0).forEach((app) => app.unmount());
   });
 
+  it("SCRUM-82 shows confirmed arrangements", async () => {
+    const el = await mountDetail(eventResponse({status: "confirmed", venue_booking: {venue_name: "Main Hall", status: "approved"}, technical_readiness: "not_required"}));
+    expect(el.textContent).toContain("Arrangements"); expect(el.textContent).toContain("Main Hall"); expect(el.textContent).toContain("Not required");
+  });
+  it.each(["planning", "safety_review"])("SCRUM-82 hides confirmed arrangements in %s", async (status) => {
+    const el = await mountDetail(eventResponse({status}));
+    expect(el.textContent).not.toContain("Arrangements");
+    if (status === "safety_review") expect(el.textContent).toContain("Events being checked by the Safety Officer.");
+  });
   it("shows the discussion once the request is submitted (SCRUM-61)", async () => {
     const el = await mountDetail(eventResponse({ status: "under_review" }));
 

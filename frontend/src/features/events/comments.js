@@ -4,7 +4,7 @@
 // Mirrors the API's COMMENT_MAX_LENGTH ([Assumption], REQUIREMENTS §9).
 export const COMMENT_MAX_LENGTH = 1000;
 
-export const COMMENTABLE_STATUSES = ["submitted", "under_review", "returned", "planning", "confirmed"];
+export const COMMENTABLE_STATUSES = ["submitted", "under_review", "returned", "planning", "safety_review", "confirmed"];
 
 export function canPost(status) {
   return COMMENTABLE_STATUSES.includes(status);

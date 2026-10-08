@@ -124,11 +124,12 @@ describe("organiser dashboard grouping and actions", () => {
     expect(groups.map((group) => group.status)).toEqual([
       "under_review",
       "planning",
+      "safety_review",
       "confirmed",
       "completed",
     ]);
     expect(groups[0].events.map((item) => item.id)).toEqual(["submitted", "review"]);
-    expect(groups[3].events.map((item) => item.id)).toEqual(["completed"]);
+    expect(groups[4].events.map((item) => item.id)).toEqual(["completed"]);
   });
 
   it("takes single-status group labels from STATUS_LABELS so a rename is one change (LC-R3)", () => {
@@ -161,7 +162,7 @@ describe("organiser dashboard grouping and actions", () => {
 
     expect(summariseOrganiserEvents(events)).toEqual({
       needsAction: { drafts: 1, returned: 1, rejected: 1, total: 3 },
-      myEvents: { underReview: 2, planning: 1, confirmed: 1, completed: 1, total: 5 },
+      myEvents: { underReview: 2, planning: 1, safetyReview: 0, confirmed: 1, completed: 1, total: 5 },
     });
   });
 
