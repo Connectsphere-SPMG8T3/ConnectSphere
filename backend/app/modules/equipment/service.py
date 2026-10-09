@@ -281,3 +281,15 @@ def pending_queue() -> PendingEquipmentLinesResponse:
     far_future = datetime.max.replace(tzinfo=timezone.utc)
     lines.sort(key=lambda line: (line.event_starts_at or far_future, line.created_at))
     return PendingEquipmentLinesResponse(lines=lines)
+
+
+def event_request_ids(event_id: str) -> set[str]:
+    """Every equipment line id, any status, for officer validation."""
+    return {row["id"] for row in repository.list_event_requests(event_id)}
+
+
+def event_lines(event_id: str) -> list[dict]:
+    """Every equipment line with its status, for the safety review."""
+    return [dict(id=row["id"], equipment_name=(_one(row.get("equipment")) or {}).get("name", ""),
+                 quantity=row["quantity"], status=row["status"])
+            for row in repository.list_event_requests(event_id)]

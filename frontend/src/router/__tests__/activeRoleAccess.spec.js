@@ -111,3 +111,16 @@ describe("route access follows the active role (SCRUM-76)", () => {
     expect(router.currentRoute.value.path).toBe(path);
   });
 });
+
+// CR-103: holding safety_officer never grants access while acting as another role.
+describe('Safety review route', () => {
+  beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); authApi.me.mockRejectedValue(new TypeError('Offline')); });
+  it.each(ROLES)('uses only the %s active role', async (role) => {
+    const router = await loadAppActingAs(role, ROLES);
+    const record = router.getRoutes().find((route) => route.name === 'safety-review');
+    expect(record, 'Safety review route is registered').toBeTruthy();
+    expect(record.meta).toEqual({ requiresAuth: true, allowedRoles: ['safety_officer'] });
+    await router.push('/safety/events/e1');
+    expect(router.currentRoute.value.name === 'safety-review').toBe(role === 'safety_officer');
+  });
+});

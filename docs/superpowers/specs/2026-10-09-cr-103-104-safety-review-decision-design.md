@@ -1,6 +1,6 @@
 # CR-103 (AC1–4, AC6) and CR-104 — Safety review queue and the operational safety decision: design
 
-_Date: 2026-10-09 · Branch: `feature/cr-104-record-safety-decision` · Epic: Event status management · Sprint 3 · Priority 2 · 2 SP each · Assignee: Jie Ching_
+_Date: 2026-10-09 · Branch: `feature/cr-103-cr-104-safety-review-decision` · Epic: Event status management · Sprint 3 · Priority 2 · 2 SP each · Assignee: Jie Ching_
 
 ## 1. Stories and acceptance criteria (Product backlog sheet, rows 70 and 71, read 9 Oct)
 

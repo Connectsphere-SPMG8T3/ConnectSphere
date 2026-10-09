@@ -1,10 +1,18 @@
 from collections.abc import Iterable
 from datetime import datetime
+from functools import wraps
 from zoneinfo import ZoneInfo
+
+from httpx import HTTPError
+from postgrest.exceptions import APIError
 
 from fastapi import HTTPException, status
 
-from app.core.exceptions import NotAssignedCoordinatorError
+from app.core.exceptions import (
+    EventServiceUnavailableError,
+    NotAssignedCoordinatorError,
+    UnknownEventArrangementError,
+)
 # Module imports, not names: `venues.service` imports this module too, and a
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.equipment import service as equipment_service
@@ -12,6 +20,15 @@ from app.modules.events import lifecycle, repository
 from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
 from app.modules.events.schemas import (
+    SafetyDecision,
+    SafetyDecisionSummary,
+    SafetyQueueItem,
+    SafetyQueueResponse,
+    SafetyReviewResponse,
+    SafetyApproveRequest,
+    SafetyChangesRequest,
+    SafetyRejectRequest,
+    ReturnReason,
     COMMENTABLE_STATUSES,
     BookingReadiness,
     SafetyReadiness,
@@ -35,6 +52,17 @@ from app.modules.events.schemas import (
     Readiness,
     ReadinessState,
 )
+
+
+def _safety_service_available(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except (HTTPError, APIError) as exc:
+            raise EventServiceUnavailableError() from exc
+    return wrapped
+
 
 DEFAULT_EVENT_TIMEZONE = "Asia/Singapore"
 
@@ -310,6 +338,7 @@ def _visible_event(event_id: str, user_id: str, role: str) -> dict:
     return _owned_event(event_id, user_id)
 
 
+@_safety_service_available
 def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
     row = _visible_event(event_id, user_id, role)
     response = _with_amendment(row)
@@ -319,6 +348,18 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
         booking = venues_service.active_booking_for_event(event_id)
         if booking:
             response.venue_booking = EventVenueBooking(**booking)
+    eligible = ((role == "event_coordinator" and row["status"] == "planning")
+                or (role == "event_organiser" and row["status"] in ("planning", "safety_review", "confirmed")))
+    if eligible:
+        decisions = repository.list_safety_decisions(event_id)
+        if decisions:
+            latest = SafetyDecision(**decisions[0])
+            if role == "event_coordinator":
+                response.latest_safety_decision = latest
+            else:
+                response.latest_safety_decision = SafetyDecisionSummary(
+                    decision=latest.decision, reason_label=_SAFETY_LABELS[latest.decision], decided_at=latest.decided_at,
+                )
     return response
 
 
@@ -495,3 +536,139 @@ def add_comment(event_id: str, user_id: str, role: str, full_name: str, body: st
     if not row:
         raise EventConflictError("Comments are closed for this event. Reload.")
     return _to_comment(event, {**row, "author": {"id": user_id, "full_name": full_name}})
+
+
+_RETURN_REASONS = {
+    "arrangement_flagged": "An arrangement was flagged for re-review.",
+    "booking_cancelled": "A venue booking was cancelled.",
+    "technical_not_ready": "Technical status is no longer Ready.",
+    "approved_details_changed": "Approved event details changed.",
+}
+
+
+@_safety_service_available
+def return_to_planning(event_id: str, *, reason_code: ReturnReason, message: str | None = None,
+                       actor_id: str | None = None) -> EventResponse | None:
+    """Return arrangements to planning, or None if no longer applicable/stale.
+
+    `message` is caller audit context only: never stored or sent. `actor_id` is
+    accepted for interface stability; the RPC records a system action instead.
+    No callers are wired until their owning stories land (CR-104 AC6/AC10).
+    """
+    row = repository.get_event(event_id)
+    if not row or row["status"] not in ("safety_review", "confirmed"):
+        return None
+    action = "safety_withdraw" if row["status"] == "safety_review" else "approved_change"
+    lifecycle.target(action, row["status"])
+    reason = ReturnReason(reason_code)
+    fixed = f'"{row["name"]}" returned to planning. {_RETURN_REASONS[reason]}'
+    updated = repository.return_to_planning(
+        event_id, row["version"], from_status=lifecycle.allowed_from(action)[0], reason_code=reason.value,
+        coordinator_message=fixed, officer_message=fixed if action == "safety_withdraw" else None,
+    )
+    return _to_response(updated) if updated else None
+
+
+_SAFETY_LABELS = {
+    "approved": "Approved by the Safety Officer.",
+    "changes_requested": "The Safety Officer asked for changes to the arrangements.",
+    "arrangement_rejected": "The Safety Officer did not accept an arrangement; it must be replaced.",
+    "withdrawn": "An arrangement changed, so the event went back to planning.",
+}
+
+
+def _officer_event(event_id: str) -> dict:
+    row = repository.get_event(event_id)
+    if not row or row["status"] == "draft":
+        raise EventNotFoundError()
+    return row
+
+
+def _check_approval_readiness(row: dict) -> None:
+    readiness = _safety_readiness_for(row)
+    if not readiness.ready:
+        raise EventConflictError("Not ready for approval: " + " ".join(readiness.missing))
+
+
+@_safety_service_available
+def safety_approve(event_id: str, officer_id: str, body: SafetyApproveRequest | None = None) -> EventResponse:
+    row = _officer_event(event_id)
+    lifecycle.target("safety_approve", row["status"])
+    _check_approval_readiness(row)
+    message = f'"{row["name"]}": {_SAFETY_LABELS["approved"]}'
+    updated = repository.safety_approve(
+        event_id, officer_id, row["version"], comment=body.comment if body else None,
+        organiser_message=message, staff_message=message,
+    )
+    if not updated:
+        _check_approval_readiness(repository.get_event(event_id) or row)
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return _to_response(updated)
+
+
+def _safety_return(event_id: str, officer_id: str, body, action: str, decision: str, comment: str) -> EventResponse:
+    row = _officer_event(event_id)
+    lifecycle.target(action, row["status"])
+    booking_ids = [str(id) for id in body.booking_ids]
+    equipment_ids = [str(id) for id in body.equipment_request_ids]
+    if (set(booking_ids) - venues_service.event_booking_ids(event_id)
+            or set(equipment_ids) - equipment_service.event_request_ids(event_id)):
+        raise UnknownEventArrangementError()
+    updated = repository.safety_return(
+        event_id, officer_id, row["version"], decision=decision, comment=comment,
+        booking_ids=booking_ids, equipment_request_ids=equipment_ids,
+        coordinator_message=f'"{row["name"]}": {_SAFETY_LABELS[decision]}',
+    )
+    if not updated:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return _to_response(updated)
+
+
+@_safety_service_available
+def safety_request_changes(event_id: str, officer_id: str, body: SafetyChangesRequest) -> EventResponse:
+    return _safety_return(event_id, officer_id, body, "safety_request_changes", "changes_requested", body.comment)
+
+
+@_safety_service_available
+def safety_reject(event_id: str, officer_id: str, body: SafetyRejectRequest) -> EventResponse:
+    return _safety_return(event_id, officer_id, body, "safety_reject", "arrangement_rejected", body.reason)
+
+
+@_safety_service_available
+def safety_queue() -> SafetyQueueResponse:
+    items = [SafetyQueueItem(**row) for row in repository.list_safety_queue()]
+    items.sort(key=lambda item: (item.entered_review_at, item.event_id))
+    return SafetyQueueResponse(items=items)
+
+
+@_safety_service_available
+def safety_decisions(event_id: str, user_id: str, role: str) -> list[SafetyDecision]:
+    if role == "event_coordinator":
+        _assigned_event(event_id, user_id)
+    elif role == "safety_officer":
+        _officer_event(event_id)
+    else:
+        raise NotAssignedCoordinatorError()
+    return [SafetyDecision(**row) for row in repository.list_safety_decisions(event_id)]
+
+
+@_safety_service_available
+def safety_review(event_id: str) -> SafetyReviewResponse:
+    row = _officer_event(event_id)
+    if row["status"] != "safety_review":
+        raise EventNotFoundError()
+    attendance = row.get("expected_attendance")
+    venues = []
+    for booking in venues_service.event_bookings_with_venues(event_id):
+        capacity = booking.get("capacity")
+        venues.append({**booking, "attendance_to_capacity": attendance / capacity if attendance is not None and capacity else None})
+    return SafetyReviewResponse(
+        event=dict(id=row["id"], name=row["name"], organiser_name=(row.get("organiser") or {}).get("full_name"),
+                   coordinator_name=(row.get("coordinator") or {}).get("full_name"),
+                   starts_at=row.get("starts_at"), ends_at=row.get("ends_at"), expected_attendance=attendance,
+                   accessibility_needs=row.get("accessibility_needs"),
+                   registration=dict(enabled=row["registration_enabled"], capacity=row.get("registration_capacity"),
+                                     opens_at=row.get("registration_opens_at"), closes_at=row.get("registration_closes_at"))),
+        venues=venues, equipment_lines=equipment_service.event_lines(event_id),
+        decisions=[SafetyDecision(**decision) for decision in repository.list_safety_decisions(event_id)],
+    )

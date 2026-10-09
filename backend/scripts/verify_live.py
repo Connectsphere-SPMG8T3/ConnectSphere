@@ -87,6 +87,7 @@ DB_SCRIPTS = [
     ("event_review_checks.sql", "SCRUM-34/52 grants"),
     ("event_history_checks.sql", "TC-REV-015, TC-REV-016"),
     ("send_for_safety_check.sql", "TC-SAFE-010–015"),
+    ("safety_decision_checks.sql", "TC-SDEC-003, 009–011, 015–017 (database half); CR-104 helper paths"),
     ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
@@ -950,6 +951,36 @@ def _(ctx: Context) -> None:
     ctx.login("event_organiser", email=email, password=THROWAWAY_PASSWORD)
 
 
+# CR-103/104: denial probes never target a seeded/shared event. Even if a
+# role guard regresses, the missing UUID cannot produce a decision or transition.
+@check("TC-SDEC-001", "Non-officer active roles cannot read the safety queue or review, or decide")
+def _(ctx: Context) -> None:
+    missing_event = "00000000-0000-4000-8000-000000000000"
+    for role in ACCOUNTS:
+        headers = ctx.shared(role).headers
+        for path in ("/events/safety-queue", f"/events/{missing_event}/safety-review"):
+            expect_status(ctx.client.get(f"{ctx.api}{path}", headers=headers), 403)
+        for action, body in (
+            ("safety-approve", {}),
+            ("safety-request-changes", {"comment": "Denial check"}),
+            ("safety-reject", {"reason": "Denial check"}),
+        ):
+            expect_status(ctx.client.post(
+                f"{ctx.api}/events/{missing_event}/{action}", headers=headers, json=body,
+            ), 403)
+
+
+@check("TC-SDEC-002", "External and unrelated staff roles cannot read safety decision comments")
+def _(ctx: Context) -> None:
+    # Assigned coordinators are allowed; their relationship denial needs a
+    # known unassigned event and is left to TC-SDEC-003's manual setup.
+    for role in ("event_organiser", "venue_staff", "tech_support", "attendee"):
+        expect_status(ctx.client.get(
+            f"{ctx.api}/events/00000000-0000-4000-8000-000000000000/safety-decisions",
+            headers=ctx.shared(role).headers,
+        ), 403)
+
+
 # --- Helpers ---------------------------------------------------------------
 
 
@@ -1041,8 +1072,33 @@ def run_db_checks(keyword: str | None) -> list[Result]:
     for script, cases in DB_SCRIPTS:
         if keyword and keyword.lower() not in f"{script} {cases}".lower():
             continue
-        completed = _supabase_query("-f", str(VERIFICATION_DIR / script))
         title = f"{cases}: supabase/verification/{script}"
+        if script == "safety_decision_checks.sql":
+            # Read-only and scoped to this migration's exact table/RPC contract.
+            # Connectivity/CLI errors remain failures, not migration blockers.
+            try:
+                rows = db_query(
+                    "select to_regclass('public.event_safety_decisions') is not null "
+                    "and to_regprocedure('public.safety_approve_event(uuid,uuid,integer,text,text,text)') is not null "
+                    "and to_regprocedure('public.safety_return_event(uuid,uuid,integer,text,text,uuid[],uuid[],text)') is not null "
+                    "and to_regprocedure('public.return_event_to_planning(uuid,integer,text,text,text,text)') is not null "
+                    "as migration_present"
+                )
+                expect(len(rows) == 1 and isinstance(rows[0].get("migration_present"), bool),
+                       "safety migration preflight returned an unexpected result")
+            except Exception as error:
+                results.append(Result(script, title, "fail", str(error)))
+                print_result(results[-1])
+                continue
+            if not rows[0]["migration_present"]:
+                results.append(Result(
+                    script, title, "blocked",
+                    "Safety-decision migration table/RPC interfaces are missing; "
+                    "SQL verification not run. Apply the migration through the authorised workflow first.",
+                ))
+                print_result(results[-1])
+                continue
+        completed = _supabase_query("-f", str(VERIFICATION_DIR / script))
         if completed.returncode != 0:
             results.append(Result(script, title, "fail", _cli_error(completed.stderr)))
         else:

@@ -98,6 +98,24 @@ export const venueBookingsApi = {
 };
 
 export const eventsApi = {
+  safetyQueue(token) {
+    return request("/events/safety-queue", { token });
+  },
+  safetyReview(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/safety-review`, { token });
+  },
+  safetyDecisions(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/safety-decisions`, { token });
+  },
+  safetyApprove(eventId, body, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/safety-approve`, { method: "POST", body, token });
+  },
+  safetyRequestChanges(eventId, body, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/safety-request-changes`, { method: "POST", body, token });
+  },
+  safetyReject(eventId, body, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/safety-reject`, { method: "POST", body, token });
+  },
   coordinatorDashboard(token) {
     return request("/events/dashboard/coordinator", { token });
   },

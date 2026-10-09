@@ -67,6 +67,12 @@ def request_as(monkeypatch, raw_client):
     session is acting as `active_role` (a `session_active_roles` row when they differ).
     """
 
+    # Handler reads must stay offline too, even when an allowed role reaches
+    # a new route. Guard assertions do not need database records.
+    for module in ("events", "venues", "equipment"):
+        monkeypatch.setattr(f"app.modules.{module}.repository.get_supabase_admin_client",
+                            lambda: make_table_mock(None))
+
     def _request(method: str, path: str, *, default_role: str, active_role: str) -> int:
         profile = {
             "id": USER_ID,

@@ -129,3 +129,15 @@ class EquipmentNotInCatalogueError(HTTPException):
                 for loc in locs
             ],
         )
+
+
+class UnknownEventArrangementError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                         detail="Unknown booking or equipment line for this event")
+
+
+class EventServiceUnavailableError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                         detail="The event service is temporarily unavailable. Please try again.")

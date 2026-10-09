@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator
@@ -154,6 +155,75 @@ class SafetyReadiness(BaseModel):
     missing: list[str]
 
 
+class SafetyDecisionKind(str, Enum):
+    approved = "approved"
+    changes_requested = "changes_requested"
+    arrangement_rejected = "arrangement_rejected"
+    withdrawn = "withdrawn"
+
+
+class ReturnReason(str, Enum):
+    arrangement_flagged = "arrangement_flagged"
+    booking_cancelled = "booking_cancelled"
+    technical_not_ready = "technical_not_ready"
+    approved_details_changed = "approved_details_changed"
+
+
+class SafetyApproveRequest(BaseModel):
+    comment: str | None = Field(default=None, min_length=1, max_length=1000)
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def strip_comment(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class SafetyArrangementIds(BaseModel):
+    booking_ids: list[UUID] = []
+    equipment_request_ids: list[UUID] = []
+
+    @field_validator("booking_ids", "equipment_request_ids")
+    @classmethod
+    def unique_ids(cls, value):
+        return list(dict.fromkeys(value))
+
+
+class SafetyChangesRequest(SafetyArrangementIds):
+    comment: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def strip_comment(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class SafetyRejectRequest(SafetyArrangementIds):
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def strip_reason(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class SafetyDecision(BaseModel):
+    id: UUID
+    decision: SafetyDecisionKind
+    comment: str | None = None
+    reason_code: ReturnReason | None = None
+    affected_booking_ids: list[UUID] = []
+    affected_equipment_request_ids: list[UUID] = []
+    rejected_venue_ids: list[UUID] = []
+    decided_by_name: str | None = None
+    decided_at: datetime
+
+
+class SafetyDecisionSummary(BaseModel):
+    decision: SafetyDecisionKind
+    reason_label: str
+    decided_at: datetime
+
+
 class EventResponse(EventFields):
     id: str
     organiser_id: str
@@ -175,6 +245,7 @@ class EventResponse(EventFields):
     # organiser doesn't get it: booking state is internal planning detail (AUTH-R2).
     venue_booking: EventVenueBooking | None = None
     safety_readiness: SafetyReadiness | None = None
+    latest_safety_decision: SafetyDecision | SafetyDecisionSummary | None = None
 
 
 class EventListResponse(BaseModel):
@@ -343,3 +414,63 @@ class EventComment(BaseModel):
 
 class EventCommentsResponse(BaseModel):
     comments: list[EventComment]
+
+
+class SafetyQueueItem(BaseModel):
+    event_id: str
+    name: str
+    organiser_name: str | None = None
+    starts_at: datetime | None = None
+    expected_attendance: int | None = None
+    entered_review_at: datetime
+
+
+class SafetyQueueResponse(BaseModel):
+    items: list[SafetyQueueItem]
+
+
+class SafetyRegistration(BaseModel):
+    enabled: bool
+    capacity: int | None = None
+    opens_at: datetime | None = None
+    closes_at: datetime | None = None
+
+
+class SafetyReviewEvent(BaseModel):
+    id: str
+    name: str
+    organiser_name: str | None = None
+    coordinator_name: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    expected_attendance: int | None = None
+    accessibility_needs: str | None = None
+    registration: SafetyRegistration
+
+
+class SafetyReviewVenue(BaseModel):
+    booking_id: str
+    venue_id: str
+    venue_name: str | None = None
+    booking_status: str
+    capacity: int | None = None
+    layouts: list[str] = []
+    accessibility_features: list[str] = []
+    attendance_to_capacity: float | None = None
+    emergency_access: None = None
+    restrictions: None = None
+
+
+class SafetyEquipmentLine(BaseModel):
+    id: str
+    equipment_name: str
+    quantity: int
+    status: str
+
+
+class SafetyReviewResponse(BaseModel):
+    event: SafetyReviewEvent
+    venues: list[SafetyReviewVenue]
+    equipment_lines: list[SafetyEquipmentLine]
+    exit_confirmation: None = None
+    decisions: list[SafetyDecision]

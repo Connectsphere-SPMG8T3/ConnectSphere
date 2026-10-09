@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Branch is `feature/cr-104-record-safety-decision`. **Never commit to `main`. Do not push. Do not open a PR. Do not edit the Google Sheets.**
+- Branch is `feature/cr-103-cr-104-safety-review-decision`. **Never commit to `main`. Do not push. Do not open a PR. Do not edit the Google Sheets.**
 - **Never run `supabase db push` or `apply_migration`.** Write the migration, run `supabase db push --dry-run` if useful, then stop and tell the developer the migration is ready to push (Task 1 handoff). Use `env PATH=/home/linuxbrew/.linuxbrew/bin:/usr/bin:/bin supabase ...` (the CLI is not on the default PATH).
 - Authorise by the session's **active role** only: `require_roles(["safety_officer"])` in the API, `private.current_user_role()` in RLS, the store's active `role` in the frontend. Never `user_roles`, `CurrentUser.roles` or `profiles.role`. Every new endpoint gets a raw-request denial test for a multi-role account acting as another role (SCRUM-76).
 - The officer's comment is never written to `event_status_history.reason`, to `notifications.message`, or to any response the organiser can read.

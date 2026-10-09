@@ -127,3 +127,14 @@ def authenticate_as(monkeypatch):
         return profile
 
     return _authenticate
+
+
+@pytest.fixture(autouse=True)
+def safety_decisions_offline(monkeypatch, request):
+    """Older event-read fixtures predate CR-104; default to no decision rows.
+
+    Safety tests override this with their own decision data. No old test may
+    reach the real decision table through an eligible event read.
+    """
+    if request.node.path.name != "test_safety_contracts.py":
+        monkeypatch.setattr("app.modules.events.repository.list_safety_decisions", lambda event_id: [])

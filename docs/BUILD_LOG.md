@@ -1621,3 +1621,96 @@ Fixed on `fix/organiser-event-page-defects`, branched from `main` at `1f6e3cb`, 
   - `runs/2026-10-08-2353-e2e-1f6e3cb.md`: **49/49 passed**, including the new TC-EVENT-043 and TC-EVENT-044.
   - The run logs name `1f6e3cb` because they ran on the uncommitted fix on top of it.
 - **Not verified live:** the three registration labels, because no seeded or owned event has registration enabled and the checks don't change shared data. They share the timezone line's class change and are covered by Vitest.
+
+### 4.36. CR-104 — Record the operational safety decision
+
+| Field | Value |
+|---|---|
+| ID | `CR-104` |
+| Status | Implemented on branch; live verification and acceptance incomplete |
+| Epic / sprint | Event status management / 3 |
+| Estimate / priority | 2 SP / Priority 2 |
+| Branch | `feature/cr-103-cr-104-safety-review-decision` |
+| Source | Product backlog row 71, read 9 Oct; local story text in `docs/proposals/week7-customer-changes.md`, AC snapshot in approved design §1 |
+
+**User story:**
+
+> As a Safety Officer, I want to approve, reject or request changes to an event's safety arrangements with comments, so that only safe events proceed to preparation.
+
+**Acceptance criteria (9 Oct sheet snapshot):**
+
+- **AC1** Approve: Confirmed; organiser, coordinator, venue staff and technical support are notified.
+- **AC2** Request changes (comment required): back to Planning, the affected venue or equipment arrangements are marked for re-review, the coordinator is notified.
+- **AC3** Reject the safety arrangement (reason required): back to Planning, the rejected arrangements must be replaced (for example a different venue), not just adjusted. The coordinator is notified. The event itself is not rejected. **To confirm at the project consult.**
+- **AC4** After changes or a rejection, the coordinator sends the event for safety check again (82).
+- **AC5** An event cannot be Confirmed without Safety Officer approval, including by a direct API call.
+- **AC6** A change to attendance, venue or equipment after approval (37) returns the event to Planning.
+- **AC7** Every decision, comment, who made it and when are recorded in the event history.
+- **AC8** Only users acting as Safety Officer can decide. Others get 403.
+- **AC9** The Safety Officer always responds: no timeout or escalation.
+- **AC10** If an arrangement stops being ready while the event is in Safety review (booking flagged by CR-94/95, cancelled by 85, technical status leaves Ready), the event returns to Planning, leaves the queue, and the coordinator and Safety Officers are notified.
+
+#### Implementation
+
+The active-role-guarded API supports approve, request changes and reject while an event is in Safety review. Approval rechecks readiness; changes/rejection return the event to Planning rather than rejecting the event. The SQL migration defines private decision history and three atomic transition/notification wrappers, executable only by the service role. Officer text stays out of public history and notifications; assigned coordinators read full decisions and organisers receive fixed reason summaries.
+
+The review page supplies the decision panel, affected-arrangement selection and validation; `SafetyDecisionDetails` is reused for coordinator context. Request-changes marks selected approved bookings and reserved equipment for re-review, leaving pending equipment unchanged. Rejection releases selected bookings, rejects selected equipment and records rejected venue IDs; same-venue rebooking is not blocked, and the replacement interpretation awaits the project consult.
+
+`events.service.return_to_planning(event_id, *, reason_code, message=None, actor_id=None)` supplies the shared Safety review/Confirmed return path. **AC6/AC10 callers are deferred:** CR-94/95, 85, 24 and 37 must wire it after changing their own records; these criteria are not complete end to end. The technical-readiness read/approval race remains until story 24.
+
+Contracts and reuse points are documented in IMPLEMENTATION_MAP; [safety test cases](test-cases/safety-decisions.md) trace the acceptance criteria to checks. The live runner adds nonmutating role-denial checks and a table/RPC-presence preflight: missing interfaces are Blocked, while CLI and SQL assertion errors are Fail.
+
+#### Verification and remaining work
+
+**Deployment and live verification (9 Oct 2026):** the migration was not applied. `supabase db push --dry-run` is blocked because remote versions `20261008100000` and `20261009100000` are missing locally. Do not push or repair migration history in this work; integrate the migration owners' files and reconcile the inventory first. SQL parse/review was clean, but the safety-decision SQL assertions, live RLS, transactional success paths and post-application advisors remain unverified. No live Safety Officer account is available.
+
+The [recorded API/database run](test-cases/runs/2026-10-09-1433-api-db-ab6a851.md) has **67 passed, 3 failed, 1 blocked**. TC-SDEC-001/002 passed. TC-SAFE-002/003 and TC-BOOK-001 failed because eligible Planning event reads depend on the missing decision table; the safety-decision SQL preflight correctly recorded Blocked without executing its script.
+
+**Offline evidence:** `/tmp/safety-backend-final-suite.txt` records **978 passed, 94.48% coverage**; the changed backend executable lines are reported as 100% covered. The fresh full frontend run `npm run test:coverage -- --maxWorkers=2` (`/tmp/safety-recovery-coverage-2workers.log`) records **673 passed, 94.58% coverage**; all **292/292 changed executable lines** are covered. The latest `npm run build` passed (`/tmp/safety-recovery-build.log`). Default parallelism had intermittent existing view-test timeouts in OrganiserDashboard and CoordinatorEventView; the complete two-worker run passed without unrelated code changes. Line coverage is complete for changed code, but branch coverage is not 100%. These results do not establish live database behaviour.
+
+**Recorded browser evidence:** the corrected-CORS run ([run log](test-cases/runs/2026-10-09-1443-e2e-ab6a851.md)) finished with **52 passed, 3 failed**. TC-SDEC-004 passed for all five seeded roles. TC-BOOK-008, TC-EQR-005/006 and TC-SAFE-004 failed on event pages whose reads returned 503 because the decision table is not deployed. The initial interrupted run is retained as evidence of the spare-port CORS setup error; the existing runtime CORS configuration was corrected before this complete run.
+
+The developer's [manual checklist](test-cases/safety-decisions.md#developer-manual-pass) remains pending after migration/account setup. Record actual outcomes in `docs/test-cases/runs/`. PR, teammate review, PO acceptance, merge and backlog Done status remain developer steps. Neither PBI is claimed Done.
+
+### 4.37. CR-103 — Safety review queue
+
+| Field | Value |
+|---|---|
+| ID | `CR-103` |
+| Status | Implemented on branch; live verification and acceptance incomplete |
+| Epic / sprint | Event status management / 3 |
+| Estimate / priority | 2 SP / Priority 2 |
+| Branch | `feature/cr-103-cr-104-safety-review-decision` |
+| Source | Product backlog row 70, read 9 Oct; local story text in `docs/proposals/week7-customer-changes.md`, AC snapshot in approved design §1 |
+
+**User story:**
+
+> As a Safety Officer, I want to see events waiting for an Operational Safety Check, with the details I need to review them, so that I can assess whether each event is safe to proceed.
+
+**Acceptance criteria (9 Oct sheet snapshot):**
+
+- **AC1** Events sent for safety check (82) appear in the Safety Officer's queue, oldest first.
+- **AC2** The review page shows expected attendance and, for each venue, its capacity, layout, accessibility, emergency access and known restrictions (CR-100).
+- **AC3** It also shows the equipment list and the Technical Support Staff confirmation that equipment does not block exits (24 AC10).
+- **AC4** Only users acting as Safety Officer can view the queue. Others get 403.
+- **AC6** The review page also shows the event's own accessibility requirements. Crowd movement is assessed from attendance against each venue's capacity and layout, its emergency access and the exit confirmation; the Safety Officer records any crowd-movement concerns in the decision comment (CR-104).
+
+#### Implementation
+
+The Safety Officer dashboard now loads the review queue oldest-first by the latest entry into Safety review, with event ID as the tie-breaker. The dedicated `/safety/events/:id` review page shows event attendance and accessibility requirements, venue capacity/layout/accessibility, attendance-to-capacity ratios, equipment lines and private decision history. The queue/review API and browser routes use the active Safety Officer role; decision-history reads also allow the assigned coordinator.
+
+CR-100 emergency access/restrictions and story 24 exit confirmation remain null and display “Not recorded”; they are not implied to be ready. Crowd-movement concerns use the decision comment. AC5 role groundwork preceded this delivery. The frontend store handles loading, errors, stale responses and decision submission through the shared events API. SCRUM-82 remains the resubmission route after changes or rejection.
+
+Contracts and reuse points are documented in IMPLEMENTATION_MAP; [safety test cases](test-cases/safety-decisions.md) trace the acceptance criteria to checks. The live runner adds nonmutating role-denial checks and a table/RPC-presence preflight: missing interfaces are Blocked, while CLI and SQL assertion errors are Fail.
+
+#### Verification and remaining work
+
+**Deployment and live verification (9 Oct 2026):** the migration was not applied. `supabase db push --dry-run` is blocked because remote versions `20261008100000` and `20261009100000` are missing locally. Do not push or repair migration history in this work; integrate the migration owners' files and reconcile the inventory first. SQL parse/review was clean, but the safety-decision SQL assertions, live RLS, transactional success paths and post-application advisors remain unverified. No live Safety Officer account is available.
+
+The [recorded API/database run](test-cases/runs/2026-10-09-1433-api-db-ab6a851.md) has **67 passed, 3 failed, 1 blocked**. TC-SDEC-001/002 passed. TC-SAFE-002/003 and TC-BOOK-001 failed because eligible Planning event reads depend on the missing decision table; the safety-decision SQL preflight correctly recorded Blocked without executing its script.
+
+**Offline evidence:** `/tmp/safety-backend-final-suite.txt` records **978 passed, 94.48% coverage**; the changed backend executable lines are reported as 100% covered. The fresh full frontend run `npm run test:coverage -- --maxWorkers=2` (`/tmp/safety-recovery-coverage-2workers.log`) records **673 passed, 94.58% coverage**; all **292/292 changed executable lines** are covered. The latest `npm run build` passed (`/tmp/safety-recovery-build.log`). Default parallelism had intermittent existing view-test timeouts in OrganiserDashboard and CoordinatorEventView; the complete two-worker run passed without unrelated code changes. Line coverage is complete for changed code, but branch coverage is not 100%. These results do not establish live database behaviour.
+
+**Recorded browser evidence:** the corrected-CORS run ([run log](test-cases/runs/2026-10-09-1443-e2e-ab6a851.md)) finished with **52 passed, 3 failed**. TC-SDEC-004 passed for all five seeded roles. TC-BOOK-008, TC-EQR-005/006 and TC-SAFE-004 failed on event pages whose reads returned 503 because the decision table is not deployed. The initial interrupted run is retained as evidence of the spare-port CORS setup error; the existing runtime CORS configuration was corrected before this complete run.
+
+The developer's [manual checklist](test-cases/safety-decisions.md#developer-manual-pass) remains pending after migration/account setup. Record actual outcomes in `docs/test-cases/runs/`. PR, teammate review, PO acceptance, merge and backlog Done status remain developer steps. Neither PBI is claimed Done.

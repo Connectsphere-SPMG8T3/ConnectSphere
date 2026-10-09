@@ -59,6 +59,17 @@ describe("EventDetailView status", () => {
     mountedApps.splice(0).forEach((app) => app.unmount());
   });
 
+  it.each(["planning", "safety_review", "confirmed"])("CR-104 shows only the organiser summary in %s, ignoring a leaked comment", async (status) => {
+    const el = await mountDetail(eventResponse({ status, latest_safety_decision: { decision: "changes_requested", reason_label: "The Safety Officer asked for changes to the arrangements.", comment: "PRIVATE-OFFICER-COMMENT", decided_by_name: "PRIVATE-OFFICER-NAME", decided_at: "2026-10-08T02:00:00Z" } }));
+    expect(el.textContent).toContain("The Safety Officer asked for changes to the arrangements.");
+    expect(el.textContent).not.toContain("PRIVATE-OFFICER");
+    expect(el.textContent).not.toContain("Safety Officer's decision");
+  });
+  it.each(["draft", "submitted", "under_review", "returned", "rejected", "cancelled", "completed"])("CR-104 hides a safety summary in %s", async (status) => {
+    const el = await mountDetail(eventResponse({ status, latest_safety_decision: { reason_label: "UNEXPECTED-SUMMARY", comment: "PRIVATE-COMMENT" } }));
+    expect(el.textContent).not.toContain("UNEXPECTED-SUMMARY"); expect(el.textContent).not.toContain("PRIVATE-COMMENT");
+  });
+
   it("SCRUM-82 shows confirmed arrangements", async () => {
     const el = await mountDetail(eventResponse({status: "confirmed", venue_booking: {venue_name: "Main Hall", status: "approved"}, technical_readiness: "not_required"}));
     expect(el.textContent).toContain("Arrangements"); expect(el.textContent).toContain("Main Hall"); expect(el.textContent).toContain("Not required");

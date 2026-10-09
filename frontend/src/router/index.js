@@ -6,6 +6,12 @@ const UNSUPPORTED_ROLE_MESSAGE = "Your account can't be opened in this app. Plea
 
 const routes = [
   {
+    path: "/safety/events/:id",
+    name: "safety-review",
+    component: () => import("@/views/events/SafetyReviewView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["safety_officer"] },
+  },
+  {
     path: "/",
     redirect: "/login",
   },

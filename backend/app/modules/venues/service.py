@@ -319,3 +319,20 @@ def active_booking_for_event(event_id: str) -> dict | None:
         return None
     return {"id": row["id"], "venue_id": row["venue_id"],
             "venue_name": (row.get("venues") or {}).get("name"), "status": row["status"]}
+
+
+def event_booking_ids(event_id: str) -> set[str]:
+    """Every booking id, including released bookings, for officer validation."""
+    return {row["id"] for row in repository.list_event_booking_ids(event_id)}
+
+
+def event_bookings_with_venues(event_id: str) -> list[dict]:
+    """Active arrangements and venue facts for the safety review."""
+    items = []
+    for row in repository.list_event_bookings_with_venues(event_id):
+        venue = row.get("venues") or {}
+        items.append(dict(booking_id=row["id"], venue_id=row["venue_id"], booking_status=row["status"],
+                          venue_name=venue.get("name"), capacity=venue.get("capacity"),
+                          layouts=[layout["layout"] for layout in venue.get("venue_layouts") or []],
+                          accessibility_features=venue.get("accessibility_features") or []))
+    return items
