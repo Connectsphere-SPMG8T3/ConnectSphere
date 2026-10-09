@@ -66,6 +66,12 @@ ACCOUNTS = {
     "tech_support": "tech.support@connectsphere.dev",
     "attendee": "attendee@connectsphere.dev",
 }
+# Seeded staff for the W7 roles (CR-103 AC5, 12 AC12). Kept out of ACCOUNTS,
+# whose loops assert a denial for every role in it.
+W7_STAFF_ACCOUNTS = {
+    "safety_officer": "safety.officer@connectsphere.dev",
+    "event_coordinator_lead": "coordinator.lead@connectsphere.dev",
+}
 INVALID_CREDENTIALS = "Invalid email or password."
 INVALID_TOKEN = "Invalid or expired authentication token."
 PASSWORD_RULE = "Password must be at least 8 characters and include at least one letter and one digit."
@@ -164,7 +170,7 @@ class Context:
             raise CheckBlocked("not run: an earlier sign-in was refused (see the first failure)")
         response = self.client.post(
             f"{self.api}/auth/login",
-            json={"email": email or ACCOUNTS[role], "password": password},
+            json={"email": email or ACCOUNTS.get(role) or W7_STAFF_ACCOUNTS[role], "password": password},
         )
         if response.status_code in (401, 429):
             self.sign_in_refused = True
@@ -979,6 +985,64 @@ def _(ctx: Context) -> None:
             f"{ctx.api}/events/00000000-0000-4000-8000-000000000000/safety-decisions",
             headers=ctx.shared(role).headers,
         ), 403)
+
+
+# Officer checks below only read, or are refused before any write: the missing
+# UUID, schema validation (422) and the status check (409) all answer before an
+# RPC is called, so the shared planning fixture is never changed.
+MISSING_EVENT = "00000000-0000-4000-8000-000000000000"
+SAFETY_DECISIONS = (
+    ("safety-approve", {}),
+    ("safety-request-changes", {"comment": "Live check"}),
+    ("safety-reject", {"reason": "Live check"}),
+)
+
+
+@check("TC-SDEC-003", "The Event Coordinator Lead is denied every Safety Officer endpoint")
+def _(ctx: Context) -> None:
+    headers = ctx.shared("event_coordinator_lead").headers
+    for path in ("/events/safety-queue", f"/events/{MISSING_EVENT}/safety-review",
+                 f"/events/{MISSING_EVENT}/safety-decisions"):
+        expect_status(ctx.client.get(f"{ctx.api}{path}", headers=headers), 403)
+    for action, body in SAFETY_DECISIONS:
+        expect_status(ctx.client.post(f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers, json=body), 403)
+
+
+@check("TC-SDEC-005", "An active Safety Officer reads the queue, oldest entry into review first")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}/events/safety-queue", headers=ctx.shared("safety_officer").headers)
+    expect_status(response, 200)
+    items = response.json()["items"]
+    keys = [(item["entered_review_at"], item["event_id"]) for item in items]
+    expect(keys == sorted(keys), f"Queue not oldest first: {keys}")
+
+
+@check("TC-SDEC-014", "A missing event answers 404 to the Safety Officer's review and decisions")
+def _(ctx: Context) -> None:
+    headers = ctx.shared("safety_officer").headers
+    expect_status(ctx.client.get(f"{ctx.api}/events/{MISSING_EVENT}/safety-review", headers=headers), 404)
+    for action, body in SAFETY_DECISIONS:
+        expect_status(ctx.client.post(f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers, json=body), 404)
+
+
+@check("TC-SDEC-015", "A decision on an event outside Safety review is refused with 409")
+def _(ctx: Context) -> None:
+    headers = ctx.shared("safety_officer").headers
+    expect_status(ctx.client.get(f"{ctx.api}/events/{SAFE_EVENT}/safety-review", headers=headers), 404)
+    for action, body in SAFETY_DECISIONS:
+        response = ctx.client.post(f"{ctx.api}/events/{SAFE_EVENT}/{action}", headers=headers, json=body)
+        expect_status(response, 409)
+        expect("planning" in response.json()["detail"], f"{action}: {response.json()['detail']}")
+
+
+@check("TC-SDEC-016", "A blank, whitespace-only or 1001-character comment or reason is refused with 422")
+def _(ctx: Context) -> None:
+    headers = ctx.shared("safety_officer").headers
+    for text in ("", "   ", "x" * 1001):
+        for action, field_name in (("safety-request-changes", "comment"), ("safety-reject", "reason")):
+            expect_status(ctx.client.post(
+                f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers, json={field_name: text},
+            ), 422)
 
 
 # --- Helpers ---------------------------------------------------------------
