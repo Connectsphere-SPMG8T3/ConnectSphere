@@ -32,6 +32,7 @@ Manual pass: [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md), 
 | TC-SDEC-018 | No timeout or escalation | Manual | Safety Officer account; review event | Inspect queue after waiting; inspect configured decision flow | No officer action | Event remains in review until officer responds or readiness caller withdraws; no timeout/escalation | 🔴 | 2026-10-09 | Pass — [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md) |
 | TC-SDEC-019 | Approved change returns to planning — unwired | Manual | Story 37 caller required; not delivered here | After approval change attendance/venue/equipment through story 37 | Disposable confirmed event | Planning via approved_details_changed; coordinator notified; pending until caller lands | 🔴 | 2026-10-09 | Not run |
 | TC-SDEC-020 | Readiness loss withdraws from queue — unwired | Manual | CR-94/95, 85, 24 callers required; not delivered here | Flag/cancel booking or clear technical readiness via owning story | Disposable review event | Planning, queue entry gone, coordinator/officers notified; pending until each caller lands | 🔴 | 2026-10-09 | Not run |
+| TC-SDEC-021 | Dashboard figures and recent decisions (CR-103 AC7) | Manual + Integration | Safety Officer account; some decisions in the last 30 days | Open /dashboard/safety at desktop and 375px; compare tiles with the queue and the list | Existing queue and history | In queue and Oldest waiting match the queue; Approved / Changes requested / Arrangement rejected match the list (withdrawals listed, not counted); list newest first with event, outcome, decider or System, time, comment; tiles aligned, no sideways scroll | 🟢 | 2026-10-09 | API half automated: Pass — [19:31](runs/2026-10-09-1931-api-db-8d181c6.md); visual not run |
 
 ### Traceability — CR-103 / CR-104
 
@@ -43,6 +44,7 @@ Manual pass: [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md), 
 | CR-103 AC4 | TC-SDEC-001, TC-SDEC-003, TC-SDEC-004 | Seeded-role checks written; extra-role checks manual |
 | CR-103 AC5 | TC-SDEC-003, TC-SDEC-004 | Role groundwork precedes this delivery |
 | CR-103 AC6 | TC-SDEC-007, TC-SDEC-008 | Crowd concerns in comment; dependent fields unavailable |
+| CR-103 AC7 | TC-SDEC-021, TC-SDEC-003 | Added 9 Oct; 30-day window [Team decision] |
 | CR-104 AC1 | TC-SDEC-009, TC-SDEC-014, TC-SDEC-015 | Approve success path is manual |
 | CR-104 AC2 | TC-SDEC-010, TC-SDEC-014, TC-SDEC-015, TC-SDEC-016 | Pending equipment unchanged |
 | CR-104 AC3 | TC-SDEC-011, TC-SDEC-014, TC-SDEC-015, TC-SDEC-016 | Replacement interpretation awaits consult |
@@ -70,6 +72,7 @@ The migration and the Safety Officer account are in place. Record verdicts using
 
 - **Queue `/dashboard/safety`:** TC-SDEC-005/006 — check ordering, waiting times, resubmission position and empty/loading/error wording.
 - **Review `/safety/events/<id>`:** TC-SDEC-007/008/011 — check context, “Not recorded” fields, crowd-movement wording, rejection selection and 375px layout without jumps or flashes. On disposable events, run TC-SDEC-009–016/018 for decision outcomes, validation, history and notifications; TC-SDEC-003 also needs extra-role accounts.
+- **Dashboard figures `/dashboard/safety`:** TC-SDEC-021 — tiles match the queue and the recent-decisions list; layout at desktop and 375px.
 - **Coordinator `/coordinator/events/<id>` and organiser event detail:** TC-SDEC-017 — compare the full internal banner with the plain external reason and check the rejected-arrangement label.
 
 TC-SDEC-019/020 remain deferred until the owning stories wire their callers. Do not record manual passes without the developer's verdict.

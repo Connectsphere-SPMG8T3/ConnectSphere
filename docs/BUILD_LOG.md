@@ -1726,3 +1726,13 @@ On `feature/cr-103-cr-104-safety-review-decision`, 2026-10-09. Reverses the 8 Oc
 - **Verified:** neither email nor id existed live beforehand; after creation each holds only its staff role, and each logs in through Supabase Auth's password grant (HTTP 200, token issued).
 - **Not verified:** a fresh `supabase db reset` with the new seed (no local database); the backend `/auth/login` and landing dashboards for these accounts (covered by the next live run).
 - **Follow-up:** Joyce owns the Lead role (12 AC12) and agreed the earlier decision; tell her the account now exists.
+
+### 4.39. CR-103 AC7 — Safety Officer dashboard figures and recent decisions
+
+On `feature/cr-103-cr-104-safety-review-decision`, 2026-10-09. The developer asked, after the manual pass, for the Safety Officer dashboard to show figures and past decisions. Added as a new acceptance criterion on CR-103 in this PR (developer's choice; AC text drafted for the sheet, estimate to re-check).
+
+1. **Backend.** `GET /events/safety-history` (active Safety Officer only, declared before `/{event_id}`): every `event_safety_decisions` row from the last 30 days, any event, newest first, with event and decider names. Repository `list_recent_safety_decisions(since)`; service `safety_history()` fixes the 30-day window (`SAFETY_HISTORY_DAYS`). No migration: the existing RLS already lets an active officer read every decision.
+2. **Frontend.** Pure `queueSummary(queue, now)` and `outcomeCounts(history)` in `features/events/safetyDashboard.js`, counted from complete lists per the team rule. `SafetyDashboard.vue` gains two tile rows (`BauhausSummaryCard`: In queue, Oldest waiting; Approved, Changes requested, Arrangement rejected for the last 30 days) and a Recent decisions list reusing `SafetyDecisionDetails`. The store's `loadHistory()` has its own `historyError`, so a failed history read never hides the queue. Withdrawals are listed as "Withdrawn · System" and not counted.
+
+- **Verified:** each test was seen failing first (no route; no module; no store action; no tiles). The repository mapping test was written after its code, so the mapping was broken on purpose and the test caught it before it was restored. Backend 992 passed (94.54%), frontend 690 passed, build clean; all uncovered lines predate this change. Live: TC-SDEC-021 and the Lead denial on the new route pass ([run](test-cases/runs/2026-10-09-1931-api-db-8d181c6.md)); the live endpoint returns the three manual-pass decisions newest first.
+- **Not verified:** the dashboard in a browser (developer's visual pass, TC-SDEC-021).

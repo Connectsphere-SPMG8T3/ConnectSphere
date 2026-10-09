@@ -1001,7 +1001,7 @@ SAFETY_DECISIONS = (
 @check("TC-SDEC-003", "The Event Coordinator Lead is denied every Safety Officer endpoint")
 def _(ctx: Context) -> None:
     headers = ctx.shared("event_coordinator_lead").headers
-    for path in ("/events/safety-queue", f"/events/{MISSING_EVENT}/safety-review",
+    for path in ("/events/safety-queue", "/events/safety-history", f"/events/{MISSING_EVENT}/safety-review",
                  f"/events/{MISSING_EVENT}/safety-decisions"):
         expect_status(ctx.client.get(f"{ctx.api}{path}", headers=headers), 403)
     for action, body in SAFETY_DECISIONS:
@@ -1015,6 +1015,14 @@ def _(ctx: Context) -> None:
     items = response.json()["items"]
     keys = [(item["entered_review_at"], item["event_id"]) for item in items]
     expect(keys == sorted(keys), f"Queue not oldest first: {keys}")
+
+
+@check("TC-SDEC-021", "An active Safety Officer reads the last 30 days of decisions, newest first")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}/events/safety-history", headers=ctx.shared("safety_officer").headers)
+    expect_status(response, 200)
+    times = [item["decided_at"] for item in response.json()["items"]]
+    expect(times == sorted(times, reverse=True), f"History not newest first: {times}")
 
 
 @check("TC-SDEC-014", "A missing event answers 404 to the Safety Officer's review and decisions")
