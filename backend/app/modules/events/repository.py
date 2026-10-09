@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from datetime import datetime
 
 from app.db.supabase import get_supabase_admin_client
 
@@ -359,6 +360,18 @@ def list_safety_decisions(event_id: str) -> list[dict]:
                 .eq("event_id", event_id).order("decided_at", desc=True).execute())
     return [{**{k: v for k, v in row.items() if k != "decider"},
              "decided_by_name": (row.get("decider") or {}).get("full_name")}
+            for row in response.data or []]
+
+
+def list_recent_safety_decisions(since: datetime) -> list[dict]:
+    """Every decision since `since`, any event, with its event and decider names (CR-103 AC7)."""
+    response = (get_supabase_admin_client().table("event_safety_decisions")
+                .select("id, event_id, decision, comment, decided_at, event:events(name), "
+                        "decider:profiles!event_safety_decisions_decided_by_fkey(full_name)")
+                .gte("decided_at", since.isoformat()).order("decided_at", desc=True).execute())
+    return [dict(id=row["id"], event_id=row["event_id"], event_name=(row.get("event") or {}).get("name", ""),
+                 decision=row["decision"], comment=row.get("comment"), decided_at=row["decided_at"],
+                 decided_by_name=(row.get("decider") or {}).get("full_name"))
             for row in response.data or []]
 
 

@@ -59,6 +59,7 @@ describe('safety decision API contracts', () => {
   afterEach(() => vi.unstubAllGlobals());
   it.each([
     ['safetyQueue', '/events/safety-queue', 'GET', false],
+    ['safetyHistory', '/events/safety-history', 'GET', false],
     ['safetyReview', '/events/event%2Fone/safety-review', 'GET', false],
     ['safetyDecisions', '/events/event%2Fone/safety-decisions', 'GET', false],
     ['safetyApprove', '/events/event%2Fone/safety-approve', 'POST', true],
@@ -69,7 +70,7 @@ describe('safety decision API contracts', () => {
     vi.stubGlobal('fetch', fetchMock);
     expect(eventsApi[name], `${name} is implemented`).toBeTypeOf('function');
     const body = { comment: 'Crowd flow', booking_ids: ['b1'], equipment_request_ids: ['q1'] };
-    const result = name === 'safetyQueue' ? await eventsApi[name]('access')
+    const result = ['safetyQueue', 'safetyHistory'].includes(name) ? await eventsApi[name]('access')
       : hasBody ? await eventsApi[name]('event/one', body, 'access') : await eventsApi[name]('event/one', 'access');
     expect(result).toEqual({ id: 'result' });
     expect(fetchMock).toHaveBeenCalledWith(`http://localhost:8000/api/v1${path}`, {

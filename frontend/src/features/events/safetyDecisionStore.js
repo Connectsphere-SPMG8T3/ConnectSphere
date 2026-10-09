@@ -3,7 +3,7 @@ import { eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 export const useSafetyDecisionStore = defineStore("safetyDecision", {
-  state: () => ({ queue: [], review: null, decisions: [], reviewEventId: null, reviewGeneration: 0, loading: false, error: null }),
+  state: () => ({ queue: [], history: [], historyError: null, review: null, decisions: [], reviewEventId: null, reviewGeneration: 0, loading: false, error: null }),
   actions: {
     async loadQueue() {
       this.loading = true;
@@ -16,6 +16,17 @@ export const useSafetyDecisionStore = defineStore("safetyDecision", {
         this.error = error.message;
       } finally {
         this.loading = false;
+      }
+    },
+    // CR-103 AC7: its own error, so a failed history read never hides the queue.
+    async loadHistory() {
+      this.historyError = null;
+      try {
+        const response = await useAuthStore().withSession((token) => eventsApi.safetyHistory(token));
+        this.history = response.items;
+      } catch (error) {
+        this.history = [];
+        this.historyError = error.message;
       }
     },
     async loadReview(eventId) {

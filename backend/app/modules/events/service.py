@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from zoneinfo import ZoneInfo
 
@@ -22,6 +22,8 @@ from app.modules.venues import service as venues_service
 from app.modules.events.schemas import (
     SafetyDecision,
     SafetyDecisionSummary,
+    SafetyHistoryItem,
+    SafetyHistoryResponse,
     SafetyQueueItem,
     SafetyQueueResponse,
     SafetyReviewResponse,
@@ -639,6 +641,18 @@ def safety_queue() -> SafetyQueueResponse:
     items = [SafetyQueueItem(**row) for row in repository.list_safety_queue()]
     items.sort(key=lambda item: (item.entered_review_at, item.event_id))
     return SafetyQueueResponse(items=items)
+
+
+SAFETY_HISTORY_DAYS = 30
+
+
+@_safety_service_available
+def safety_history() -> SafetyHistoryResponse:
+    """Every decision in the last 30 days, newest first, for the officers' dashboard (CR-103 AC7)."""
+    since = datetime.now(timezone.utc) - timedelta(days=SAFETY_HISTORY_DAYS)
+    items = [SafetyHistoryItem(**row) for row in repository.list_recent_safety_decisions(since)]
+    items.sort(key=lambda item: (item.decided_at, str(item.id)), reverse=True)
+    return SafetyHistoryResponse(items=items)
 
 
 @_safety_service_available

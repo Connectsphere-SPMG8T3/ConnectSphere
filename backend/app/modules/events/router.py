@@ -7,6 +7,7 @@ from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.events import service
 from app.modules.events.schemas import (
     SafetyDecision,
+    SafetyHistoryResponse,
     SafetyQueueResponse,
     SafetyReviewResponse,
     SafetyApproveRequest,
@@ -53,6 +54,11 @@ def coordinator_dashboard(current_user: EventCoordinator) -> CoordinatorDashboar
 @router.get("/safety-queue", response_model=SafetyQueueResponse)
 def safety_queue(current_user: SafetyOfficer) -> SafetyQueueResponse:
     return service.safety_queue()
+
+
+@router.get("/safety-history", response_model=SafetyHistoryResponse)
+def safety_history(current_user: SafetyOfficer) -> SafetyHistoryResponse:
+    return service.safety_history()
 
 
 @router.post("/{event_id}/clone", response_model=EventResponse, status_code=status.HTTP_201_CREATED)

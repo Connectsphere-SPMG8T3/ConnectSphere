@@ -429,6 +429,21 @@ class SafetyQueueResponse(BaseModel):
     items: list[SafetyQueueItem]
 
 
+class SafetyHistoryItem(BaseModel):
+    """One recent decision on the Safety Officer dashboard (CR-103 AC7)."""
+    id: UUID
+    event_id: str
+    event_name: str
+    decision: SafetyDecisionKind
+    comment: str | None = None
+    decided_by_name: str | None = None
+    decided_at: datetime
+
+
+class SafetyHistoryResponse(BaseModel):
+    items: list[SafetyHistoryItem]
+
+
 class SafetyRegistration(BaseModel):
     enabled: bool
     capacity: int | None = None

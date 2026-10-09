@@ -101,6 +101,9 @@ export const eventsApi = {
   safetyQueue(token) {
     return request("/events/safety-queue", { token });
   },
+  safetyHistory(token) {
+    return request("/events/safety-history", { token });
+  },
   safetyReview(eventId, token) {
     return request(`/events/${encodeURIComponent(eventId)}/safety-review`, { token });
   },

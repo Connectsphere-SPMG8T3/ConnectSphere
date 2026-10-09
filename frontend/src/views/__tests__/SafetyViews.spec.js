@@ -9,7 +9,7 @@ import { toastState } from '@/composables/useToast';
 import { useSafetyDecisionStore } from '@/features/events/safetyDecisionStore';
 vi.mock('@/services/api', async (original) => ({
   ...(await original()),
-  eventsApi: { safetyQueue: vi.fn(), safetyReview: vi.fn(), safetyApprove: vi.fn(), safetyRequestChanges: vi.fn(), safetyReject: vi.fn() },
+  eventsApi: { safetyQueue: vi.fn(), safetyHistory: vi.fn(), safetyReview: vi.fn(), safetyApprove: vi.fn(), safetyRequestChanges: vi.fn(), safetyReject: vi.fn() },
 }));
 const decision = { id: 'd1', decision: 'changes_requested', comment: 'Keep the aisle clear', reason_code: null,
   affected_booking_ids: ['b1'], affected_equipment_request_ids: ['q1'], rejected_venue_ids: [],
@@ -52,6 +52,7 @@ describe('Safety queue and review', () => {
   beforeEach(() => {
     document.body.innerHTML = ''; localStorage.clear(); vi.resetAllMocks();
     eventsApi.safetyQueue.mockResolvedValue({ items: [] }); eventsApi.safetyReview.mockResolvedValue(response());
+    eventsApi.safetyHistory.mockResolvedValue({ items: [] });
   });
   afterEach(() => { apps.splice(0).forEach((app) => app.unmount()); vi.useRealTimers(); });
   it('shows queue rows in server order and links to each review', async () => {
@@ -157,4 +158,60 @@ describe('Safety queue and review', () => {
     await vi.waitFor(() => expect(eventsApi.safetyApprove).toHaveBeenCalledWith('e1', { comment: text.trim() || null }, 'access'));
   });
 
+});
+
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve));
+describe('Safety Officer dashboard overview (CR-103 AC7)', () => {
+  const tile = (label) => [...document.querySelectorAll('p')].find((p) => p.textContent.trim() === label)?.parentElement;
+  beforeEach(() => {
+    document.body.innerHTML = ''; localStorage.clear(); vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-09T12:00:00Z'));
+    eventsApi.safetyQueue.mockResolvedValue({ items: [
+      { event_id: 'e1', name: 'Oldest Fair', organiser_name: 'Priya', starts_at: null, expected_attendance: 80, entered_review_at: '2026-10-07T11:00:00Z' },
+      { event_id: 'e2', name: 'New Fair', organiser_name: 'Sam', starts_at: null, expected_attendance: 25, entered_review_at: '2026-10-09T09:00:00Z' },
+    ] });
+    eventsApi.safetyHistory.mockResolvedValue({ items: [
+      { id: 'h3', event_id: 'e7', event_name: 'Gala Night', decision: 'withdrawn', comment: null, decided_by_name: null, decided_at: '2026-10-09T03:00:00Z' },
+      { id: 'h2', event_id: 'e6', event_name: 'Book Fair', decision: 'arrangement_rejected', comment: 'Venue too small', decided_by_name: 'Hafiz Ismail', decided_at: '2026-10-08T03:00:00Z' },
+      { id: 'h1', event_id: 'e5', event_name: 'Year-End Dinner', decision: 'approved', comment: null, decided_by_name: 'Hafiz Ismail', decided_at: '2026-10-05T03:00:00Z' },
+    ] });
+  });
+  afterEach(() => { apps.splice(0).forEach((app) => app.unmount()); vi.useRealTimers(); });
+
+  it('shows the queue figures counted from the loaded queue', async () => {
+    await mountView('queue'); await flushPromises();
+    expect(tile('In queue').textContent).toContain('2');
+    expect(tile('Oldest waiting').textContent).toContain('2 days');
+  });
+
+  it('counts the last 30 days of decisions by outcome, leaving withdrawals out', async () => {
+    await mountView('queue'); await flushPromises();
+    expect(tile('Approved').textContent).toMatch(/1\s*Last 30 days/);
+    expect(tile('Changes requested').textContent).toMatch(/0\s*Last 30 days/);
+    expect(tile('Arrangement rejected').textContent).toMatch(/1\s*Last 30 days/);
+  });
+
+  it('lists recent decisions newest first with event, outcome, decider and comment', async () => {
+    const { el } = await mountView('queue'); await flushPromises();
+    const rows = [...el.querySelectorAll('[data-history-item]')].map((row) => row.textContent);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toContain('Gala Night'); expect(rows[0]).toContain('Withdrawn'); expect(rows[0]).toContain('System');
+    expect(rows[1]).toContain('Book Fair'); expect(rows[1]).toContain('Arrangement rejected');
+    expect(rows[1]).toContain('Hafiz Ismail'); expect(rows[1]).toContain('Venue too small');
+    expect(rows[2]).toContain('Year-End Dinner');
+  });
+
+  it('shows empty figures and an empty history state', async () => {
+    eventsApi.safetyQueue.mockResolvedValue({ items: [] }); eventsApi.safetyHistory.mockResolvedValue({ items: [] });
+    const { el } = await mountView('queue'); await flushPromises();
+    expect(tile('In queue').textContent).toContain('0'); expect(tile('Oldest waiting').textContent).toContain('—');
+    expect(el.textContent).toContain('No safety decisions in the last 30 days.');
+  });
+
+  it('keeps the queue when the history fails to load', async () => {
+    eventsApi.safetyHistory.mockRejectedValue(new Error('History unavailable'));
+    const { el } = await mountView('queue'); await flushPromises();
+    expect(el.textContent).toContain('History unavailable');
+    expect(el.textContent).toContain('Oldest Fair');
+  });
 });

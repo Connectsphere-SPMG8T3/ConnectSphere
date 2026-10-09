@@ -5,7 +5,7 @@ import { ApiError, eventsApi } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 vi.mock('@/services/api', async (original) => ({
   ...(await original()),
-  eventsApi: { safetyQueue: vi.fn(), safetyReview: vi.fn(), safetyApprove: vi.fn(), safetyRequestChanges: vi.fn(), safetyReject: vi.fn() },
+  eventsApi: { safetyQueue: vi.fn(), safetyHistory: vi.fn(), safetyReview: vi.fn(), safetyApprove: vi.fn(), safetyRequestChanges: vi.fn(), safetyReject: vi.fn() },
 }));
 async function store() {
   const modules = import.meta.glob('../safetyDecisionStore.js');
@@ -20,6 +20,19 @@ describe('safetyDecisionStore', () => {
     useAuthStore().token = 'access'; useAuthStore().profile = { role: 'safety_officer' };
     eventsApi.safetyQueue.mockResolvedValue({ items: [{ event_id: 'e1' }] });
     eventsApi.safetyReview.mockResolvedValue(review);
+    eventsApi.safetyHistory.mockResolvedValue({ items: [{ id: 'h1', decision: 'approved' }] });
+  });
+  it('CR-103 AC7 loads the recent decisions', async () => {
+    const s = await store(); await s.loadHistory();
+    expect(eventsApi.safetyHistory).toHaveBeenCalledWith('access');
+    expect(s.history).toEqual([{ id: 'h1', decision: 'approved' }]); expect(s.historyError).toBeNull();
+  });
+  it('CR-103 AC7 clears the history on failure without touching the queue', async () => {
+    const s = await store(); await s.loadQueue(); await s.loadHistory();
+    eventsApi.safetyHistory.mockRejectedValue(new Error('History unavailable'));
+    await s.loadHistory();
+    expect(s.history).toEqual([]); expect(s.historyError).toBe('History unavailable');
+    expect(s.queue).toEqual([{ event_id: 'e1' }]); expect(s.error).toBeNull();
   });
   it('loads the queue and review with their decisions', async () => {
     const s = await store(); await s.loadQueue(); await s.loadReview('e1');
