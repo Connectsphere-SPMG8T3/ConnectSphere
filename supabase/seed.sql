@@ -24,6 +24,9 @@ declare
     v_venue_staff_id uuid := 'a0000000-0000-4000-8000-000000000003';
     v_tech_support_id uuid := 'a0000000-0000-4000-8000-000000000004';
     v_attendee_id uuid := 'a0000000-0000-4000-8000-000000000005';
+    -- CR-103 AC5 and 12 AC12: staff accounts are system defaults (ACC-R3, QA2-1).
+    v_safety_officer_id uuid := 'a0000000-0000-4000-8000-000000000006';
+    v_coordinator_lead_id uuid := 'a0000000-0000-4000-8000-000000000007';
 
     v_users jsonb := jsonb_build_array(
         jsonb_build_object(
@@ -70,6 +73,24 @@ declare
             'organisation_name', null,
             'department', null,
             'phone_number', '+65 9000 0005'
+        ),
+        jsonb_build_object(
+            'id', v_safety_officer_id,
+            'email', 'safety.officer@connectsphere.dev',
+            'full_name', 'Hafiz Ismail',
+            'role', 'safety_officer',
+            'organisation_name', null,
+            'department', 'Operational Safety',
+            'phone_number', '+65 9000 0006'
+        ),
+        jsonb_build_object(
+            'id', v_coordinator_lead_id,
+            'email', 'coordinator.lead@connectsphere.dev',
+            'full_name', 'Grace Chua',
+            'role', 'event_coordinator_lead',
+            'organisation_name', null,
+            'department', 'Event Planning',
+            'phone_number', '+65 9000 0007'
         )
     );
     v_user jsonb;

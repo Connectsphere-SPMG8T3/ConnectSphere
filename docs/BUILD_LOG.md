@@ -1714,3 +1714,15 @@ The [recorded API/database run](test-cases/runs/2026-10-09-1433-api-db-ab6a851.m
 **Recorded browser evidence:** the corrected-CORS run ([run log](test-cases/runs/2026-10-09-1443-e2e-ab6a851.md)) finished with **52 passed, 3 failed**. TC-SDEC-004 passed for all five seeded roles. TC-BOOK-008, TC-EQR-005/006 and TC-SAFE-004 failed on event pages whose reads returned 503 because the decision table is not deployed. The initial interrupted run is retained as evidence of the spare-port CORS setup error; the existing runtime CORS configuration was corrected before this complete run.
 
 The developer's [manual checklist](test-cases/safety-decisions.md#developer-manual-pass) remains pending after migration/account setup. Record actual outcomes in `docs/test-cases/runs/`. PR, teammate review, PO acceptance, merge and backlog Done status remain developer steps. Neither PBI is claimed Done.
+
+### 4.38. Chore — Seeded Safety Officer and Event Coordinator Lead accounts
+
+On `feature/cr-103-cr-104-safety-review-decision`, 2026-10-09. Reverses the 8 Oct team decision (§4.33 item 5) that these two roles get hand-made accounts only. That decision gave no reason beyond consistency, and it contradicted ACC-R3 ("staff accounts are system defaults, created by seed or migration", QA2-1). The CR-103/104 live checks also need a Safety Officer account that every developer has.
+
+1. **Seed.** `supabase/seed.sql` gains `safety.officer@connectsphere.dev` (`a0000000-…-0006`, Safety Officer) and `coordinator.lead@connectsphere.dev` (`a0000000-…-0007`, Event Coordinator Lead), password `Cs1234`, single role each, through the same loop as the other accounts.
+2. **Live project.** Created on 2026-10-09 with a one-off transaction running the seed's per-account steps for these two only (the rest of the seed inserts fixture events and was not re-run). The transaction raised unless each account ended with exactly its staff role in `user_roles` and as `profiles.role`.
+3. **Docs.** `SETUP.md` lists both accounts; "Grant a staff role" now describes adding an extra role. `REQUIREMENTS.md` ACC-R3 names both roles.
+
+- **Verified:** neither email nor id existed live beforehand; after creation each holds only its staff role, and each logs in through Supabase Auth's password grant (HTTP 200, token issued).
+- **Not verified:** a fresh `supabase db reset` with the new seed (no local database); the backend `/auth/login` and landing dashboards for these accounts (covered by the next live run).
+- **Follow-up:** Joyce owns the Lead role (12 AC12) and agreed the earlier decision; tell her the account now exists.

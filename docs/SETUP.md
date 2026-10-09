@@ -82,10 +82,12 @@ All seeded accounts share the password `Cs1234`. Emails intentionally use the `@
 | Venue Staff | venue.staff@connectsphere.dev | Single role |
 | Technical Support | tech.support@connectsphere.dev | Single role |
 | Attendee | attendee@connectsphere.dev | Single role |
+| Safety Officer | safety.officer@connectsphere.dev | Single role (CR-103 AC5) |
+| Event Coordinator Lead | coordinator.lead@connectsphere.dev | Single role (12 AC12) |
 
 ### Grant a staff role
 
-Staff accounts are created by hand (team decision), never through sign-up, which only ever produces an Event Organiser or an Attendee. This is how everyone creates the same kind of test account. It covers the two roles that have no seeded account, `event_coordinator_lead` and `safety_officer`, and works for any role.
+Every role has a seeded account (ACC-R3: staff accounts are system defaults, created by seed or migration). Use this to give an existing account an extra role, for example a second role to exercise the role switcher. Sign-up never grants a staff role; it only ever produces an Event Organiser or an Attendee.
 
 1. Make sure the database has the role: `supabase db push` (the roles were added by `20261008122253_staff_roles_enum.sql`).
 2. Create the account: sign up at `/signup` with an `@connectsphere.dev` email, or add a user under Authentication in the Supabase dashboard. Either way it starts as an Event Organiser.
