@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from datetime import datetime
 
 from app.db.supabase import get_supabase_admin_client
 
@@ -98,7 +99,8 @@ def list_planning_context(event_ids: Iterable[str]) -> list[dict]:
 # The single-event read also names the assigned coordinator for the organiser's
 # page. The FK is named because `events` references `profiles` twice, and a bare
 # `profiles(...)` embed fails the whole query with PGRST201.
-_EVENT_READ_COLUMNS = _EVENT_COLUMNS + ", coordinator:profiles!events_coordinator_id_fkey(id, full_name)"
+_EVENT_READ_COLUMNS = (_EVENT_COLUMNS + ", coordinator:profiles!events_coordinator_id_fkey(id, full_name)"
+                       + ", organiser:profiles!events_organiser_id_fkey(full_name)")
 
 
 def get_event(event_id: str) -> dict | None:
@@ -324,3 +326,71 @@ def send_to_safety_review(
         "p_organiser_message": organiser_message, "p_officer_message": officer_message,
     }).execute()
     return _first_row(response)
+
+
+def safety_approve(event_id: str, actor_id: str, expected_version: int, *, comment: str | None,
+                   organiser_message: str, staff_message: str) -> dict | None:
+    return _first_row(get_supabase_admin_client().rpc("safety_approve_event", {
+        "p_event_id": event_id, "p_actor_id": actor_id, "p_expected_version": expected_version,
+        "p_comment": comment, "p_organiser_message": organiser_message, "p_staff_message": staff_message,
+    }).execute())
+
+
+def safety_return(event_id: str, actor_id: str, expected_version: int, *, decision: str, comment: str,
+                  booking_ids: list[str], equipment_request_ids: list[str], coordinator_message: str) -> dict | None:
+    return _first_row(get_supabase_admin_client().rpc("safety_return_event", {
+        "p_event_id": event_id, "p_actor_id": actor_id, "p_expected_version": expected_version,
+        "p_decision": decision, "p_comment": comment, "p_booking_ids": booking_ids,
+        "p_equipment_request_ids": equipment_request_ids, "p_coordinator_message": coordinator_message,
+    }).execute())
+
+
+def return_to_planning(event_id: str, expected_version: int, *, from_status: str, reason_code: str,
+                       coordinator_message: str, officer_message: str | None) -> dict | None:
+    return _first_row(get_supabase_admin_client().rpc("return_event_to_planning", {
+        "p_event_id": event_id, "p_expected_version": expected_version, "p_from_status": from_status,
+        "p_reason_code": reason_code, "p_coordinator_message": coordinator_message,
+        "p_officer_message": officer_message,
+    }).execute())
+
+
+def list_safety_decisions(event_id: str) -> list[dict]:
+    response = (get_supabase_admin_client().table("event_safety_decisions")
+                .select("*, decider:profiles!event_safety_decisions_decided_by_fkey(full_name)")
+                .eq("event_id", event_id).order("decided_at", desc=True).execute())
+    return [{**{k: v for k, v in row.items() if k != "decider"},
+             "decided_by_name": (row.get("decider") or {}).get("full_name")}
+            for row in response.data or []]
+
+
+def list_recent_safety_decisions(since: datetime) -> list[dict]:
+    """Every decision since `since`, any event, with its event and decider names (CR-103 AC7)."""
+    response = (get_supabase_admin_client().table("event_safety_decisions")
+                .select("id, event_id, decision, comment, decided_at, event:events(name), "
+                        "decider:profiles!event_safety_decisions_decided_by_fkey(full_name)")
+                .gte("decided_at", since.isoformat()).order("decided_at", desc=True).execute())
+    return [dict(id=row["id"], event_id=row["event_id"], event_name=(row.get("event") or {}).get("name", ""),
+                 decision=row["decision"], comment=row.get("comment"), decided_at=row["decided_at"],
+                 decided_by_name=(row.get("decider") or {}).get("full_name"))
+            for row in response.data or []]
+
+
+def list_safety_queue() -> list[dict]:
+    client = get_supabase_admin_client()
+    response = (client.table("events")
+                .select("id, name, starts_at, expected_attendance, organiser:profiles!events_organiser_id_fkey(full_name)")
+                .eq("status", "safety_review").execute())
+    events = response.data or []
+    if not events:
+        return []
+    history = (client.table("event_status_history").select("event_id, at")
+               .in_("event_id", [row["id"] for row in events]).eq("to_status", "safety_review")
+               .order("at", desc=True).execute())
+    latest = {}
+    for row in history.data or []:
+        latest.setdefault(row["event_id"], row["at"])
+    items = [dict(event_id=row["id"], name=row["name"], starts_at=row.get("starts_at"),
+                  expected_attendance=row.get("expected_attendance"),
+                  organiser_name=(row.get("organiser") or {}).get("full_name"),
+                  entered_review_at=latest[row["id"]]) for row in events if row["id"] in latest]
+    return sorted(items, key=lambda row: (row["entered_review_at"], row["event_id"]))

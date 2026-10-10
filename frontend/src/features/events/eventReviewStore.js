@@ -37,12 +37,14 @@ export const useEventReviewStore = defineStore("eventReview", {
   // permanently if it fails (SCRUM-52) or resolves out of order (SCRUM-34/52):
   // the previous event's history can show on the new event's page, or an
   // older, slower request can overwrite a newer one's result after the fact.
-  state: () => ({ event: null, history: [], historyEventId: null, isLoading: false, isActing: false, error: null }),
+  state: () => ({ event: null, history: [], safetyDecisions: [], historyEventId: null, isLoading: false, isActing: false, error: null }),
 
   actions: {
     async load(eventId) {
       const auth = useAuthStore();
       this.historyEventId = eventId;
+      if (this.event?.id !== eventId) this.event = null;
+      this.safetyDecisions = [];
       this.isLoading = true;
       this.error = null;
       try {
@@ -56,6 +58,11 @@ export const useEventReviewStore = defineStore("eventReview", {
         if (this.historyEventId !== eventId) return;
         this.event = event;
         this.history = history?.entries ?? [];
+        try {
+          await this.loadSafetyDecisions(eventId);
+        } catch {
+          // Private history is supplementary; event details remain available.
+        }
       } catch (error) {
         if (this.historyEventId !== eventId) return;
         this.event = null;
@@ -66,8 +73,19 @@ export const useEventReviewStore = defineStore("eventReview", {
       }
     },
 
+    async loadSafetyDecisions(eventId) {
+      this.safetyDecisions = [];
+      const auth = useAuthStore();
+      // Organiser sessions share this store but must never fetch comments.
+      if (auth.role !== "event_coordinator") return;
+      const decisions = await auth.withSession((token) => eventsApi.safetyDecisions(eventId, token));
+      if (this.historyEventId !== eventId || auth.role !== "event_coordinator") return;
+      this.safetyDecisions = decisions;
+    },
+
     async loadHistory(eventId) {
       const auth = useAuthStore();
+      if (auth.role !== "event_coordinator") this.safetyDecisions = [];
       // Switching to a different event: clear the previous event's entries
       // before fetching, synchronously, so they never show for the new event
       // — not while this fetch is pending, and not if it fails. A refresh for

@@ -255,3 +255,42 @@ def test_send_to_safety_review_passes_both_messages(monkeypatch):
     client.rows = []
     assert repository.send_to_safety_review("e", "c", ["planning"], "safety_review", 3,
         organiser_message="o", officer_message="s") is None
+
+
+def test_list_recent_safety_decisions_reads_the_window_and_flattens_names(monkeypatch):
+    """CR-103 AC7: every decision since the cut-off, newest first, with event and decider names."""
+    from datetime import datetime, timezone
+    calls = []
+    rows = [
+        {"id": "d1", "event_id": "e1", "decision": "approved", "comment": "ok", "decided_at": "2026-10-09T01:00:00Z",
+         "event": {"name": "Dinner"}, "decider": {"full_name": "Hafiz Ismail"}},
+        {"id": "d2", "event_id": "e2", "decision": "withdrawn", "comment": None, "decided_at": "2026-10-08T01:00:00Z",
+         "event": None, "decider": None},
+    ]
+
+    class Query:
+        def __getattr__(self, name):
+            def record(*args, **kwargs):
+                calls.append((name, args, kwargs))
+                return self
+            return record
+
+        def execute(self):
+            return SimpleNamespace(data=rows)
+
+    class AdminClient:
+        def table(self, name):
+            calls.append(("table", (name,), {}))
+            return Query()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+    since = datetime(2026, 9, 9, tzinfo=timezone.utc)
+    assert repository.list_recent_safety_decisions(since) == [
+        {"id": "d1", "event_id": "e1", "event_name": "Dinner", "decision": "approved", "comment": "ok",
+         "decided_at": "2026-10-09T01:00:00Z", "decided_by_name": "Hafiz Ismail"},
+        {"id": "d2", "event_id": "e2", "event_name": "", "decision": "withdrawn", "comment": None,
+         "decided_at": "2026-10-08T01:00:00Z", "decided_by_name": None},
+    ]
+    assert ("table", ("event_safety_decisions",), {}) in calls
+    assert ("gte", ("decided_at", "2026-09-09T00:00:00+00:00"), {}) in calls
+    assert ("order", ("decided_at",), {"desc": True}) in calls

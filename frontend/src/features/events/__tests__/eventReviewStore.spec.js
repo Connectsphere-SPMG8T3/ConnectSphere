@@ -7,7 +7,7 @@ import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  eventsApi: { get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn() },
+  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn() },
 }));
 
 const EVENT = { id: "event-1", name: "Partner Summit", status: "under_review", version: 3 };
@@ -260,4 +260,53 @@ describe("useEventReviewStore", () => {
     expect(store.history).toEqual([]);
     expect(store.error).toBeNull();
   });
+});
+
+// CR-104: coordinator-only supplementary decision history.
+describe("private safety decisions", () => {
+  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks(); signedInCoordinator(); });
+  it("loads full safety history alongside coordinator details", async () => {
+    eventsApi.get.mockResolvedValue(EVENT); eventsApi.history.mockResolvedValue({ entries: [] });
+    eventsApi.safetyDecisions.mockResolvedValue([{ id: "d1", comment: "Private" }]);
+    const store = useEventReviewStore(); await store.load(EVENT.id);
+    expect(store.safetyDecisions).toEqual([{ id: "d1", comment: "Private" }]);
+    expect(eventsApi.safetyDecisions).toHaveBeenCalledWith(EVENT.id, "access-token");
+  });
+  it("clears private decisions before switching events and on a failed read", async () => {
+    const store = useEventReviewStore();
+    expect(store.loadSafetyDecisions).toBeTypeOf("function");
+    store.historyEventId = "event-A"; eventsApi.safetyDecisions.mockResolvedValue([{ id: "d1" }]);
+    await store.loadSafetyDecisions("event-A");
+    store.historyEventId = "event-B"; eventsApi.safetyDecisions.mockRejectedValue(new Error("Unavailable"));
+    const pending = store.loadSafetyDecisions("event-B"); expect(store.safetyDecisions).toEqual([]);
+    await expect(pending).rejects.toThrow("Unavailable"); expect(store.safetyDecisions).toEqual([]);
+  });
+  it("never fetches or retains comments for a session acting as organiser", async () => {
+    const store = useEventReviewStore(); expect(store.loadSafetyDecisions).toBeTypeOf("function");
+    store.safetyDecisions = [{ comment: "Private" }]; useAuthStore().profile.role = "event_organiser";
+    useAuthStore().profile.roles = ["event_organiser", "event_coordinator"];
+    await store.loadSafetyDecisions(EVENT.id);
+    expect(eventsApi.safetyDecisions).not.toHaveBeenCalled(); expect(store.safetyDecisions).toEqual([]);
+  });
+  it("ignores stale private history after navigating to another event", async () => {
+    const store = useEventReviewStore(); expect(store.loadSafetyDecisions).toBeTypeOf("function");
+    let resolve; eventsApi.safetyDecisions.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+    store.historyEventId = "event-A"; const pending = store.loadSafetyDecisions("event-A");
+    store.historyEventId = "event-B"; eventsApi.safetyDecisions.mockResolvedValue([{ id: "b" }]);
+    await store.loadSafetyDecisions("event-B"); resolve([{ id: "a", comment: "Wrong event" }]); await pending;
+    expect(store.safetyDecisions).toEqual([{ id: "b" }]);
+  });
+  it("keeps event details if the private history request fails", async () => {
+    const store = useEventReviewStore(); eventsApi.get.mockResolvedValue(EVENT); eventsApi.history.mockResolvedValue({ entries: [] });
+    eventsApi.safetyDecisions.mockRejectedValue(new Error("Unavailable"));
+    await store.load(EVENT.id); expect(store.event).toEqual(EVENT); expect(store.error).toBeNull(); expect(store.safetyDecisions).toEqual([]);
+  });
+  it("clears the previous event's latest private decision before another event loads", async () => {
+    const store = useEventReviewStore(); store.event = { ...EVENT, latest_safety_decision: { comment: "Wrong event" } };
+    eventsApi.get.mockImplementationOnce(() => new Promise(() => {}));
+    eventsApi.history.mockResolvedValue({ entries: [] });
+    store.load("event-B");
+    expect(store.event).toBeNull();
+  });
+
 });

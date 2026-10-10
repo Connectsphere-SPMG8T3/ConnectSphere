@@ -82,6 +82,7 @@ onMounted(async () => {
         </div>
       </BauhausCard>
 
+      <p v-if="['planning', 'safety_review', 'confirmed'].includes(event.status) && event.latest_safety_decision?.reason_label" class="mb-8 font-medium">{{ event.latest_safety_decision.reason_label }}</p>
       <p v-if="event.status === 'safety_review'" class="mb-8 font-medium">Your event is with the Safety Officer for its operational safety check.</p>
       <BauhausCard v-if="event.status === 'confirmed'" background="white" accent="none" class="mb-8">
         <h2 class="text-2xl font-black uppercase">Arrangements</h2>

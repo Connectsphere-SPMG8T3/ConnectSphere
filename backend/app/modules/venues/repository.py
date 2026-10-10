@@ -402,3 +402,16 @@ def get_active_booking(event_id: str) -> dict | None:
     )
     rows = response.data or []
     return rows[0] if rows else None
+
+
+def list_event_booking_ids(event_id: str) -> list[dict]:
+    response = (get_supabase_admin_client().table("venue_bookings").select("id")
+                .eq("event_id", event_id).execute())
+    return response.data or []
+
+
+def list_event_bookings_with_venues(event_id: str) -> list[dict]:
+    response = (get_supabase_admin_client().table("venue_bookings")
+                .select("id, venue_id, status, venues!venue_bookings_venue_id_fkey(name, capacity, venue_layouts(layout), accessibility_features)")
+                .eq("event_id", event_id).in_("status", ["held", "approved", "re_review"]).execute())
+    return response.data or []

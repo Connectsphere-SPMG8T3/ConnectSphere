@@ -66,6 +66,12 @@ ACCOUNTS = {
     "tech_support": "tech.support@connectsphere.dev",
     "attendee": "attendee@connectsphere.dev",
 }
+# Seeded staff for the W7 roles (CR-103 AC5, 12 AC12). Kept out of ACCOUNTS,
+# whose loops assert a denial for every role in it.
+W7_STAFF_ACCOUNTS = {
+    "safety_officer": "safety.officer@connectsphere.dev",
+    "event_coordinator_lead": "coordinator.lead@connectsphere.dev",
+}
 INVALID_CREDENTIALS = "Invalid email or password."
 INVALID_TOKEN = "Invalid or expired authentication token."
 PASSWORD_RULE = "Password must be at least 8 characters and include at least one letter and one digit."
@@ -87,6 +93,7 @@ DB_SCRIPTS = [
     ("event_review_checks.sql", "SCRUM-34/52 grants"),
     ("event_history_checks.sql", "TC-REV-015, TC-REV-016"),
     ("send_for_safety_check.sql", "TC-SAFE-010–015"),
+    ("safety_decision_checks.sql", "TC-SDEC-003, 009–011, 015–017 (database half); CR-104 helper paths"),
     ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
@@ -163,7 +170,7 @@ class Context:
             raise CheckBlocked("not run: an earlier sign-in was refused (see the first failure)")
         response = self.client.post(
             f"{self.api}/auth/login",
-            json={"email": email or ACCOUNTS[role], "password": password},
+            json={"email": email or ACCOUNTS.get(role) or W7_STAFF_ACCOUNTS[role], "password": password},
         )
         if response.status_code in (401, 429):
             self.sign_in_refused = True
@@ -950,6 +957,102 @@ def _(ctx: Context) -> None:
     ctx.login("event_organiser", email=email, password=THROWAWAY_PASSWORD)
 
 
+# CR-103/104: denial probes never target a seeded/shared event. Even if a
+# role guard regresses, the missing UUID cannot produce a decision or transition.
+@check("TC-SDEC-001", "Non-officer active roles cannot read the safety queue or review, or decide")
+def _(ctx: Context) -> None:
+    missing_event = "00000000-0000-4000-8000-000000000000"
+    for role in ACCOUNTS:
+        headers = ctx.shared(role).headers
+        for path in ("/events/safety-queue", f"/events/{missing_event}/safety-review"):
+            expect_status(ctx.client.get(f"{ctx.api}{path}", headers=headers), 403)
+        for action, body in (
+            ("safety-approve", {}),
+            ("safety-request-changes", {"comment": "Denial check"}),
+            ("safety-reject", {"reason": "Denial check"}),
+        ):
+            expect_status(ctx.client.post(
+                f"{ctx.api}/events/{missing_event}/{action}", headers=headers, json=body,
+            ), 403)
+
+
+@check("TC-SDEC-002", "External and unrelated staff roles cannot read safety decision comments")
+def _(ctx: Context) -> None:
+    # Assigned coordinators are allowed; their relationship denial needs a
+    # known unassigned event and is left to TC-SDEC-003's manual setup.
+    for role in ("event_organiser", "venue_staff", "tech_support", "attendee"):
+        expect_status(ctx.client.get(
+            f"{ctx.api}/events/00000000-0000-4000-8000-000000000000/safety-decisions",
+            headers=ctx.shared(role).headers,
+        ), 403)
+
+
+# Officer checks below only read, or are refused before any write: the missing
+# UUID, schema validation (422) and the status check (409) all answer before an
+# RPC is called, so the shared planning fixture is never changed.
+MISSING_EVENT = "00000000-0000-4000-8000-000000000000"
+SAFETY_DECISIONS = (
+    ("safety-approve", {}),
+    ("safety-request-changes", {"comment": "Live check"}),
+    ("safety-reject", {"reason": "Live check"}),
+)
+
+
+@check("TC-SDEC-003", "The Event Coordinator Lead is denied every Safety Officer endpoint")
+def _(ctx: Context) -> None:
+    headers = ctx.shared("event_coordinator_lead").headers
+    for path in ("/events/safety-queue", "/events/safety-history", f"/events/{MISSING_EVENT}/safety-review",
+                 f"/events/{MISSING_EVENT}/safety-decisions"):
+        expect_status(ctx.client.get(f"{ctx.api}{path}", headers=headers), 403)
+    for action, body in SAFETY_DECISIONS:
+        expect_status(ctx.client.post(f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers, json=body), 403)
+
+
+@check("TC-SDEC-005", "An active Safety Officer reads the queue, oldest entry into review first")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}/events/safety-queue", headers=ctx.shared("safety_officer").headers)
+    expect_status(response, 200)
+    items = response.json()["items"]
+    keys = [(item["entered_review_at"], item["event_id"]) for item in items]
+    expect(keys == sorted(keys), f"Queue not oldest first: {keys}")
+
+
+@check("TC-SDEC-021", "An active Safety Officer reads the last 30 days of decisions, newest first")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}/events/safety-history", headers=ctx.shared("safety_officer").headers)
+    expect_status(response, 200)
+    times = [item["decided_at"] for item in response.json()["items"]]
+    expect(times == sorted(times, reverse=True), f"History not newest first: {times}")
+
+
+@check("TC-SDEC-014", "A missing event answers 404 to the Safety Officer's review and decisions")
+def _(ctx: Context) -> None:
+    headers = ctx.shared("safety_officer").headers
+    expect_status(ctx.client.get(f"{ctx.api}/events/{MISSING_EVENT}/safety-review", headers=headers), 404)
+    for action, body in SAFETY_DECISIONS:
+        expect_status(ctx.client.post(f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers, json=body), 404)
+
+
+@check("TC-SDEC-015", "A decision on an event outside Safety review is refused with 409")
+def _(ctx: Context) -> None:
+    headers = ctx.shared("safety_officer").headers
+    expect_status(ctx.client.get(f"{ctx.api}/events/{SAFE_EVENT}/safety-review", headers=headers), 404)
+    for action, body in SAFETY_DECISIONS:
+        response = ctx.client.post(f"{ctx.api}/events/{SAFE_EVENT}/{action}", headers=headers, json=body)
+        expect_status(response, 409)
+        expect("planning" in response.json()["detail"], f"{action}: {response.json()['detail']}")
+
+
+@check("TC-SDEC-016", "A blank, whitespace-only or 1001-character comment or reason is refused with 422")
+def _(ctx: Context) -> None:
+    headers = ctx.shared("safety_officer").headers
+    for text in ("", "   ", "x" * 1001):
+        for action, field_name in (("safety-request-changes", "comment"), ("safety-reject", "reason")):
+            expect_status(ctx.client.post(
+                f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers, json={field_name: text},
+            ), 422)
+
+
 # --- Helpers ---------------------------------------------------------------
 
 
@@ -1041,8 +1144,33 @@ def run_db_checks(keyword: str | None) -> list[Result]:
     for script, cases in DB_SCRIPTS:
         if keyword and keyword.lower() not in f"{script} {cases}".lower():
             continue
-        completed = _supabase_query("-f", str(VERIFICATION_DIR / script))
         title = f"{cases}: supabase/verification/{script}"
+        if script == "safety_decision_checks.sql":
+            # Read-only and scoped to this migration's exact table/RPC contract.
+            # Connectivity/CLI errors remain failures, not migration blockers.
+            try:
+                rows = db_query(
+                    "select to_regclass('public.event_safety_decisions') is not null "
+                    "and to_regprocedure('public.safety_approve_event(uuid,uuid,integer,text,text,text)') is not null "
+                    "and to_regprocedure('public.safety_return_event(uuid,uuid,integer,text,text,uuid[],uuid[],text)') is not null "
+                    "and to_regprocedure('public.return_event_to_planning(uuid,integer,text,text,text,text)') is not null "
+                    "as migration_present"
+                )
+                expect(len(rows) == 1 and isinstance(rows[0].get("migration_present"), bool),
+                       "safety migration preflight returned an unexpected result")
+            except Exception as error:
+                results.append(Result(script, title, "fail", str(error)))
+                print_result(results[-1])
+                continue
+            if not rows[0]["migration_present"]:
+                results.append(Result(
+                    script, title, "blocked",
+                    "Safety-decision migration table/RPC interfaces are missing; "
+                    "SQL verification not run. Apply the migration through the authorised workflow first.",
+                ))
+                print_result(results[-1])
+                continue
+        completed = _supabase_query("-f", str(VERIFICATION_DIR / script))
         if completed.returncode != 0:
             results.append(Result(script, title, "fail", _cli_error(completed.stderr)))
         else:

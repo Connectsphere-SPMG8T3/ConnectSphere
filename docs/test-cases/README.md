@@ -13,11 +13,12 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 | [venues.md](venues.md) | SCRUM-39 venue search, SCRUM-67 venue profile, SCRUM-19 venue booking request | TC-VENUE, TC-BOOK |
 | [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment, SCRUM-61 comments | TC-EVENT, TC-REV, TC-AMD, TC-CMT, TC-SAFE |
 | [dashboards.md](dashboards.md) | SCRUM-72 coordinator, SCRUM-70 venue staff, SCRUM-71 organiser, SCRUM-73 technical support | TC-DASH, TC-VSD, TC-ORG, TC-TSD |
+| [safety-decisions.md](safety-decisions.md) | CR-103 queue/review (AC1–4, AC6), CR-104 safety decisions | TC-SDEC |
 | [equipment.md](equipment.md) | SCRUM-45 equipment request | TC-EQR |
 
 ## Environment
 
-- A Supabase project with every migration in `supabase/migrations/` applied and `supabase/seed.sql` run. The live project (`vuiryrzzyfecjqftwicj`) has both.
+- A Supabase project with every migration in `supabase/migrations/` applied and `supabase/seed.sql` run. Check the linked migration inventory first: the linked inventory has live-only `event_spaces` versions `20261008100000`/`20261009100000`, and the CR-103/104 safety-decision migration is pending (2026-10-09). Do not assume every local migration is applied.
 - Backend on `http://localhost:8000`, frontend on `http://localhost:5173`.
 - Data-layer cases run as a real role inside a rolled-back transaction (`set_config('request.jwt.claims', ...)` plus `set local role authenticated`), not with the service key. Several are automated by the scripts in `supabase/verification/`; each file says which.
 
@@ -30,6 +31,16 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 | Venue Staff | `venue.staff@connectsphere.dev` | Single role |
 | Technical Support | `tech.support@connectsphere.dev` | Single role |
 | Attendee | `attendee@connectsphere.dev` | Single role |
+
+**Safety review prerequisites (CR-103/104):** no live Safety Officer account exists; officer-dependent cases remain pending. Grant staff roles manually using SETUP.md. The recorded API run used backend `http://localhost:8014`; the browser run uses frontend `http://localhost:5178` with that backend.
+
+**Deployment and live verification (9 Oct 2026):** the migration was not applied. `supabase db push --dry-run` is blocked because remote versions `20261008100000` and `20261009100000` are missing locally. Do not push or repair migration history in this work; integrate the migration owners' files and reconcile the inventory first. SQL parse/review was clean, but the safety-decision SQL assertions, live RLS, transactional success paths and post-application advisors remain unverified. No live Safety Officer account is available.
+
+The [recorded API/database run](runs/2026-10-09-1433-api-db-ab6a851.md) has **67 passed, 3 failed, 1 blocked**. TC-SDEC-001/002 passed. TC-SAFE-002/003 and TC-BOOK-001 failed because eligible Planning event reads depend on the missing decision table; the safety-decision SQL preflight correctly recorded Blocked without executing its script.
+
+**Offline evidence:** `/tmp/safety-backend-final-suite.txt` records **978 passed, 94.48% coverage**; the changed backend executable lines are reported as 100% covered. The fresh full frontend run `npm run test:coverage -- --maxWorkers=2` (`/tmp/safety-recovery-coverage-2workers.log`) records **673 passed, 94.58% coverage**; all **292/292 changed executable lines** are covered. The latest `npm run build` passed (`/tmp/safety-recovery-build.log`). Default parallelism had intermittent existing view-test timeouts in OrganiserDashboard and CoordinatorEventView; the complete two-worker run passed without unrelated code changes. Line coverage is complete for changed code, but branch coverage is not 100%. These results do not establish live database behaviour.
+
+**Recorded browser evidence:** the corrected-CORS run ([run log](runs/2026-10-09-1443-e2e-ab6a851.md)) finished with **52 passed, 3 failed**. TC-SDEC-004 passed for all five seeded roles. TC-BOOK-008, TC-EQR-005/006 and TC-SAFE-004 failed on event pages whose reads returned 503 because the decision table is not deployed. The initial interrupted run is retained as evidence of the spare-port CORS setup error; the existing runtime CORS configuration was corrected before this complete run.
 
 **Dashboard route map** (`frontend/src/stores/auth.js::ROLE_DASHBOARD_ROUTES`): `event_organiser → /dashboard/organiser`, `event_coordinator → /dashboard/coordinator`, `venue_staff → /dashboard/venue-staff`, `tech_support → /dashboard/tech-support`, `attendee → /dashboard/attendee`.
 

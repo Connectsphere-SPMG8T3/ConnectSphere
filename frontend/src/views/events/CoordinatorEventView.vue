@@ -9,6 +9,8 @@ import EquipmentRequestPanel from "@/components/equipment/EquipmentRequestPanel.
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import EventDiscussion from "@/components/events/EventDiscussion.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
+import SafetyDecisionDetails from "@/components/events/SafetyDecisionDetails.vue";
+import { useAuthStore } from "@/stores/auth";
 import RejectEventModal from "@/components/events/RejectEventModal.vue";
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import { showToast } from "@/composables/useToast";
@@ -19,6 +21,7 @@ import { BOOKING_STATUS_LABELS, venuePanelState } from "@/features/venues/bookin
 const route = useRoute();
 const router = useRouter();
 const review = useEventReviewStore();
+const auth = useAuthStore();
 
 const isSafetyOpen = ref(false);
 const isApproveOpen = ref(false);
@@ -150,6 +153,11 @@ watch(
         </div>
       </BauhausCard>
 
+      <BauhausCard v-if="auth.role === 'event_coordinator' && event.status === 'planning' && event.latest_safety_decision" background="white" accent="none" class="mb-8">
+        <h2 class="mb-4 text-2xl font-black uppercase">Safety Officer's decision</h2>
+        <SafetyDecisionDetails :decision="event.latest_safety_decision" />
+      </BauhausCard>
+
       <BauhausCard v-if="event.status === 'planning'" background="white" accent="none" class="mb-8">
         <div v-if="event.safety_readiness?.missing.length" id="safety-missing" class="mb-6">
           <h2 class="text-xl font-black uppercase">Not ready for safety check</h2>
@@ -223,6 +231,11 @@ watch(
         <BauhausCard background="white" accent="none">
           <h2 class="mb-6 text-2xl font-black uppercase tracking-tight">History</h2>
           <EventStatusHistory :entries="review.history" />
+        </BauhausCard>
+
+        <BauhausCard v-if="auth.role === 'event_coordinator' && review.safetyDecisions.length" background="white" accent="none">
+          <h2 class="mb-6 text-2xl font-black uppercase">Safety decision history</h2>
+          <ol class="space-y-6"><li v-for="decision in review.safetyDecisions" :key="decision.id"><SafetyDecisionDetails :decision="decision" /></li></ol>
         </BauhausCard>
 
         <BauhausCard background="white" accent="none">

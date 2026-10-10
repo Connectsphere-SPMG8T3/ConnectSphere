@@ -1,7 +1,7 @@
 """Which lifecycle actions each event status allows (REQUIREMENTS §5). Pure: no I/O.
 
 One row per lifecycle action. SCRUM-12 (assign) adds its row here rather than
-checking statuses inline.
+checking statuses inline. Approved changes return confirmed events to planning.
 """
 
 from app.core.exceptions import EventTransitionError
@@ -26,6 +26,7 @@ TRANSITIONS: dict[str, tuple[frozenset[EventStatus], EventStatus]] = {
     # event itself to rejected (CR-104 AC2, AC3).
     "safety_request_changes": (frozenset({EventStatus.safety_review}), EventStatus.planning),
     "safety_reject": (frozenset({EventStatus.safety_review}), EventStatus.planning),
+    "approved_change": (frozenset({EventStatus.confirmed}), EventStatus.planning),
     # An arrangement stopped being ready during review (CR-104 AC10).
     "safety_withdraw": (frozenset({EventStatus.safety_review}), EventStatus.planning),
 }

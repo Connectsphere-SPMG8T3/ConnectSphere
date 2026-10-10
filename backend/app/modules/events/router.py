@@ -6,6 +6,13 @@ from fastapi import APIRouter, Depends, Response, status
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.events import service
 from app.modules.events.schemas import (
+    SafetyDecision,
+    SafetyHistoryResponse,
+    SafetyQueueResponse,
+    SafetyReviewResponse,
+    SafetyApproveRequest,
+    SafetyChangesRequest,
+    SafetyRejectRequest,
     CoordinatorDashboard,
     EventComment,
     EventCommentCreate,
@@ -20,8 +27,10 @@ from app.modules.events.schemas import (
 )
 
 router = APIRouter(prefix="/events", tags=["events"])
+SafetyOfficer = Annotated[CurrentUser, Depends(require_roles(["safety_officer"]))]
 EventOrganiser = Annotated[CurrentUser, Depends(require_roles(["event_organiser"]))]
 EventCoordinator = Annotated[CurrentUser, Depends(require_roles(["event_coordinator"]))]
+SafetyDecisionReader = Annotated[CurrentUser, Depends(require_roles(["event_coordinator", "safety_officer"]))]
 EventParticipant = Annotated[CurrentUser, Depends(require_roles(["event_organiser", "event_coordinator"]))]
 
 
@@ -40,6 +49,16 @@ def list_events(current_user: EventOrganiser) -> list[EventResponse]:
 @router.get("/dashboard/coordinator", response_model=CoordinatorDashboard)
 def coordinator_dashboard(current_user: EventCoordinator) -> CoordinatorDashboard:
     return service.coordinator_dashboard(current_user.id)
+
+
+@router.get("/safety-queue", response_model=SafetyQueueResponse)
+def safety_queue(current_user: SafetyOfficer) -> SafetyQueueResponse:
+    return service.safety_queue()
+
+
+@router.get("/safety-history", response_model=SafetyHistoryResponse)
+def safety_history(current_user: SafetyOfficer) -> SafetyHistoryResponse:
+    return service.safety_history()
 
 
 @router.post("/{event_id}/clone", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
@@ -110,3 +129,29 @@ def return_event(event_id: UUID, body: EventReturnRequest, current_user: EventCo
 @router.post("/{event_id}/resubmit", response_model=EventResponse)
 def resubmit_event(event_id: UUID, body: EventResubmitRequest, current_user: EventOrganiser) -> EventResponse:
     return service.resubmit(str(event_id), current_user.id, body)
+
+
+@router.post("/{event_id}/safety-approve", response_model=EventResponse)
+def safety_approve(event_id: UUID, current_user: SafetyOfficer,
+                   body: SafetyApproveRequest | None = None) -> EventResponse:
+    return service.safety_approve(str(event_id), current_user.id, body)
+
+
+@router.post("/{event_id}/safety-request-changes", response_model=EventResponse)
+def safety_request_changes(event_id: UUID, body: SafetyChangesRequest, current_user: SafetyOfficer) -> EventResponse:
+    return service.safety_request_changes(str(event_id), current_user.id, body)
+
+
+@router.post("/{event_id}/safety-reject", response_model=EventResponse)
+def safety_reject(event_id: UUID, body: SafetyRejectRequest, current_user: SafetyOfficer) -> EventResponse:
+    return service.safety_reject(str(event_id), current_user.id, body)
+
+
+@router.get("/{event_id}/safety-review", response_model=SafetyReviewResponse)
+def safety_review(event_id: UUID, current_user: SafetyOfficer) -> SafetyReviewResponse:
+    return service.safety_review(str(event_id))
+
+
+@router.get("/{event_id}/safety-decisions", response_model=list[SafetyDecision])
+def safety_decisions(event_id: UUID, current_user: SafetyDecisionReader) -> list[SafetyDecision]:
+    return service.safety_decisions(str(event_id), current_user.id, current_user.role)
