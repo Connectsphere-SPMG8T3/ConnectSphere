@@ -1806,7 +1806,7 @@ On `feature/scrum-38-reject-booking-request`, branched from `main` at `d731ddb`,
 |---|---|
 | ID | SCRUM-38 |
 | Title | Reject a booking request with a reason |
-| Status | In progress: rebased onto CR-99, migration applied and live checks passing on 2026-10-13; manual pass pending |
+| Status | In review: rebased onto CR-99, migration applied, live checks and the developer's manual pass passing on 2026-10-13 |
 | Sprint | 3 (6–20 October) |
 
 **User story:** As Venue Staff, I want to be able to reject a booking request with a reason, so that I'm not forced to commit my venue to a booking I can't support.
@@ -1865,7 +1865,6 @@ On `feature/scrum-38-reject-booking-request`, branched from `main` at `d731ddb`,
 - **Full suites:** `pytest` 1042 passed; `npm run test:coverage` 740 passed. Every new and changed line in `backend/app/` and `frontend/src/` is covered; the lines still uncovered in the touched files predate this branch. `npm run build` succeeds.
 - **Not verified:**
   - On 2026-10-12, nothing ran against the real API or browser, because the migration wasn't applied yet. It was applied and checked on 2026-10-13; see "Applied and checked live" below.
-  - The manual pass, TC-BOOK-024–026.
   - AC8 with several bookings on one event, which needs CR-98 on `main`.
   - AC10 against approval, which needs SCRUM-36 to take the same lock.
 
@@ -1882,9 +1881,10 @@ On `feature/scrum-38-reject-booking-request`, branched from `main` at `d731ddb`,
 - `verify_live.py --record`, backend on port 8010: **89/89 passed**, including TC-BOOK-014–020 and 023 (`runs/2026-10-13-0115-api-db-c3499b0.md`).
 - `npm run test:e2e:record`, frontend on port 5183: the first run had **58/59 passed** (`runs/2026-10-13-0122-e2e-c3499b0.md`). TC-BOOK-022 failed because the spec switched from coordinator to organiser inside one tab, and `seedSession` signs a tab in only once, so the organiser step still ran as the coordinator. That was a fault in the test, not the app. The spec was split into one test per role, and the re-run had **60/60 passed** (`runs/2026-10-13-0126-e2e-c3499b0.md`). Both run logs name `c3499b0` because the spec fix was uncommitted when they ran.
 
+**Manual pass (2026-10-13).** The developer checked TC-BOOK-024–026 in the browser at desktop and 375px, against two throwaway held requests on the live project: all three passed (`runs/2026-10-13-0143-manual-93e9492.md`).
+
 #### Follow-ups
 
-- The developer's manual pass, TC-BOOK-024–026.
 - CR-98 merges, and CR-95's history is repaired (DEFECTS D26). Until then, every `db push` needs CR-98's files copied in locally the same way.
 - SCRUM-36 (approve) builds on this branch's page, store and lock pattern (IMPLEMENTATION_MAP §5).
 - CR-99's seeded fixture hold (`d0000000-…-0201`) expires on the live project at 2026-10-19 11:14 UTC (checked 2026-10-12; the `expire-venue-holds` cron job is active), which may break checks that rely on that fixture. That's worth raising with Xuan Wei.
