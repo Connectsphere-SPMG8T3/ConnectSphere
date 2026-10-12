@@ -17,7 +17,7 @@ Every item is tagged with who owns it:
 
 Agents never push, open PRs, or edit the team's Google Sheets unless the developer asks (root `AGENTS.md`, "Git workflow"). An agent's work ends after §3. The PBI is not Done until a person finishes §4 and §5.
 
-_Last updated: 2026-10-06 — first version: Phases 1–4 of the old `DEFINITION_OF_DONE.md`, rearranged by board status, with Jira replaced by the Product backlog sheet (`chore/docs-scrum-playbook`)._
+_Last updated: 2026-10-12 — added "Editing the backlog sheet" (columns, exact status values, date format) and corrected the PBI status values (`chore/backlog-sheet-editing-notes`)._
 
 ---
 
@@ -25,12 +25,22 @@ _Last updated: 2026-10-06 — first version: Phases 1–4 of the old `DEFINITION
 
 | What | Where |
 |---|---|
-| PBIs: user story, acceptance criteria, priority, estimate, status, customer clarifications | The **Product backlog** tab of the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit). PBI status is Backlog / Ready / In Sprint / Done. |
+| PBIs: user story, acceptance criteria, priority, estimate, status, customer clarifications | The **Product backlog** tab of the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit). PBI status is To Do / In Progress / In Review / Done (exact values under "Editing the backlog sheet" below). |
 | The sprint goal, tasks and remaining effort, and the burndown chart | The sprint's tab (Sprint 1–4) in the same sheet. Task status is To Do / In Progress / In Review / Done. Remaining effort is updated after every daily scrum. |
 | Code, tests, test cases and run logs | This repository. The team copies the test cases into the Test cases sheet before submission. |
 | Sprint 1 and 2 history | The Jira exports in the shared drive's `#4. Evidence` folder. |
 
 **PBI IDs.** Stories from Sprints 1–2 keep their Jira number: row `12` in the sheet is `SCRUM-12`. Stories added from the Week 7 changes use the sheet's own `NEW-<nn>` IDs. Cite whichever the sheet shows, in branches, commits, test cases and log entries.
+
+### Editing the backlog sheet
+
+An agent with the Google Sheets connector can read and write the sheet directly. Anyone signed in with an `smu.edu.sg` account has edit access. Agents edit it only when the developer asks.
+
+- **Columns** in the **Product backlog** tab, as of 12 Oct 2026: A Needs attention, B ID #, C Title, D Type, E Epic, F As a…, G I want to be able to…, H So that…, I Acceptance criteria, J Met DoD?, K Priority, L Estimate, M Sprint #, N Customer clarification, O Assignee, P Status, Q Created date, R Updated date, S Resolved date. Teammates can move columns, so re-read row 1 before writing.
+- **Status** must match the dropdown exactly, emoji included: `TO DO 😖`, `IN PROGRESS 🥸`, `IN REVIEW 🥹`, `DONE 🥳`.
+- **Dates** are text in `DD/MM/YYYY` form. A status change also sets **Updated date**. Setting a PBI to Done also sets **Resolved date** and fills **Met DoD?**.
+- **Reading:** the whole tab is too large for one connector call. Find the row with a narrow range such as `'Product backlog'!B1:C120`, then read just that row.
+- **Writing:** re-read the target row right before writing, because teammates edit the sheet at the same time. Read it back afterwards to confirm the change.
 
 ## 1. Before starting: Ready → In Progress
 
