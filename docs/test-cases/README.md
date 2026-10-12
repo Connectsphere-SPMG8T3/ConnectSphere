@@ -10,8 +10,8 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 |---|---|---|
 | [auth.md](auth.md) | SCRUM-48 login, session, logout; SCRUM-80 organiser sign-up | TC-AUTH |
 | [roles-and-access.md](roles-and-access.md) | SCRUM-48 routing and data-layer security; SCRUM-74/75/76/78 role switching | TC-RBAC, TC-ROLE, TC-DATA |
-| [venues.md](venues.md) | SCRUM-39 venue search, SCRUM-67 venue profile, SCRUM-19 venue booking request, CR-99 hold expiry, SCRUM-38 reject a booking request | TC-VENUE, TC-BOOK, TC-HOLD |
-| [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment, SCRUM-61 comments | TC-EVENT, TC-REV, TC-AMD, TC-CMT, TC-SAFE |
+| [venues.md](venues.md) | SCRUM-39 venue search, SCRUM-67 venue profile, SCRUM-19 venue booking request, CR-99 hold expiry, SCRUM-38 booking rejection, CR-98 space-scoped venue selection | TC-VENUE, TC-BOOK, TC-HOLD, TC-SPACE |
+| [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment, SCRUM-61 comments, CR-98 event-space requirements | TC-EVENT, TC-REV, TC-AMD, TC-CMT, TC-SAFE, TC-SPACE |
 | [dashboards.md](dashboards.md) | SCRUM-72 coordinator, SCRUM-70 venue staff, SCRUM-71 organiser, SCRUM-73 technical support | TC-DASH, TC-VSD, TC-ORG, TC-TSD |
 | [safety-decisions.md](safety-decisions.md) | CR-103 queue/review (AC1–4, AC6), CR-104 safety decisions | TC-SDEC |
 | [equipment.md](equipment.md) | SCRUM-45 equipment request | TC-EQR |

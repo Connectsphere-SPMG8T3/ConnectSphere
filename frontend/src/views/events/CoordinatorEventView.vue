@@ -38,6 +38,7 @@ const showReturn = computed(() => canReturn(event.value?.status));
 const venuePanel = computed(() => venuePanelState(event.value));
 // SCRUM-38 AC6, AC7: why venue staff said no, shown above the way to try another venue.
 const rejectedBookings = computed(() => event.value?.rejected_bookings ?? []);
+const eventSpaces = computed(() => event.value?.spaces ?? []);
 
 function displayDateTime(value, timeZone) {
   if (!value) return "Not provided";
@@ -190,12 +191,34 @@ watch(
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Expected attendance</dt><dd class="mt-1 font-medium">{{ displayValue(event.expected_attendance) }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Starts</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.starts_at, event.event_timezone) }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Ends</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.ends_at, event.event_timezone) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Preferred layout</dt><dd class="mt-1 font-medium">{{ displayValue(event.layout_preference) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Facilities</dt><dd class="mt-1 font-medium">{{ event.facilities_required?.length ? event.facilities_required.join(", ") : "None specified" }}</dd></div>
             <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Accessibility needs</dt><dd class="mt-1 font-medium">{{ displayValue(event.accessibility_needs) }}</dd></div>
             <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Equipment needs</dt><dd class="mt-1 font-medium">{{ displayValue(event.preliminary_equipment_needs) }}</dd></div>
             <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Description</dt><dd class="mt-1 whitespace-pre-wrap font-medium">{{ displayValue(event.description) }}</dd></div>
           </dl>
+          <section v-if="eventSpaces.length" class="mt-8 border-t-4 border-ink pt-6" data-testid="event-spaces">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-xl font-black uppercase tracking-tight">Space requests</h3>
+              <span class="text-xs font-bold uppercase tracking-widest text-ink/70">{{ eventSpaces.length }} spaces</span>
+            </div>
+            <div class="mt-4 grid gap-4">
+              <article v-for="space in eventSpaces" :key="space.id" class="border-2 border-ink bg-canvas p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h4 class="text-lg font-black uppercase tracking-tight">{{ space.label }}</h4>
+                    <p class="mt-1 text-sm font-medium">{{ space.expected_pax }} pax · {{ space.layout_preference }}</p>
+                  </div>
+                  <RouterLink
+                    v-if="event.status === 'planning'"
+                    :to="{ name: 'venue-search', query: { event: event.id, space: space.id } }"
+                    class="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard"
+                  >
+                    Find venue
+                  </RouterLink>
+                </div>
+                <p class="mt-2 text-xs font-bold uppercase tracking-wide text-ink/70">{{ space.facilities_required?.length ? space.facilities_required.join(", ") : "No facilities specified" }}</p>
+              </article>
+            </div>
+          </section>
         </BauhausCard>
 
         <BauhausCard

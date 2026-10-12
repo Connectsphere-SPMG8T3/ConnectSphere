@@ -2,13 +2,16 @@ import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { venuesApi } from "@/services/api";
+import { eventsApi, venueBookingsApi, venuesApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { useVenuesStore } from "@/features/venues/venueSearchStore";
+import { criteriaFromEvent, criteriaFromSpace, venuePanelState } from "@/features/venues/bookingRequest";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
+  eventsApi: { get: vi.fn() },
+  venueBookingsApi: { request: vi.fn() },
   venuesApi: { search: vi.fn(), get: vi.fn() },
 }));
 
@@ -54,7 +57,7 @@ async function mountView(component, { route } = {}) {
   authStore.profile = { id: "u1", role: "event_coordinator" };
   authStore.sessionVerified = true;
   const { default: router } = await import("@/router");
-  if (route) await router.push(route);
+  await router.push(route ?? { name: "venue-search", query: {} });
   const el = document.createElement("div");
   document.body.appendChild(el);
   const app = createApp(component).use(pinia).use(router);
@@ -74,7 +77,179 @@ describe("VenueSearchView", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     vi.clearAllMocks();
+    eventsApi.get.mockReset();
+    venueBookingsApi.request.mockReset();
     venuesApi.search.mockResolvedValue(RESPONSE);
+  });
+
+  it("loads the selected space requirements and requests a venue for that space", async () => {
+    const event = {
+      id: "event-1",
+      name: "Partner Summit",
+      status: "planning",
+      event_timezone: "Asia/Singapore",
+      starts_at: "2026-10-10T06:00:00Z",
+      ends_at: "2026-10-10T09:00:00Z",
+      expected_attendance: 100,
+      layout_preference: "theatre",
+      facilities_required: ["projector"],
+      spaces: [{
+        id: "space-1",
+        label: "Breakout room",
+        expected_pax: 20,
+        layout_preference: "classroom",
+        facilities_required: ["whiteboard"],
+      }],
+      venue_bookings: [],
+    };
+    eventsApi.get.mockResolvedValue(event);
+    venueBookingsApi.request.mockResolvedValue({ id: "booking-1" });
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el, venuesStore } = await mountView(VenueSearchView, {
+      route: { name: "venue-search", query: { event: event.id, space: "space-1" } },
+    });
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Space: Breakout room"));
+    expect(eventsApi.get).toHaveBeenCalledWith(event.id, "access");
+    expect(venuesStore.criteria).toMatchObject({
+      date: "2026-10-10",
+      startTime: "14:00",
+      endTime: "17:00",
+      minCapacity: 20,
+      layout: "classroom",
+      facilities: ["whiteboard"],
+    });
+
+    el.querySelector('[aria-label="Request Hall A"]').click();
+    await settle();
+    const note = document.querySelector("#request-venue-note");
+    note.value = "Breakout room setup";
+    note.dispatchEvent(new Event("input", { bubbles: true }));
+    await settle();
+    document.querySelector('[aria-label="Request venue"]').click();
+
+    await vi.waitFor(() => expect(venueBookingsApi.request).toHaveBeenCalledWith({
+      event_space_request_id: "space-1",
+      venue_id: HALL_A.id,
+      note: "Breakout room setup",
+    }, "access"));
+  });
+
+  it("keeps the legacy event-scoped request flow when no space is selected", async () => {
+    const event = {
+      id: "event-legacy",
+      name: "Single-space event",
+      status: "planning",
+      event_timezone: "Asia/Singapore",
+      starts_at: "2026-10-10T06:00:00Z",
+      ends_at: "2026-10-10T09:00:00Z",
+      expected_attendance: 80,
+      layout_preference: "theatre",
+      facilities_required: ["projector"],
+    };
+    eventsApi.get.mockResolvedValue(event);
+    venueBookingsApi.request.mockResolvedValue({ id: "legacy-booking" });
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el, venuesStore } = await mountView(VenueSearchView, {
+      route: { name: "venue-search", query: { event: event.id } },
+    });
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Single-space event"));
+    expect(venuesStore.criteria).toMatchObject({ minCapacity: 80, layout: "theatre", facilities: ["projector"] });
+    expect(el.textContent).not.toContain("Space:");
+
+    el.querySelector('[aria-label="Request Hall A"]').click();
+    await settle();
+    document.querySelector('[aria-label="Request venue"]').click();
+
+    await vi.waitFor(() => expect(venueBookingsApi.request).toHaveBeenCalledWith({
+      event_id: "event-legacy",
+      venue_id: HALL_A.id,
+      note: null,
+    }, "access"));
+  });
+
+  it("keeps the selected-space request dialog open and shows a booking refusal", async () => {
+    const event = {
+      id: "event-1",
+      name: "Partner Summit",
+      status: "planning",
+      event_timezone: "Asia/Singapore",
+      starts_at: "2026-10-10T06:00:00Z",
+      ends_at: "2026-10-10T09:00:00Z",
+      spaces: [{ id: "space-1", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: [] }],
+    };
+    eventsApi.get.mockResolvedValue(event);
+    venueBookingsApi.request.mockRejectedValue(new Error("Space already has a venue."));
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView, {
+      route: { name: "venue-search", query: { event: event.id, space: "space-1" } },
+    });
+    await vi.waitFor(() => expect(el.textContent).toContain("Space: Breakout room"));
+
+    el.querySelector('[aria-label="Request Hall A"]').click();
+    await settle();
+    document.querySelector('[aria-label="Request venue"]').click();
+
+    await vi.waitFor(() => expect(document.querySelector('[role="alert"]').textContent).toContain("Space already has a venue."));
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
+  it("hides venue requests when the selected space already has an active booking", async () => {
+    const event = {
+      id: "event-booked",
+      name: "Booked event",
+      status: "planning",
+      event_timezone: "Asia/Singapore",
+      starts_at: "2026-10-10T06:00:00Z",
+      ends_at: "2026-10-10T09:00:00Z",
+      spaces: [{ id: "space-booked", label: "Main venue", expected_pax: 40, layout_preference: "theatre", facilities_required: [] }],
+      venue_bookings: [{ id: "booking-1", event_space_request_id: "space-booked", status: "held" }],
+    };
+    eventsApi.get.mockResolvedValue(event);
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView, {
+      route: { name: "venue-search", query: { event: event.id, space: "space-booked" } },
+    });
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Main venue"));
+    expect(el.textContent).toContain("This space already has a venue.");
+    expect(el.querySelector('[aria-label="Request Hall A"]')).toBeNull();
+  });
+
+  it("shows a failed event read in the selected-space search context", async () => {
+    eventsApi.get.mockRejectedValue(new Error("Event could not be loaded."));
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView, {
+      route: { name: "venue-search", query: { event: "missing-event", space: "missing-space" } },
+    });
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]')?.textContent).toContain("Event could not be loaded."));
+    expect(el.querySelector('[aria-label="Request Hall A"]')).toBeNull();
+  });
+
+  it("hides the selected-space booking action when the search period is changed", async () => {
+    const event = {
+      id: "event-period",
+      name: "Partner Summit",
+      status: "planning",
+      event_timezone: "Asia/Singapore",
+      starts_at: "2026-10-10T06:00:00Z",
+      ends_at: "2026-10-10T09:00:00Z",
+      spaces: [{ id: "space-period", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: [] }],
+    };
+    eventsApi.get.mockResolvedValue(event);
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el, venuesStore } = await mountView(VenueSearchView, {
+      route: { name: "venue-search", query: { event: event.id, space: "space-period" } },
+    });
+    await vi.waitFor(() => expect(el.textContent).toContain("Space: Breakout room"));
+
+    venuesStore.criteria.endTime = "18:00";
+    await nextTick();
+
+    expect(el.textContent).toContain("Search the event's own date and times to request a venue for it.");
+    expect(el.querySelector('[aria-label="Request Hall A"]')).toBeNull();
   });
 
   it("lists matching venues on first visit and reveals excluded ones with reasons on demand", async () => {
@@ -143,6 +318,46 @@ describe("VenueSearchView", () => {
       },
       "access",
     );
+  });
+});
+
+describe("event and space booking criteria", () => {
+  it("overrides event-level capacity, layout and facilities with the selected space", () => {
+    const event = {
+      starts_at: "2026-10-10T06:00:00Z",
+      ends_at: "2026-10-10T09:00:00Z",
+      expected_attendance: 100,
+      layout_preference: "theatre",
+      facilities_required: ["projector"],
+    };
+    const criteria = criteriaFromSpace({
+      expected_pax: 20,
+      layout_preference: "classroom",
+      facilities_required: ["whiteboard"],
+    }, event);
+
+    expect(criteria).toMatchObject({
+      date: "2026-10-10",
+      startTime: "14:00",
+      endTime: "17:00",
+      minCapacity: 20,
+      layout: "classroom",
+      facilities: ["whiteboard"],
+    });
+  });
+
+  it("handles missing events and uses the booking belonging to the selected space", () => {
+    expect(criteriaFromEvent({ starts_at: null, ends_at: null })).toMatchObject({ facilities: [] });
+    expect(criteriaFromSpace(null, null)).toMatchObject({ facilities: [] });
+    expect(venuePanelState(null)).toEqual({ kind: "none" });
+    expect(venuePanelState({
+      status: "planning",
+      venue_bookings: [{ id: "booking-1", event_space_request_id: "space-1" }],
+    }, { id: "space-1" })).toEqual({
+      kind: "booked",
+      booking: { id: "booking-1", event_space_request_id: "space-1" },
+    });
+    expect(venuePanelState({ status: "planning", venue_bookings: [] }, { id: "space-2" })).toEqual({ kind: "can-request" });
   });
 });
 

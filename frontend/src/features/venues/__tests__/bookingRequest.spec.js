@@ -26,6 +26,16 @@ describe("venuePanelState", () => {
     expect(venuePanelState(event)).toEqual({ kind: "expired", booking: event.venue_booking, canRequest: false });
   });
 
+  it("shows an expired hold only for its event space", () => {
+    const expiredBooking = { ...booking("expired"), event_space_request_id: "space-1" };
+    const event = { status: "planning", venue_booking: expiredBooking, venue_bookings: [] };
+
+    expect(venuePanelState(event, { id: "space-1" })).toEqual({
+      kind: "expired", booking: expiredBooking, canRequest: true,
+    });
+    expect(venuePanelState(event, { id: "space-2" })).toEqual({ kind: "can-request" });
+  });
+
   it("labels the expired status for the coordinator", () => {
     expect(BOOKING_STATUS_LABELS.expired).toBe("Expired");
   });

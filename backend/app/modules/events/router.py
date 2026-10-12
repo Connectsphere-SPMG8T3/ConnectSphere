@@ -23,6 +23,9 @@ from app.modules.events.schemas import (
     EventResponse,
     EventResubmitRequest,
     EventReturnRequest,
+    EventSpaceRequest,
+    EventSpaceRequestCreate,
+    EventSpaceRequestUpdate,
     EventUpdateRequest,
 )
 
@@ -42,6 +45,31 @@ def create_event(body: EventCreateRequest, current_user: EventOrganiser) -> Even
 @router.get("", response_model=list[EventResponse])
 def list_events(current_user: EventOrganiser) -> list[EventResponse]:
     return service.list_owned(current_user.id)
+
+
+@router.post("/{event_id}/spaces", response_model=EventSpaceRequest, status_code=status.HTTP_201_CREATED)
+def create_event_space(
+    event_id: UUID, body: EventSpaceRequestCreate, current_user: EventOrganiser
+) -> EventSpaceRequest:
+    return service.create_space(str(event_id), current_user.id, body)
+
+
+@router.patch("/{event_id}/spaces/{space_id}", response_model=EventSpaceRequest)
+def update_event_space(
+    event_id: UUID,
+    space_id: UUID,
+    body: EventSpaceRequestUpdate,
+    current_user: EventOrganiser,
+) -> EventSpaceRequest:
+    # The event id is part of the route for a stable client URL; ownership and
+    # parentage are rechecked by the service using the space id.
+    return service.update_space(str(space_id), current_user.id, body)
+
+
+@router.delete("/{event_id}/spaces/{space_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_event_space(event_id: UUID, space_id: UUID, current_user: EventOrganiser) -> Response:
+    service.delete_space(str(space_id), current_user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # Declared above `/{event_id}`: that path is typed UUID, so this one would

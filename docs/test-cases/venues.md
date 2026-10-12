@@ -129,7 +129,7 @@ For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cove
 | TC-BOOK-001 | Requesting a free venue holds it and notifies venue staff (AC1) | A planning event assigned to the coordinator, 20 May 2031 14:00–17:00, no venue | `POST /api/v1/venue-bookings` | `{event_id, venue_id: Innovation Lab, note: "  Early access at 13:00  "}` | 201, `status: "held"`, note trimmed. The stored booking's period is exactly the **event's** 14:00–17:00. One `venue_booking_requested` notification to `venue.staff@connectsphere.dev` and **none** to the coordinator (who also holds venue_staff). The event's `GET` shows `venue_booking.status = "held"`, and the hold is in the venue-staff dashboard's pending holds. | 🔴 |
 | TC-BOOK-002 | An overlapping request is refused; back-to-back is allowed (AC2) | Event X holds Innovation Lab 14:00–17:00 on 21 May 2031 | Request Innovation Lab for event Y (16:00–18:00), then for event Z (17:00–19:00) | — | Y: 409 "Venue already held for this time by another event.", no booking stored. Z: 201 (half-open periods, zero turnaround, QA-28). | 🔴 |
 | TC-BOOK-003 | A request overlapping a venue block is refused (AC2) | A maintenance block on Heritage Hall, 22 May 2031 10:00–12:00 | Request Heritage Hall for an event 11:00–13:00 that day | — | 409 "Venue blocked for this time.", no booking stored. | 🔴 |
-| TC-BOOK-004 | One venue per event (AC4) | Fixture `e0000000-…-0202` already holds Boardroom Orchid | Request Heritage Hall for `…-0202` | — | 409 "This event already has a venue booking." | 🔴 |
+| TC-BOOK-004 | Legacy event-scoped request cannot duplicate its Main-space booking (SCRUM-19 AC4; superseded by CR-97/CR-98) | Fixture `e0000000-…-0202` already has an active booking linked to its backfilled `Main space` | Submit a legacy `event_id`-scoped request for Heritage Hall | — | 409; no second active booking is created for the implicit `Main space`. New CR-98 requests target a specific event-space request. | 🔴 |
 | TC-BOOK-005 | Only a planning event can request (AC5) | A returned event; fixture `e0000000-…-0201` (under review) | Request a venue for each | — | Returned: 409 "Requirements are still being amended." Under review: 409 "Cannot request a venue for an event that is under review." | 🔴 |
 | TC-BOOK-006 | Only the assigned coordinator, acting as coordinator (AC6) | A planning event assigned to no one; one assigned to the coordinator | 1. As the coordinator, request for the unassigned one. 2. As organiser, venue staff, tech support, attendee, request for the assigned one. 3. As the coordinator **switched to venue staff**, request for the assigned one. | — | 403 every time; no booking stored. | 🔴 |
 | TC-BOOK-007 | Two simultaneous overlapping requests leave one hold (AC3) | Two planning events on the same day, 14:00–17:00 and 15:00–18:00 | Send both `POST`s for Innovation Lab at the same instant | — | Exactly one 201 and one 409; exactly one `held` booking between them. | 🔴 |
@@ -149,7 +149,7 @@ For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cove
 | AC1 Request creates a tentative hold, shown on the calendar, venue staff notified | TC-BOOK-001, TC-BOOK-008, TC-BOOK-012; `pytest` `TestRequest::test_the_assigned_coordinator_holds_a_venue_and_venue_staff_are_told`, `TestEventShowsItsBooking`; Vitest `venueBookingStore.spec.js`; SQL checks (hold, notification fan-out) |
 | AC2 Overlapping requests refused (incl. blocks); back-to-back allowed | TC-BOOK-002, TC-BOOK-003, TC-BOOK-011; `pytest` `::test_a_refusal_from_the_database_is_answered_with_its_message[held_by_other / blocked]`; SQL checks |
 | AC3 First come, first served under concurrency | TC-BOOK-007; SQL checks (exclusion constraint) |
-| AC4 One venue per event | TC-BOOK-004; `pytest` `[already_booked]`; SQL checks |
+| Original AC4: one booking per event (superseded by CR-97/CR-98); legacy `event_id` requests resolve to the backfilled Main space | TC-BOOK-004; `pytest` `[already_booked]`; SQL checks |
 | AC5 Only while planning | TC-BOOK-005, TC-BOOK-009; `pytest` `[returned]`, `::test_an_event_outside_planning_is_refused_naming_its_status`; SQL checks |
 | AC6 Only the assigned coordinator, acting as coordinator | TC-BOOK-006; `pytest` `TestWhoMayRequest`; SQL checks (`not_assigned`, grants) |
 
@@ -221,3 +221,12 @@ For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cove
 | AC10 Approval, rejection and expiry at once: one outcome saved | TC-BOOK-018 (rejection against rejection), TC-BOOK-023 (a hold past its expiry). Against approval: SCRUM-36 must take the same lock; not yet testable. |
 | AC11 Only venue staff, by active role; everyone else 403 | TC-BOOK-019; `pytest` `TestWhoMayReject`, `test_active_role_access.py` (every route) |
 | AC12 Rejection, reason, who and when in the booking's history | TC-BOOK-015, TC-BOOK-021, TC-BOOK-023; `pytest` (history in the response); Vitest `BookingRequestView.spec.js` (AC12 case) |
+### Related workflow — CR-97 venue selection using CR-98 space requirements
+
+Venue selection and booking for each proposed space are downstream of CR-98's coordinator-visibility criterion and belong to CR-97. The CR-98 source data supplies the selected space's requirements.
+
+| Related behaviour (not a CR-98 acceptance criterion) | Covered by | Automated equivalent |
+|---|---|---|
+| A coordinator selects a venue for one proposed space at a time | TC-SPACE-008 | `test_venue_booking_request_api.py::TestRequest::test_a_space_request_can_hold_a_venue_independently`; `venueBookingStore.spec.js`; `venueSearch.spec.js` selected-space flow |
+| One active booking per space; legacy single-space/event-scoped requests remain readable | TC-SPACE-005, TC-BOOK-004 | `20261008100000_event_space_requests.sql`; booking-request SQL checks and API tests |
+| Search criteria and booking request use the selected space's effective period: its explicit window or the event period when inherited | TC-SPACE-008 | `bookingRequest.js` tests; `VenueSearchView` and booking API/store tests |

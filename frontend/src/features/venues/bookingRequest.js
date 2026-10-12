@@ -37,18 +37,30 @@ export function criteriaFromEvent(event) {
   return criteria;
 }
 
+export function criteriaFromSpace(space, event) {
+  const criteria = criteriaFromEvent(event ?? {});
+  if (space?.expected_pax) criteria.minCapacity = space.expected_pax;
+  if (space?.layout_preference) criteria.layout = space.layout_preference;
+  if (space?.facilities_required) criteria.facilities = [...space.facilities_required];
+  return criteria;
+}
+
 /**
  * What the event page's Venue panel shows. The API is the enforcement point;
  * this only avoids offering a request that would answer 409.
  */
-export function venuePanelState(event) {
+export function venuePanelState(event, space = null) {
   if (!event) return { kind: "none" };
   // CR-99 AC7: the hold ran out. Say so, and offer the venue again when a
   // request is possible at all.
-  if (event.venue_booking?.status === "expired") {
-    return { kind: "expired", booking: event.venue_booking, canRequest: event.status === "planning" };
+  const booking = space
+    ? (event.venue_bookings ?? []).find((item) => item.event_space_request_id === space.id)
+      ?? (event.venue_booking?.event_space_request_id === space.id ? event.venue_booking : null)
+    : event.venue_booking;
+  if (booking?.status === "expired") {
+    return { kind: "expired", booking, canRequest: event.status === "planning" };
   }
-  if (event.venue_booking) return { kind: "booked", booking: event.venue_booking };
+  if (booking) return { kind: "booked", booking };
   if (event.status === "planning") return { kind: "can-request" };
   if (event.status === "returned") return { kind: "unavailable", reason: "Requirements are still being amended." };
   if (event.status === "under_review") {

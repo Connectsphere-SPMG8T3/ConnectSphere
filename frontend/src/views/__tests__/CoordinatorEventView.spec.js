@@ -170,6 +170,38 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(el.textContent).toContain("Discussion");
   });
 
+  it("shows facilities for each proposed space", async () => {
+    const el = await mountView(eventResponse({ status: "planning",
+      spaces: [
+        { id: "space-a", label: "Main hall", expected_pax: 80, layout_preference: "theatre", facilities_required: ["projector"] },
+        { id: "space-b", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: ["whiteboard"] },
+      ],
+    }));
+
+    const spaceSection = el.querySelector('[data-testid="event-spaces"]');
+    expect(spaceSection.textContent).toContain("projector");
+    expect(spaceSection.textContent).toContain("whiteboard");
+    const requestDetailLabels = [...el.querySelectorAll("dt")].map((node) => node.textContent.trim());
+    expect(requestDetailLabels).not.toContain("Preferred layout");
+    expect(requestDetailLabels).not.toContain("Facilities");
+    expect(spaceSection.textContent).not.toContain("Uses event period");
+    expect(el.textContent).toContain("Starts");
+    expect(el.textContent).toContain("Ends");
+    expect([...spaceSection.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toEqual([
+      "/venues?event=event-1&space=space-a",
+      "/venues?event=event-1&space=space-b",
+    ]);
+  });
+
+  it("does not offer space venue search before planning", async () => {
+    const el = await mountView(eventResponse({
+      status: "under_review",
+      spaces: [{ id: "space-a", label: "Main hall", expected_pax: 80, layout_preference: "theatre", facilities_required: [] }],
+    }));
+
+    expect(el.querySelector('[data-testid="event-spaces"] a')).toBeNull();
+  });
+
   it("offers approve and reject for a request under review", async () => {
     const el = await mountView(eventResponse());
 

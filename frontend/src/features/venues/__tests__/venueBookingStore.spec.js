@@ -63,4 +63,44 @@ describe("useVenueBookingStore.request (SCRUM-19)", () => {
     // A 409 is a refusal, not a rejected session (isSessionRejected).
     expect(useAuthStore().token).toBe("access-token");
   });
+
+  it("requests a venue for a selected space with a trimmed note", async () => {
+    const store = signedInCoordinator();
+    venueBookingsApi.request.mockResolvedValue({ ...BOOKING, event_space_request_id: "space-1" });
+
+    const booking = await store.requestForSpace("space-1", "v1", "  Breakout room  ");
+
+    expect(venueBookingsApi.request).toHaveBeenCalledWith({
+      event_space_request_id: "space-1",
+      venue_id: "v1",
+      note: "Breakout room",
+    }, "access-token");
+    expect(booking.event_space_request_id).toBe("space-1");
+    expect(store.error).toBeNull();
+    expect(store.isRequesting).toBe(false);
+  });
+
+  it("sends a null note for a space booking when the note is blank", async () => {
+    const store = signedInCoordinator();
+    venueBookingsApi.request.mockResolvedValue({ ...BOOKING, event_space_request_id: "space-1", note: null });
+
+    await store.requestForSpace("space-1", "v1", "   ");
+
+    expect(venueBookingsApi.request).toHaveBeenCalledWith({
+      event_space_request_id: "space-1",
+      venue_id: "v1",
+      note: null,
+    }, "access-token");
+  });
+
+  it("surfaces a space-booking refusal and clears the requesting state", async () => {
+    const store = signedInCoordinator();
+    venueBookingsApi.request.mockRejectedValue(new ApiError("Space already has a venue.", 409));
+
+    await expect(store.requestForSpace("space-1", "v1", "")).rejects.toThrow("Space already has a venue.");
+
+    expect(store.error).toBe("Space already has a venue.");
+    expect(store.isRequesting).toBe(false);
+    expect(useAuthStore().token).toBe("access-token");
+  });
 });

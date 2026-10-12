@@ -29,5 +29,20 @@ export const useVenueBookingStore = defineStore("venueBooking", {
         this.isRequesting = false;
       }
     },
+
+    async requestForSpace(spaceId, venueId, note) {
+      const auth = useAuthStore();
+      this.isRequesting = true;
+      this.error = null;
+      try {
+        const payload = { event_space_request_id: spaceId, venue_id: venueId, note: note?.trim() || null };
+        return await auth.withSession((token) => venueBookingsApi.request(payload, token));
+      } catch (error) {
+        this.error = error.message;
+        throw error;
+      } finally {
+        this.isRequesting = false;
+      }
+    },
   },
 });

@@ -15,7 +15,7 @@ import { showToast } from "@/composables/useToast";
 import { FLAG_TEXT, flaggedFormKeys } from "@/features/events/amendment";
 import { getEarliestEventDate, getRegistrationClosingError, getRegistrationOpeningError, getSingaporeDateString, isEventDateAfterToday } from "@/features/events/dateValidation";
 import { EVENT_TIMEZONES } from "@/features/events/timezones";
-import { FACILITIES, LAYOUTS, emptyEvent, useEventsStore } from "@/stores/events";
+import { FACILITIES, LAYOUTS, emptyEvent, emptySpace, spaceToPayload, useEventsStore } from "@/stores/events";
 
 const router = useRouter();
 const route = useRoute();
@@ -28,6 +28,7 @@ const isNew = computed(() => !form.id);
 const isReturned = computed(() => form.status === "returned");
 const flaggedKeys = computed(() => flaggedFormKeys(form.amendment?.flagged_fields));
 const isResubmitModalOpen = ref(false);
+const isSavingSpace = ref(false);
 
 function flagFor(key) {
   return flaggedKeys.value.has(key) ? FLAG_TEXT : "";
@@ -82,6 +83,7 @@ function confirmSubmit() {
 
 async function confirmResubmit(note) {
   try {
+    await persistSpaces(form.id, form.spaces);
     await eventsStore.resubmit(form.id, form, note);
   } catch {
     return; // The modal stays open and shows the API's message.
@@ -113,10 +115,8 @@ function validateSubmission() {
     if (form.startTime && form.endTime && form.endTime <= form.startTime) {
       errors.endTime = "End time must be after the start time.";
     }
-    if (!form.expectedAttendance || Number(form.expectedAttendance) < 1) {
-      errors.expectedAttendance = "Enter expected attendance of at least 1.";
-    }
-    if (!form.layoutPreference) errors.layoutPreference = "Choose a layout.";
+    const spaceErrors = form.spaces.map((space) => validateSpace(space));
+    if (spaceErrors.some((spaceError) => Object.keys(spaceError).length)) errors.spaces = spaceErrors;
     if (form.registrationEnabled && !form.registrationCapacity) {
       errors.registrationCapacity = "Enter a registration capacity.";
     }
@@ -141,16 +141,66 @@ function validateSubmission() {
   return Object.keys(errors).length === 0;
 }
 
+function validateSpace(space) {
+  const errors = {};
+  if (!space.label.trim()) errors.label = "Enter a space label.";
+  if (!space.expectedPax || Number(space.expectedPax) < 1) errors.expectedPax = "Enter expected pax of at least 1.";
+  if (!space.layoutPreference) errors.layoutPreference = "Choose a layout.";
+  return errors;
+}
+
+function addSpace() {
+  form.spaces.push(emptySpace());
+}
+
+async function removeSpace(space) {
+  if (!space.id) {
+    const index = form.spaces.indexOf(space);
+    if (index !== -1) form.spaces.splice(index, 1);
+    return;
+  }
+  if (!window.confirm(`Remove ${space.label}?`)) return;
+  isSavingSpace.value = true;
+  try {
+    await eventsStore.removeSpace(form.id, space.id);
+    const refreshed = await eventsStore.get(form.id);
+    Object.assign(form, refreshed);
+  } catch {
+    // The store exposes the API message in the form alert.
+  } finally {
+    isSavingSpace.value = false;
+  }
+}
+
+async function persistSpaces(eventId, spaces) {
+  for (const space of spaces) {
+    if (Object.keys(validateSpace(space)).length) continue;
+    if (space.id) await eventsStore.updateSpace(eventId, space.id, { ...spaceToPayload(space), version: space.version });
+    else await eventsStore.createSpace(eventId, spaceToPayload(space));
+  }
+}
+
 async function save() {
   if (!validateSubmission()) return;
   try {
-    const event = isNew.value && intent.value === "submit"
-      ? await eventsStore.createAndSubmit(form)
-      : isNew.value
-        ? await eventsStore.saveDraft(form)
-        : intent.value === "submit"
-          ? await eventsStore.submit(form.id, form)
-          : await eventsStore.updateDraft(form.id, form);
+    let event;
+    if (isNew.value) {
+      const pendingSpaces = [...form.spaces];
+      event = await eventsStore.saveDraft(form);
+      Object.assign(form, event);
+      form.spaces = pendingSpaces;
+      await persistSpaces(event.id, pendingSpaces);
+      event = await eventsStore.get(event.id);
+      if (intent.value !== "submit") event.spaces.push(...pendingSpaces.filter((space) => Object.keys(validateSpace(space)).length));
+      if (intent.value === "submit") event = await eventsStore.submit(event.id, event);
+    } else {
+      const pendingSpaces = [...form.spaces];
+      event = await eventsStore.updateDraft(form.id, form);
+      await persistSpaces(event.id, pendingSpaces);
+      event = await eventsStore.get(event.id);
+      if (intent.value !== "submit") event.spaces.push(...pendingSpaces.filter((space) => Object.keys(validateSpace(space)).length));
+      if (intent.value === "submit") event = await eventsStore.submit(event.id, event);
+    }
     if (intent.value === "submit") {
       pristineSnapshot.value = serializeForm(form);
       showToast("Request submitted");
@@ -200,6 +250,7 @@ onMounted(async () => {
     }
     Object.assign(form, event);
   }
+  if (!form.spaces.length) form.spaces.push(emptySpace());
   pristineSnapshot.value = serializeForm(form);
 });
 
@@ -251,13 +302,32 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
           </div>
           <div class="sm:col-span-2 grid gap-6 sm:grid-cols-2">
             <BauhausInput v-model="form.expectedAttendance" label="Expected attendance" type="number" required :error="fieldErrors.expectedAttendance" :flag="flagFor('expectedAttendance')" />
-            <div>
-              <BauhausSelect v-model="form.layoutPreference" label="Preferred layout" required :options="LAYOUTS" placeholder="Choose a layout" :flag="flagFor('layoutPreference')" />
-              <p v-if="fieldErrors.layoutPreference" class="mt-2 text-xs font-bold uppercase tracking-wide text-bauhaus-red">{{ fieldErrors.layoutPreference }}</p>
-            </div>
           </div>
-          <div class="sm:col-span-2">
-            <BauhausCheckboxGroup v-model="form.facilitiesRequired" label="Facilities required" :options="FACILITIES" :flag="flagFor('facilitiesRequired')" />
+          <div class="sm:col-span-2 border-4 border-ink bg-bauhaus-yellow/20 p-4 shadow-hard sm:p-6">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Venue requirements</p>
+                <h2 class="mt-1 text-2xl font-black uppercase tracking-tight">Plan each space</h2>
+                <p class="mt-2 text-sm font-bold">Suggest venue layouts for your event.</p>
+              </div>
+              <span class="border-2 border-ink bg-canvas px-2 py-1 text-xs font-black uppercase tracking-widest">{{ form.spaces.length }} spaces</span>
+            </div>
+
+            <div class="mt-6 grid gap-4">
+              <div v-for="(space, index) in form.spaces" :key="space.id || `draft-space-${index}`" class="border-2 border-dashed border-ink bg-bauhaus-yellow/20 p-4">
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <BauhausInput v-model="space.label" label="Space label" required placeholder="Main venue" :error="fieldErrors.spaces?.[index]?.label" />
+                  <BauhausInput v-model="space.expectedPax" label="Expected pax" type="number" required :error="fieldErrors.spaces?.[index]?.expectedPax" />
+                  <BauhausSelect v-model="space.layoutPreference" label="Preferred layout" required :options="LAYOUTS" placeholder="Choose a layout" :error="fieldErrors.spaces?.[index]?.layoutPreference" />
+                  <div class="sm:col-span-2"><BauhausCheckboxGroup v-model="space.facilitiesRequired" label="Venue facilities required" :options="FACILITIES" /></div>
+                </div>
+                <div class="mt-4 flex flex-wrap gap-3">
+                  <BauhausButton v-if="form.spaces.length > 1" type="button" variant="yellow" :disabled="isSavingSpace" @click="removeSpace(space)">Remove space</BauhausButton>
+                </div>
+              </div>
+            </div>
+
+            <BauhausButton type="button" class="mt-4" variant="yellow" :disabled="isSavingSpace" @click="addSpace">Add space request</BauhausButton>
           </div>
           <div class="sm:col-span-2">
             <BauhausInput v-model="form.accessibilityNeeds" label="Accessibility needs" :flag="flagFor('accessibilityNeeds')" placeholder="Step-free access, hearing loop, etc." />

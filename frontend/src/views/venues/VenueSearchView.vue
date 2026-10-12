@@ -8,7 +8,7 @@ import RequestVenueModal from "@/components/venues/RequestVenueModal.vue";
 import VenueCriteriaForm from "@/components/venues/VenueCriteriaForm.vue";
 import VenueResultCard from "@/components/venues/VenueResultCard.vue";
 import { showToast } from "@/composables/useToast";
-import { criteriaFromEvent, venuePanelState } from "@/features/venues/bookingRequest";
+import { criteriaFromEvent, criteriaFromSpace, venuePanelState } from "@/features/venues/bookingRequest";
 import { useVenueBookingStore } from "@/features/venues/venueBookingStore";
 import { useVenuesStore } from "@/features/venues/venueSearchStore";
 import { eventsApi } from "@/services/api";
@@ -23,11 +23,12 @@ const authStore = useAuthStore();
 // Opened from an event (`/venues?event=<id>`, SCRUM-19): the search is
 // pre-filled from the event and each available venue can be requested for it.
 const bookingEvent = ref(null);
+const bookingSpace = ref(null);
 const eventCriteria = ref(null);
 const eventError = ref(null);
 const requestedVenue = ref(null);
 
-const canRequest = computed(() => venuePanelState(bookingEvent.value).kind === "can-request");
+const canRequest = computed(() => venuePanelState(bookingEvent.value, bookingSpace.value).kind === "can-request");
 
 // The hold always covers the event's own period, so a venue is only offered
 // while the search is checking that same period; otherwise "Available" would
@@ -54,15 +55,18 @@ const eventPeriod = computed(() => {
   return `${format.format(new Date(event.starts_at))} – ${format.format(new Date(event.ends_at))}`;
 });
 
-async function loadEventContext(eventId) {
+async function loadEventContext(eventId, spaceId) {
   eventError.value = null;
   bookingEvent.value = null;
+  bookingSpace.value = null;
   eventCriteria.value = null;
   try {
     const event = await authStore.withSession((token) => eventsApi.get(eventId, token));
     bookingEvent.value = event;
-    eventCriteria.value = criteriaFromEvent(event);
-    venuesStore.criteria = criteriaFromEvent(event);
+    bookingSpace.value = event.spaces?.find((space) => space.id === spaceId) ?? null;
+    const criteria = bookingSpace.value ? criteriaFromSpace(bookingSpace.value, event) : criteriaFromEvent(event);
+    eventCriteria.value = { ...criteria, facilities: [...criteria.facilities] };
+    venuesStore.criteria = criteria;
     venuesStore.fieldErrors = {};
   } catch (error) {
     eventError.value = error.message;
@@ -73,12 +77,13 @@ async function loadEventContext(eventId) {
 // First visit lists the whole catalogue; coming back from a detail page keeps
 // the previous search (the store outlives the view).
 watch(
-  () => route.query.event,
-  (eventId) => {
+  () => [route.query.event, route.query.space],
+  ([eventId, spaceId]) => {
     if (eventId) {
-      loadEventContext(String(eventId));
+      loadEventContext(String(eventId), spaceId ? String(spaceId) : null);
     } else {
       bookingEvent.value = null;
+      bookingSpace.value = null;
       eventCriteria.value = null;
       if (!venuesStore.hasSearched) venuesStore.search();
     }
@@ -98,7 +103,8 @@ function openRequest(venue) {
 
 async function confirmRequest(note) {
   try {
-    await bookingStore.request(bookingEvent.value.id, requestedVenue.value.id, note);
+    if (bookingSpace.value) await bookingStore.requestForSpace(bookingSpace.value.id, requestedVenue.value.id, note);
+    else await bookingStore.request(bookingEvent.value.id, requestedVenue.value.id, note);
     requestedVenue.value = null;
     showToast("Venue requested. It is held while venue staff decide.");
     router.push({ name: "coordinator-event", params: { id: bookingEvent.value.id } });
@@ -124,9 +130,10 @@ async function confirmRequest(note) {
       <template v-else-if="bookingEvent">
         <p class="text-xs font-bold uppercase tracking-widest opacity-80">Requesting a venue for</p>
         <p class="mt-1 text-2xl font-black uppercase tracking-tight">{{ bookingEvent.name }}</p>
+        <p v-if="bookingSpace" class="mt-1 text-sm font-black uppercase tracking-widest">Space: {{ bookingSpace.label }}</p>
         <p class="mt-1 text-sm font-medium">{{ eventPeriod }}</p>
         <p v-if="!canRequest" class="mt-3 text-sm font-bold">
-          {{ venuePanelState(bookingEvent).reason ?? "This event already has a venue." }}
+          {{ venuePanelState(bookingEvent, bookingSpace).reason ?? "This space already has a venue." }}
         </p>
         <p v-else-if="!searchMatchesEvent" class="mt-3 text-sm font-bold">
           Search the event's own date and times to request a venue for it.

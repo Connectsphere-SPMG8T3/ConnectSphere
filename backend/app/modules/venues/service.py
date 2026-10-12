@@ -301,12 +301,22 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
     the state of other bookings is decided by the database function under its
     locks, so two coordinators racing for one slot can't both win (QA2-23).
     """
-    event_id, venue_id = str(body.event_id), str(body.venue_id)
-    event = events_service.assigned_event(event_id, coordinator_id)
-    result = repository.request_booking(
-        event_id, venue_id, coordinator_id, body.note,
-        notify_message=f'A venue booking was requested for "{event["name"]}".',
-    )
+    venue_id = str(body.venue_id)
+    space_id = str(body.event_space_request_id) if body.event_space_request_id else None
+    if space_id:
+        event, space = events_service.assigned_space(space_id, coordinator_id)
+        event_id = event["id"]
+        result = repository.request_booking_for_space(
+            space_id, venue_id, coordinator_id, body.note,
+            notify_message=f'A venue booking was requested for "{event["name"]}".',
+        )
+    else:
+        event_id = str(body.event_id)
+        event = events_service.assigned_event(event_id, coordinator_id)
+        result = repository.request_booking(
+            event_id, venue_id, coordinator_id, body.note,
+            notify_message=f'A venue booking was requested for "{event["name"]}".',
+        )
     outcome = result["outcome"]
     if outcome in BOOKING_REFUSALS:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=BOOKING_REFUSALS[outcome])
@@ -321,8 +331,14 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
         raise NotAssignedCoordinatorError()
     if outcome == "event_not_found":
         raise events_service.EventNotFoundError()
-    return VenueBooking(id=result["booking_id"], event_id=event_id, venue_id=venue_id,
-                        status="held", note=body.note)
+    return VenueBooking(
+        id=result["booking_id"],
+        event_id=event_id,
+        event_space_request_id=space_id,
+        venue_id=venue_id,
+        status="held",
+        note=body.note,
+    )
 
 
 # What `public.set_venue_hold_expiry` refuses with (CR-99 AC1, AC2, AC4).
@@ -355,9 +371,14 @@ def active_booking_for_event(event_id: str) -> dict | None:
     row = repository.get_active_booking(event_id)
     if row is None:
         return None
-    return {"id": row["id"], "venue_id": row["venue_id"],
-            "venue_name": (row.get("venues") or {}).get("name"), "status": row["status"],
-            "expires_at": row.get("expires_at")}
+    return {
+        "id": row["id"],
+        "event_space_request_id": row.get("event_space_request_id"),
+        "venue_id": row["venue_id"],
+        "venue_name": (row.get("venues") or {}).get("name"),
+        "status": row["status"],
+        "expires_at": row.get("expires_at"),
+    }
 
 
 def event_booking_ids(event_id: str) -> set[str]:
@@ -463,3 +484,16 @@ def rejected_bookings_for_event(event_id: str) -> list[dict]:
     assigned coordinator: the organiser never sees these (AUTH-R2)."""
     return repository.list_rejected_bookings(event_id)
 
+
+def active_bookings_for_event(event_id: str) -> list[dict]:
+    return [
+        {
+            "id": row["id"],
+            "event_id": row.get("event_id"),
+            "event_space_request_id": row.get("event_space_request_id"),
+            "venue_id": row["venue_id"],
+            "venue_name": (row.get("venues") or {}).get("name"),
+            "status": row["status"],
+        }
+        for row in repository.list_active_bookings(event_id)
+    ]

@@ -68,6 +68,20 @@ def mock_event_repository(monkeypatch, request):
             "created_at": now,
             "updated_at": now,
         }
+        if request.node.name == "test_organiser_can_list_only_their_own_events":
+            row["spaces"] = [
+                {
+                    "id": "f0000000-0000-4000-8000-000000000001",
+                    "event_id": event_id,
+                    "label": "Main space",
+                    "expected_pax": None,
+                    "layout_preference": None,
+                    "facilities_required": [],
+                    "starts_at": None,
+                    "ends_at": None,
+                    "version": 1,
+                }
+            ]
         if "valid_draft_can_be_submitted_without_coordinator_assignment" in request.node.name:
             row.update(COMPLETE_REQUEST)
         if event_id == EVENT_ID and (

@@ -44,6 +44,46 @@ describe("eventsApi.clone", () => {
   });
 });
 
+describe("CR-98 space request API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("posts, patches and deletes space requests with encoded route ids", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ status: 201, ok: true, json: async () => ({ id: "space-1" }) })
+      .mockResolvedValueOnce({ status: 200, ok: true, json: async () => ({ id: "space-1" }) })
+      .mockResolvedValueOnce({ status: 204, ok: true, json: async () => null });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(eventsApi.createSpace("event/one", { label: "Main venue" }, "token")).resolves.toEqual({ id: "space-1" });
+    await expect(eventsApi.updateSpace("event/one", "space/one", { label: "Updated" }, "token")).resolves.toEqual({ id: "space-1" });
+    await expect(eventsApi.removeSpace("event/one", "space/one", "token")).resolves.toBeNull();
+
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.method, options.body])).toEqual([
+      ["http://localhost:8000/api/v1/events/event%2Fone/spaces", "POST", JSON.stringify({ label: "Main venue" })],
+      ["http://localhost:8000/api/v1/events/event%2Fone/spaces/space%2Fone", "PATCH", JSON.stringify({ label: "Updated" })],
+      ["http://localhost:8000/api/v1/events/event%2Fone/spaces/space%2Fone", "DELETE", undefined],
+    ]);
+    expect(fetchMock.mock.calls.every(([, options]) => options.headers.Authorization === "Bearer token")).toBe(true);
+  });
+
+  it("posts a booking request scoped to one space", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 201, ok: true, json: async () => ({ id: "booking-1" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(venueBookingsApi.request({ event_space_request_id: "space-1", venue_id: "venue-1", note: null }, "token"))
+      .resolves.toEqual({ id: "booking-1" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/venue-bookings",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ event_space_request_id: "space-1", venue_id: "venue-1", note: null }),
+        headers: expect.objectContaining({ Authorization: "Bearer token" }),
+      }),
+    );
+  });
+});
+
 describe("SCRUM-82 eventsApi.sendForSafetyCheck", () => {
   afterEach(() => vi.unstubAllGlobals());
   it("posts to the encoded endpoint without a body and uses the session token", async () => {

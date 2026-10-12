@@ -74,6 +74,22 @@ describe("EventDetailView status", () => {
     const el = await mountDetail(eventResponse({status: "confirmed", venue_booking: {venue_name: "Main Hall", status: "approved"}, technical_readiness: "not_required"}));
     expect(el.textContent).toContain("Arrangements"); expect(el.textContent).toContain("Main Hall"); expect(el.textContent).toContain("Not required");
   });
+  it("shows space-level venue requirements instead of legacy event-level fields (CR-98)", async () => {
+    const el = await mountDetail(eventResponse({
+      layout_preference: "theatre",
+      facilities_required: ["projector"],
+      spaces: [
+        { id: "space-1", label: "Main venue", expected_pax: 120, layout_preference: "theatre", facilities_required: ["projector"] },
+        { id: "space-2", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: ["whiteboard"] },
+      ],
+    }));
+
+    expect(el.textContent).toContain("Space requirements");
+    expect(el.textContent).toContain("Main venue: 120 pax · theatre · projector");
+    expect(el.textContent).toContain("Breakout room: 20 pax · classroom · whiteboard");
+    expect(el.textContent).not.toContain("Preferred layout");
+    expect(el.textContent).not.toContain("Facilities");
+  });
   it.each(["planning", "safety_review"])("SCRUM-82 hides confirmed arrangements in %s", async (status) => {
     const el = await mountDetail(eventResponse({status}));
     expect(el.textContent).not.toContain("Arrangements");

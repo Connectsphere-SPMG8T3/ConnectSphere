@@ -9,11 +9,14 @@ API makes of them.
 
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
 from app.modules.events import repository as events_repository
+from app.modules.events import service as events_service
 from app.modules.venues import repository as venues_repository
+from app.modules.venues import service as venues_service
 
 COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
 OTHER_COORDINATOR_ID = "a0000000-0000-4000-8000-000000000009"
@@ -21,6 +24,7 @@ ORGANISER_ID = "a0000000-0000-4000-8000-000000000001"
 EVENT_ID = "e0000000-0000-4000-8000-000000000202"
 VENUE_ID = "b0000000-0000-4000-8000-000000000006"
 BOOKING_ID = "d0000000-0000-4000-8000-000000000999"
+SPACE_ID = "f0000000-0000-4000-8000-000000000001"
 URL = "/api/v1/venue-bookings"
 
 
@@ -65,7 +69,33 @@ def post(client, auth_headers, **body):
     return client.post(URL, json=payload, headers=auth_headers)
 
 
+def post_for_space(client, auth_headers, space_id=SPACE_ID, **body):
+    payload = {"event_space_request_id": space_id, "venue_id": VENUE_ID, **body}
+    return client.post(URL, json=payload, headers=auth_headers)
+
+
 class TestRequest:
+    def test_a_space_request_can_hold_a_venue_independently(self, client, auth_headers, authenticate_as, booking, monkeypatch):
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+        calls = []
+        monkeypatch.setattr(
+            events_service,
+            "assigned_space",
+            lambda space_id, coordinator_id: (deepcopy(booking["event"]), {"id": space_id}),
+        )
+
+        def request_booking_for_space(space_id, venue_id, actor_id, note, *, notify_message):
+            calls.append((space_id, venue_id, actor_id, note, notify_message))
+            return {"outcome": "ok", "booking_id": BOOKING_ID}
+
+        monkeypatch.setattr(venues_repository, "request_booking_for_space", request_booking_for_space)
+
+        response = post_for_space(client, auth_headers, note="Breakout room")
+
+        assert response.status_code == 201
+        assert response.json()["event_space_request_id"] == SPACE_ID
+        assert calls[0][0] == SPACE_ID
+
     def test_the_assigned_coordinator_holds_a_venue_and_venue_staff_are_told(
         self, client, auth_headers, authenticate_as, booking
     ):
@@ -76,6 +106,7 @@ class TestRequest:
         assert response.status_code == 201
         assert response.json() == {
             "id": BOOKING_ID, "event_id": EVENT_ID, "venue_id": VENUE_ID,
+            "event_space_request_id": None,
             "status": "held", "note": "Need early access at 13:00",
         }
         [sent] = booking["calls"]
@@ -151,6 +182,113 @@ class TestWhoMayRequest:
 
         assert response.status_code == 403
         assert booking["calls"] == []
+
+
+def test_space_booking_repository_calls_the_space_rpc_with_its_parameters(monkeypatch):
+    calls = []
+
+    class Rpc:
+        def execute(self):
+            return SimpleNamespace(data=[{"outcome": "ok", "booking_id": BOOKING_ID}])
+
+    class AdminClient:
+        def rpc(self, name, params):
+            calls.append((name, params))
+            return Rpc()
+
+    monkeypatch.setattr(venues_repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    result = venues_repository.request_booking_for_space(
+        SPACE_ID, VENUE_ID, COORDINATOR_ID, "Breakout room", notify_message="requested",
+    )
+
+    assert result == {"outcome": "ok", "booking_id": BOOKING_ID}
+    assert calls == [("request_venue_booking_for_space", {
+        "p_event_space_request_id": SPACE_ID,
+        "p_venue_id": VENUE_ID,
+        "p_actor_id": COORDINATOR_ID,
+        "p_note": "Breakout room",
+        "p_notify_message": "requested",
+    })]
+
+
+def test_list_active_bookings_reads_rows_and_returns_empty_on_schema_read_failure(monkeypatch):
+    rows = [{
+        "id": BOOKING_ID,
+        "event_id": EVENT_ID,
+        "event_space_request_id": SPACE_ID,
+        "venue_id": VENUE_ID,
+        "status": "held",
+    }]
+
+    class Query:
+        def __init__(self, response=None, error=None):
+            self.response = response
+            self.error = error
+            self.calls = []
+
+        def select(self, value):
+            self.calls.append(("select", value))
+            return self
+
+        def eq(self, field, value):
+            self.calls.append(("eq", field, value))
+            return self
+
+        def in_(self, field, values):
+            self.calls.append(("in", field, values))
+            return self
+
+        def order(self, field):
+            self.calls.append(("order", field))
+            return self
+
+        def execute(self):
+            if self.error:
+                raise self.error
+            return self.response
+
+    class AdminClient:
+        def __init__(self, query):
+            self.query = query
+
+        def table(self, name):
+            assert name == "venue_bookings"
+            return self.query
+
+    query = Query(SimpleNamespace(data=rows))
+    monkeypatch.setattr(venues_repository, "get_supabase_admin_client", lambda: AdminClient(query))
+    assert venues_repository.list_active_bookings(EVENT_ID) == rows
+    assert ("eq", "event_id", EVENT_ID) in query.calls
+    assert ("order", "created_at") in query.calls
+
+    query.response = SimpleNamespace(data=None)
+    assert venues_repository.list_active_bookings(EVENT_ID) == []
+
+    failed_query = Query(error=RuntimeError("column not available during rollout"))
+    monkeypatch.setattr(venues_repository, "get_supabase_admin_client", lambda: AdminClient(failed_query))
+    assert venues_repository.list_active_bookings(EVENT_ID) == []
+
+
+def test_active_bookings_for_event_maps_each_space_booking(monkeypatch):
+    row = {
+        "id": BOOKING_ID,
+        "event_id": EVENT_ID,
+        "event_space_request_id": SPACE_ID,
+        "venue_id": VENUE_ID,
+        "status": "held",
+        "venues": {"name": "Innovation Lab"},
+    }
+    monkeypatch.setattr(venues_repository, "list_active_bookings", lambda event_id: [row])
+
+    assert venues_service.active_bookings_for_event(EVENT_ID) == [{
+        "id": BOOKING_ID,
+        "event_id": EVENT_ID,
+        "event_space_request_id": SPACE_ID,
+        "venue_id": VENUE_ID,
+        "venue_name": "Innovation Lab",
+        "status": "held",
+    }]
 
     @pytest.mark.parametrize("event_id", [EVENT_ID, "e0000000-0000-4000-8000-0000000000ff"])
     def test_a_draft_or_missing_event_is_not_found(self, client, auth_headers, authenticate_as, booking, event_id):
@@ -246,7 +384,8 @@ class TestEventShowsItsBooking:
 
         assert response.status_code == 200
         assert response.json()["venue_booking"] == {
-            "id": BOOKING_ID, "venue_id": VENUE_ID, "venue_name": "Innovation Lab", "status": "held",
+            "id": BOOKING_ID, "event_space_request_id": None, "venue_id": VENUE_ID,
+            "venue_name": "Innovation Lab", "status": "held",
             # CR-99 AC3: the coordinator sees when the hold runs out.
             "expires_at": "2026-11-01T04:00:00Z",
         }
@@ -256,8 +395,14 @@ class TestEventShowsItsBooking:
     ):
         # CR-99 AC7: with nothing active, the event shows its expired hold
         # rather than looking as if no venue had ever been requested.
-        row = {"id": BOOKING_ID, "venue_id": VENUE_ID, "status": "expired",
-               "expires_at": "2026-10-01T04:00:00+00:00", "venues": {"name": "Innovation Lab"}}
+        row = {
+            "id": BOOKING_ID,
+            "event_space_request_id": SPACE_ID,
+            "venue_id": VENUE_ID,
+            "status": "expired",
+            "expires_at": "2026-10-01T04:00:00+00:00",
+            "venues": {"name": "Innovation Lab"},
+        }
         monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: deepcopy(row))
         authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
 
@@ -265,6 +410,45 @@ class TestEventShowsItsBooking:
 
         assert response.json()["venue_booking"]["status"] == "expired"
         assert response.json()["venue_booking"]["expires_at"] == "2026-10-01T04:00:00Z"
+        assert response.json()["venue_booking"]["event_space_request_id"] == SPACE_ID
+
+    def test_an_expired_space_hold_keeps_its_space_id(self, monkeypatch):
+        row = {
+            "id": BOOKING_ID,
+            "event_space_request_id": SPACE_ID,
+            "venue_id": VENUE_ID,
+            "status": "expired",
+            "expires_at": "2026-10-01T04:00:00+00:00",
+            "venues": {"name": "Innovation Lab"},
+        }
+        calls = []
+
+        class Query:
+            def select(self, columns):
+                calls.append(("select", columns))
+                return self
+
+            def eq(self, field, value):
+                return self
+
+            def in_(self, field, values):
+                return self
+
+            def order(self, field, *, desc=False):
+                return self
+
+            def execute(self):
+                return SimpleNamespace(data=[row])
+
+        class AdminClient:
+            def table(self, name):
+                assert name == "venue_bookings"
+                return Query()
+
+        monkeypatch.setattr(venues_repository, "get_supabase_admin_client", lambda: AdminClient())
+
+        assert venues_repository.get_active_booking(EVENT_ID) == row
+        assert "event_space_request_id" in calls[0][1]
 
     def test_an_event_without_a_venue_says_so(self, client, auth_headers, authenticate_as, monkeypatch, booking):
         monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)

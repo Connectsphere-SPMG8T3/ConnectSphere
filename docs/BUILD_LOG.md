@@ -1813,7 +1813,6 @@ A second coordinator gives the team an account to test coordinator-to-coordinato
 - **Checked manually by the developer (2026-10-13):** logging in as this account in the browser lands on `/dashboard/coordinator`, and the page renders with no console errors. Not recorded as a run file, since this chore adds no test-case IDs.
 - **Not verified:** a fresh `supabase db reset` with the new seed (no local database).
 - **Follow-up:** `docs/test-cases/` and `verify_live.py` do not use the new account yet; the first story that needs a second coordinator should. PR, review and merge are the developer's.
-
 ### 4.43. SCRUM-38 — Venue staff reject a booking request with a reason
 
 On `feature/scrum-38-reject-booking-request`, branched from `main` at `d731ddb`, 2026-10-12. Numbered 4.43: the CR-99 branch uses 4.40, and the seed chore took 4.42 on `main`. The Product backlog sheet couldn't be read through the connector, so the story and acceptance criteria are as the developer pasted them. The epic, estimate and priority weren't available.
@@ -1920,3 +1919,29 @@ On `chore/er-diagram-to-supabase-visualiser`, branched from `main` at `11d4342`,
 - Live schema read on 2026-10-13 with read-only `supabase db query` calls: `information_schema.columns`, `pg_enum` and `supabase_migrations.schema_migrations`.
 - Branch search: `git grep` over every local and remote branch for the drifted column and enum names.
 - **Not run:** tests and live checks, since only docs changed.
+### 4.45. CR-98 — Propose multiple event spaces
+
+CR-98 introduces multiple organiser-proposed venue requirements per event. `events` remains the shared event envelope; each `event_space_requests` row carries its own label, expected pax, layout and required facilities. Equipment needs and the overall date/time remain event-level. The organiser can add, edit and remove spaces while a request is draft or returned; submission validates each space, and submitted requests cannot be edited directly.
+
+#### Scope and interpretation
+
+- Every space uses the event's overall date and time. Space period columns are internal copies synchronized from the event, not organiser-editable schedules.
+- Coordinators can review every space's requirements. Selecting and booking venues per space is the related CR-97 workflow, not CR-98 AC5; existing one-space review and booking compatibility is retained.
+- Existing events are backfilled to a `Main space`, preserving legacy attendance, layout, facilities and period. Existing venue bookings are linked to that space; legacy event-scoped booking requests remain supported during rollout.
+
+#### What was built
+
+1. Migrations `20261008100000_event_space_requests.sql` and `20261009100000_event_spaces_use_event_requirements.sql` add the space-request schema, access policies, legacy backfill and booking links, event-period synchronization, and space-scoped booking support.
+2. The events API adds space CRUD, draft/returned ownership and lifecycle checks, submission completeness validation, and coordinator reads containing every space and its active bookings. Explicit-null space PATCH fields return validation errors rather than a server error (D27).
+3. The organiser form stages and edits multiple space cards, persists them with event actions, and displays field-specific validation and API errors. The coordinator detail view displays each space's pax, layout and facilities. Venue search and booking helpers carry selected-space criteria while preserving event-level timing and legacy API compatibility.
+4. Tests cover space CRUD, validation, lifecycle and version conflicts, coordinator visibility, selected-space booking integration, request payloads, and event-period handling. CR-98 traceability is in `docs/test-cases/events.md`; venue-booking follow-on coverage is identified as CR-97 in `docs/test-cases/venues.md`.
+
+#### Verification
+
+- Full backend suite: **780 passed**, **94.60%** coverage. Full frontend suite: **630 passed**, **95.66%** line coverage; focused CR-98 frontend tests: **112 passed**. Frontend production build passed.
+- Live SQL verification passed for event-period synchronization and legacy space/booking backfill; behavioral writes were rolled back. See `docs/test-cases/runs/2026-10-10-1124-api-db-a3cb625.md`.
+- Recorded Playwright regression suite: **50/50 passed**. See `docs/test-cases/runs/2026-10-10-1125-e2e-a3cb625.md`.
+- Manual CR-98 cases TC-SPACE-001, 002, 004 and 006 were reported passed. See `docs/test-cases/runs/2026-10-10-1104-manual-a3cb625.md`.
+- The live migration ledger contains remote-only version `20261009110000`, with no matching local migration. It was not changed as part of CR-98 verification; identify its source before any migration repair or push.
+
+The Product backlog status, PR review, and merge are developer-owned follow-ups; no backlog edit or status change was made here.

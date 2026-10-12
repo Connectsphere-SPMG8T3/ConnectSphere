@@ -46,6 +46,11 @@ from app.modules.events.schemas import (
     EventHistoryResponse,
     EventPlanningContext,
     EventResponse,
+    EventSpaceVenueBooking,
+    EventSpaceRequest,
+    EventSpaceRequestCreate,
+    EventSpaceRequestFields,
+    EventSpaceRequestUpdate,
     EventResubmitRequest,
     EventReturnRequest,
     EventStatus,
@@ -99,6 +104,11 @@ class EventConflictError(HTTPException):
         super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
+class EventSpaceConflictError(HTTPException):
+    def __init__(self, detail: str = "The event space was changed by another request.") -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
 def names_by_id(event_ids: Iterable[str]) -> dict[str, str]:
     """`{event_id: name}` for the ids given — the events module's answer to
     "what is this event called?" for modules that only hold an `event_id`.
@@ -137,6 +147,44 @@ def planning_context_by_id(event_ids: Iterable[str]) -> dict[str, EventPlanningC
 
 def _to_response(row: dict) -> EventResponse:
     return EventResponse(**row)
+
+
+def _space_event(space_id: str, organiser_id: str) -> tuple[dict, dict]:
+    space = repository.get_space(space_id)
+    if not space:
+        raise EventNotFoundError()
+    event = _owned_event(space["event_id"], organiser_id)
+    if event.get("status") not in ("draft", "returned"):
+        raise EventConflictError("Event spaces can only be changed while the event is draft or returned.")
+    return event, space
+
+
+def create_space(event_id: str, organiser_id: str, body: EventSpaceRequestCreate) -> EventSpaceRequest:
+    event = _owned_event(event_id, organiser_id)
+    if event.get("status") not in ("draft", "returned"):
+        raise EventConflictError("Event spaces can only be changed while the event is draft or returned.")
+    values = body.model_dump(mode="json", exclude={"version"})
+    values.update({"starts_at": event.get("starts_at"), "ends_at": event.get("ends_at")})
+    return EventSpaceRequest(**repository.create_space(event_id, values))
+
+
+def update_space(space_id: str, organiser_id: str, body: EventSpaceRequestUpdate) -> EventSpaceRequest:
+    event, space = _space_event(space_id, organiser_id)
+    values = body.model_dump(mode="json", exclude_unset=True, exclude={"version"})
+    editable_fields = ("label", "expected_pax", "layout_preference", "facilities_required")
+    merged = {field: space.get(field) for field in editable_fields}
+    merged.update(values)
+    validated = EventSpaceRequestFields(**merged)
+    updated = repository.update_space(space_id, values, space["version"])
+    if not updated:
+        raise EventSpaceConflictError()
+    return EventSpaceRequest(**updated)
+
+
+def delete_space(space_id: str, organiser_id: str) -> None:
+    _event, space = _space_event(space_id, organiser_id)
+    if not repository.delete_space(space_id, space["version"]):
+        raise EventSpaceConflictError()
 
 
 def _with_amendment(row: dict) -> EventResponse:
@@ -179,6 +227,14 @@ def assigned_event(event_id: str, coordinator_id: str) -> dict:
     equipment request). Same answers as every coordinator action here: 404 for a
     missing event or a draft, 403 for a coordinator who isn't assigned."""
     return _assigned_event(event_id, coordinator_id)
+
+
+def assigned_space(space_id: str, coordinator_id: str) -> tuple[dict, dict]:
+    """Return a requested space and its event for the assigned coordinator."""
+    space = repository.get_space(space_id)
+    if not space:
+        raise EventNotFoundError()
+    return _assigned_event(space["event_id"], coordinator_id), space
 
 
 def _transition(row: dict, actor_id: str, action: str, *, reason: str | None,
@@ -269,7 +325,10 @@ def resubmit(event_id: str, organiser_id: str, body: EventResubmitRequest) -> Ev
 
 def _validate_submission(row: dict) -> None:
     errors = []
-    required_fields = ("purpose", "starts_at", "ends_at", "expected_attendance", "layout_preference")
+    has_space_requests = bool(row.get("spaces"))
+    required_fields = ("purpose", "starts_at", "ends_at")
+    if not has_space_requests:
+        required_fields += ("expected_attendance", "layout_preference")
     for field in required_fields:
         if row.get(field) in (None, ""):
             errors.append({"loc": ["body", field], "msg": "Field required", "type": "missing"})
@@ -286,6 +345,11 @@ def _validate_submission(row: dict) -> None:
             errors.append({"loc": ["body", "ends_at"], "msg": "End time must be after start time.", "type": "value_error"})
         if starts_at.astimezone(event_timezone).date() <= datetime.now(event_timezone).date():
             errors.append({"loc": ["body", "starts_at"], "msg": "Event date must be after today.", "type": "value_error"})
+
+    for index, space in enumerate(row.get("spaces") or []):
+        for field in ("label", "expected_pax", "layout_preference"):
+            if space.get(field) in (None, ""):
+                errors.append({"loc": ["body", "spaces", index, field], "msg": "Field required", "type": "missing"})
 
     if row.get("registration_enabled"):
         if not row.get("registration_capacity"):
@@ -353,6 +417,10 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
         booking = venues_service.active_booking_for_event(event_id)
         if booking:
             response.venue_booking = EventVenueBooking(**booking)
+        response.venue_bookings = [
+            EventSpaceVenueBooking(**booking)
+            for booking in venues_service.active_bookings_for_event(event_id)
+        ]
     if role == "event_coordinator":
         # SCRUM-38 AC6: why venue staff said no, for the coordinator only.
         response.rejected_bookings = [
