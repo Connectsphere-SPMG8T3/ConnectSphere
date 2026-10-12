@@ -2042,3 +2042,48 @@ Full backend verification: **1,164 tests passed**, **95.85%** application line c
 ### 4.49. Chore - Disambiguate duplicate D26 identifiers
 
 On 2026-10-15, renamed CR-98's trigger-function permissions defect to D32, the next unused identifier. D26 remains CR-95's migration-history defect; D31 remains the overdue space-hold fix. Current defect, implementation-map, test-case and verification-header references use D32. Earlier build-log entries and run records retain D26 as originally recorded; their CR-98 permissions references refer to D32. No deployed migration filename, SQL behavior, test-case ID or recorded result changed.
+
+### 4.50. SCRUM-64 — Deactivate a venue from the catalogue (exact backlog record)
+
+| Field | Value |
+|---|---|
+| ID | `64` (SCRUM-64) |
+| Title | Deactivate a venue from the catalogue |
+| Type | US: Core feature |
+| Status | IN PROGRESS 🥸 |
+| Epic | Venue catalogue |
+| Sprint | 3 (6 October - 20 October) |
+| Estimate | 1 story point (proposed before 64 took on the booking flag; re-estimate suggested) |
+| Priority | 3 |
+| Customer clarification | W7 CR-02: AC3 reuses the affected-booking flagging from CR-95. AC3 widened 08/10 from confirmed bookings only to held and approved bookings, matching CR-95. |
+
+**User story (verbatim):**
+
+> As a Venue staff, I want to deactivate a venue that's no longer available for use, so that I stop receiving requests for a venue I can no longer offer
+
+**Acceptance criteria (verbatim from the Product backlog):**
+
+> AC1. Can mark a venue as inactive with a reason (e.g. permanently closed, under long-term renovation)
+> AC2. Inactive venues no longer appear in venue search results or suitability checks
+> AC3. [W7 CR-02] Existing future held or approved bookings at the venue are flagged Affected for Event Coordinator follow-up (as in CR-95) rather than silently removed
+> AC4. An inactive venue can be reactivated, restoring its visibility in future searches
+
+#### How the implementation maps to the ticket
+
+On `feature/scrum-64-deactivate-venue`, 2026-10-12. Design: `docs/superpowers/specs/2026-10-12-scrum-64-deactivate-venue-design.md`; plan: `docs/superpowers/plans/2026-10-12-scrum-64-deactivate-venue.md`.
+
+AC3 depends on CR-95's Affected flag, which did not exist. Xuan Wei (CR-95) had not started and agreed to build on whatever 64 decided, so **64 owns the booking flag** and CR-95/CR-94 reuse it (REQUIREMENTS VC-R1a–c, IMPLEMENTATION_MAP §5). The team decisions: a controlled reason list plus a note; one open flag per booking, never overwritten; reactivation leaves flags for the coordinator; a preview before flagging, as in SCRUM-63. `re_review` bookings are not flagged **[Assumption]**, REQUIREMENTS §9 item 29.
+
+What was actually built:
+
+1. **Database** (`20261012130000_venue_deactivation_and_booking_flag.sql`): reason columns and enum on `venues`; flag columns and enum on `venue_bookings`; `flag_venue_bookings` (the shared flagging step), `deactivate_venue` and `reactivate_venue` (version-checked, history row, `service_role` only); `request_venue_booking` refuses an inactive venue (AC2); `safety_approve_event` refuses a flagged booking. Both recreated functions were rebuilt from their **live** bodies, which include CR-99's expiry call.
+2. **Backend:** `POST /venues/{id}/deactivate` (preview without `confirm`, then flag, notify and `return_to_planning` for events in Safety review or Confirmed) and `POST /venues/{id}/reactivate`, venue staff only; the `venue_inactive` refusal; `venues.service.booking_readiness_by_event` so 82's readiness check sees flags (82 AC10).
+3. **Frontend:** `DeactivateVenueModal` (reason, note, then the preview list and **Deactivate anyway**), Deactivate/Reactivate buttons and an "Inactive: <reason>" banner on `VenueDetailView`, `venueEditStore.deactivate`/`reactivate`, history rows for the status change.
+4. **Checks:** `supabase/verification/venue_deactivation_checks.sql`; `verify_live.py` TC-VENUE-065 to 070 on throwaway venues; `e2e/venue-deactivation.e2e.js`; cases TC-VENUE-065 to 073 in `docs/test-cases/venues.md`.
+
+#### Verification and remaining work
+
+- **Verified:** every new test was seen failing first. The migration with `venue_deactivation_checks.sql` ran on the live project inside one rolled-back transaction and printed VENUE DEACTIVATION CHECKS PASSED. The first such run caught a real bug: the check constraints let a NULL reason or note through (`length(btrim(NULL)) > 0` is NULL, not false). The modal tests caught a second: a booking with no event name would have read "Unidentified event". Backend `pytest`: 1024 passed, 94.41% coverage; the only failures are three pre-existing date-expired event tests (DEFECTS D25). Frontend: 713 passed; `npm run build` succeeds.
+- **Not verified yet:** the migration is **not pushed**. `supabase db push` refuses because CR-99's live migrations `20261012120000`/`20261012120001` are not in this checkout; the developer is getting them from Xuan Wei. Until then the live checks (TC-VENUE-065 to 070), the e2e spec and the manual pass (TC-VENUE-071 to 073) have not run, and the advisors have not been checked for the new objects.
+- **Uncovered by unit tests, by convention:** the Supabase wrappers in `venues/repository.py` and the `venuesApi.deactivate`/`reactivate` request wrappers (`docs/CI.md` §4). The live checks and e2e exercise them.
+- **Follow-up:** tell Xuan Wei about the flag contract (IMPLEMENTATION_MAP §5); CR-95 owns clearing flags and the "Needs alternative venue" alert.
