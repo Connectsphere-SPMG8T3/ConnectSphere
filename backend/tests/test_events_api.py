@@ -8,6 +8,12 @@ from app.modules.events import repository
 SGT = timezone(timedelta(hours=8))
 EVENT_ID = "e0000000-0000-4000-8000-000000000001"
 OTHER_EVENT_ID = "e0000000-0000-4000-8000-000000000002"
+# Submission requires an event date after today, so fixture dates are relative.
+EVENT_DAY = (datetime.now(SGT) + timedelta(days=30)).date()
+
+
+def sgt_at(day, hour, minute=0, second=0):
+    return datetime.combine(day, time(hour, minute, second), tzinfo=SGT).isoformat()
 
 
 DRAFT = {
@@ -19,8 +25,8 @@ COMPLETE_REQUEST = {
     "name": "Regional Planning Workshop",
     "purpose": "Coordinate the regional planning workshop.",
     "description": "A full-day workshop for regional planning teams.",
-    "starts_at": "2026-10-10T14:00:00+08:00",
-    "ends_at": "2026-10-10T17:00:00+08:00",
+    "starts_at": sgt_at(EVENT_DAY, 14),
+    "ends_at": sgt_at(EVENT_DAY, 17),
     "expected_attendance": 150,
     "layout_preference": "theatre",
     "facilities_required": ["projector"],
@@ -71,8 +77,8 @@ def mock_event_repository(monkeypatch, request):
                 COMPLETE_REQUEST,
                 status="confirmed",
                 coordinator_id="44444444-4444-4444-4444-444444444444",
-                starts_at="2026-10-10T14:00:00+08:00",
-                ends_at="2026-10-10T17:00:00+08:00",
+                starts_at=sgt_at(EVENT_DAY, 14),
+                ends_at=sgt_at(EVENT_DAY, 17),
                 submitted_at=now,
             )
         return row
@@ -390,7 +396,7 @@ class TestEventSubmission:
 
         response = client.post(
             f"/api/v1/events/{EVENT_ID}/submit",
-            json={**COMPLETE_REQUEST, "ends_at": "2026-10-10T14:00:00+08:00"},
+            json={**COMPLETE_REQUEST, "ends_at": sgt_at(EVENT_DAY, 14)},
             headers=auth_headers,
         )
 
@@ -462,8 +468,8 @@ class TestEventSubmission:
                 **COMPLETE_REQUEST,
                 "registration_enabled": True,
                 "registration_capacity": 50,
-                "registration_opens_at": "2026-09-20T09:00:00+08:00",
-                "registration_closes_at": "2026-09-20T08:00:00+08:00",
+                "registration_opens_at": sgt_at(EVENT_DAY - timedelta(days=10), 9),
+                "registration_closes_at": sgt_at(EVENT_DAY - timedelta(days=10), 8),
             },
             headers=auth_headers,
         )
@@ -503,8 +509,8 @@ class TestEventSubmission:
                 **COMPLETE_REQUEST,
                 "registration_enabled": True,
                 "registration_capacity": 50,
-                "registration_opens_at": "2026-10-09T09:00:00+08:00",
-                "registration_closes_at": "2026-10-10T18:00:01+08:00",
+                "registration_opens_at": sgt_at(EVENT_DAY - timedelta(days=1), 9),
+                "registration_closes_at": sgt_at(EVENT_DAY, 18, 0, 1),
             },
             headers=auth_headers,
         )
