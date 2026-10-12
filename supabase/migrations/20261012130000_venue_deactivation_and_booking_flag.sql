@@ -216,6 +216,7 @@ as $$
 declare
     v_event public.events;
     v_booking_id uuid;
+    v_venue_active boolean;
 begin
     -- Lock the event so a concurrent status change can't slip between the
     -- checks and the insert.
@@ -251,14 +252,19 @@ begin
         return;
     end if;
 
-    if not exists (select 1 from public.venues v where v.id = p_venue_id) then
+    -- SCRUM-64: a shared lock on the venue serialises this request against
+    -- deactivate_venue's update lock. Either the request commits first and
+    -- deactivation then flags its new hold, or deactivation commits first and
+    -- this sees the venue inactive; never an unflagged hold at an inactive venue.
+    select v.is_active into v_venue_active from public.venues v where v.id = p_venue_id for share;
+    if not found then
         return query select 'venue_not_found'::text, null::uuid;
         return;
     end if;
 
     -- SCRUM-64 AC2: venue staff no longer receive requests for a venue they
     -- deactivated. Search already hides it; this covers a direct API call.
-    if not exists (select 1 from public.venues v where v.id = p_venue_id and v.is_active) then
+    if not v_venue_active then
         return query select 'venue_inactive'::text, null::uuid;
         return;
     end if;

@@ -164,6 +164,63 @@ describe("VenueDetailView: deactivation (SCRUM-64)", () => {
     expect(document.querySelector('[role="dialog"] [role="alert"]').textContent).toContain("This venue is already inactive.");
   });
 
+  it("reloads the venue after a refusal and leaves no stale error once the dialog is closed", async () => {
+    await mountView("venue_staff", ACTIVE);
+    venuesApi.deactivate.mockRejectedValue(new Error("This venue is already inactive."));
+    venuesApi.get.mockResolvedValue(INACTIVE); // someone else deactivated it meanwhile
+
+    button("Deactivate venue").click();
+    await nextTick();
+    await chooseReason("permanently_closed");
+    document.querySelector('[role="dialog"] button[aria-label="Deactivate venue"]').click();
+    await drain();
+    document.querySelector('[role="dialog"] button[aria-label="Cancel"]').click();
+    await drain();
+
+    expect(document.querySelector('[data-testid="venue-inactive-banner"]')).toBeTruthy();
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("does not show an error left in the shared edit store by another page", async () => {
+    const { useVenueEditStore } = await import("@/features/venues/venueEditStore");
+    await mountView("venue_staff", ACTIVE);
+    useVenueEditStore().error = "Venue not found.";
+    await nextTick();
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("shows a refused reactivation on the page and refreshes the venue", async () => {
+    await mountView("venue_staff", INACTIVE);
+    venuesApi.reactivate.mockRejectedValue(new Error("This venue is already active."));
+    venuesApi.get.mockResolvedValue(ACTIVE); // reactivated in another tab meanwhile
+
+    button("Reactivate venue").click();
+    await nextTick();
+    document.querySelector('button[aria-label="Reactivate"]').click();
+    await drain(); // the refusal, then the refresh behind it
+    await drain();
+
+    expect(document.querySelector('[role="alert"]').textContent).toContain("This venue is already active.");
+    expect(document.querySelector('[data-testid="venue-inactive-banner"]')).toBeNull();
+  });
+
+  it("clears that message when moving to another venue", async () => {
+    await mountView("venue_staff", INACTIVE);
+    venuesApi.reactivate.mockRejectedValue(new Error("This venue is already active."));
+    button("Reactivate venue").click();
+    await nextTick();
+    document.querySelector('button[aria-label="Reactivate"]').click();
+    await drain();
+
+    venuesApi.get.mockResolvedValue({ ...ACTIVE, id: "b0000000-0000-4000-8000-000000000002", name: "Hall B" });
+    const { default: router } = await import("@/router");
+    await router.push("/venues/b0000000-0000-4000-8000-000000000002");
+    await drain();
+
+    expect(document.body.textContent).toContain("Hall B");
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+  });
+
   it("reactivates after confirming", async () => {
     await mountView("venue_staff", INACTIVE);
     venuesApi.reactivate.mockResolvedValue(ACTIVE);

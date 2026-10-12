@@ -128,16 +128,33 @@ async function load() {
 // without a reload that would blank it while fetching.
 const deactivateOpen = ref(false);
 const reactivateOpen = ref(false);
+// Page-local, not the shared store's `error`, which the edit page also sets.
+const actionError = ref(null);
+let refreshOnClose = false;
+
+// Re-read the venue without blanking the page (`fetchVenue` clears it first):
+// after a refusal the venue has usually changed under us, e.g. another tab
+// already deactivated it.
+async function refresh() {
+  const id = venue.value.id;
+  await venueEditStore.load(id);
+  if (venueEditStore.venue && route.params.id === id) venuesStore.selectedVenue = venueEditStore.venue;
+}
 
 function openDeactivate() {
   venueEditStore.affected = [];
-  venueEditStore.error = null;
+  actionError.value = null;
   deactivateOpen.value = true;
 }
 
-function closeDeactivate() {
+async function closeDeactivate() {
   deactivateOpen.value = false;
   venueEditStore.affected = [];
+  actionError.value = null;
+  if (refreshOnClose) {
+    refreshOnClose = false;
+    await refresh();
+  }
 }
 
 async function afterSave() {
@@ -146,28 +163,35 @@ async function afterSave() {
 }
 
 async function deactivate({ reason, note, confirm }) {
+  actionError.value = null;
   try {
     const saved = await venueEditStore.deactivate(venue.value.id, { reason, note, version: venue.value.version }, { confirm });
     if (!saved) return;
     deactivateOpen.value = false;
     await afterSave();
-  } catch {
-    // The store keeps the message; the dialog shows it.
+  } catch (error) {
+    actionError.value = error.message;
+    refreshOnClose = true;
   }
 }
 
 async function reactivate() {
   reactivateOpen.value = false;
+  actionError.value = null;
   try {
     await venueEditStore.reactivate(venue.value.id, venue.value.version);
     await afterSave();
-  } catch {
-    // The store keeps the message; the page shows it.
+  } catch (error) {
+    actionError.value = error.message;
+    await refresh();
   }
 }
 
 onMounted(load);
-watch(() => route.params.id, load);
+watch(() => route.params.id, () => {
+  actionError.value = null;
+  load();
+});
 </script>
 
 <template>
@@ -234,11 +258,11 @@ watch(() => route.params.id, load);
           </button>
         </div>
         <p
-          v-if="canEdit && venueEditStore.error && !deactivateOpen"
+          v-if="actionError && !deactivateOpen"
           role="alert"
           class="mt-4 border-2 border-ink bg-bauhaus-red px-3 py-2 text-sm font-bold text-canvas"
         >
-          {{ venueEditStore.error }}
+          {{ actionError }}
         </p>
       </BauhausCard>
 
@@ -247,7 +271,7 @@ watch(() => route.params.id, load);
         :venue-name="venue.name"
         :affected="venueEditStore.affected"
         :busy="venueEditStore.isSaving"
-        :error="venueEditStore.error"
+        :error="actionError"
         @confirm="deactivate"
         @cancel="closeDeactivate"
       />

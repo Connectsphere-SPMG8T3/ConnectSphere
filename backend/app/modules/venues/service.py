@@ -156,6 +156,8 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
         closes_at=current.closes_at,
         is_active=current.is_active,
         description=current.description,
+        inactive_reason=current.inactive_reason,
+        inactive_note=current.inactive_note,
     )
     after = VenueSummary(
         id=current.id,
@@ -169,6 +171,8 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
         closes_at=body.closes_at,
         is_active=current.is_active,
         description=body.description,
+        inactive_reason=current.inactive_reason,
+        inactive_note=current.inactive_note,
     )
 
     now = datetime.now(timezone.utc)

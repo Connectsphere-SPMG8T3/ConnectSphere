@@ -664,6 +664,22 @@ class TestVenueEdit:
         assert profile["update_venue"][0]["actor_id"] == actor["id"]
         assert profile["update_venue"][0]["version"] == 3
 
+    def test_editing_an_inactive_venue_keeps_its_reason_in_the_history_snapshots(
+        self, client, auth_headers, authenticate_as, profile, monkeypatch
+    ):
+        # SCRUM-64: the snapshot records the inactive fields, so they must be the venue's real ones.
+        inactive = make_venue_profile(HALL_A_ID, "Hall A", version=3, is_active=False,
+                                      inactive_reason="permanently_closed", inactive_note="Lease ended")
+        monkeypatch.setattr(repository, "get_venue", lambda venue_id: inactive)
+        authenticate_as("venue_staff")
+
+        client.patch(f"/api/v1/venues/{HALL_A_ID}", json=VALID_EDIT_PAYLOAD, headers=auth_headers)
+
+        [call] = profile["update_venue"]
+        for side in (call["before"], call["after"]):
+            assert (side["is_active"], side["inactive_reason"], side["inactive_note"]) == (
+                False, "permanently_closed", "Lease ended")
+
     def test_coordinator_cannot_edit(self, client, auth_headers, authenticate_as, profile):
         authenticate_as("event_coordinator")
 
