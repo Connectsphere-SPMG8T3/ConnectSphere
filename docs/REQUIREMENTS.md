@@ -1404,7 +1404,7 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 
 **SCRUM-38 additions (2026-10-12):**
 29. **[Assumption]** A booking rejection notifies only the event's assigned coordinator, and the notification carries no reason (the coordinator reads it on the event or booking page). Should venue staff colleagues, or the organiser, be told too? The organiser currently learns nothing, per AUTH-R2.
-30. **[Dependency]** SCRUM-38 builds on CR-99's `venue_booking_history` and `lock_hold_for_approval` (Xuan Wei, on `main` since 2026-10-13). Its migration can't be applied until CR-98 is on `main`, which is also what AC8 (several bookings on one event) needs.
+30. **[Dependency]** SCRUM-38 builds on CR-99's `venue_booking_history` and `lock_hold_for_approval` (Xuan Wei, on `main` since 2026-10-13). Its migration was applied on 2026-10-13. AC8 with several bookings on one event still needs CR-98 on `main`.
 
 ## 10. Non-functional requirements
 

@@ -62,14 +62,21 @@ test("TC-BOOK-021 venue staff read a held request and reject it with a reason", 
   await expect(page.locator(`a[href="/bookings/${bookingId}"]`)).toHaveCount(0);
 });
 
-test("TC-BOOK-022 the coordinator sees why a booking was rejected; the organiser doesn't", async ({ page, sharedSessions }) => {
-  const { event, bookingId } = createThrowawayRequest("022", "2031-06-10 14:00+08", "2031-06-10 17:00+08", INNOVATION_LAB);
+// A throwaway request that venue staff have already rejected, through the API.
+async function rejectedRequest(page, sharedSessions, tag, startsAt, endsAt) {
+  const { event, bookingId } = createThrowawayRequest(tag, startsAt, endsAt, INNOVATION_LAB);
   const staff = await sharedSessions("venue_staff");
   const rejected = await page.request.post(`${API_URL}/venue-bookings/${bookingId}/reject`, {
     headers: { Authorization: `Bearer ${staff.token}` },
     data: { reason: "Closed for maintenance that week", suggestion: "Try the week after" },
   });
   expect(rejected.status()).toBe(200);
+  return event;
+}
+
+// One role per test: seedSession signs a tab in once, so a role switch needs its own test.
+test("TC-BOOK-022 the coordinator sees why a booking was rejected and can look again", async ({ page, sharedSessions }) => {
+  const event = await rejectedRequest(page, sharedSessions, "022-c", "2031-06-10 14:00+08", "2031-06-10 17:00+08");
 
   await seedSession(page, await sharedSessions("event_coordinator"));
   await page.goto(`/coordinator/events/${event.id}`);
@@ -79,9 +86,14 @@ test("TC-BOOK-022 the coordinator sees why a booking was rejected; the organiser
   await expect(panel).toContainText("Try the week after");
   // AC7: they can still look for another venue.
   await expect(panel.getByRole("button", { name: "Find a venue" })).toBeVisible();
+});
+
+test("TC-BOOK-022 the organiser's event page never shows the rejection", async ({ page, sharedSessions }) => {
+  const event = await rejectedRequest(page, sharedSessions, "022-o", "2031-06-11 14:00+08", "2031-06-11 17:00+08");
 
   await seedSession(page, await sharedSessions("event_organiser"));
   await page.goto(`/events/${event.id}`);
   await expect(page.getByRole("main")).toContainText(event.name);
   await expect(page.getByRole("main")).not.toContainText("Closed for maintenance that week");
+  await expect(page.getByRole("main")).not.toContainText("Try the week after");
 });
