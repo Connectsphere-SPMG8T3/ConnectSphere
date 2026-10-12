@@ -73,7 +73,7 @@ Both endpoints use `VenueStaffOnly` (active role `venue_staff`).
 - Without `confirm`, if any booking would be flagged: `saved=false`, `affected` filled, nothing written. Otherwise the RPC runs.
 - After `ok`, the service calls `events_service.return_to_planning(event_id, reason_code="arrangement_flagged")` for each returned event id. It is a no-op for events not in Safety review or Confirmed.
 - Errors: 404 unknown venue; 409 already inactive; 409 stale version ("reload and retry", as SCRUM-63); 422 invalid body.
-- **Known gap:** if `return_to_planning` raises `EventServiceUnavailableError` (503), the venue is already deactivated and the booking flagged, so the event cannot be approved (the approval recheck refuses flags) and its coordinator has been notified. No retry logic.
+- **Known gap:** if `return_to_planning` raises `EventServiceUnavailableError` (503), the venue is already deactivated and the booking flagged, so the event cannot be approved (the approval recheck refuses flags) and its coordinator has been notified. The service logs a warning and still returns `saved: true`, because the deactivation committed. No retry logic.
 
 **`POST /api/v1/venues/{venue_id}/reactivate`**
 - Request `VenueReactivateRequest`: `version: int`. Response `VenueDetail`.
@@ -90,7 +90,7 @@ Both endpoints use `VenueStaffOnly` (active role `venue_staff`).
 **`VenueDetailView`** (buttons only when the active role is `venue_staff`, as `canEdit`):
 - "Deactivate venue" next to "Edit venue"; "Reactivate venue" instead on an inactive venue.
 - Inactive banner: "Inactive: <reason label>" plus the note.
-- History tab: `summariseEditHistoryEntry` renders "Deactivated (<reason>)" and "Reactivated".
+- History tab: `summariseEditHistoryEntry` shows the change as field rows: Status (Active → Inactive), Inactive reason and Inactive note.
 
 **`components/venues/DeactivateVenueModal.vue`** (modelled on `ReturnEventModal`):
 - Reason select and note (required for Other).
