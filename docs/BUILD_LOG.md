@@ -1806,7 +1806,7 @@ On `feature/scrum-38-reject-booking-request`, branched from `main` at `d731ddb`,
 |---|---|
 | ID | SCRUM-38 |
 | Title | Reject a booking request with a reason |
-| Status | In progress: implemented and verified offline; migration not applied (see below) |
+| Status | In progress: implemented and verified offline, rebased onto CR-99 on 2026-10-13; migration not applied (see below) |
 | Sprint | 3 (6–20 October) |
 
 **User story:** As Venue Staff, I want to be able to reject a booking request with a reason, so that I'm not forced to commit my venue to a booking I can't support.
@@ -1864,7 +1864,7 @@ On `feature/scrum-38-reject-booking-request`, branched from `main` at `d731ddb`,
 - **Database:** the migration plus the SQL check, run against the live project in one transaction that was rolled back, printed `BOOKING REJECT CHECKS PASSED`. Nothing was applied.
 - **Full suites:** `pytest` 1042 passed; `npm run test:coverage` 740 passed. Every new and changed line in `backend/app/` and `frontend/src/` is covered; the lines still uncovered in the touched files predate this branch. `npm run build` succeeds.
 - **Not verified:**
-  - **The migration is not applied**, because it needs CR-99 in the repository first. So it is also untested:
+  - **The migration is not applied.** CR-99 reached `main` on 2026-10-13 (PR #53) and this branch was rebased onto it, but `supabase db push` is still refused while CR-98's two live migrations aren't in the repository. So it is also untested:
     - against the real API: the live checks TC-BOOK-014–020 and `verify_live.py --record`;
     - in the browser: TC-BOOK-021–022 and `npm run test:e2e:record`;
     - by `supabase db advisors`.
@@ -1872,8 +1872,14 @@ On `feature/scrum-38-reject-booking-request`, branched from `main` at `d731ddb`,
   - AC8 with several bookings on one event, which needs CR-98 on `main`.
   - AC10 against approval, which needs SCRUM-36 to take the same lock.
 
+**Rebase onto CR-99 (2026-10-13).**
+- CR-99 merged (PR #53) with the same `venue_booking_history`, `lock_hold_for_approval` and `expired` status this story was built against. Its three migrations match the live project's recorded statements exactly.
+- Conflicts were all additions in the same places. In `verify_live.py`, the checks now use CR-99's `hold_for` helper instead of a duplicate. CR-99 also has an e2e `createThrowawayHold` with a different signature, so this story's helper is now `createThrowawayRequest`.
+- After the rebase: `pytest` 1066 passed, `npm run test:coverage` 761 passed, and the build succeeds. The migration plus `venue_booking_reject_checks.sql` again print `BOOKING REJECT CHECKS PASSED` against the live project in a rolled-back transaction.
+- Found while rebasing: DEFECTS D26 (CR-95's live migration lost its history row to CR-99's prune migration, which used the same version).
+
 #### Follow-ups
 
-- Xuan Wei pushes CR-99 and CR-95, and CR-98 merges. Then rebase this branch, `supabase db push`, run `venue_booking_reject_checks.sql`, the advisors, `verify_live.py --record` and `npm run test:e2e:record`, and do the manual pass.
+- CR-98 merges, and CR-95's history is repaired (DEFECTS D26). Then rebase this branch, `supabase db push`, run `venue_booking_reject_checks.sql`, the advisors, `verify_live.py --record` and `npm run test:e2e:record`, and do the manual pass.
 - SCRUM-36 (approve) builds on this branch's page, store and lock pattern (IMPLEMENTATION_MAP §5).
 - CR-99's seeded fixture hold (`d0000000-…-0201`) expires on the live project at 2026-10-19 11:14 UTC (checked 2026-10-12; the `expire-venue-holds` cron job is active), which may break checks that rely on that fixture. That's worth raising with Xuan Wei.

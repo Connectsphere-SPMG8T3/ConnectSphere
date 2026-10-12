@@ -7,8 +7,7 @@
 -- migration extends with the reason and the suggestion.
 --
 -- Depends on CR-99 (20261012120000, 20261012120001: the `expired` status,
--- venue_booking_history and lock_hold_for_approval), which is applied to the
--- live project but not yet in the repository.
+-- venue_booking_history and lock_hold_for_approval).
 --
 -- reject_venue_booking is API-only (ADR-0002): the API checks the active role,
 -- and the function decides under CR-99's lock on the booking row, so a
