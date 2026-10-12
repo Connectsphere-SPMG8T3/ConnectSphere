@@ -134,3 +134,50 @@ class TestDeactivate:
         authenticate_as(role)
         assert client.post(URL, json=BODY, headers=auth_headers).status_code == 403
         assert venue["rpc"] == []
+
+
+class TestReactivate:
+    URL = f"/api/v1/venues/{HALL_A_ID}/reactivate"
+
+    @pytest.fixture()
+    def inactive(self, monkeypatch, venue):
+        venue["current"] = make_venue_profile(HALL_A_ID, "Hall A", version=4, is_active=False,
+                                              inactive_reason="long_term_renovation", inactive_note="Roof works")
+        venue["re_rpc"] = []
+
+        def _rpc(venue_id, actor_id, expected_version, **kwargs):
+            venue["re_rpc"].append({"version": expected_version, **kwargs})
+            return venue.get("re_outcome", "ok")
+
+        monkeypatch.setattr(repository, "reactivate_venue", _rpc)
+        return venue
+
+    def test_venue_staff_reactivates(self, client, auth_headers, authenticate_as, inactive):
+        authenticate_as("venue_staff")
+        response = client.post(self.URL, json={"version": 4}, headers=auth_headers)
+        assert response.status_code == 200
+        [call] = inactive["re_rpc"]
+        assert call["before"]["inactive_reason"] == "long_term_renovation"
+        assert call["after"] == {**call["before"], "is_active": True, "inactive_reason": None, "inactive_note": None}
+        assert inactive["returned"] == []
+
+    def test_already_active_is_409(self, client, auth_headers, authenticate_as, venue, monkeypatch):
+        authenticate_as("venue_staff")
+        monkeypatch.setattr(repository, "reactivate_venue", lambda *a, **k: pytest.fail("must not write"))
+        response = client.post(self.URL, json={"version": 3}, headers=auth_headers)
+        assert response.status_code == 409 and response.json()["detail"] == "This venue is already active."
+
+    @pytest.mark.parametrize(("outcome", "code"), [("stale", 409), ("already_active", 409), ("venue_not_found", 404)])
+    def test_rpc_refusals(self, client, auth_headers, authenticate_as, inactive, outcome, code):
+        authenticate_as("venue_staff")
+        inactive["re_outcome"] = outcome
+        assert client.post(self.URL, json={"version": 4}, headers=auth_headers).status_code == code
+
+    def test_stale_client_version_is_409(self, client, auth_headers, authenticate_as, inactive):
+        authenticate_as("venue_staff")
+        assert client.post(self.URL, json={"version": 3}, headers=auth_headers).status_code == 409
+        assert inactive["re_rpc"] == []
+
+    def test_coordinator_is_forbidden(self, client, auth_headers, authenticate_as, inactive):
+        authenticate_as("event_coordinator")
+        assert client.post(self.URL, json={"version": 4}, headers=auth_headers).status_code == 403

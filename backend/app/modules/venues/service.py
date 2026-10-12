@@ -289,6 +289,35 @@ def deactivate_venue(venue_id: str, actor_id: str, body: VenueDeactivateRequest)
     return VenueDeactivateResponse(saved=True, venue=get_venue(venue_id), affected=affected)
 
 
+def reactivate_venue(venue_id: str, actor_id: str, body: VenueReactivateRequest) -> VenueDetail:
+    """Make an inactive venue bookable again (SCRUM-64 AC4).
+
+    Only the venue changes. Bookings flagged when it was deactivated stay
+    flagged: their coordinators may already be arranging a replacement, and
+    resolving a flag is theirs (CR-95), as with VC-R2.
+    """
+    current = repository.get_venue(venue_id)
+    if current is None:
+        raise VenueNotFoundError()
+    if current.is_active:
+        raise VenueAlreadyActiveError()
+    if body.version != current.version:
+        raise VenueConflictError()
+
+    before = _summary(current)
+    after = _summary(current, is_active=True, inactive_reason=None, inactive_note=None)
+    outcome = repository.reactivate_venue(
+        venue_id, actor_id, current.version, before=_snapshot(before), after=_snapshot(after)
+    )
+    if outcome == "venue_not_found":
+        raise VenueNotFoundError()
+    if outcome == "already_active":
+        raise VenueAlreadyActiveError()
+    if outcome == "stale":
+        raise VenueConflictError()
+    return get_venue(venue_id)
+
+
 def _history_actor(row: dict) -> Editor | None:
     actor = row.get("actor")
     if isinstance(actor, list):
