@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, Query, status
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.venues import service
 from app.modules.venues.schemas import (
+    HoldExpiry,
+    HoldExpiryUpdate,
     VenueBooking,
     VenueBookingCreate,
     VenueDetail,
@@ -113,3 +115,11 @@ def request_venue_booking(body: VenueBookingCreate, current_user: BookingRequest
     is held, booked or blocked for that time, the event already has a venue,
     or the event isn't in planning."""
     return service.request_booking(body, current_user.id)
+
+
+@bookings_router.patch("/{booking_id}/expiry", response_model=HoldExpiry, status_code=status.HTTP_200_OK)
+def change_hold_expiry(booking_id: UUID, body: HoldExpiryUpdate, current_user: VenueStaffOnly) -> HoldExpiry:
+    """Change or extend a tentative hold's expiry (CR-99 AC2). It must be in the
+    future and no later than the event start; 409 once the hold has expired or
+    is no longer a hold."""
+    return service.change_hold_expiry(str(booking_id), current_user.id, body.expires_at)

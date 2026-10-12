@@ -430,18 +430,21 @@ def make_staff_booking(booking_id: str, status: str, requested_at: datetime, **o
 def staff_queue(monkeypatch):
     """Two holds and one re-review across two venues, plus one block.
 
-    The holds are returned newest-first on purpose: the oldest-first ordering
-    the dashboard promises (BR-R4) has to be the service's doing, not an
-    accident of whatever order the repository happened to hand back.
+    The hold that expires later is returned first on purpose: the
+    soonest-expiry ordering the dashboard promises (CR-99) has to be the
+    service's doing, not an accident of the repository's order. The newer
+    request expires sooner, so ordering by age would get it wrong.
     """
     venues = [make_venue(HALL_A_ID, "Hall A"), make_venue(HALL_B_ID, "Hall B", is_active=False)]
     newer_hold = make_staff_booking(
-        "d0000000-0000-4000-8000-000000000002", "held", datetime(2026, 9, 3, 10, 30, tzinfo=SGT)
+        "d0000000-0000-4000-8000-000000000002", "held", datetime(2026, 9, 3, 10, 30, tzinfo=SGT),
+        expires_at=datetime(2031, 1, 1, 9, tzinfo=SGT),
     )
     older_hold = make_staff_booking(
         "d0000000-0000-4000-8000-000000000004",
         "held",
         datetime(2026, 8, 28, 16, 15, tzinfo=SGT),
+        expires_at=datetime(2031, 2, 1, 9, tzinfo=SGT),
         venue_id=HALL_B_ID,
         venue_name="Hall B",
     )
@@ -463,7 +466,7 @@ def staff_queue(monkeypatch):
 
     def _bookings(since, statuses):
         calls["bookings"].append((since, set(statuses)))
-        return [newer_hold, older_hold, re_review]
+        return [older_hold, newer_hold, re_review]
 
     def _blocks(since):
         calls["blocks"].append(since)
@@ -520,14 +523,14 @@ class TestVenueStaffDashboardPayload:
         assert len(body["re_review_bookings"]) == 1
         assert body["blocks"][0]["reason"] == "safety"
 
-    def test_pending_holds_are_oldest_first(self, client, auth_headers, authenticate_as, staff_queue):
+    def test_pending_holds_are_soonest_expiry_first(self, client, auth_headers, authenticate_as, staff_queue):
         authenticate_as("venue_staff")
 
         body = client.get(VENUE_STAFF_DASHBOARD, headers=auth_headers).json()
 
-        assert [h["requested_at"] for h in body["pending_holds"]] == [
-            "2026-08-28T16:15:00+08:00",
-            "2026-09-03T10:30:00+08:00",
+        assert [h["expires_at"] for h in body["pending_holds"]] == [
+            "2031-01-01T09:00:00+08:00",
+            "2031-02-01T09:00:00+08:00",
         ]
 
     def test_only_held_and_re_review_are_requested(self, client, auth_headers, authenticate_as, staff_queue):

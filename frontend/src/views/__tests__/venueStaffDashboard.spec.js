@@ -3,13 +3,14 @@ import { createApp, nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import VenueStaffDashboard from "@/views/dashboards/VenueStaffDashboard.vue";
-import { ApiError, venuesApi } from "@/services/api";
+import { ApiError, venueBookingsApi, venuesApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
   venuesApi: { search: vi.fn(), get: vi.fn(), venueStaffDashboard: vi.fn() },
+  venueBookingsApi: { changeExpiry: vi.fn() },
 }));
 
 const PAYLOAD = {
@@ -29,6 +30,8 @@ const PAYLOAD = {
       period: { starts_at: "2026-10-10T13:00:00+08:00", ends_at: "2026-10-10T16:00:00+08:00" },
       status: "held",
       requested_at: "2026-09-03T10:30:00+08:00",
+      // The newer request expires first, so the queue isn't in age order.
+      expires_at: "2026-09-20T01:00:00Z",
     },
     {
       id: "d-4",
@@ -39,6 +42,7 @@ const PAYLOAD = {
       period: { starts_at: "2026-10-13T09:00:00+08:00", ends_at: "2026-10-13T12:00:00+08:00" },
       status: "held",
       requested_at: "2026-08-28T16:15:00+08:00",
+      expires_at: "2026-09-25T01:00:00Z",
     },
   ],
   re_review_bookings: [
@@ -124,14 +128,59 @@ describe("VenueStaffDashboard", () => {
     expect(tileValues).toEqual(["2", "1", "1", "3"]);
   });
 
-  it("lists pending requests oldest first, each linking to its own page", async () => {
+  it("lists pending requests soonest expiry first, each linking to its own page", async () => {
+    // CR-99 (W7 CR-04): expiry, not age, orders the queue.
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
 
     const el = await mountDashboard();
 
     const links = [...el.querySelectorAll('a[href^="/bookings/"]')];
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/bookings/d-4", "/bookings/d-2"]);
-    expect(links[0].textContent).toContain("Rooftop Terrace");
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/bookings/d-2", "/bookings/d-4"]);
+    expect(links[0].textContent).toContain("Grand Ballroom");
+  });
+
+  it("shows each hold's expiry in Singapore time", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+
+    expect(el.querySelector('[data-testid="hold-expiry-d-2"]').textContent).toContain("Expires 20 Sep 2026, 09:00");
+  });
+
+  it("closes the expiry form on Cancel without saving", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+    const el = await mountDashboard();
+
+    el.querySelector('[data-testid="hold-expiry-d-2"]').parentElement.querySelector("button").click();
+    await nextTick();
+    [...el.querySelectorAll("form button")].find((b) => b.textContent.includes("Cancel")).click();
+    await nextTick();
+
+    expect(el.querySelector("form")).toBeNull();
+    expect(venueBookingsApi.changeExpiry).not.toHaveBeenCalled();
+  });
+
+  it("changes a hold's expiry from its row (CR-99 AC2)", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+    venueBookingsApi.changeExpiry.mockResolvedValue({ id: "d-2", status: "held", expires_at: "2026-09-23T10:30:00Z" });
+    const el = await mountDashboard();
+
+    el.querySelector('[data-testid="hold-expiry-d-2"]').parentElement.querySelector("button").click();
+    await nextTick();
+    const input = el.querySelector('input[type="datetime-local"]');
+    expect(input.getAttribute("max")).toBe("2026-10-10T13:00");
+    input.value = "2026-09-23T18:30";
+    input.dispatchEvent(new Event("input"));
+    el.querySelector("form").dispatchEvent(new Event("submit"));
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+      await nextTick();
+    }
+
+    expect(venueBookingsApi.changeExpiry).toHaveBeenCalledWith(
+      "d-2", { expires_at: "2026-09-23T18:30:00+08:00" }, "access",
+    );
+    expect(el.querySelector("form")).toBeNull();
   });
 
   it("states how long a request has waited without dressing it as overdue", async () => {

@@ -12,6 +12,7 @@ from app.modules.venues import impact, repository, search
 from app.modules.venues.schemas import (
     BookingImpactContext,
     Editor,
+    HoldExpiry,
     VenueBooking,
     VenueBookingCreate,
     VenueDetail,
@@ -246,11 +247,12 @@ def venue_staff_dashboard(now: datetime | None = None) -> VenueStaffDashboard:
     return VenueStaffDashboard(
         generated_at=now,
         venues=repository.list_venues(),
-        # Oldest first (BR-R4): a hold never expires, so its age is the only
-        # nudge the system gives. Tie-broken on id for a stable order.
+        # Soonest expiry first (CR-99): the hold nearest to expiring most needs
+        # a decision. One already past its expiry is left out even before the
+        # minute job marks it expired (AC5). Tie-broken on id for a stable order.
         pending_holds=sorted(
-            (b for b in bookings if b.status == "held"),
-            key=lambda b: (b.requested_at, b.id),
+            (b for b in bookings if b.status == "held" and (b.expires_at is None or b.expires_at > now)),
+            key=lambda b: (b.expires_at or b.period.starts_at, b.id),
         ),
         re_review_bookings=[b for b in bookings if b.status == "re_review"],
         blocks=repository.list_all_upcoming_blocks(now),
@@ -311,14 +313,39 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
                         status="held", note=body.note)
 
 
+# What `public.set_venue_hold_expiry` refuses with (CR-99 AC1, AC2, AC4).
+HOLD_EXPIRY_REFUSALS = {
+    "hold_expired": (status.HTTP_409_CONFLICT, "This hold has already expired."),
+    "not_held": (status.HTTP_409_CONFLICT, "Only a held booking has an expiry to change."),
+    "not_in_future": (status.HTTP_422_UNPROCESSABLE_ENTITY, "The new expiry must be in the future."),
+    "after_event_start": (status.HTTP_422_UNPROCESSABLE_ENTITY, "The new expiry can't be after the event starts."),
+}
+
+
+def change_hold_expiry(booking_id: str, actor_id: str, expires_at: datetime) -> HoldExpiry:
+    """Change or extend a hold's expiry (CR-99 AC2). Venue staff work as a pool
+    (AUTH-R5), so any of them may change any hold; the bounds, the history row
+    and the reset of the 24-hour warning are the database function's."""
+    result = repository.set_hold_expiry(booking_id, actor_id, expires_at)
+    outcome = result["outcome"]
+    if outcome == "booking_not_found":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
+    if outcome in HOLD_EXPIRY_REFUSALS:
+        code, detail = HOLD_EXPIRY_REFUSALS[outcome]
+        raise HTTPException(status_code=code, detail=detail)
+    return HoldExpiry(id=booking_id, status="held", expires_at=result["expires_at"])
+
+
 def active_booking_for_event(event_id: str) -> dict | None:
-    """`{id, venue_id, venue_name, status}` for the venue the event holds or has
-    booked, or None (SCRUM-19). The event page reads it to show the hold."""
+    """`{id, venue_id, venue_name, status, expires_at}` for the venue the event
+    holds or has booked, or else its latest expired hold (CR-99 AC7), or None
+    (SCRUM-19). The event page reads it to show the hold."""
     row = repository.get_active_booking(event_id)
     if row is None:
         return None
     return {"id": row["id"], "venue_id": row["venue_id"],
-            "venue_name": (row.get("venues") or {}).get("name"), "status": row["status"]}
+            "venue_name": (row.get("venues") or {}).get("name"), "status": row["status"],
+            "expires_at": row.get("expires_at")}
 
 
 def event_booking_ids(event_id: str) -> set[str]:

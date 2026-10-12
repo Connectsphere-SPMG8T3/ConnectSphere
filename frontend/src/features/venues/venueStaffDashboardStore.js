@@ -1,12 +1,12 @@
 import { defineStore } from "pinia";
 
 import {
-  sortPendingHoldsOldestFirst,
+  sortPendingHoldsSoonestExpiryFirst,
   summariseVenueStaffDashboard,
   venueStatuses as selectVenueStatuses,
 } from "@/features/venues/dashboard";
 import { toCalendarItems } from "@/features/venues/calendar";
-import { ApiError, venuesApi } from "@/services/api";
+import { ApiError, venueBookingsApi, venuesApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 /**
@@ -36,11 +36,14 @@ export const useVenueStaffDashboardStore = defineStore("venueStaffDashboard", {
     // are meaningless before that, so the dashboard withholds them rather than
     // showing a zero it cannot yet stand behind.
     hasSettled: false,
+    // CR-99 AC2: a change of expiry in flight, and why the last one failed.
+    isChangingExpiry: false,
+    expiryError: null,
   }),
 
   getters: {
     counts: (state) => summariseVenueStaffDashboard(state),
-    oldestFirstHolds: (state) => sortPendingHoldsOldestFirst(state.pendingHolds),
+    soonestExpiryHolds: (state) => sortPendingHoldsSoonestExpiryFirst(state.pendingHolds),
     calendarItems: (state) => toCalendarItems(state),
   },
 
@@ -91,6 +94,34 @@ export const useVenueStaffDashboardStore = defineStore("venueStaffDashboard", {
         this.isLoading = false;
         this.hasSettled = true;
       }
+    },
+
+    /**
+     * Change or extend a hold's expiry (CR-99 AC2), then reload the queue so
+     * its order follows the new expiry. Resolves true when saved; otherwise
+     * `expiryError` says why, in the server's words where it gave them.
+     */
+    async changeHoldExpiry(bookingId, expiresAt) {
+      this.expiryError = null;
+      if (!expiresAt) {
+        this.expiryError = "Choose a date and time for the new expiry.";
+        return false;
+      }
+      const auth = useAuthStore();
+      this.isChangingExpiry = true;
+      try {
+        await auth.withSession((token) =>
+          venueBookingsApi.changeExpiry(bookingId, { expires_at: expiresAt }, token),
+        );
+      } catch (err) {
+        this.expiryError =
+          err instanceof ApiError ? err.message : "Unable to reach the server. Please try again.";
+        return false;
+      } finally {
+        this.isChangingExpiry = false;
+      }
+      await this.load();
+      return true;
     },
   },
 });

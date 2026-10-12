@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_validator
 
 
 class VenueLayout(str, Enum):
@@ -214,10 +214,11 @@ class VenueStaffBlock(BlockSummary):
 class VenueStaffBooking(BookingSummary):
     venue_id: str
     venue_name: str
-    # venue_bookings.created_at. Holds never expire (BR-R4), so how long one has
-    # been waiting is the only nudge the system gives, and the dashboard sorts
-    # on it (§6.21). That makes it part of the contract, not a display detail.
+    # venue_bookings.created_at: how long the request has been waiting.
     requested_at: datetime
+    # When a hold expires unless approved (CR-99). The dashboard sorts pending
+    # holds on it, soonest first. Null on a booking that was never held.
+    expires_at: datetime | None = None
     # `event_name` is inherited from `BookingSummary`. The dashboard does not
     # resolve it yet, so it stays null here and the SPA falls back to a short
     # id; `venues.service.get_venue` shows how to fill it (SCRUM-67).
@@ -395,3 +396,16 @@ class VenueBooking(BaseModel):
     venue_id: str
     status: str
     note: str | None = None
+
+
+class HoldExpiryUpdate(BaseModel):
+    """Venue staff's new expiry for a hold (CR-99 AC2). Must carry its offset:
+    a bare local time would be read in the server's zone, not Singapore's."""
+
+    expires_at: AwareDatetime
+
+
+class HoldExpiry(BaseModel):
+    id: str
+    status: str
+    expires_at: datetime

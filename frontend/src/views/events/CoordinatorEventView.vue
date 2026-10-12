@@ -17,6 +17,7 @@ import { showToast } from "@/composables/useToast";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { BOOKING_STATUS_LABELS, venuePanelState } from "@/features/venues/bookingRequest";
+import { formatHoldExpiry } from "@/features/venues/dashboard";
 
 const route = useRoute();
 const router = useRouter();
@@ -214,6 +215,38 @@ watch(
             <p v-if="venuePanel.booking.status === 'held'" class="mt-3 text-sm font-medium">
               Held for this event's time while venue staff decide.
             </p>
+            <p
+              v-if="venuePanel.booking.status === 'held' && venuePanel.booking.expires_at"
+              class="mt-1 text-sm font-bold"
+              data-testid="hold-expiry"
+            >
+              Hold expires {{ formatHoldExpiry(venuePanel.booking.expires_at) }} unless approved.
+            </p>
+          </template>
+          <template v-else-if="venuePanel.kind === 'expired'">
+            <p class="mt-4 text-lg font-black uppercase tracking-tight">
+              <RouterLink
+                :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
+                class="underline decoration-2 underline-offset-4"
+              >
+                {{ venuePanel.booking.venue_name ?? "Venue" }}
+              </RouterLink>
+            </p>
+            <p class="mt-3 inline-block border-2 border-ink bg-canvas px-3 py-1 text-xs font-black uppercase tracking-widest">
+              {{ BOOKING_STATUS_LABELS.expired }}
+            </p>
+            <p class="mt-3 text-sm font-medium" data-testid="hold-expired">
+              The hold expired on {{ formatHoldExpiry(venuePanel.booking.expires_at) }} before venue staff approved it.
+              <template v-if="venuePanel.canRequest">You can request this venue again if it's still free, or find another.</template>
+            </p>
+            <BauhausButton
+              v-if="venuePanel.canRequest"
+              class="mt-4"
+              variant="secondary"
+              @click="router.push({ name: 'venue-search', query: { event: event.id } })"
+            >
+              Find a venue
+            </BauhausButton>
           </template>
           <template v-else-if="venuePanel.kind === 'can-request'">
             <p class="mt-4 text-sm font-medium">No venue requested yet. Search with this event's requirements and request one.</p>

@@ -330,7 +330,10 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
         # may carry (§6.13) — so a bare `venues(name)` is ambiguous and
         # PostgREST refuses the whole request with PGRST201 rather than
         # guessing. `venue_blocks` has only one, which is why it can stay bare.
-        .select("id, event_id, venue_id, occupied_period, status, created_at, venues!venue_bookings_venue_id_fkey(name)")
+        .select(
+            "id, event_id, venue_id, occupied_period, status, created_at, expires_at, "
+            "venues!venue_bookings_venue_id_fkey(name)"
+        )
         .in_("status", sorted(statuses))
         .overlaps("occupied_period", _open_ended_literal(since))
         .execute()
@@ -344,6 +347,7 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
             period=_parse_range(row["occupied_period"]),
             status=row["status"],
             requested_at=datetime.fromisoformat(row["created_at"]),
+            expires_at=datetime.fromisoformat(row["expires_at"]) if row.get("expires_at") else None,
         )
         for row in response.data or []
     ]
@@ -389,19 +393,21 @@ def request_booking(event_id: str, venue_id: str, actor_id: str, note: str | Non
 
 
 def get_active_booking(event_id: str) -> dict | None:
-    """The event's one occupying booking (BR-R1 allows at most one), with its
-    venue's name, or None."""
+    """The event's occupying booking, with its venue's name; or, when it has
+    none, its most recent expired hold, so the event page can say the hold ran
+    out and offer the venue again (CR-99 AC7); or None."""
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, venue_id, status, venues!venue_bookings_venue_id_fkey(name)")
+        .select("id, venue_id, status, expires_at, venues!venue_bookings_venue_id_fkey(name)")
         .eq("event_id", event_id)
-        .in_("status", list(OCCUPYING_STATUSES))
-        .limit(1)
+        .in_("status", [*OCCUPYING_STATUSES, "expired"])
+        .order("created_at", desc=True)
         .execute()
     )
     rows = response.data or []
-    return rows[0] if rows else None
+    active = [row for row in rows if row["status"] in OCCUPYING_STATUSES]
+    return (active or rows or [None])[0]
 
 
 def list_event_booking_ids(event_id: str) -> list[dict]:
@@ -415,3 +421,18 @@ def list_event_bookings_with_venues(event_id: str) -> list[dict]:
                 .select("id, venue_id, status, venues!venue_bookings_venue_id_fkey(name, capacity, venue_layouts(layout), accessibility_features)")
                 .eq("event_id", event_id).in_("status", ["held", "approved", "re_review"]).execute())
     return response.data or []
+
+
+def set_hold_expiry(booking_id: str, actor_id: str, expires_at: datetime) -> dict:
+    """Run `public.set_venue_hold_expiry` (CR-99 AC2): the change and its history
+    row in one transaction. Returns `{outcome, expires_at}`; every refusal is an
+    outcome code, never a raised database error."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "set_venue_hold_expiry",
+            {"p_booking_id": booking_id, "p_actor_id": actor_id, "p_expires_at": expires_at.isoformat()},
+        )
+        .execute()
+    )
+    return (response.data or [])[0]

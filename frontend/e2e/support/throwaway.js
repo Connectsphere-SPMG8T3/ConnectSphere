@@ -57,6 +57,16 @@ export function createThrowawayEvent(tag, startsAt, endsAt) {
   return row;
 }
 
+/** A booking on a throwaway event with a chosen status and expiry (CR-99), for
+ * states a request alone can't reach. Deleted with the event's bookings. */
+export function createThrowawayHold(event, venueId, startsAt, endsAt, status, expiresAt) {
+  const [row] = query(
+    "insert into public.venue_bookings (event_id, venue_id, occupied_period, status, expires_at) values " +
+      `('${event.id}', '${venueId}', tstzrange('${startsAt}', '${endsAt}', '[)'), '${status}', '${expiresAt}') returning id`,
+  );
+  return row;
+}
+
 /** Deletes the throwaway events and their bookings (that foreign key restricts). */
 export function deleteThrowawayEvents() {
   query(`delete from public.venue_bookings where event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);

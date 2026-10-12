@@ -5,6 +5,7 @@
  * (REQUIREMENTS §3.3). The view and the store both read from this module
  * rather than re-deriving counts, ordering or status wording themselves.
  */
+import { SINGAPORE_OFFSET_MS, toInstant, toSingaporeIso } from "@/features/venues/singaporeTime";
 
 /** Block reasons, labelled in one place (REQUIREMENTS §6.8 controlled list). */
 export const BLOCK_REASON_LABELS = {
@@ -35,21 +36,54 @@ function timestamp(value) {
 }
 
 /**
- * Pending holds, longest-waiting first (BR-R4).
+ * Pending holds, soonest expiry first (CR-99, W7 CR-04).
  *
- * A hold never expires, so its age is the only nudge the system gives. The
- * dashboard shows that age but never dresses it as an overdue state: the
- * customer ruled out SLA timers and review deadlines outright (LC-R4, QA-55,
- * QA-68), and colouring a waiting figure red would reintroduce exactly the
- * deadline pressure they rejected.
- *
- * Ties break on id so two holds requested in the same instant keep a stable
- * order between loads. Returns a new array.
+ * A hold expires unless venue staff approve it in time, so the one nearest to
+ * expiring is the one that most needs a decision. A hold without a usable
+ * expiry sorts last. Ties break on id so two holds expiring in the same
+ * instant keep a stable order between loads. Returns a new array.
  */
-export function sortPendingHoldsOldestFirst(holds = []) {
+export function sortPendingHoldsSoonestExpiryFirst(holds = []) {
   return [...holds].sort(
-    (a, b) => timestamp(a.requested_at) - timestamp(b.requested_at) || String(a.id).localeCompare(String(b.id)),
+    (a, b) => timestamp(a.expires_at) - timestamp(b.expires_at) || String(a.id).localeCompare(String(b.id)),
   );
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "YYYY-MM-DDTHH:MM" on Singapore's clock: what a datetime-local input holds.
+function singaporeLocal(value) {
+  return new Date(toInstant(value).getTime() + SINGAPORE_OFFSET_MS).toISOString().slice(0, 16);
+}
+
+/** A hold's expiry as "5 Aug 2031, 12:00" in Singapore time, the wording the
+ * coordinator's notices use; null when there is none. */
+export function formatHoldExpiry(value) {
+  if (!Number.isFinite(timestamp(value))) return null;
+  const [date, time] = singaporeLocal(value).split("T");
+  const [year, month, day] = date.split("-");
+  return `${Number(day)} ${MONTHS[Number(month) - 1]} ${year}, ${time}`;
+}
+
+/**
+ * What the Change expiry picker allows (CR-99 AC1, AC2): from the next whole
+ * minute to the event start, opening on the current expiry. The server checks
+ * the same bounds; these only keep the picker from offering a refusal.
+ */
+export function expiryInputBounds(hold, now = new Date()) {
+  const nextMinute = new Date(Math.floor(now.getTime() / 60000) * 60000 + 60000);
+  return {
+    min: singaporeLocal(nextMinute),
+    max: singaporeLocal(hold.period.starts_at),
+    value: singaporeLocal(hold.expires_at),
+  };
+}
+
+/** A datetime-local pick, read as Singapore time, as an ISO instant; null if
+ * it isn't a full date and time. */
+export function expiryInputToIso(value) {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(value ?? "");
+  return match ? toSingaporeIso(match[1], match[2]) : null;
 }
 
 /** Whole days a request has been waiting. Never negative. */

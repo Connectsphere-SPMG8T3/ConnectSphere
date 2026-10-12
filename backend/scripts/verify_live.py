@@ -97,6 +97,7 @@ DB_SCRIPTS = [
     ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
+    ("hold_expiry_checks.sql", "TC-HOLD-001–003 (database half: bounds, job, notices, approval race)"),
     ("equipment_request_checks.sql", "TC-EQR-002, 003, 006, 007, 008, 009 (database half)"),
     ("venue_edit_checks.sql", "TC-VENUE-058, 059, 061 (database half)"),
 ]
@@ -619,6 +620,7 @@ PLANNING_FIXTURE = "e0000000-0000-4000-8000-000000000202"  # supabase/seed.sql: 
 INNOVATION_LAB = "b0000000-0000-4000-8000-000000000006"
 HERITAGE_HALL = "b0000000-0000-4000-8000-000000000007"
 VENUE_STAFF_ID = "a0000000-0000-4000-8000-000000000003"
+COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
 THROWAWAY_EVENT_PREFIX = "live-check "
 THROWAWAY_BLOCK_NOTE = "live-check"
 
@@ -765,6 +767,88 @@ def _(ctx: Context) -> None:
         f"where event_id in ('{left}', '{right}') and status = 'held'"
     )
     expect(count["n"] == 1, f"{count['n']} holds exist")
+
+# --- Tentative hold expiry (CR-99) -----------------------------------------
+
+
+def hold_for(ctx: Context, case: str, starts: str, ends: str) -> tuple[str, str]:
+    """A throwaway planning event holding Innovation Lab: (event id, booking id)."""
+    event_id = throwaway_event(ctx, case, starts, ends)
+    response = request_venue(ctx, ctx.shared("event_coordinator"), event_id, INNOVATION_LAB)
+    expect_status(response, 201)
+    return event_id, response.json()["id"]
+
+
+@check("TC-HOLD-001", "A new hold expires 7 days after the request", needs_db=True)
+def _(ctx: Context) -> None:
+    _event_id, booking_id = hold_for(ctx, "H001", "2031-06-20 14:00+08", "2031-06-20 17:00+08")
+
+    [row] = db_query(
+        "select abs(extract(epoch from expires_at - (created_at + interval '7 days'))) < 1 as seven_days "
+        f"from public.venue_bookings where id = '{booking_id}'"
+    )
+    expect(row["seven_days"] is True, f"expiry is not 7 days after the request: {row}")
+    queue = ctx.client.get(f"{ctx.api}/venues/dashboard/venue-staff", headers=ctx.shared("venue_staff").headers).json()
+    [listed] = [b for b in queue["pending_holds"] if b["id"] == booking_id]
+    expect(listed.get("expires_at"), f"the queue shows no expiry: {listed}")
+
+
+@check("TC-HOLD-002", "Venue staff change a hold's expiry within its bounds; others can't", needs_db=True)
+def _(ctx: Context) -> None:
+    _event_id, booking_id = hold_for(ctx, "H002", "2031-06-21 14:00+08", "2031-06-21 17:00+08")
+    url = f"{ctx.api}{BOOKINGS}/{booking_id}/expiry"
+    staff = ctx.shared("venue_staff")
+
+    changed = ctx.client.patch(url, headers=staff.headers, json={"expires_at": "2031-06-21T14:00:00+08:00"})
+    expect_status(changed, 200)
+    [history] = db_query(
+        "select actor_id, new_expires_at = '2031-06-21 14:00+08' as new_ok from public.venue_booking_history "
+        f"where booking_id = '{booking_id}' and action = 'expiry_changed'"
+    )
+    expect(history["actor_id"] == VENUE_STAFF_ID and history["new_ok"] is True, f"history row is {history}")
+
+    late = ctx.client.patch(url, headers=staff.headers, json={"expires_at": "2031-06-21T14:01:00+08:00"})
+    expect_status(late, 422)
+    expect_detail(late, "The new expiry can't be after the event starts.")
+    past = ctx.client.patch(url, headers=staff.headers, json={"expires_at": "2020-01-01T09:00:00+08:00"})
+    expect_status(past, 422)
+    expect_detail(past, "The new expiry must be in the future.")
+    for role in ("event_coordinator", "event_organiser", "tech_support", "attendee"):
+        denied = ctx.client.patch(url, headers=ctx.shared(role).headers, json={"expires_at": "2031-06-20T09:00:00+08:00"})
+        expect_status(denied, 403)
+
+
+@check("TC-HOLD-003", "An overdue hold expires, the coordinator is told, and the venue can be requested again",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = hold_for(ctx, "H003", "2031-06-22 14:00+08", "2031-06-22 17:00+08")
+    # Only this check's own hold is moved into the past; the job then runs as
+    # pg_cron runs it every minute.
+    db_query(f"update public.venue_bookings set expires_at = now() - interval '1 minute' where id = '{booking_id}'")
+    db_query("select public.expire_venue_holds()")
+
+    [row] = db_query(f"select status::text as status from public.venue_bookings where id = '{booking_id}'")
+    expect(row["status"] == "expired", f"the overdue hold is {row['status']}")
+    notices = db_query(
+        f"select recipient_id, type from public.notifications where event_id = '{event_id}' "
+        "and type in ('venue_hold_expiring', 'venue_hold_expired') order by type"
+    )
+    # Only the expired notice: a hold already past its expiry isn't warned first.
+    expect([(n["recipient_id"], n["type"]) for n in notices] == [(COORDINATOR_ID, "venue_hold_expired")],
+           f"notices were {notices}")
+
+    coordinator = ctx.shared("event_coordinator")
+    shown = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=coordinator.headers).json()["venue_booking"]
+    expect(shown and shown["status"] == "expired", f"the event page shows {shown}")
+    queue = ctx.client.get(f"{ctx.api}/venues/dashboard/venue-staff", headers=ctx.shared("venue_staff").headers).json()
+    expect(all(b["id"] != booking_id for b in queue["pending_holds"]), "the expired hold is still in the queue")
+    again = request_venue(ctx, coordinator, event_id, INNOVATION_LAB)
+    expect_status(again, 201)
+    refused = ctx.client.patch(f"{ctx.api}{BOOKINGS}/{booking_id}/expiry", headers=ctx.shared("venue_staff").headers,
+                               json={"expires_at": "2031-06-21T09:00:00+08:00"})
+    expect_status(refused, 409)
+    expect_detail(refused, "This hold has already expired.")
+
 
 # --- Equipment requests (SCRUM-45) ----------------------------------------
 
