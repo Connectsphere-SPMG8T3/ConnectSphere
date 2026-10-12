@@ -19,7 +19,7 @@ Layer-specific rules (tech stack, conventions, design system) live in **`backend
 
 The team's Scrum process is set by the [Team A-HA! Scrum Playbook](https://docs.google.com/document/d/1wd96yzFLZQ1FNZQFfbxzSQvRzzqs9ZJkgrZUEBKbItg/edit): its board workflow, Definition of Ready, Definition of Done, estimation and change management. This repository's process docs follow it, and the playbook wins if the two disagree.
 
-From Sprint 3 (6 Oct 2026), the backlog lives in the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit), not Jira. Its **Product backlog** tab holds every PBI: user story, acceptance criteria, priority, estimate, status and customer clarifications. Each sprint has its own tab with the sprint's tasks and burndown. Jira's Sprint 1–2 records are kept only as exports in the shared drive.
+From Sprint 3 (6 Oct 2026), the backlog lives in the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit), not Jira. Its **Product backlog** tab holds every PBI: user story, acceptance criteria, priority, estimate, status and customer clarifications. Each sprint has its own tab with the sprint's tasks and burndown. Jira's Sprint 1–2 records are kept only as exports in the shared drive. Before writing to the sheet, read "Editing the backlog sheet" in `docs/DEVELOPMENT_WORKFLOW.md` for the column layout, exact status values and date format.
 
 **PBI IDs.** Stories from Sprints 1–2 keep their Jira number: row `12` in the sheet is `SCRUM-12`. Stories added from the Week 7 changes use the sheet's own IDs, `NEW-<nn>`. Cite whichever the sheet shows.
 
@@ -177,4 +177,4 @@ This section is only the agent-facing summary of the workflow's §1–3.
 - [ ] Docs are updated per "Keep the paper trail current" above. The work is on a non-`main` branch, committed with a *why*-focused message.
 - [ ] The final report covers: what changed, how it was verified, what wasn't verified, and follow-ups.
 
-Stopping here is correct for an agent. **The workflow's §4–5 are the developer's**: the PR, the teammate review, the PO's acceptance, the merge, and setting the PBI to Done in the Product backlog. An agent only does them when asked. Say so in the final report, so the PBI is not left merged with its status still In Sprint.
+Stopping here is correct for an agent. **The workflow's §4–5 are the developer's**: the PR, the teammate review, the PO's acceptance, the merge, and setting the PBI to Done in the Product backlog. An agent only does them when asked. Say so in the final report, so the PBI is not left merged with its status still In Review.
