@@ -99,6 +99,14 @@ export const venueBookingsApi = {
   changeExpiry(bookingId, payload, token) {
     return request(`/venue-bookings/${encodeURIComponent(bookingId)}/expiry`, { method: "PATCH", body: payload, token });
   },
+  // SCRUM-38: one request as venue staff decide it, and the assigned coordinator reads it.
+  get(bookingId, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}`, { token });
+  },
+  // SCRUM-38: `payload` is `{ reason, suggestion }`; 409 means it is no longer a live hold.
+  reject(bookingId, payload, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/reject`, { method: "POST", body: payload, token });
+  },
 };
 
 export const eventsApi = {

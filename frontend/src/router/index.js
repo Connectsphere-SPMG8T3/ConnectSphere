@@ -123,7 +123,8 @@ const routes = [
     path: "/bookings/:id",
     name: "booking-request",
     component: () => import("@/views/bookings/BookingRequestView.vue"),
-    meta: { requiresAuth: true, allowedRoles: ["venue_staff"] },
+    // SCRUM-38: the assigned coordinator reads why a booking was rejected; the API checks the assignment.
+    meta: { requiresAuth: true, allowedRoles: ["venue_staff", "event_coordinator"] },
   },
   {
     path: "/:pathMatch(.*)*",

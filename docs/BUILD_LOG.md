@@ -1797,3 +1797,83 @@ Fixed on `fix/events-test-fixed-dates`, branched from `main` at `a6080f9`, 2026-
 - **Full suite:** `pytest` 992 passed.
 - **Time-shifted runs:** the suite was run with the whole process clock moved forward (`time-machine`, loaded from a scratch directory, not added to the project). The fix passes all 992 at +0, +30, +365 and +1000 days. `main` at +365 fails only the same three tests, so no other test in the suite depends on the date.
 - **Not run:** live checks, since nothing outside the test suite changed.
+
+### 4.42. SCRUM-38 — Venue staff reject a booking request with a reason
+
+On `feature/scrum-38-reject-booking-request`, branched from `main` at `d731ddb`, 2026-10-12. Numbered 4.42 because the CR-99 branch, not yet merged, uses 4.40. The Product backlog sheet couldn't be read through the connector, so the story and acceptance criteria are as the developer pasted them. The epic, estimate and priority weren't available.
+
+| Field | Value |
+|---|---|
+| ID | SCRUM-38 |
+| Title | Reject a booking request with a reason |
+| Status | In progress: implemented and verified offline; migration not applied (see below) |
+| Sprint | 3 (6–20 October) |
+
+**User story:** As Venue Staff, I want to be able to reject a booking request with a reason, so that I'm not forced to commit my venue to a booking I can't support.
+
+**Acceptance criteria (as pasted by the developer):**
+
+> AC1. Venue Staff can view a Held booking request with the event's date, time, capacity, layout and other requirements (same view as 36).
+> AC2. Can reject a request only by providing a reason (e.g. unavailable, unsuitable layout, capacity exceeded). The reason cannot be blank and is at most 1000 characters.
+> AC3. When rejecting, can optionally add a suggested alternative venue or arrangement as a note (at most 1000 characters). It is a suggestion only: it does not create a hold or booking.
+> AC4. Rejecting sets the booking's status to Rejected and notifies the assigned Event Coordinator.
+> AC5. [W7 CR-04] A rejected booking's hold is removed from the venue calendar and the slot is free for other requests (21 AC5 ignores Rejected bookings).
+> AC6. The reason and any suggested alternative are visible to the assigned Event Coordinator on the booking and the event. They are not shown to the Event Organiser or attendees.
+> AC7. The event stays in Planning and the coordinator can request another venue for it. A Rejected booking does not count as the event's venue (19 AC4, CR-97), as in 85 AC2.
+> AC8. [W7 CR-03] Rejecting one venue booking leaves the event's other venue bookings unchanged.
+> AC9. Only a Held booking can be rejected. A booking that is already approved, Rejected, Cancelled, Released or Expired is refused. An expired hold is shown as Expired (36 AC4, CR-99).
+> AC10. If approval (36), rejection and expiry (CR-99) happen at the same moment, only one outcome is saved and the others are refused.
+> AC11. Only users acting as Venue Staff can reject a booking. Everyone else gets Forbidden (403).
+> AC12. The rejection, its reason, who rejected it and when are recorded in the booking's history.
+
+#### Decisions
+
+- **[Team decision]** The developer chose free text for the reason and the suggestion, as AC2 and AC3 word them, over §6.13's preset reason list and venue link. REQUIREMENTS §6.13 is updated.
+- **Built on CR-99, not beside it.** Writing the migration's dry run showed that CR-99 (hold expiry, Xuan Wei) had been applied to the live project that day without being pushed. It creates `venue_booking_history` "for the approve, reject, cancel and replacement stories", adds `lock_hold_for_approval` and an `expired` status, and runs a pg_cron expiry job every minute. It also uses version `20261012120000`, which this story's first migration had taken. The developer chose to build on it: this story's migration (renamed `20261012140000`) adds `reason` and `suggestion_note` to CR-99's history instead of creating its own, and `reject_venue_booking` takes CR-99's lock, so a hold past its expiry is expired rather than rejected (AC9, AC10).
+- **[Assumption]** Only the assigned coordinator is notified, and the notification carries no reason (REQUIREMENTS §9 item 29). A `re_review` booking can't be rejected (AC9 allows Held only).
+
+#### What was built
+
+1. **Database (`20261012140000_venue_booking_rejection.sql`).**
+   - `venue_bookings` gains `suggestion_note`, `decided_by` and `decided_at`, with 1–1000-character checks on `decision_reason` and `suggestion_note`. CR-99's history table gains `reason` and `suggestion_note`.
+   - `reject_venue_booking` is `security definer`, `service_role` only, and returns an outcome code instead of raising: `ok`, `booking_not_found`, `not_held`, `hold_expired`, `invalid_reason` or `invalid_suggestion`.
+   - On `ok` it sets the decision, writes one `rejected` history row and notifies the coordinator (never the actor), all in one transaction.
+2. **Backend.**
+   - `GET /venue-bookings/{id}`: venue staff may read any booking; a coordinator only bookings on their assigned events.
+   - `POST /venue-bookings/{id}/reject`: venue staff only, by active role.
+   - `EventPlanningContext` gains `status` and `accessibility_needs`.
+   - The coordinator's event read gains `rejected_bookings`. The organiser's never does.
+   - Three typed errors in `core/exceptions.py`.
+3. **Frontend.**
+   - `BookingRequestView` replaces the SCRUM-70 stub.
+   - New `RejectBookingModal`, `useBookingDecisionStore`, and pure helpers in `features/venues/bookingDecision.js`.
+   - The coordinator's Venue panel lists rejections above **Find a venue**.
+   - The `/bookings/:id` route now admits coordinators. The router test that pinned the old restriction ("whose side ships with SCRUM-19/20") was updated, and a new test checks that the organiser is still refused.
+4. **Tests and checks.**
+   - Cases TC-BOOK-014–026 in `docs/test-cases/venues.md`.
+   - Live checks TC-BOOK-014–020 in `verify_live.py`.
+   - E2E TC-BOOK-021–022 in `bookings.e2e.js`.
+   - SQL check `venue_booking_reject_checks.sql` (TC-BOOK-023).
+
+#### Verification
+
+- **Red first, at every layer:**
+  - The SQL check failed against the live project with "function `reject_venue_booking` does not exist".
+  - The API tests failed on the missing repository functions.
+  - The Vitest specs failed on the missing modules.
+- **Database:** the migration plus the SQL check, run against the live project in one transaction that was rolled back, printed `BOOKING REJECT CHECKS PASSED`. Nothing was applied.
+- **Full suites:** `pytest` 1042 passed; `npm run test:coverage` 740 passed. Every new and changed line in `backend/app/` and `frontend/src/` is covered; the lines still uncovered in the touched files predate this branch. `npm run build` succeeds.
+- **Not verified:**
+  - **The migration is not applied**, because it needs CR-99 in the repository first. So it is also untested:
+    - against the real API: the live checks TC-BOOK-014–020 and `verify_live.py --record`;
+    - in the browser: TC-BOOK-021–022 and `npm run test:e2e:record`;
+    - by `supabase db advisors`.
+  - The manual pass, TC-BOOK-024–026.
+  - AC8 with several bookings on one event, which needs CR-98 on `main`.
+  - AC10 against approval, which needs SCRUM-36 to take the same lock.
+
+#### Follow-ups
+
+- Xuan Wei pushes CR-99 and CR-95, and CR-98 merges. Then rebase this branch, `supabase db push`, run `venue_booking_reject_checks.sql`, the advisors, `verify_live.py --record` and `npm run test:e2e:record`, and do the manual pass.
+- SCRUM-36 (approve) builds on this branch's page, store and lock pattern (IMPLEMENTATION_MAP §5).
+- CR-99's seeded fixture hold (`d0000000-…-0201`) expires on the live project at 2026-10-19 11:14 UTC (checked 2026-10-12; the `expire-venue-holds` cron job is active), which may break checks that rely on that fixture. That's worth raising with Xuan Wei.

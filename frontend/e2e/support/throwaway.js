@@ -67,6 +67,24 @@ export function createThrowawayHold(event, venueId, startsAt, endsAt, status, ex
   return row;
 }
 
+/**
+ * A throwaway planning event with a held booking request on `venueId` for its own
+ * period, with a coordinator's note and the event's requirements filled in
+ * (SCRUM-38), so the reject spec doesn't depend on the request flow. For a hold
+ * in a chosen status or expiry, use createThrowawayHold (CR-99).
+ * The booking and its history go with deleteThrowawayEvents.
+ */
+export function createThrowawayRequest(tag, startsAt, endsAt, venueId) {
+  const event = createThrowawayEvent(tag, startsAt, endsAt);
+  query(`update public.events set layout_preference = 'classroom', accessibility_needs = 'Step-free access' where id = '${event.id}'`);
+  const [booking] = query(
+    "insert into public.venue_bookings (event_id, venue_id, occupied_period, status, request_note, requested_by) values " +
+      `('${event.id}', '${venueId}', tstzrange('${startsAt}', '${endsAt}', '[)'), 'held', 'Early access please', ` +
+      "'a0000000-0000-4000-8000-000000000002') returning id",
+  );
+  return { event, bookingId: booking.id };
+}
+
 /** Deletes the throwaway events and their bookings (that foreign key restricts). */
 export function deleteThrowawayEvents() {
   query(`delete from public.venue_bookings where event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);

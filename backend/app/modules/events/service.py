@@ -50,6 +50,7 @@ from app.modules.events.schemas import (
     EventReturnRequest,
     EventStatus,
     EventUpdateRequest,
+    EventRejectedBooking,
     EventVenueBooking,
     Readiness,
     ReadinessState,
@@ -123,10 +124,12 @@ def planning_context_by_id(event_ids: Iterable[str]) -> dict[str, EventPlanningC
     return {
         row["id"]: EventPlanningContext(
             name=row.get("name"),
+            status=row.get("status"),
             coordinator_id=row.get("coordinator_id"),
             expected_attendance=row.get("expected_attendance"),
             layout_preference=row.get("layout_preference"),
             facilities_required=row.get("facilities_required") or [],
+            accessibility_needs=row.get("accessibility_needs"),
         )
         for row in repository.list_planning_context(event_ids)
     }
@@ -350,6 +353,11 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
         booking = venues_service.active_booking_for_event(event_id)
         if booking:
             response.venue_booking = EventVenueBooking(**booking)
+    if role == "event_coordinator":
+        # SCRUM-38 AC6: why venue staff said no, for the coordinator only.
+        response.rejected_bookings = [
+            EventRejectedBooking(**booking) for booking in venues_service.rejected_bookings_for_event(event_id)
+        ]
     eligible = ((role == "event_coordinator" and row["status"] == "planning")
                 or (role == "event_organiser" and row["status"] in ("planning", "safety_review", "confirmed")))
     if eligible:
