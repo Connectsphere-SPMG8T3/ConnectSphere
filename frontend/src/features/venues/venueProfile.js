@@ -252,6 +252,17 @@ export function editFormToPayload(form, { confirm = false } = {}) {
   };
 }
 
+// SCRUM-64 AC1: why a venue is inactive. Mirrors `public.venue_inactive_reason`.
+export const INACTIVE_REASONS = [
+  { value: "permanently_closed", label: "Permanently closed" },
+  { value: "long_term_renovation", label: "Long-term renovation" },
+  { value: "other", label: "Other" },
+];
+
+export function inactiveReasonLabel(value) {
+  return INACTIVE_REASONS.find((reason) => reason.value === value)?.label ?? value;
+}
+
 const EDIT_HISTORY_FIELD_LABELS = {
   name: "Name",
   location: "Location",
@@ -262,10 +273,15 @@ const EDIT_HISTORY_FIELD_LABELS = {
   opens_at: "Opens",
   closes_at: "Closes",
   description: "Description",
+  is_active: "Status",
+  inactive_reason: "Inactive reason",
+  inactive_note: "Inactive note",
 };
 
 function formatHistoryValue(field, value) {
+  if (field === "is_active" && typeof value === "boolean") return value ? "Active" : "Inactive";
   if (value == null || value === "") return "None recorded";
+  if (field === "inactive_reason") return inactiveReasonLabel(value);
   if (field === "layouts") {
     const list = Array.isArray(value) ? value : [];
     if (!list.length) return "None";

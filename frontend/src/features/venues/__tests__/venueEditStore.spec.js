@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  venuesApi: { get: vi.fn(), history: vi.fn(), update: vi.fn() },
+  venuesApi: { get: vi.fn(), history: vi.fn(), update: vi.fn(), deactivate: vi.fn(), reactivate: vi.fn() },
 }));
 
 const VENUE = {
@@ -130,5 +130,42 @@ describe("useVenueEditStore", () => {
 
     expect(history).toEqual([entry]);
     expect(store.history).toEqual([entry]);
+  });
+
+  describe("deactivate and reactivate (SCRUM-64)", () => {
+    it("previews affected bookings without saving", async () => {
+      venuesApi.deactivate.mockResolvedValue({ saved: false, affected: [{ booking_id: "b1", event_name: "Gala" }] });
+      const store = useVenueEditStore();
+      const saved = await store.deactivate("venue-1", { reason: "permanently_closed", note: "  ", version: 3 });
+      expect(saved).toBe(false);
+      expect(store.affected).toHaveLength(1);
+      expect(venuesApi.deactivate).toHaveBeenCalledWith(
+        "venue-1", { reason: "permanently_closed", note: null, version: 3, confirm: false }, "access-token");
+    });
+
+    it("saves on confirm and clears the preview", async () => {
+      venuesApi.deactivate.mockResolvedValue({ saved: true, venue: { id: "venue-1", is_active: false }, affected: [] });
+      const store = useVenueEditStore();
+      expect(await store.deactivate("venue-1", { reason: "other", note: " Lease ended ", version: 3 }, { confirm: true })).toBe(true);
+      expect(venuesApi.deactivate.mock.calls[0][1]).toMatchObject({ note: "Lease ended", confirm: true });
+      expect(store.affected).toEqual([]);
+      expect(store.isSaving).toBe(false);
+    });
+
+    it("keeps a deactivate error for the modal and rethrows", async () => {
+      venuesApi.deactivate.mockRejectedValue(new Error("This venue is already inactive."));
+      const store = useVenueEditStore();
+      await expect(store.deactivate("venue-1", { reason: "permanently_closed", note: null, version: 3 }, { confirm: true }))
+        .rejects.toThrow("This venue is already inactive.");
+      expect(store.error).toBe("This venue is already inactive.");
+      expect(store.isSaving).toBe(false);
+    });
+
+    it("reactivates with the loaded version", async () => {
+      venuesApi.reactivate.mockResolvedValue({ id: "venue-1", is_active: true });
+      const store = useVenueEditStore();
+      await store.reactivate("venue-1", 4);
+      expect(venuesApi.reactivate).toHaveBeenCalledWith("venue-1", { version: 4 }, "access-token");
+    });
   });
 });
