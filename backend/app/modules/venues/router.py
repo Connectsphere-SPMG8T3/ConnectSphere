@@ -12,6 +12,8 @@ from app.modules.venues.schemas import (
     VenueBookingCreate,
     VenueBookingDetail,
     VenueBookingReject,
+    VenueDeactivateRequest,
+    VenueDeactivateResponse,
     VenueDetail,
     VenueEditHistoryResponse,
     VenueSearchCriteria,
@@ -93,6 +95,20 @@ def update_venue(venue_id: UUID, body: VenueUpdateRequest, current_user: VenueSt
     venue's `version` had already moved on (DB-5); reload and retry.
     """
     return service.update_venue(str(venue_id), current_user.id, body)
+
+
+@router.post("/{venue_id}/deactivate", response_model=VenueDeactivateResponse, status_code=status.HTTP_200_OK)
+def deactivate_venue(
+    venue_id: UUID, body: VenueDeactivateRequest, current_user: VenueStaffOnly
+) -> VenueDeactivateResponse:
+    """Mark a venue inactive with a reason (SCRUM-64 AC1, AC3).
+
+    `saved` is `false` without `confirm: true` when the venue has future held
+    or approved bookings: `affected` lists the ones that would be flagged
+    Affected, and nothing is written. `409` means the venue is already
+    inactive or its `version` had moved on.
+    """
+    return service.deactivate_venue(str(venue_id), current_user.id, body)
 
 
 @router.get("/{venue_id}/history", response_model=VenueEditHistoryResponse, status_code=status.HTTP_200_OK)

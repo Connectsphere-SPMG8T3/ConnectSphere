@@ -1,5 +1,6 @@
 """Venue module use cases: search the catalogue, read one venue, edit one, request a booking."""
 
+import logging
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
@@ -9,7 +10,10 @@ from app.core.exceptions import (
     BookingDecisionConflictError,
     BookingDecisionTextError,
     BookingNotFoundError,
+    EventServiceUnavailableError,
     NotAssignedCoordinatorError,
+    VenueAlreadyActiveError,
+    VenueAlreadyInactiveError,
     VenueConflictError,
     VenueNotFoundError,
 )
@@ -17,26 +21,33 @@ from app.modules.events import service as events_service
 from app.modules.events.schemas import EventPlanningContext
 from app.modules.venues import impact, repository, search
 from app.modules.venues.schemas import (
+    INACTIVE_REASON_LABELS,
     BookingDecision,
     BookingEventRequirements,
     BookingHistoryEntry,
     BookingImpactContext,
     Editor,
+    FlaggableBooking,
     HoldExpiry,
     VenueBooking,
     VenueBookingCreate,
     VenueBookingDetail,
     VenueBookingReject,
+    VenueDeactivateRequest,
+    VenueDeactivateResponse,
     VenueDetail,
     VenueEditHistoryEntry,
     VenueEditHistoryResponse,
     VenueSearchCriteria,
     VenueSearchResponse,
     VenueStaffDashboard,
+    VenueReactivateRequest,
     VenueSummary,
     VenueUpdateRequest,
     VenueUpdateResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 # What the venue-staff dashboard can discover. The response retains the active
 # queue partitions below while also exposing resolved history for reference.
@@ -113,6 +124,9 @@ def _snapshot(venue: VenueSummary) -> dict:
         "opens_at": venue.opens_at.isoformat(),
         "closes_at": venue.closes_at.isoformat(),
         "description": venue.description,
+        "is_active": venue.is_active,
+        "inactive_reason": venue.inactive_reason.value if venue.inactive_reason else None,
+        "inactive_note": venue.inactive_note,
     }
 
 
@@ -208,6 +222,71 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
         upcoming_bookings=bookings,
     )
     return VenueUpdateResponse(saved=True, venue=venue, warnings=warnings)
+
+
+def _summary(venue: VenueSummary, **changes) -> VenueSummary:
+    """The catalogue fields of `venue` (a profile is also a summary), with
+    `changes` applied: the before/after pair a history row records."""
+    return VenueSummary(**{**VenueSummary.model_validate(venue.model_dump()).model_dump(), **changes})
+
+
+def deactivate_venue(venue_id: str, actor_id: str, body: VenueDeactivateRequest) -> VenueDeactivateResponse:
+    """Deactivate a venue (SCRUM-64 AC1, AC3).
+
+    Without `confirm`, a venue with future held or approved bookings returns
+    them instead of saving, so staff see who is affected first (the SCRUM-63
+    pattern). Saving flags those bookings Affected and notifies their
+    coordinators in one transaction; then any flagged event already in Safety
+    review or Confirmed goes back to Planning (CR-104 AC10, CR-95 AC7).
+    """
+    current = repository.get_venue(venue_id)
+    if current is None:
+        raise VenueNotFoundError()
+    if not current.is_active:
+        raise VenueAlreadyInactiveError()
+    if body.version != current.version:
+        raise VenueConflictError()
+
+    bookings = repository.list_flaggable_bookings(venue_id, datetime.now(timezone.utc))
+    names = events_service.names_by_id(b.event_id for b in bookings) if bookings else {}
+    affected = [
+        FlaggableBooking(booking_id=b.id, event_id=b.event_id, event_name=names.get(b.event_id),
+                         period=b.period, status=b.status)
+        for b in bookings
+    ]
+    if affected and not body.confirm:
+        return VenueDeactivateResponse(saved=False, affected=affected)
+
+    label = INACTIVE_REASON_LABELS[body.reason]
+    flag_reason = f"Venue deactivated: {label.lower()}" + (f" — {body.note}" if body.note else "")
+    message = (f'Venue "{current.name}" has been deactivated ({label}). '
+               "Your booking is flagged Affected and needs a replacement venue.")
+    before = _summary(current)
+    after = _summary(current, is_active=False, inactive_reason=body.reason, inactive_note=body.note)
+    result = repository.deactivate_venue(
+        venue_id, actor_id, current.version,
+        reason=body.reason.value, note=body.note,
+        before=_snapshot(before), after=_snapshot(after),
+        flag_reason=flag_reason, message=message,
+    )
+    outcome = result["outcome"]
+    if outcome == "venue_not_found":
+        raise VenueNotFoundError()
+    if outcome == "already_inactive":
+        raise VenueAlreadyInactiveError()
+    if outcome == "stale":
+        raise VenueConflictError()
+
+    # The deactivation has committed. A failed return leaves that event where
+    # it is, but its booking is flagged, so the Safety Officer cannot approve
+    # it and its coordinator has been told: report the save, not a failure.
+    for event_id in result["event_ids"]:
+        try:
+            events_service.return_to_planning(event_id, reason_code="arrangement_flagged")
+        except EventServiceUnavailableError:
+            logger.warning("Venue %s deactivated, but event %s could not be returned to planning", venue_id, event_id)
+
+    return VenueDeactivateResponse(saved=True, venue=get_venue(venue_id), affected=affected)
 
 
 def _history_actor(row: dict) -> Editor | None:
