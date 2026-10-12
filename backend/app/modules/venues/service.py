@@ -397,6 +397,8 @@ BOOKING_REFUSALS = {
     "already_booked": "This event already has a venue booking.",
     "returned": "Requirements are still being amended.",
     "no_period": "This event has no start and end time to hold a venue for.",
+    # SCRUM-64 AC2: a deactivated venue takes no new requests.
+    "venue_inactive": "This venue is inactive.",
 }
 
 
