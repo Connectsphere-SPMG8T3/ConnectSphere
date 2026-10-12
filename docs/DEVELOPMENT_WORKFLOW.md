@@ -17,7 +17,7 @@ Every item is tagged with who owns it:
 
 Agents never push, open PRs, or edit the team's Google Sheets unless the developer asks (root `AGENTS.md`, "Git workflow"). An agent's work ends after §3. The PBI is not Done until a person finishes §4 and §5.
 
-_Last updated: 2026-10-12 — added "Editing the backlog sheet" (columns, exact status values, date format) and corrected the PBI status values (`chore/backlog-sheet-editing-notes`)._
+_Last updated: 2026-10-13 — "Editing the backlog sheet" lists the new Notes column (T), says what goes in it, and warns against inserting columns between B and S (`chore/backlog-notes-column`). 2026-10-12 — added "Editing the backlog sheet" (columns, exact status values, date format) and corrected the PBI status values (`chore/backlog-sheet-editing-notes`)._
 
 ---
 
@@ -36,7 +36,9 @@ _Last updated: 2026-10-12 — added "Editing the backlog sheet" (columns, exact 
 
 An agent with the Google Sheets connector can read and write the sheet directly. Anyone signed in with an `smu.edu.sg` account has edit access. Agents edit it only when the developer asks.
 
-- **Columns** in the **Product backlog** tab, as of 12 Oct 2026: A Needs attention, B ID #, C Title, D Type, E Epic, F As a…, G I want to be able to…, H So that…, I Acceptance criteria, J Met DoD?, K Priority, L Estimate, M Sprint #, N Customer clarification, O Assignee, P Status, Q Created date, R Updated date, S Resolved date. Teammates can move columns, so re-read row 1 before writing.
+- **Columns** in the **Product backlog** tab, as of 13 Oct 2026: A Needs attention, B ID #, C Title, D Type, E Epic, F As a…, G I want to be able to…, H So that…, I Acceptance criteria, J Met DoD?, K Priority, L Estimate, M Sprint #, N Customer clarification, O Assignee, P Status, Q Created date, R Updated date, S Resolved date, T Notes. Teammates can move columns, so re-read row 1 before writing.
+- **Never insert a column between B and S.** The sprint tabs list each sprint's stories with `CHOOSECOLS(FILTER('Product backlog'!B2:S, …), 1, 2, 4, 14, 11, 15, 18)`, which picks columns by position and doesn't adjust when one is inserted, so the sprint tables would show the wrong fields. Add new columns after the last one.
+- **Notes** (T) is for internal notes on a story that have no other column: hand-off between stories, dependencies, review feedback. Start each note with where it came from, who wrote it and when, such as `From CR-99 (Xuan Wei, 12/10): …`, and add a later note on a new line rather than overwriting. Customer answers still go in **Customer clarification**, and open questions in **Needs attention**. The sprint tabs don't show Notes.
 - **Status** must match the dropdown exactly, emoji included: `TO DO 😖`, `IN PROGRESS 🥸`, `IN REVIEW 🥹`, `DONE 🥳`.
 - **Dates** are text in `DD/MM/YYYY` form. A status change also sets **Updated date**. Setting a PBI to Done also sets **Resolved date** and fills **Met DoD?**.
 - **Reading:** the whole tab is too large for one connector call. Find the row with a narrow range such as `'Product backlog'!B1:C120`, then read just that row.
