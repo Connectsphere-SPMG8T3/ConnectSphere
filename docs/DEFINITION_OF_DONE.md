@@ -6,7 +6,7 @@ The team agreed this DoD in the [Team A-HA! Scrum Playbook](https://docs.google.
 
 This file says *what* to check. *How* to get there (branching, TDD, the live checks, who does each step) is in [`DEVELOPMENT_WORKFLOW.md`](DEVELOPMENT_WORKFLOW.md).
 
-_Last updated: 2026-10-06 — rewritten to the playbook's DoD; the step-by-step phases moved to `DEVELOPMENT_WORKFLOW.md` (`chore/docs-scrum-playbook`)._
+_Last updated: 2026-10-13 — Done also needs the PBI's row in the sprint's DoD tab to show ✅ Done, with its ticks updated before the PR and the merge (`chore/backlog-notes-column`)._
 
 ---
 
@@ -14,7 +14,7 @@ _Last updated: 2026-10-06 — rewritten to the playbook's DoD; the step-by-step 
 
 - A PBI is Done only when it meets **every applicable item** below. An item that can't apply (for example, the database items for a PBI with no schema change) is skipped, not ticked.
 - A PBI that is not Done by the end of the sprint **returns to the Product Backlog**. It does not count towards velocity and is not part of the Increment. There is no partial credit.
-- Done is recorded by setting the PBI's **Status** to Done and filling **Met DoD?** in the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit).
+- Done is recorded by setting the PBI's **Status** to Done and filling **Met DoD?** in the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit), and only once its row in the sprint's **DoD (Sprint N)** tab shows ✅ Done. Keep that tab's ticks current: the developer updates them before opening the PR and again before merging ([`DEVELOPMENT_WORKFLOW.md`](DEVELOPMENT_WORKFLOW.md) §4–5).
 
 ## General
 

@@ -17,7 +17,7 @@ Every item is tagged with who owns it:
 
 Agents never push, open PRs, or edit the team's Google Sheets unless the developer asks (root `AGENTS.md`, "Git workflow"). An agent's work ends after §3. The PBI is not Done until a person finishes §4 and §5.
 
-_Last updated: 2026-10-12 — added "Editing the backlog sheet" (columns, exact status values, date format) and corrected the PBI status values (`chore/backlog-sheet-editing-notes`)._
+_Last updated: 2026-10-13 — the DoD (Sprint N) tabs are tracked in the sheet and checked before the PR (§4) and before the merge (§5); "Editing the backlog sheet" lists the Notes column (T) and explains the DoD tabs (`chore/backlog-notes-column`)._
 
 ---
 
@@ -27,6 +27,7 @@ _Last updated: 2026-10-12 — added "Editing the backlog sheet" (columns, exact 
 |---|---|
 | PBIs: user story, acceptance criteria, priority, estimate, status, customer clarifications | The **Product backlog** tab of the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit). PBI status is To Do / In Progress / In Review / Done (exact values under "Editing the backlog sheet" below). |
 | The sprint goal, tasks and remaining effort, and the burndown chart | The sprint's tab (Sprint 1–4) in the same sheet. Task status is To Do / In Progress / In Review / Done. Remaining effort is updated after every daily scrum. |
+| Whether each PBI meets the DoD: its acceptance criteria ticked one by one, the story checklist and the PO's sign-off | The sprint's **DoD (Sprint 1–4)** tab in the same sheet. Stories and ACs fill in from the Product backlog; the ticks are manual, so they are only as current as the last person who updated them (see §4 and §5). |
 | Code, tests, test cases and run logs | This repository. The team copies the test cases into the Test cases sheet before submission. |
 | Sprint 1 and 2 history | The Jira exports in the shared drive's `#4. Evidence` folder. |
 
@@ -36,10 +37,13 @@ _Last updated: 2026-10-12 — added "Editing the backlog sheet" (columns, exact 
 
 An agent with the Google Sheets connector can read and write the sheet directly. Anyone signed in with an `smu.edu.sg` account has edit access. Agents edit it only when the developer asks.
 
-- **Columns** in the **Product backlog** tab, as of 12 Oct 2026: A Needs attention, B ID #, C Title, D Type, E Epic, F As a…, G I want to be able to…, H So that…, I Acceptance criteria, J Met DoD?, K Priority, L Estimate, M Sprint #, N Customer clarification, O Assignee, P Status, Q Created date, R Updated date, S Resolved date. Teammates can move columns, so re-read row 1 before writing.
+- **Columns** in the **Product backlog** tab, as of 13 Oct 2026: A Needs attention, B ID #, C Title, D Type, E Epic, F As a…, G I want to be able to…, H So that…, I Acceptance criteria, J Met DoD?, K Priority, L Estimate, M Sprint #, N Customer clarification, O Assignee, P Status, Q Created date, R Updated date, S Resolved date, T Notes. Teammates can move columns, so re-read row 1 before writing.
+- **Never insert a column between B and S.** The sprint tabs list each sprint's stories with `CHOOSECOLS(FILTER('Product backlog'!B2:S, …), 1, 2, 4, 14, 11, 15, 18)`, which picks columns by position and doesn't adjust when one is inserted, so the sprint tables would show the wrong fields. Add new columns after the last one.
+- **Notes** (T) is for internal notes on a story that have no other column: hand-off between stories, dependencies, review feedback. Start each note with where it came from, who wrote it and when, such as `From CR-99 (Xuan Wei, 12/10): …`, and add a later note on a new line rather than overwriting. Customer answers still go in **Customer clarification**, and open questions in **Needs attention**. The sprint tabs don't show Notes.
 - **Status** must match the dropdown exactly, emoji included: `TO DO 😖`, `IN PROGRESS 🥸`, `IN REVIEW 🥹`, `DONE 🥳`.
 - **Dates** are text in `DD/MM/YYYY` form. A status change also sets **Updated date**. Setting a PBI to Done also sets **Resolved date** and fills **Met DoD?**.
 - **Reading:** the whole tab is too large for one connector call. Find the row with a narrow range such as `'Product backlog'!B1:C120`, then read just that row.
+- **DoD tabs.** Each **DoD (Sprint N)** tab lists the sprint's stories in a story checklist (row 23 onwards) and their acceptance criteria in an AC table (row 56 onwards), both built by formula from the Product backlog. Tick **AC met?** for each AC, and the checklist boxes for the story. **DoD met?** turns to ✅ Done only when every AC and every box is ticked. Ticks stay in their row, not with their story, so if a story leaves the sprint or gains an AC, re-check the ticks below it. Read the row's ID and AC number before ticking.
 - **Writing:** re-read the target row right before writing, because teammates edit the sheet at the same time. Read it back afterwards to confirm the change.
 
 ## 1. Before starting: Ready → In Progress
@@ -98,18 +102,20 @@ An agent with the Google Sheets connector can read and write the sheet directly.
 
 This section and §5 are human-owned. An agent does these steps only when the developer explicitly asks.
 
+- [ ] **[D]** **Before opening the PR, the PBI's rows in the sprint's DoD tab are brought up to date:** **AC met?** is ticked for each acceptance criterion that now works and has its test cases passing, and the story checklist's boxes that are already true are ticked (usually **Unit / integration tests**, **No open critical bugs** and **Docs updated**). An AC that depends on unbuilt work stays unticked, with the reason in its **Notes**. The PBI's **Status** in the Product backlog moves to In Review.
 - [ ] **[D]** A pull request is opened against `main`. It names the PBI ID, and describes any security issue by *class*, never as step-by-step exploits.
 - [ ] **[D]** **CI passes on the PR.** The `CI` workflow (`.github/workflows/ci.yml`) runs the backend suite, the frontend suite and the frontend build on every pull request into `main`. Don't merge on the strength of a local run alone.
 - [ ] **[D]** At least one other Developer is requested as a reviewer. The PBI's tasks move to In Review in the sprint tab.
 - [ ] **[D]** If the reviewer requests changes or CI fails, the tasks go **back to In Progress**.
 - [ ] **[D]** **At least one teammate has reviewed and approved the PR.** Review comments are resolved, or captured as new PBIs rather than silently dropped.
-- [ ] **[D] [PO]** The acceptance criteria are **demonstrated to the PO, and the PO approves them**. The PO's acceptance is recorded in the **Met DoD?** column.
+- [ ] **[D] [PO]** The acceptance criteria are **demonstrated to the PO, and the PO approves them**. The PO's acceptance is recorded by ticking **PO accepted**, with the PO's name and date, in the DoD tab.
 
 ## 5. Done: In Review → Done
 
+- [ ] **[D]** **Before merging, the DoD tab is checked again:** **Code reviewed** and **CI passes** are ticked. Every other PR for the PBI (docs or follow-up fixes) is merged as well; then **Merged to main** is ticked.
 - [ ] **[D]** The PR is merged into `main` only after CI passes and the approval is given. Then the branch is deleted.
 - [ ] **[D]** Migrations reach the shared Supabase project **through the merged PR**, never applied by hand.
-- [ ] **[D]** In the Product backlog, the PBI's **Status** is set to Done and **Met DoD?** is filled. In the sprint tab, its tasks are set to Done.
+- [ ] **[D]** The PBI's **DoD met?** in the DoD tab shows ✅ Done. Only then is its **Status** in the Product backlog set to Done and **Met DoD?** filled. The tab's "Marked DONE in backlog but DoD not met" count should stay at 0. In the sprint tab, its tasks are set to Done.
 - [ ] **[D]** Any customer clarification or scope change found during the work is recorded in the **Customer clarification** column, with its session and date.
 - [ ] **[D]** Anything demo-able is noted for the sprint review.
 
