@@ -95,7 +95,7 @@ Unlike the coordinator dashboard above, no stubbing is needed: `venues`, `venue_
 | TC-VSD-022 | Export is offered only when there is something to export | Point the backend at a stub returning four empty lists | Read the **Export** control | — | It is visibly disabled. Pressing it does nothing and no file downloads. | 🟠 |
 | TC-VSD-020 | A crowded day counts what it cannot show | Month view; add a third and fourth overlapping item on one day | Read that day's cell | — | Two bars are drawn and the cell shows "+2". Nothing is dropped without being counted, and selecting the day lists all of them in the detail column. | 🟠 |
 | TC-VSD-018 | Switching view keeps the period in view | Seed applied | From the month view press → to reach November, then press **Week** | — | The week view opens inside November rather than jumping back to the current week. Pressing **Month** returns to the month the shown week sits in. The arrows step by week while in Week, by month while in Month. | 🟠 |
-| TC-VSD-011 | Pending requests are ordered longest-waiting first, without SLA framing (BR-R4, LC-R4) | Seed applied (two holds) | Read the "Pending requests" list | — | The oldest request is first. Each row shows "Waiting N days" in **neutral ink** — never red, never "overdue", never a countdown. Holds do not expire. | 🔴 |
+| TC-VSD-011 | **Superseded by CR-99 (W7 CR-04), see TC-HOLD-006.** Pending requests are ordered longest-waiting first, without SLA framing (BR-R4, LC-R4) | Seed applied (two holds) | Read the "Pending requests" list | — | Now: soonest expiry first, each with "Expires …". "Waiting N days" stays in **neutral ink** — never red, never "overdue". | 🔴 |
 | TC-VSD-012 | A request row opens its own page (AC5) | Seed applied | Click a pending request | — | Navigates to `/bookings/<booking id>`, which states that the full request view and the approve/reject decision arrive with SCRUM-19/20 and echoes the booking id back. It does not 404 or dead-end. | 🟠 |
 | TC-VSD-013 | Venue rows show status at a glance and open the venue (AC2, AC5) | Seed applied | Read the "All venues" panel, then click a venue | — | All 8 venues listed, needing-attention first: `BLOCKED NOW` (red) / `BLOCK SCHEDULED` (yellow) / `ACTIVE` (green) / `INACTIVE` (grey). Red and yellow mark what wants a decision; green marks what does not. Old Lecture Theatre reads INACTIVE. Clicking opens `/venues/:id`. The panel is headed "All venues" with the pool note (AUTH-R5). | 🔴 |
 | TC-VSD-014 | An inactive venue reads inactive even while blocked | Seed applied; add a block on Old Lecture Theatre | Read its row | — | Status is `INACTIVE`, not `BLOCKED NOW`. Out of service entirely outranks a block on it. | 🟠 |
@@ -131,7 +131,7 @@ Unlike the coordinator dashboard above, no stubbing is needed: `venues`, `venue_
 | REQUIREMENTS §6.21.2 iCalendar export | TC-VSD-021, TC-VSD-022 |
 | REQUIREMENTS §6.21 "build a widget only when its data exists" | TC-VSD-003, TC-VSD-012 |
 | AUTH-R5 / QA-44 (staff are a pool; scope is all venues) | TC-VSD-013, TC-VSD-026, TC-VSD-027 |
-| BR-R4 (holds never expire; oldest first) | TC-VSD-011 |
+| BR-R4 (as amended by CR-99: holds expire; soonest expiry first) | TC-VSD-011 (superseded), TC-HOLD-006 |
 | LC-R4, QA-55, QA-68 (no SLA or deadline framing) | TC-VSD-011 |
 | §6.14, CAL-R2 (half-open periods; a block's end is exclusive) | TC-VSD-008 |
 | §6.19 (re-review after an approved change) | TC-VSD-001 |

@@ -885,12 +885,17 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **BR-R1:** **One venue per event** (QA-116, QA-135). An event can have at most one booking in `held`, `approved`, or `re_review`. To try another venue, the coordinator cancels the current hold first.
 - **BR-R2:** **Two events can't hold the same venue for overlapping times** (QA-6). The first request wins (QA-10, QA-113); later requests are refused with "Venue already held for this time by another event." There is no override (QA-10). Two coordinators racing for the same slot are resolved strictly first-come-first-served (QA2-23). DB-1 guarantees this under concurrency.
 - **BR-R3:** Requests for Unsuitable venues (a hard-rule failure) are refused. Venues with warnings are allowed after the coordinator acknowledges the warnings.
-- **BR-R4:** A hold is released when the event is rejected or cancelled, or when the coordinator updates or cancels the booking (QA2-13). Holds have **no expiry** (QA-6); duration limits were left to us (QA2-13). **[Team decision]** No automatic expiry in release 1, because an expired hold would silently drop a live event's venue. Venue staff dashboards sort pending holds by age so old ones get attention.
+- **BR-R4:** A hold is released when the event is rejected or cancelled, or when the coordinator updates or cancels the booking (QA2-13). **Holds expire (W7 CR-04, CR-99)**, which replaces the earlier "no expiry" (QA-6) and the team's release-1 decision not to expire holds: see BR-R10–BR-R14. Venue staff dashboards sort pending holds by soonest expiry.
 - **BR-R5:** The coordinator can cancel a `held` or `approved` booking, which releases the slot and notifies venue staff.
 - **BR-R6:** A booking request can't be made while the event is `under_review` or `returned` (QA-22).
 - **BR-R7 [Team decision, SCRUM-19]:** The hold always covers the **event's own** `[starts_at, ends_at)`. The request carries only the event, the venue and an optional note; the client can't supply or widen the period. A search opened from the event is pre-filled with that period, and a venue is only offered for request while the search checks it.
 - **BR-R8 [Team decision, SCRUM-19]:** Every refusal is decided by `public.request_venue_booking` under a lock on the event, with DB-1 as the only judge of overlaps, so two coordinators racing for one slot can't both win (QA2-23). A venue block refuses the request too ("Venue blocked for this time.", §6.14); the block check isn't locked, because a block may overlap a hold anyway (CAL-R1).
 - **BR-R9 [Assumption, SCRUM-19]:** The note for venue staff is optional and capped at **1000 characters** after trimming, like the other free-text fields. See §9.
+- **BR-R10 (W7 CR-04, CR-99 AC1):** Every hold has an expiry date and time. It defaults to **7 days after the request**, never later than the event start, and is set by the database whatever path writes the hold. **[Assumption]** An event less than 7 days away is held until its start (§9 item 29). Holds that existed before CR-99 got 7 days from the migration, not from their request.
+- **BR-R11 (CR-99 AC2):** Venue Staff (any of them, AUTH-R5) can change or extend a hold's expiry before it passes, to any time after now and no later than the event start; shortening is allowed. Each change is recorded in `venue_booking_history` with who made it and the old and new expiry.
+- **BR-R12 (CR-99 AC3):** The assigned coordinator, and only them, is notified once when the hold comes within 24 hours of expiry and once when it expires. A changed expiry gets its own warning. A hold that is already past its expiry is not warned first.
+- **BR-R13 (CR-99 AC4, AC5, AC8):** At its expiry, or when its event starts if sooner, an unapproved hold becomes `expired`: it no longer occupies the venue, is never counted as a booking (including for the safety check, §6.6), and can't be revived or have its expiry changed. Approval first takes the hold's lock and is refused once the hold has expired, so approval and expiry never both happen. **[Team decision]** A `pg_cron` job, `expire-venue-holds`, runs every minute; booking requests, expiry changes and the approval guard also expire an overdue hold themselves, so a slot is free to the second (§9 item 30).
+- **BR-R14 (CR-99 AC7):** After a hold expires, the coordinator can request the same venue again if it's still free. The event page shows the expired hold with the venue search still offered.
 - **SCRUM-19 scope:** BR-R3 (suitability) is **not enforced by SCRUM-19**; it moves to SCRUM-18, which owns the suitability verdict. BR-R5 (coordinator cancels a hold) is **not built**; it is **SCRUM-85**. Until it exists, a coordinator who picks the wrong venue is held to it unless venue staff reject the booking (§6.13).
 
 **Acceptance criteria**
@@ -901,7 +906,7 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 ### 6.13 Venue booking approval *(SCRUM-20: 36, 38, 47)*
 
 **Behaviour**
-- Venue staff see a queue that defaults to `held` and `re_review`, oldest first. It can be filtered by status, venue, date range, and waiting time.
+- Venue staff see a queue that defaults to `held` and `re_review`; pending holds come soonest expiry first (CR-99). It can be filtered by status, venue, date range, and waiting time.
 - The detail page shows event timing, pax, layout, facilities, accessibility, and the calendar around the slot.
 - **Approve:** `held` → `approved`.
 - **Reject:** a reason is required, chosen from a list (unavailable, unsuitable layout, capacity exceeded, operational, other) plus free text. Venue staff can optionally **suggest an alternative venue or arrangement** (QA-137). Rejection releases the hold.
@@ -912,7 +917,7 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **BA-R2:** The rejection reason and any suggestion are shown to the coordinator. A suggested venue opens pre-selected in search.
 - **BA-R3:** Approving updates the event's Venue readiness item (§6.6).
 - **BA-R4:** Rejecting a booking **never changes the event status**: the event stays in `planning` so the coordinator can request an alternative venue (QA2-19).
-- **BA-R5:** There is **no turnaround SLA** for venue staff decisions (QA2-26). **[Team decision]** The queue's waiting-time filter and oldest-first default are the only nudges.
+- **BA-R5:** There is **no turnaround SLA** for venue staff decisions (QA2-26). A hold's expiry (BR-R10) is the one deadline, and it is the customer's (W7 CR-04): an unapproved hold is released, not escalated. The queue shows each hold's expiry and sorts by it.
 
 **Acceptance criteria**
 - **Given** a held booking, **when** I approve it, **then** it's `approved`, the calendar shows it as booked, and the coordinator is notified.
@@ -1116,7 +1121,7 @@ Each dashboard composes widgets from the feature stores. **Build a widget only w
 | Organiser | Drafts · Returned requests needing my amendment · My requests with status · Upcoming confirmed events · Decided change requests |
 | Coordinator | My events needing action (resubmitted, change or cancellation requested, booking or equipment decided, re-review outcomes, issues) · My events by status · Readiness gaps in the next 14 days. No unassigned figure: unassigned events are the Event Coordinator Lead's queue (§6.5) |
 | Event Coordinator Lead | The unassigned queue · all coordinator assignments and active events under their supervision. **Not built yet**; to be specified with the Lead story (§6.5, §9 item 19) |
-| Venue staff | Pending holds (oldest first) · Bookings in re-review · Active and upcoming blocks · Venues (active/inactive). **All venues**, since staff are a pool (AUTH-R5). |
+| Venue staff | Pending holds (soonest expiry first, CR-99) · Bookings in re-review · Active and upcoming blocks · Venues (active/inactive). **All venues**, since staff are a pool (AUTH-R5). |
 | Tech support | Pending and re-review equipment lines · Events needing technical readiness · Equipment in maintenance · Upcoming reservations (7 days) |
 | Attendee | My upcoming registrations and waitlist invitations · Browse open events |
 
@@ -1237,7 +1242,7 @@ SCRUM-70 asks for "the venues I'm in charge of", but staff allocation to venues 
 
 | Order | Widget | Source |
 |---|---|---|
-| 1 | Pending holds, oldest first | `venue_bookings` where `status = 'held'` |
+| 1 | Pending holds, soonest expiry first (CR-99) | `venue_bookings` where `status = 'held'` and not past `expires_at` |
 | 2 | Bookings in re-review | `venue_bookings` where `status = 're_review'` |
 | 3 | Active and upcoming blocks | `venue_blocks` ending after now |
 | 4 | Venues, split active / inactive | `venues` |
@@ -1256,7 +1261,7 @@ SCRUM-70 asks for "the venues I'm in charge of", but staff allocation to venues 
 
 **[Team decision] The calendar exports to iCalendar (.ics).** Venue staff already live in a calendar app, and the dashboard cannot notify anyone yet, so the export is what lets blocks and pending decisions travel. It writes the **whole payload**, not the period on screen — exporting "just October" would quietly omit November's blocks. Times are written in UTC (`Z`), since periods are stored in UTC and only displayed in Singapore time, which avoids shipping a VTIMEZONE block that a client could misread. Each entry carries a stable UID so a re-export updates rather than duplicates, and a pending request is marked `TENTATIVE` against a block's `CONFIRMED` — nothing decided is presented as settled.
 
-**Waiting age is shown, never enforced.** Holds do not expire (BR-R4), so age is the only nudge the system offers and the queue is sorted by it. It is rendered in neutral ink and never as an overdue or countdown state, because the customer ruled out SLA timers and review deadlines on every status (LC-R4, QA-55, QA-68).
+**Expiry orders the queue; age is context.** Since W7 CR-04 (CR-99) holds expire, so pending holds are sorted soonest expiry first and each shows "Expires <date, time>" with a **Change** control. Waiting age is still shown, in neutral ink and never as an overdue state: the customer ruled out SLA timers and review deadlines (LC-R4, QA-55, QA-68), and the expiry is the only deadline they added.
 
 **`/bookings/:id` is a deliberate placeholder.** AC5 requires a pending request to open its full details, but the request view and the approve/reject decision are §6.12–6.13 (SCRUM-19/20) and unbuilt. The route and link are real so those stories fill the page in without touching the dashboard; until then the page names the stories rather than implying data is being withheld.
 
@@ -1388,6 +1393,9 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 26. **[Assumption]** Same-venue rebooking after safety rejection is not blocked. Should a different venue be mandatory? Rejected booking/venue IDs and a coordinator warning are retained meanwhile; `request_venue_booking` is unchanged.
 27. **[Dependency]** CR-100 supplies venue emergency access/restrictions; current review values are null, not inferred from accessibility features. Confirm the recording contract when CR-100 lands.
 28. **[Dependency]** Story 24 supplies exit confirmation and derived technical readiness, and calls `return_to_planning` when readiness is cleared. Current exit confirmation is null; AC6/AC10 integration and teammate agreement remain pending.
+29. **[Assumption]** CR-99 AC1: when an event is less than 7 days away, the default hold expiry is the event start (the AC asks for both "7 days after the request" and "before the event starts"). Confirm with the customer whether such a hold should instead be refused or get a shorter fixed window.
+30. **[Team decision]** CR-99: holds are expired by a `pg_cron` job every minute (the only way to send the 24-hour warning without a backend worker), backed by the request, expiry-change and approval paths expiring an overdue hold themselves. The team still has to confirm enabling the `pg_cron` extension on the shared project.
+31. **[Dependency]** CR-99 AC4/AC8: SCRUM-36's approve function must call `public.lock_hold_for_approval(booking_id)` first in its transaction and refuse on `hold_expired`. CR-98's `request_venue_booking_for_space` should call `public.expire_venue_holds()` before its insert, as `request_venue_booking` does, or a hold past its expiry can block it for up to a minute.
 
 ## 10. Non-functional requirements
 
