@@ -5,8 +5,11 @@ import {
   blockReasonLabel,
   bookingStatusLabel,
   filterVenueStatuses,
+  expiryInputBounds,
+  expiryInputToIso,
   formatEventReference,
-  sortPendingHoldsOldestFirst,
+  formatHoldExpiry,
+  sortPendingHoldsSoonestExpiryFirst,
   summariseVenueStaffDashboard,
   venueStatusFilterOptions,
   venueStatuses,
@@ -27,31 +30,76 @@ const blockOn = (venueId, startsAt, endsAt, overrides = {}) => ({
 
 const hold = (id, requestedAt) => ({ id, requested_at: requestedAt, event_id: "e0000000-0000-4000-8000-000000000101" });
 
-describe("sortPendingHoldsOldestFirst", () => {
-  it("puts the longest-waiting request first", () => {
-    const sorted = sortPendingHoldsOldestFirst([
-      hold("d-2", "2026-09-03T10:30:00+08:00"),
-      hold("d-4", "2026-08-28T16:15:00+08:00"),
-      hold("d-9", "2026-09-10T11:45:00+08:00"),
+const expiring = (id, expiresAt) => ({ ...hold(id, "2026-09-01T09:00:00+08:00"), expires_at: expiresAt });
+
+describe("sortPendingHoldsSoonestExpiryFirst (CR-99)", () => {
+  it("puts the hold nearest to expiring first, whatever its age", () => {
+    const sorted = sortPendingHoldsSoonestExpiryFirst([
+      { ...hold("d-old", "2026-08-01T09:00:00+08:00"), expires_at: "2026-09-25T09:00:00+08:00" },
+      { ...hold("d-new", "2026-09-18T09:00:00+08:00"), expires_at: "2026-09-20T09:00:00+08:00" },
+      expiring("d-mid", "2026-09-22T09:00:00+08:00"),
     ]);
-    expect(sorted.map((h) => h.id)).toEqual(["d-4", "d-2", "d-9"]);
+    expect(sorted.map((h) => h.id)).toEqual(["d-new", "d-mid", "d-old"]);
   });
 
-  it("keeps a stable order for two requests made in the same instant", () => {
-    const same = "2026-09-03T10:30:00+08:00";
-    const sorted = sortPendingHoldsOldestFirst([hold("d-9", same), hold("d-1", same)]);
+  it("keeps a stable order for two holds expiring in the same instant", () => {
+    const same = "2026-09-22T09:00:00+08:00";
+    const sorted = sortPendingHoldsSoonestExpiryFirst([expiring("d-9", same), expiring("d-1", same)]);
     expect(sorted.map((h) => h.id)).toEqual(["d-1", "d-9"]);
   });
 
   it("does not mutate its input", () => {
-    const input = [hold("d-2", "2026-09-03T10:30:00+08:00"), hold("d-4", "2026-08-28T16:15:00+08:00")];
-    sortPendingHoldsOldestFirst(input);
+    const input = [expiring("d-2", "2026-09-25T09:00:00+08:00"), expiring("d-4", "2026-09-20T09:00:00+08:00")];
+    sortPendingHoldsSoonestExpiryFirst(input);
     expect(input.map((h) => h.id)).toEqual(["d-2", "d-4"]);
   });
 
-  it("sorts an unparseable timestamp last rather than throwing", () => {
-    const sorted = sortPendingHoldsOldestFirst([hold("d-bad", "nonsense"), hold("d-ok", "2026-09-03T10:30:00+08:00")]);
-    expect(sorted.map((h) => h.id)).toEqual(["d-ok", "d-bad"]);
+  it("sorts a missing or unparseable expiry last rather than throwing", () => {
+    const sorted = sortPendingHoldsSoonestExpiryFirst([
+      expiring("d-bad", "nonsense"),
+      hold("d-none", "2026-09-01T09:00:00+08:00"),
+      expiring("d-ok", "2026-09-20T09:00:00+08:00"),
+    ]);
+    expect(sorted.map((h) => h.id)).toEqual(["d-ok", "d-bad", "d-none"]);
+  });
+});
+
+describe("formatHoldExpiry (CR-99)", () => {
+  it("reads the instant in Singapore time, as the notices do", () => {
+    expect(formatHoldExpiry("2031-08-05T04:00:00Z")).toBe("5 Aug 2031, 12:00");
+  });
+
+  it("crosses midnight by Singapore's clock, not UTC's", () => {
+    expect(formatHoldExpiry("2031-08-04T16:30:00Z")).toBe("5 Aug 2031, 00:30");
+  });
+
+  it("returns null when there is no usable expiry", () => {
+    expect(formatHoldExpiry(null)).toBeNull();
+    expect(formatHoldExpiry("nonsense")).toBeNull();
+  });
+});
+
+describe("expiry input (CR-99 AC2)", () => {
+  const pending = {
+    ...expiring("d-1", "2026-09-22T09:00:00+08:00"),
+    period: { starts_at: "2026-10-10T01:00:00Z", ends_at: "2026-10-10T04:00:00Z" },
+  };
+
+  it("bounds the picker from the next minute to the event start, in Singapore time", () => {
+    expect(expiryInputBounds(pending, new Date("2026-09-19T04:00:30Z"))).toEqual({
+      min: "2026-09-19T12:01",
+      max: "2026-10-10T09:00",
+      value: "2026-09-22T09:00",
+    });
+  });
+
+  it("sends what was picked as a Singapore instant", () => {
+    expect(expiryInputToIso("2026-09-25T18:30")).toBe("2026-09-25T18:30:00+08:00");
+  });
+
+  it("sends nothing for an empty or malformed pick", () => {
+    expect(expiryInputToIso("")).toBeNull();
+    expect(expiryInputToIso("2026-09-25")).toBeNull();
   });
 });
 

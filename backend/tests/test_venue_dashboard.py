@@ -47,8 +47,11 @@ class TestServicePartitioning:
     @pytest.fixture()
     def queue(self, monkeypatch):
         bookings = [
-            make_booking("d-2", "held", datetime(2026, 9, 3, 10, 30, tzinfo=SGT)),
-            make_booking("d-4", "held", datetime(2026, 8, 28, 16, 15, tzinfo=SGT)),
+            # d-4 was requested first but d-2 expires first.
+            make_booking("d-2", "held", datetime(2026, 9, 3, 10, 30, tzinfo=SGT),
+                         expires_at=datetime(2026, 9, 20, 9, tzinfo=SGT)),
+            make_booking("d-4", "held", datetime(2026, 8, 28, 16, 15, tzinfo=SGT),
+                         expires_at=datetime(2026, 9, 22, 9, tzinfo=SGT)),
             make_booking("d-5", "re_review", datetime(2026, 9, 10, 11, 45, tzinfo=SGT)),
         ]
         calls = {"bookings": [], "blocks": []}
@@ -61,24 +64,48 @@ class TestServicePartitioning:
         )
         return calls
 
-    def test_holds_come_back_oldest_first(self, queue):
+    def test_holds_come_back_soonest_expiry_first_carrying_their_expiry(self, queue):
+        # CR-99 (W7 CR-04): the hold nearest to expiring most needs a decision,
+        # so expiry, not age, orders the queue.
         result = service.venue_staff_dashboard(now=NOW)
-        assert [h.id for h in result.pending_holds] == ["d-4", "d-2"]
+        assert [h.id for h in result.pending_holds] == ["d-2", "d-4"]
+        assert result.pending_holds[0].expires_at == datetime(2026, 9, 20, 9, tzinfo=SGT)
 
-    def test_equal_ages_are_broken_by_id_so_the_order_is_stable(self, monkeypatch):
-        """Two holds requested in the same instant must not shuffle between loads."""
-        same = datetime(2026, 9, 3, 10, 30, tzinfo=SGT)
+    def test_equal_expiries_are_broken_by_id_so_the_order_is_stable(self, monkeypatch):
+        """Two holds expiring in the same instant must not shuffle between loads."""
+        same = datetime(2026, 9, 21, 10, 30, tzinfo=SGT)
         monkeypatch.setattr(repository, "list_venues", list)
         monkeypatch.setattr(repository, "list_all_upcoming_blocks", lambda since: [])
         monkeypatch.setattr(
             repository,
             "list_all_upcoming_bookings",
-            lambda since, statuses: [make_booking("d-9", "held", same), make_booking("d-1", "held", same)],
+            lambda since, statuses: [
+                make_booking("d-9", "held", NOW, expires_at=same),
+                make_booking("d-1", "held", NOW, expires_at=same),
+            ],
         )
 
         result = service.venue_staff_dashboard(now=NOW)
 
         assert [h.id for h in result.pending_holds] == ["d-1", "d-9"]
+
+    def test_a_hold_past_its_expiry_is_left_out_before_the_job_reaches_it(self, monkeypatch):
+        # CR-99 AC5: expired holds leave the queue; the job runs every minute,
+        # so one can still read as held for up to that long.
+        monkeypatch.setattr(repository, "list_venues", list)
+        monkeypatch.setattr(repository, "list_all_upcoming_blocks", lambda since: [])
+        monkeypatch.setattr(
+            repository,
+            "list_all_upcoming_bookings",
+            lambda since, statuses: [
+                make_booking("d-1", "held", NOW, expires_at=NOW),
+                make_booking("d-2", "held", NOW, expires_at=NOW + timedelta(seconds=1)),
+            ],
+        )
+
+        result = service.venue_staff_dashboard(now=NOW)
+
+        assert [h.id for h in result.pending_holds] == ["d-2"]
 
     def test_re_review_is_kept_out_of_the_holds_queue(self, queue):
         result = service.venue_staff_dashboard(now=NOW)
@@ -224,6 +251,7 @@ class TestCrossVenueReads:
                 "occupied_period": '["2026-10-13 09:00:00+08","2026-10-13 12:00:00+08")',
                 "status": "held",
                 "created_at": "2026-08-28T16:15:00+08:00",
+                "expires_at": "2026-09-04T16:15:00+08:00",
                 "venues": {"name": "Hall A"},
             },
             {
@@ -251,6 +279,12 @@ class TestCrossVenueReads:
         bookings = repository.list_all_upcoming_bookings(NOW, {"held"})
         by_id = {b.id: b for b in bookings}
         assert by_id["d-2"].requested_at == datetime(2026, 8, 28, 16, 15, tzinfo=SGT)
+
+    def test_expires_at_is_read_and_absent_on_a_booking_without_one(self, bookings_client):
+        bookings = repository.list_all_upcoming_bookings(NOW, {"held", "re_review"})
+        by_id = {b.id: b for b in bookings}
+        assert by_id["d-2"].expires_at == datetime(2026, 9, 4, 16, 15, tzinfo=SGT)
+        assert by_id["d-1"].expires_at is None
 
     def test_bookings_are_sorted_by_period_and_name_their_venue(self, bookings_client):
         bookings = repository.list_all_upcoming_bookings(NOW, {"held", "re_review"})

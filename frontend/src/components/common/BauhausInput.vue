@@ -27,6 +27,10 @@ const props = defineProps({
     type: String,
     default: undefined,
   },
+  max: {
+    type: String,
+    default: undefined,
+  },
   error: {
     type: String,
     default: "",
@@ -71,6 +75,7 @@ const describedBy = computed(
       :value="modelValue"
       :placeholder="placeholder"
       :min="min"
+      :max="max"
       :aria-required="required"
       :aria-label="ariaLabel || undefined"
       :autocomplete="autocomplete"

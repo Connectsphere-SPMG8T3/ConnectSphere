@@ -1737,6 +1737,50 @@ On `feature/cr-103-cr-104-safety-review-decision`, 2026-10-09. The developer ask
 - **Verified:** each test was seen failing first (no route; no module; no store action; no tiles). The repository mapping test was written after its code, so the mapping was broken on purpose and the test caught it before it was restored. Backend 992 passed (94.54%), frontend 690 passed, build clean; all uncovered lines predate this change. Live: TC-SDEC-021 and the Lead denial on the new route pass ([run](test-cases/runs/2026-10-09-1931-api-db-8d181c6.md)); the live endpoint returns the three manual-pass decisions newest first.
 - **Manual:** the developer's visual pass of the dashboard at desktop and 375px passed ([run](test-cases/runs/2026-10-09-1945-manual-a803cc8.md)).
 
+### 4.40. CR-99 — Expire tentative venue holds
+
+| Field | Value |
+|---|---|
+| ID | `CR-99` |
+| Status | Implemented on branch; automated live checks pass; manual pass and PO acceptance pending |
+| Epic / sprint | Venue booking approval / 3 |
+| Estimate / priority | 2 SP (sheet notes propose 3) / Priority 2 |
+| Branch | `feature/cr-99-expire-holds` |
+| Source | Product backlog row CR-99, read 12 Oct 2026 (W7 CR-04) |
+
+**User story:**
+
+> As Venue staff, I want tentative holds to expire automatically at their deadline, so that venues are not held indefinitely and become available for other requests.
+
+**Acceptance criteria (12 Oct sheet snapshot):**
+
+- **AC1** Every hold has an expiry date/time. It defaults to 7 days after the request, and must be in the future and before the event starts.
+- **AC2** Venue Staff can change or extend the expiry before it passes; each change is recorded in the booking history.
+- **AC3** The coordinator is notified 24 hours before expiry and again when it expires.
+- **AC4** Approving the hold before its expiry turns it into an approved booking, and it no longer expires.
+- **AC5** At the expiry time, an unapproved hold becomes Expired and the venue is free for other requests.
+- **AC6** An expired hold is never counted as a confirmed booking and does not count for the safety check (82).
+- **AC7** After a hold expires, the coordinator can request the same venue again if it is still free.
+- **AC8** If approval and expiry happen at the same moment, only one outcome is saved; an approval after expiry is refused.
+
+#### Implementation
+
+1. **Database** (`20261012120000_venue_booking_status_expired.sql`, `20261012120001_venue_hold_expiry.sql`). `expired` joins `venue_booking_status` in its own migration, since an enum value can't be used in the transaction that adds it. It isn't an occupying status, so DB-1 and the one-booking-per-event index free the venue without being changed. `venue_bookings` gains `expires_at` (required on a hold) and `expiry_warned_at`. A `BEFORE INSERT` trigger sets the default `least(now() + 7 days, event start)`, so every insert path gets it, including CR-98's live `request_venue_booking_for_space`. Existing holds were backfilled to 7 days from the migration. A new shared `venue_booking_history` table records changes (actor null for the system).
+2. **The job.** `public.expire_venue_holds(p_now)` expires holds past their expiry or event start (`FOR UPDATE SKIP LOCKED`), writes their history, tells the coordinator, and warns the coordinator once when a hold comes within 24 hours. `pg_cron` runs it every minute as `expire-venue-holds`. A daily job, `prune-venue-hold-job-runs` (`20261012130000_prune_venue_hold_job_runs.sql`), deletes that job's run-log entries older than 7 days, since pg_cron logs every run (about 1,440 rows a day). `request_venue_booking` calls it before its insert, so an overdue hold never blocks a request for up to a minute.
+3. **Changing the expiry.** `public.set_venue_hold_expiry` locks the hold, refuses an overdue/expired one (`hold_expired`), a non-hold (`not_held`), a past time or one after the event start, then records the change and clears the warning marker. `PATCH /venue-bookings/{id}/expiry`, venue staff only.
+4. **Approval guard for SCRUM-36.** `public.lock_hold_for_approval(booking_id, p_now)` locks the hold and returns `ok`, or expires it and returns `hold_expired`. Approval itself is SCRUM-36's; it must call this first.
+5. **API reads.** The venue-staff dashboard sorts pending holds soonest-expiry first, carries `expires_at` and drops holds already past it. The coordinator's `GET /events/{id}` `venue_booking` carries `expires_at`, and falls back to the latest expired hold when nothing is active.
+6. **Frontend.** `features/venues/dashboard.js` gains `sortPendingHoldsSoonestExpiryFirst`, `formatHoldExpiry` and the SGT picker helpers; `useVenueStaffDashboardStore.changeHoldExpiry`; `venueBookingsApi.changeExpiry`. `VenueStaffDashboard.vue` shows "Expires …" with a **Change** form under each pending hold. `CoordinatorEventView.vue` shows "Hold expires … unless approved." and an Expired state that still offers **Find a venue**. `BauhausInput` gains a `max` prop.
+7. **Requirements.** BR-R4's "no expiry" team decision and the dashboard's "never a countdown" rule are replaced (W7 CR-04); BR-R10–BR-R14 added; §9 items 29–31 (default expiry for events under 7 days away, pg_cron, dependencies on 36 and CR-98). `seed.sql` pins fixture hold `…0201` to its event start.
+
+#### Verification and remaining work
+
+- **Test first:** each database slice (default expiry, the job, the request-side expiry, notices and history, changing the expiry, the approval guard, the backfill and schedule) was written in `supabase/verification/hold_expiry_checks.sql` and seen failing against the live project before the migration was written, then run with the migration inside a rolled-back transaction until it passed. API and store slices went red first in `pytest`/Vitest. The two view specs were written after their markup, and the TC-HOLD-003 live check first failed on its own expectation (it expected a warning before an already-overdue hold expired; the rule sends none), which was corrected.
+- **Automated:** `pytest` 1013 passed, 3 failed (DEFECTS D25, failing on `main` too), 94.65% coverage with every new backend line covered. Vitest 709 passed, every changed frontend line covered. `hold_expiry_checks.sql` and the existing booking, venue, safety, active-role and auth SQL suites pass against the live schema. No live advisory names a CR-99 object.
+- **Live:** both migrations applied to the live project on 2026-10-12 through `supabase db query -f` and `supabase migration repair` (`db push` refuses while CR-98's versions are missing locally). The cron job's first run succeeded and expired seeded hold `…0002`, whose event started on 10 Oct. [API/database run](test-cases/runs/2026-10-12-1916-api-db-a6080f9.md): 81/81 passed, including TC-HOLD-001–003. [Browser run](test-cases/runs/2026-10-12-1924-e2e-a6080f9.md): 57/57 passed, including TC-HOLD-004–005. Both logs carry the base commit, as the branch was uncommitted when they ran.
+- **Not verified:** a true two-session race between approval and expiry (the locking order covers it; one session can't reproduce it); the job running unattended to the minute with a warning first (TC-HOLD-008, manual); the look of both pages at desktop and phone width (TC-HOLD-006–007, manual).
+- **Follow-ups:** SCRUM-36 must call `lock_hold_for_approval`; CR-98's `request_venue_booking_for_space` should call `expire_venue_holds()` before its insert; the team should confirm enabling `pg_cron`; the live row of seeded hold `…0201` still expires on 19 Oct 2026 unless reset to match `seed.sql`. PR, review, PO acceptance, merge and the backlog status are the developer's.
+
 ### 4.41. Fix — D25, event-submission tests with a fixed date
 
 Fixed on `fix/events-test-fixed-dates`, branched from `main` at `a6080f9`, 2026-10-12. Numbered 4.41 because the CR-99 branch, not yet merged, uses 4.40 (and records D25).

@@ -138,6 +138,8 @@ class EventVenueBooking(BaseModel):
     venue_id: str
     venue_name: str | None = None
     status: str
+    # When a hold expires unless approved (CR-99); `expired` once it has.
+    expires_at: datetime | None = None
 
 
 class EventCoordinator(BaseModel):

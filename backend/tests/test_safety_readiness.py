@@ -18,7 +18,8 @@ def test_not_required_technical_status_counts_as_ready():  # AC3
 def test_no_booking_at_all_is_not_ready():  # [Assumption] spec §2
     assert safety_readiness([], T.ready).missing == [NO_BOOKING]
 
-@pytest.mark.parametrize("closed", ["rejected", "cancelled", "released"])
+# CR-99 AC6: an expired hold never counts as a booking for the safety check.
+@pytest.mark.parametrize("closed", ["rejected", "cancelled", "released", "expired"])
 def test_closed_bookings_are_ignored(closed):
     assert safety_readiness([B(status=closed)], T.ready).missing == [NO_BOOKING]
     assert safety_readiness([B(status=closed, flags=["affected"]), B(status="approved")], T.ready).ready is True

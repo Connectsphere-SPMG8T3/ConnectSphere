@@ -15,14 +15,19 @@
 import { computed, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 
+import BauhausButton from "@/components/common/BauhausButton.vue";
+import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import VenueCalendar from "@/components/venues/VenueCalendar.vue";
 import {
   ALL_VENUE_STATUSES,
   blockReasonLabel,
+  expiryInputBounds,
+  expiryInputToIso,
   filterVenueStatuses,
   formatEventReference,
+  formatHoldExpiry,
   venueStatusFilterOptions,
   venueStatusMeta,
   waitingDays,
@@ -87,7 +92,31 @@ const tiles = computed(() => [
   },
 ]);
 
-const holds = computed(() => dashboard.oldestFirstHolds);
+const holds = computed(() => dashboard.soonestExpiryHolds);
+
+// CR-99 AC2: one hold's expiry is edited at a time, inline under its row.
+const editingHoldId = ref(null);
+const expiryDraft = ref("");
+const expiryBounds = ref({ min: undefined, max: undefined });
+
+function startExpiryChange(hold) {
+  const bounds = expiryInputBounds(hold);
+  expiryBounds.value = bounds;
+  expiryDraft.value = bounds.value;
+  dashboard.expiryError = null;
+  editingHoldId.value = hold.id;
+}
+
+function cancelExpiryChange() {
+  editingHoldId.value = null;
+  dashboard.expiryError = null;
+}
+
+async function saveExpiry(hold) {
+  if (await dashboard.changeHoldExpiry(hold.id, expiryInputToIso(expiryDraft.value))) {
+    editingHoldId.value = null;
+  }
+}
 
 // AC2 asks for every venue's status at a glance; with the whole catalogue in
 // one panel, "at a glance" needs a way to ask for just the venues in one
@@ -152,10 +181,9 @@ const formatDay = (value) => (value ? dayFormatter.format(new Date(value)) : "")
 /**
  * How long a request has waited, in words.
  *
- * Shown because holds never expire and age is the only nudge the system gives
- * (BR-R4), and worded neutrally because the customer ruled out review
- * deadlines and SLA timers outright (LC-R4, QA-55, QA-68). This is never
- * styled as overdue.
+ * Worded neutrally because the customer ruled out review deadlines and SLA
+ * timers (LC-R4, QA-55, QA-68). The expiry beside it is what now orders the
+ * queue (CR-99); age stays as context and is never styled as overdue.
  */
 function waitedFor(hold) {
   const days = waitingDays(hold);
@@ -248,7 +276,7 @@ function emptyDetail(clearText) {
           Pending requests
         </h2>
         <p class="mb-4 text-xs font-medium text-ink/60">
-          Longest-waiting first. A hold stays until you decide — nothing expires on its own.
+          Soonest to expire first. A hold you haven't approved by its expiry is released.
         </p>
 
         <!-- Capped and scrolling, like the venue list beside it: a busy queue
@@ -279,6 +307,45 @@ function emptyDetail(clearText) {
                 {{ formatPeriod(hold.period) }}
               </span>
             </RouterLink>
+            <!-- Outside the link: a control inside it would also open the request. -->
+            <div class="flex flex-wrap items-center justify-between gap-2 border-2 border-t-0 border-ink bg-white px-4 py-2 sm:border-4 sm:border-t-0">
+              <span class="text-xs font-bold uppercase tracking-widest" :data-testid="`hold-expiry-${hold.id}`">
+                Expires {{ formatHoldExpiry(hold.expires_at) ?? "—" }}
+              </span>
+              <button
+                v-if="editingHoldId !== hold.id"
+                type="button"
+                class="text-xs font-black uppercase tracking-widest underline decoration-2 underline-offset-4"
+                @click="startExpiryChange(hold)"
+              >
+                Change
+              </button>
+            </div>
+            <form
+              v-if="editingHoldId === hold.id"
+              class="flex flex-col gap-3 border-2 border-t-0 border-ink bg-white p-4 sm:border-4 sm:border-t-0"
+              @submit.prevent="saveExpiry(hold)"
+            >
+              <BauhausInput
+                v-model="expiryDraft"
+                type="datetime-local"
+                label="New expiry (Singapore time)"
+                :min="expiryBounds.min"
+                :max="expiryBounds.max"
+                :error="dashboard.expiryError ?? ''"
+                compact
+                required
+              />
+              <p class="text-xs font-medium text-ink/60">Any time before the event starts.</p>
+              <div class="flex flex-wrap gap-3">
+                <BauhausButton type="submit" variant="secondary" :disabled="dashboard.isChangingExpiry">
+                  {{ dashboard.isChangingExpiry ? "Saving…" : "Save expiry" }}
+                </BauhausButton>
+                <BauhausButton variant="outline" :disabled="dashboard.isChangingExpiry" @click="cancelExpiryChange">
+                  Cancel
+                </BauhausButton>
+              </div>
+            </form>
           </li>
         </ol>
 

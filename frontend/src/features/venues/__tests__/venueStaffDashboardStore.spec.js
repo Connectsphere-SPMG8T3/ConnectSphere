@@ -2,12 +2,13 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useVenueStaffDashboardStore } from "@/features/venues/venueStaffDashboardStore";
-import { ApiError, venuesApi } from "@/services/api";
+import { ApiError, venueBookingsApi, venuesApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   venuesApi: { venueStaffDashboard: vi.fn() },
+  venueBookingsApi: { changeExpiry: vi.fn() },
 }));
 
 const PAYLOAD = {
@@ -26,6 +27,7 @@ const PAYLOAD = {
       period: { starts_at: "2026-10-10T13:00:00+08:00", ends_at: "2026-10-10T16:00:00+08:00" },
       status: "held",
       requested_at: "2026-09-03T10:30:00+08:00",
+      expires_at: "2026-09-22T09:00:00+08:00",
     },
     {
       id: "d-4",
@@ -36,6 +38,7 @@ const PAYLOAD = {
       period: { starts_at: "2026-10-13T09:00:00+08:00", ends_at: "2026-10-13T12:00:00+08:00" },
       status: "held",
       requested_at: "2026-08-28T16:15:00+08:00",
+      expires_at: "2026-09-20T09:00:00+08:00",
     },
   ],
   re_review_bookings: [
@@ -110,14 +113,14 @@ describe("venue staff dashboard store", () => {
     });
   });
 
-  it("orders holds oldest first regardless of the order they arrived in", async () => {
+  it("orders holds soonest expiry first regardless of the order they arrived in", async () => {
     signedInVenueStaff();
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
     const store = useVenueStaffDashboardStore();
 
     await store.load();
 
-    expect(store.oldestFirstHolds.map((h) => h.id)).toEqual(["d-4", "d-2"]);
+    expect(store.soonestExpiryHolds.map((h) => h.id)).toEqual(["d-4", "d-2"]);
   });
 
   it("flattens everything the calendar has to place", async () => {
@@ -209,5 +212,60 @@ describe("venue staff dashboard store", () => {
 
     expect(store.hasSettled).toBe(false);
     expect(store.counts.pendingHolds).toBe(0);
+  });
+});
+
+describe("changing a hold's expiry (CR-99 AC2)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+  });
+
+  it("sends the new expiry, reloads the queue and reports success", async () => {
+    signedInVenueStaff();
+    venueBookingsApi.changeExpiry.mockResolvedValue({ id: "d-2", status: "held", expires_at: "2026-09-25T10:30:00Z" });
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+    const store = useVenueStaffDashboardStore();
+
+    const saved = await store.changeHoldExpiry("d-2", "2026-09-25T18:30:00+08:00");
+
+    expect(saved).toBe(true);
+    expect(venueBookingsApi.changeExpiry).toHaveBeenCalledWith(
+      "d-2", { expires_at: "2026-09-25T18:30:00+08:00" }, "access-token",
+    );
+    expect(venuesApi.venueStaffDashboard).toHaveBeenCalledTimes(1);
+    expect(store.expiryError).toBeNull();
+    expect(store.isChangingExpiry).toBe(false);
+  });
+
+  it("shows the server's reason when the change is refused, and keeps the queue", async () => {
+    signedInVenueStaff();
+    venueBookingsApi.changeExpiry.mockRejectedValue(new ApiError("This hold has already expired.", 409));
+    const store = useVenueStaffDashboardStore();
+
+    const saved = await store.changeHoldExpiry("d-2", "2026-09-25T18:30:00+08:00");
+
+    expect(saved).toBe(false);
+    expect(store.expiryError).toBe("This hold has already expired.");
+    expect(venuesApi.venueStaffDashboard).not.toHaveBeenCalled();
+  });
+
+  it("reports a network failure in plain words", async () => {
+    signedInVenueStaff();
+    venueBookingsApi.changeExpiry.mockRejectedValue(new TypeError("Failed to fetch"));
+    const store = useVenueStaffDashboardStore();
+
+    expect(await store.changeHoldExpiry("d-2", "2026-09-25T18:30:00+08:00")).toBe(false);
+    expect(store.expiryError).toBe("Unable to reach the server. Please try again.");
+  });
+
+  it("refuses an incomplete pick without calling the API", async () => {
+    signedInVenueStaff();
+    const store = useVenueStaffDashboardStore();
+
+    expect(await store.changeHoldExpiry("d-2", null)).toBe(false);
+    expect(store.expiryError).toBe("Choose a date and time for the new expiry.");
+    expect(venueBookingsApi.changeExpiry).not.toHaveBeenCalled();
   });
 });

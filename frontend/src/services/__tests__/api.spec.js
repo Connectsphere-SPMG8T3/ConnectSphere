@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { eventsApi } from "@/services/api";
+import { eventsApi, venueBookingsApi } from "@/services/api";
 
 describe("eventsApi.clone", () => {
   afterEach(() => {
@@ -77,5 +77,25 @@ describe('safety decision API contracts', () => {
       method, body: hasBody ? JSON.stringify(body) : undefined,
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer access' },
     });
+  });
+});
+
+describe("CR-99 venueBookingsApi.changeExpiry", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("patches the encoded booking's expiry with the session token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ status: "held" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await venueBookingsApi.changeExpiry("d/1", { expires_at: "2031-08-05T12:00:00+08:00" }, "access-token");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/venue-bookings/d%2F1/expiry",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ expires_at: "2031-08-05T12:00:00+08:00" }),
+        headers: expect.objectContaining({ Authorization: "Bearer access-token" }),
+      }),
+    );
   });
 });

@@ -95,6 +95,10 @@ export const venueBookingsApi = {
   request(payload, token) {
     return request("/venue-bookings", { method: "POST", body: payload, token });
   },
+  // CR-99 AC2: venue staff change or extend a hold's expiry.
+  changeExpiry(bookingId, payload, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/expiry`, { method: "PATCH", body: payload, token });
+  },
 };
 
 export const eventsApi = {

@@ -10,6 +10,7 @@ export const BOOKING_STATUS_LABELS = {
   held: "Tentative hold",
   approved: "Approved",
   re_review: "Under re-review",
+  expired: "Expired",
 };
 
 function singaporeTime(value) {
@@ -42,6 +43,11 @@ export function criteriaFromEvent(event) {
  */
 export function venuePanelState(event) {
   if (!event) return { kind: "none" };
+  // CR-99 AC7: the hold ran out. Say so, and offer the venue again when a
+  // request is possible at all.
+  if (event.venue_booking?.status === "expired") {
+    return { kind: "expired", booking: event.venue_booking, canRequest: event.status === "planning" };
+  }
   if (event.venue_booking) return { kind: "booked", booking: event.venue_booking };
   if (event.status === "planning") return { kind: "can-request" };
   if (event.status === "returned") return { kind: "unavailable", reason: "Requirements are still being amended." };

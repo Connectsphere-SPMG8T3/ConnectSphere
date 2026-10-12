@@ -234,7 +234,7 @@ class TestEventShowsItsBooking:
     @pytest.fixture()
     def held(self, monkeypatch, booking):
         row = {"id": BOOKING_ID, "venue_id": VENUE_ID, "status": "held",
-               "venues": {"name": "Innovation Lab"}}
+               "expires_at": "2026-11-01T04:00:00+00:00", "venues": {"name": "Innovation Lab"}}
         monkeypatch.setattr(venues_repository, "get_active_booking",
                             lambda event_id: deepcopy(row) if event_id == EVENT_ID else None)
         return row
@@ -247,7 +247,24 @@ class TestEventShowsItsBooking:
         assert response.status_code == 200
         assert response.json()["venue_booking"] == {
             "id": BOOKING_ID, "venue_id": VENUE_ID, "venue_name": "Innovation Lab", "status": "held",
+            # CR-99 AC3: the coordinator sees when the hold runs out.
+            "expires_at": "2026-11-01T04:00:00Z",
         }
+
+    def test_an_expired_hold_is_shown_so_the_venue_can_be_requested_again(
+        self, client, auth_headers, authenticate_as, monkeypatch, booking
+    ):
+        # CR-99 AC7: with nothing active, the event shows its expired hold
+        # rather than looking as if no venue had ever been requested.
+        row = {"id": BOOKING_ID, "venue_id": VENUE_ID, "status": "expired",
+               "expires_at": "2026-10-01T04:00:00+00:00", "venues": {"name": "Innovation Lab"}}
+        monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: deepcopy(row))
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.json()["venue_booking"]["status"] == "expired"
+        assert response.json()["venue_booking"]["expires_at"] == "2026-10-01T04:00:00Z"
 
     def test_an_event_without_a_venue_says_so(self, client, auth_headers, authenticate_as, monkeypatch, booking):
         monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)

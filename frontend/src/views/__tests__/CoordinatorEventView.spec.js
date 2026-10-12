@@ -119,6 +119,24 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     const el = await mountView(eventResponse({status: "safety_review"}));
     expect(button("Send for safety check")).toBeNull(); expect(el.textContent).not.toContain("For information");
   });
+  it("CR-99 shows when a held venue's hold expires", async () => {
+    const el = await mountView(eventResponse({ status: "planning", venue_booking: {
+      id: "b1", venue_id: "v1", venue_name: "Innovation Lab", status: "held", expires_at: "2026-11-01T04:00:00Z" } }));
+
+    expect(el.querySelector('[data-testid="hold-expiry"]').textContent)
+      .toContain("Hold expires 1 Nov 2026, 12:00 unless approved.");
+  });
+
+  it("CR-99 AC7 shows an expired hold and offers the venue search again", async () => {
+    const el = await mountView(eventResponse({ status: "planning", venue_booking: {
+      id: "b1", venue_id: "v1", venue_name: "Innovation Lab", status: "expired", expires_at: "2026-11-01T04:00:00Z" } }));
+
+    const panel = el.querySelector('[data-testid="venue-panel"]');
+    expect(panel.textContent).toContain("Expired");
+    expect(panel.textContent).toContain("The hold expired on 1 Nov 2026, 12:00");
+    expect([...panel.querySelectorAll("button")].map((b) => b.textContent.trim())).toContain("Find a venue");
+  });
+
   it("shows the event's discussion thread (SCRUM-61)", async () => {
     const el = await mountView(eventResponse());
 

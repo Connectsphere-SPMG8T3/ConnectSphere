@@ -500,9 +500,12 @@ values
      'Approve/reject fixture', '2026-11-13 10:00+08', '2026-11-13 12:00+08', 12, 'boardroom', now())
 on conflict (id) do nothing;
 
-insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status, created_at)
+-- CR-99: holds expire. This one is held until its event starts, not the 7-day
+-- default, so the fixture (and TC-BOOK-004, which relies on it) doesn't expire
+-- a week after seeding.
+insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status, created_at, expires_at)
 values
     ('d0000000-0000-4000-8000-000000000201', 'e0000000-0000-4000-8000-000000000202',
      'b0000000-0000-4000-8000-000000000004', tstzrange('2026-11-13 10:00+08', '2026-11-13 12:00+08', '[)'),
-     'held', now())
+     'held', now(), '2026-11-13 10:00+08')
 on conflict (id) do nothing;
