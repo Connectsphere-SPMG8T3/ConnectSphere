@@ -1736,3 +1736,20 @@ On `feature/cr-103-cr-104-safety-review-decision`, 2026-10-09. The developer ask
 
 - **Verified:** each test was seen failing first (no route; no module; no store action; no tiles). The repository mapping test was written after its code, so the mapping was broken on purpose and the test caught it before it was restored. Backend 992 passed (94.54%), frontend 690 passed, build clean; all uncovered lines predate this change. Live: TC-SDEC-021 and the Lead denial on the new route pass ([run](test-cases/runs/2026-10-09-1931-api-db-8d181c6.md)); the live endpoint returns the three manual-pass decisions newest first.
 - **Manual:** the developer's visual pass of the dashboard at desktop and 375px passed ([run](test-cases/runs/2026-10-09-1945-manual-a803cc8.md)).
+
+### 4.41. Fix — D25, event-submission tests with a fixed date
+
+Fixed on `fix/events-test-fixed-dates`, branched from `main` at `a6080f9`, 2026-10-12. Numbered 4.41 because the CR-99 branch, not yet merged, uses 4.40 (and records D25).
+
+**Symptom.** CI's backend job has failed on every run since the PR #50 merge to `main` on 2026-10-10 (runs 38027686306, 38239016698), including PR #51, which changes only docs. Three tests in `test_events_api.py` failed with `assert 422 == 200`. PR #50's own run on 2026-10-09 passed with the same code.
+
+**Root cause.** `COMPLETE_REQUEST` and the cloned-draft fixture set the event to `2026-10-10T14:00+08:00`. Submission requires the event date to be after today in the event's timezone (`events/service.py`), so from 10 October the request is rejected. Three other tests (end before start, registration close before open, registration close after event end) kept passing only because they assert their own message, but each also got the "after today" error, so they no longer tested their rule alone.
+
+**Fix.** `EVENT_DAY` is 30 days after today in Singapore time, and `sgt_at(day, hour, …)` builds the ISO timestamps. The registration dates are built from `EVENT_DAY` with the same spacing as before. The deliberately past `2020-10-10` start in `test_submission_rejects_a_start_time_in_the_past` is unchanged. Test-only; no app code changed.
+
+#### Verification
+
+- **Red first:** on `main`, the three tests fail (as in CI).
+- **Full suite:** `pytest` 992 passed.
+- **Time-shifted runs:** the suite was run with the whole process clock moved forward (`time-machine`, loaded from a scratch directory, not added to the project). The fix passes all 992 at +0, +30, +365 and +1000 days. `main` at +365 fails only the same three tests, so no other test in the suite depends on the date.
+- **Not run:** live checks, since nothing outside the test suite changed.
