@@ -34,7 +34,6 @@ from app.modules.events.schemas import (
     SafetyRejectRequest,
     ReturnReason,
     COMMENTABLE_STATUSES,
-    BookingReadiness,
     SafetyReadiness,
     AmendmentRequest,
     CoordinatorActionItem,
@@ -260,8 +259,8 @@ def _transition(row: dict, actor_id: str, action: str, *, reason: str | None,
 
 
 def _safety_readiness_for(row: dict) -> SafetyReadiness:
-    statuses = venues_service.booking_statuses_by_event([row["id"]]).get(row["id"], [])
-    return safety_readiness([BookingReadiness(status=s) for s in statuses], technical_status(row))
+    bookings = venues_service.booking_readiness_by_event([row["id"]]).get(row["id"], [])
+    return safety_readiness(bookings, technical_status(row))
 
 
 def send_for_safety_check(event_id: str, coordinator_id: str) -> EventResponse:

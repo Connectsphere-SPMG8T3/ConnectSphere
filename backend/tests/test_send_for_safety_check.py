@@ -36,6 +36,16 @@ def test_ready_send_and_double_send(client, auth_headers, authenticate_as, state
     assert client.post(URL, headers=auth_headers).status_code == 409
     assert len(state["calls"]) == 1
 
+def test_a_flagged_booking_blocks_sending(client, auth_headers, authenticate_as, state, monkeypatch):
+    # SCRUM-64 / 82 AC10: the stored flag reaches the readiness check.
+    authenticate_as("event_coordinator", COORDINATOR_ID)
+    monkeypatch.setattr(venues_repository, "list_booking_statuses",
+                        lambda ids: [{"event_id": EVENT_ID, "status": "approved", "flag": "affected"}])
+    response = client.post(URL, headers=auth_headers)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Not ready for safety check: A venue booking is flagged Affected."
+    assert not state["calls"]
+
 @pytest.mark.parametrize("bookings,technical,missing", [
     ([], "ready", "No venue booking is approved."),
     (["approved", "held"], "pending", "A venue booking is awaiting venue staff approval. Technical status is not Ready."),

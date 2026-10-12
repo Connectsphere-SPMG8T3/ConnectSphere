@@ -441,14 +441,14 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
 
 
 def list_booking_statuses(event_ids: Iterable[str]) -> list[dict]:
-    """`{event_id, status}` for every booking of these events, whatever its status."""
+    """`{event_id, status, flag}` for every booking of these events, whatever its status."""
     ids = list(event_ids)
     if not ids:
         return []
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("event_id, status")
+        .select("event_id, status, flag")
         .in_("event_id", ids)
         .execute()
     )

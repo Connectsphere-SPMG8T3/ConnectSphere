@@ -18,7 +18,7 @@ from app.core.exceptions import (
     VenueNotFoundError,
 )
 from app.modules.events import service as events_service
-from app.modules.events.schemas import EventPlanningContext
+from app.modules.events.schemas import BookingReadiness, EventPlanningContext
 from app.modules.venues import impact, repository, search
 from app.modules.venues.schemas import (
     INACTIVE_REASON_LABELS,
@@ -387,6 +387,18 @@ def booking_statuses_by_event(event_ids: Iterable[str]) -> dict[str, list[str]]:
     for row in repository.list_booking_statuses(event_ids):
         statuses.setdefault(row["event_id"], []).append(row["status"])
     return statuses
+
+
+def booking_readiness_by_event(event_ids: Iterable[str]) -> dict[str, list[BookingReadiness]]:
+    """`{event_id: [BookingReadiness, ...]}`: each booking's status and its
+    open flag, for the safety readiness check (82 AC10). A flagged booking
+    (SCRUM-64, CR-95, CR-94) is not ready whatever its status. Events with no
+    booking are absent."""
+    readiness: dict[str, list[BookingReadiness]] = {}
+    for row in repository.list_booking_statuses(event_ids):
+        flags = [row["flag"]] if row.get("flag") else []
+        readiness.setdefault(row["event_id"], []).append(BookingReadiness(status=row["status"], flags=flags))
+    return readiness
 
 
 # What `public.request_venue_booking` refuses with, as the coordinator reads it

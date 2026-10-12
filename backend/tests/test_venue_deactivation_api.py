@@ -181,3 +181,9 @@ class TestReactivate:
     def test_coordinator_is_forbidden(self, client, auth_headers, authenticate_as, inactive):
         authenticate_as("event_coordinator")
         assert client.post(self.URL, json={"version": 4}, headers=auth_headers).status_code == 403
+
+    def test_unknown_venue_is_404_without_rpc(self, client, auth_headers, authenticate_as, inactive):
+        authenticate_as("venue_staff")
+        response = client.post("/api/v1/venues/b0000000-0000-4000-8000-0000000000ff/reactivate",
+                               json={"version": 4}, headers=auth_headers)
+        assert response.status_code == 404 and inactive["re_rpc"] == []
