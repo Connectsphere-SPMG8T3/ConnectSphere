@@ -103,13 +103,14 @@ export const useVenueEditStore = defineStore("venueEdit", {
         const payload = { reason, note: note?.trim() || null, version, confirm };
         const response = await venuesApi.deactivate(venueId, payload, token);
         this.affected = response.saved ? [] : response.affected ?? [];
+        if (response.saved) this.venue = response.venue;
         return response.saved;
       });
     },
 
     async reactivate(venueId, version) {
       return this._save(async (token) => {
-        await venuesApi.reactivate(venueId, { version }, token);
+        this.venue = await venuesApi.reactivate(venueId, { version }, token);
       });
     },
 

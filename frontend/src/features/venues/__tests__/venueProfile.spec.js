@@ -10,6 +10,7 @@ import {
   lastEditorName,
   stepIndex,
   INACTIVE_REASONS,
+  formatVenuePeriod,
   inactiveReasonLabel,
   summariseEditHistoryEntry,
   venueProfileTabs,
@@ -339,5 +340,13 @@ describe("inactiveReasonLabel (SCRUM-64)", () => {
   it("labels known reasons and passes unknown ones through", () => {
     expect(INACTIVE_REASONS.map((r) => inactiveReasonLabel(r.value))).toEqual(["Permanently closed", "Long-term renovation", "Other"]);
     expect(inactiveReasonLabel("mystery")).toBe("mystery");
+  });
+});
+
+describe("formatVenuePeriod", () => {
+  it("formats both ends in Singapore time", () => {
+    expect(
+      formatVenuePeriod({ starts_at: "2031-05-20T06:00:00Z", ends_at: "2031-05-20T09:00:00Z" }),
+    ).toBe("20 May 2031, 14:00 – 20 May 2031, 17:00");
   });
 });

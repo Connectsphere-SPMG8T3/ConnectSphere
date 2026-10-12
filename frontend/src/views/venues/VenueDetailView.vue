@@ -4,6 +4,8 @@ import { RouterLink, useRoute } from "vue-router";
 
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
+import ConfirmModal from "@/components/common/ConfirmModal.vue";
+import DeactivateVenueModal from "@/components/venues/DeactivateVenueModal.vue";
 import VenueGallery from "@/components/venues/VenueGallery.vue";
 import { blockReasonLabel, formatEventReference } from "@/features/venues/dashboard";
 import { useVenueEditStore } from "@/features/venues/venueEditStore";
@@ -16,6 +18,8 @@ import {
   summariseEditHistoryEntry,
   venueProfileTabs,
   venueSlides,
+  formatVenuePeriod,
+  inactiveReasonLabel,
 } from "@/features/venues/venueProfile";
 import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS, useVenuesStore } from "@/features/venues/venueSearchStore";
 import { useAuthStore } from "@/stores/auth";
@@ -43,9 +47,7 @@ const sgtFormatter = new Intl.DateTimeFormat("en-SG", {
   hour12: false,
 });
 
-function formatPeriod(period) {
-  return `${sgtFormatter.format(new Date(period.starts_at))} – ${sgtFormatter.format(new Date(period.ends_at))}`;
-}
+const formatPeriod = formatVenuePeriod;
 
 const formatInstant = (value) => (value ? sgtFormatter.format(new Date(value)) : "Not recorded");
 
@@ -121,6 +123,49 @@ async function load() {
   }
 }
 
+// SCRUM-64: deactivate (with a preview of the bookings it would flag) and
+// reactivate. Both endpoints return the updated venue, so the page shows it
+// without a reload that would blank it while fetching.
+const deactivateOpen = ref(false);
+const reactivateOpen = ref(false);
+
+function openDeactivate() {
+  venueEditStore.affected = [];
+  venueEditStore.error = null;
+  deactivateOpen.value = true;
+}
+
+function closeDeactivate() {
+  deactivateOpen.value = false;
+  venueEditStore.affected = [];
+}
+
+async function afterSave() {
+  venuesStore.selectedVenue = venueEditStore.venue;
+  if (activeTab.value === "history") await venueEditStore.loadHistory(venue.value.id);
+}
+
+async function deactivate({ reason, note, confirm }) {
+  try {
+    const saved = await venueEditStore.deactivate(venue.value.id, { reason, note, version: venue.value.version }, { confirm });
+    if (!saved) return;
+    deactivateOpen.value = false;
+    await afterSave();
+  } catch {
+    // The store keeps the message; the dialog shows it.
+  }
+}
+
+async function reactivate() {
+  reactivateOpen.value = false;
+  try {
+    await venueEditStore.reactivate(venue.value.id, venue.value.version);
+    await afterSave();
+  } catch {
+    // The store keeps the message; the page shows it.
+  }
+}
+
 onMounted(load);
 watch(() => route.params.id, load);
 </script>
@@ -156,14 +201,65 @@ watch(() => route.params.id, load);
         <p class="mt-4 text-xs font-bold uppercase tracking-widest text-ink/70">
           Last updated {{ lastUpdated.at }} · by {{ lastUpdated.by }}
         </p>
-        <RouterLink
-          v-if="canEdit"
-          :to="{ name: 'venue-edit', params: { id: venue.id } }"
-          class="mt-4 inline-block border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold uppercase tracking-widest text-ink shadow-hard active-press sm:border-4"
+        <div
+          v-if="!venue.is_active"
+          data-testid="venue-inactive-banner"
+          class="mt-4 border-2 border-ink bg-canvas px-4 py-3 text-ink shadow-hard sm:border-4"
         >
-          Edit venue
-        </RouterLink>
+          <p class="text-xs font-bold uppercase tracking-widest">Inactive: {{ inactiveReasonLabel(venue.inactive_reason) }}</p>
+          <p v-if="venue.inactive_note" class="mt-1 text-sm font-medium">{{ venue.inactive_note }}</p>
+        </div>
+        <div v-if="canEdit" class="mt-4 flex flex-wrap gap-3">
+          <RouterLink
+            :to="{ name: 'venue-edit', params: { id: venue.id } }"
+            class="inline-block border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold uppercase tracking-widest text-ink shadow-hard active-press sm:border-4"
+          >
+            Edit venue
+          </RouterLink>
+          <button
+            v-if="venue.is_active"
+            type="button"
+            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold uppercase tracking-widest text-ink shadow-hard active-press sm:border-4"
+            @click="openDeactivate"
+          >
+            Deactivate venue
+          </button>
+          <button
+            v-else
+            type="button"
+            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold uppercase tracking-widest text-ink shadow-hard active-press sm:border-4"
+            @click="reactivateOpen = true"
+          >
+            Reactivate venue
+          </button>
+        </div>
+        <p
+          v-if="canEdit && venueEditStore.error && !deactivateOpen"
+          role="alert"
+          class="mt-4 border-2 border-ink bg-bauhaus-red px-3 py-2 text-sm font-bold text-canvas"
+        >
+          {{ venueEditStore.error }}
+        </p>
       </BauhausCard>
+
+      <DeactivateVenueModal
+        :open="deactivateOpen"
+        :venue-name="venue.name"
+        :affected="venueEditStore.affected"
+        :busy="venueEditStore.isSaving"
+        :error="venueEditStore.error"
+        @confirm="deactivate"
+        @cancel="closeDeactivate"
+      />
+      <ConfirmModal
+        :open="reactivateOpen"
+        :title="`Reactivate ${venue.name}?`"
+        message="It will appear in venue search again. Bookings flagged Affected stay flagged."
+        confirm-label="Reactivate"
+        cancel-label="Cancel"
+        @confirm="reactivate"
+        @stay="reactivateOpen = false"
+      />
 
       <div
         class="mb-6 flex flex-wrap gap-2"

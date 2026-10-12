@@ -149,6 +149,7 @@ describe("useVenueEditStore", () => {
       expect(await store.deactivate("venue-1", { reason: "other", note: " Lease ended ", version: 3 }, { confirm: true })).toBe(true);
       expect(venuesApi.deactivate.mock.calls[0][1]).toMatchObject({ note: "Lease ended", confirm: true });
       expect(store.affected).toEqual([]);
+      expect(store.venue).toEqual({ id: "venue-1", is_active: false });
       expect(store.isSaving).toBe(false);
     });
 
@@ -166,6 +167,7 @@ describe("useVenueEditStore", () => {
       const store = useVenueEditStore();
       await store.reactivate("venue-1", 4);
       expect(venuesApi.reactivate).toHaveBeenCalledWith("venue-1", { version: 4 }, "access-token");
+      expect(store.venue).toEqual({ id: "venue-1", is_active: true });
     });
   });
 });

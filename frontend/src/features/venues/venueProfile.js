@@ -252,6 +252,26 @@ export function editFormToPayload(form, { confirm = false } = {}) {
   };
 }
 
+const sgtFormatter = new Intl.DateTimeFormat("en-SG", {
+  timeZone: "Asia/Singapore",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+/** A booking or block period in Singapore time, as the venue page shows it. */
+export function formatVenuePeriod(period) {
+  return `${sgtFormatter.format(new Date(period.starts_at))} – ${sgtFormatter.format(new Date(period.ends_at))}`;
+}
+
+/** "Confirmed" / "Tentative" / "Under re-review" for a booking status (VC-R6). */
+export function bookingStatusLabel(status) {
+  return BOOKING_GROUPS.find((group) => group.statuses.includes(status))?.label ?? status;
+}
+
 // SCRUM-64 AC1: why a venue is inactive. Mirrors `public.venue_inactive_reason`.
 export const INACTIVE_REASONS = [
   { value: "permanently_closed", label: "Permanently closed" },
