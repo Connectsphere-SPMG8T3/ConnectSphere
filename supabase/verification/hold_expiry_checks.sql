@@ -432,6 +432,41 @@ begin
 end;
 $$;
 
+do $$
+declare
+    v_expiry_job bigint;
+    v_other_job bigint;
+    v_command text;
+begin
+    -- A run log entry per minute would grow without end: a daily job prunes
+    -- the expiry job's entries older than 7 days and leaves other jobs' alone.
+    select command into v_command from cron.job
+     where jobname = 'prune-venue-hold-job-runs' and schedule = '0 19 * * *' and active;
+    if v_command is null then
+        raise exception 'EXPIRY FAIL: the run log prune job is not scheduled daily';
+    end if;
+
+    select jobid into v_expiry_job from cron.job where jobname = 'expire-venue-holds';
+    select cron.schedule('hold-expiry-check-other-job', '0 0 1 1 *', 'select 1') into v_other_job;
+    insert into cron.job_run_details (jobid, runid, status, start_time, end_time) values
+        (v_expiry_job, -991, 'succeeded', now() - interval '8 days', now() - interval '8 days'),
+        (v_expiry_job, -992, 'succeeded', now() - interval '6 days', now() - interval '6 days'),
+        (v_other_job,  -993, 'succeeded', now() - interval '8 days', now() - interval '8 days');
+
+    execute v_command;
+
+    if exists (select 1 from cron.job_run_details where runid = -991) then
+        raise exception 'EXPIRY FAIL: an expiry run older than 7 days was kept';
+    end if;
+    if not exists (select 1 from cron.job_run_details where runid = -992) then
+        raise exception 'EXPIRY FAIL: an expiry run from the last 7 days was pruned';
+    end if;
+    if not exists (select 1 from cron.job_run_details where runid = -993) then
+        raise exception 'EXPIRY FAIL: another job''s run log was pruned';
+    end if;
+end;
+$$;
+
 -- Reached only if every block above passed (a failed assertion aborts the run).
 select 'HOLD EXPIRY CHECKS PASSED' as result;
 
