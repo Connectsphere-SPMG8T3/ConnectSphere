@@ -800,21 +800,21 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 
 **[Team decision / delivery boundary]** CR-104 delivers `return_to_planning` from both review and confirmed with no callers wired. AC6/AC10 are not complete until CR-94/95, 85, 24 and 37 invoke it after their own record changes. A return changes no bookings/equipment itself. Technical readiness still has a read/transition race until story 24; no broader fix is included.
 
-### 6.7 Event information management and change history *(SCRUM-14: 62; QA-70)*
+### 6.7 Event information management and change history *(SCRUM-14: 62, 112; QA-70)*
 
 **Field classification** (QA-13, QA-66, W4). This is configuration held in one place.
 - **Significant:** date and time (including duration), expected attendance, venue requirements (layout, facilities, location), equipment requirements. There is no numeric threshold: *any* change to these fields is significant (QA-66). Session 2 confirmed the list as date, duration, pax, venue, and equipment (QA2-10).
 - **Ordinary:** name, purpose, description, contact details, accessibility notes, internal notes. Routine edits such as contact information and descriptive text are normal updates that trigger no re-review and no status change (QA2-10). The customer lists accessibility as a suitability *parameter* rather than a significant change (QA-27, QA-66), so it is ordinary. **[Team decision]**
 
-**Who edits what, by status** (QA-25, QA-81, QA-2, QA2-4). Coordinators edit main event details; organisers edit or resubmit their own requests only; venue staff and tech support update their own sections (QA2-4).
+**Who edits what, by status** (QA-25, QA-81, QA-2, QA2-4). Coordinators edit main event details; organisers edit or resubmit their own requests only; venue staff and tech support update their own sections (QA2-4). The coordinator's direct edits are story 112. **A coordinator never edits a significant field directly at any status:** significant changes "require formal re-review" (QA2-10), so they always go through an approved change request (§6.19). Direct edits cover ordinary fields only, such as routine fixes or details agreed with the organiser offline (QA2-27).
 
 | Status | Organiser | Assigned coordinator | Venue staff / Tech support |
 |---|---|---|---|
 | draft | Everything | – | – |
-| submitted / under_review | Change request only | Ordinary fields directly | – |
+| submitted / under_review | Change request only | Ordinary fields directly once assigned. Significant fields: return the request for amendment (§6.4) or approve a change request | – |
 | returned | Everything (resubmit) | – | – |
-| planning | Change request only | Ordinary fields directly. Significant fields **directly, with an impact confirmation dialog**; the same re-review rules as §6.19 apply. | – (preparation opens in `preparation`, QA3-45) |
-| confirmed | Change request only | Ordinary fields directly. Significant fields only by approving a change request (post-confirmation changes need re-request/review, QA-2, QA3-16). | Their preparation sections; the first update moves the event to `preparation` (QA3-45, M3) |
+| planning | Change request only | Ordinary fields directly. Significant fields only by approving a change request (QA2-10). | – (preparation opens in `preparation`, QA3-45) |
+| confirmed | Change request only | Ordinary fields directly. Significant fields only by approving a change request (QA-2, QA2-10, QA3-16). | Their preparation sections; the first update moves the event to `preparation` (QA3-45, M3) |
 | preparation | Change request only | As confirmed | Their preparation sections, per venue booking for venue staff (QA3-45, QA3-50) |
 | terminal | Read-only | Read-only | Read-only |
 
@@ -826,7 +826,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 
 **Acceptance criteria**
 - **Given** a planning event, **when** the coordinator edits the description, **then** it saves and the History tab shows the old and new value, the coordinator's name, and the time.
-- **Given** a confirmed event, **when** the coordinator tries to PATCH `starts_at` directly, **then** it's rejected with "Changes to a confirmed event need a change request."
+- **Given** an event in any status, **when** the coordinator tries to change `starts_at` directly, **then** it's rejected with "Significant changes go through a change request." (112 AC2).
 - **Given** an organiser viewing History, **then** internal preparation notes and staff-only entries are not shown.
 
 ### 6.8 Venue catalogue *(SCRUM-15: 63, 64, 67 — 67 built; view part of 39)*
@@ -1515,6 +1515,9 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 
 **SCRUM-85 addition:**
 43. **[Assumption]** 85 AC4: cancelling the venue booking of a `confirmed` or `preparation` event returns the event to `planning`, because the venue is no longer ready and the event must be re-confirmed (readiness, §6.6). The customer hasn't answered this case directly. It is consistent with QA3-52, where an event goes back to Planning once the coordinator replaces a venue. Is that right?
+
+**Story 112 addition:**
+44. **[Open]** If the organiser tells the coordinator about a significant change offline (QA2-27), can the coordinator raise the change request on the organiser's behalf, or must the organiser submit it themselves? Until answered, only the organiser raises change requests (§6.19); the coordinator's direct edits cover ordinary fields only (§6.7, 112).
 
 ## 10. Non-functional requirements
 
