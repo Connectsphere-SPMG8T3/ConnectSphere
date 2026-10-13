@@ -27,6 +27,9 @@ declare
     -- CR-103 AC5 and 12 AC12: staff accounts are system defaults (ACC-R3, QA2-1).
     v_safety_officer_id uuid := 'a0000000-0000-4000-8000-000000000006';
     v_coordinator_lead_id uuid := 'a0000000-0000-4000-8000-000000000007';
+    -- A second, single-role coordinator (no Venue Staff pairing), so two
+    -- coordinators exist for assignment and cross-coordinator denial checks.
+    v_coordinator_2_id uuid := 'a0000000-0000-4000-8000-000000000008';
 
     v_users jsonb := jsonb_build_array(
         jsonb_build_object(
@@ -91,6 +94,15 @@ declare
             'organisation_name', null,
             'department', 'Event Planning',
             'phone_number', '+65 9000 0007'
+        ),
+        jsonb_build_object(
+            'id', v_coordinator_2_id,
+            'email', 'coordinator2@connectsphere.dev',
+            'full_name', 'Nadia Koh',
+            'role', 'event_coordinator',
+            'organisation_name', null,
+            'department', 'Event Planning',
+            'phone_number', '+65 9000 0008'
         )
     );
     v_user jsonb;
