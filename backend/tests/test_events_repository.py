@@ -294,3 +294,35 @@ def test_list_recent_safety_decisions_reads_the_window_and_flattens_names(monkey
     assert ("table", ("event_safety_decisions",), {}) in calls
     assert ("gte", ("decided_at", "2026-09-09T00:00:00+00:00"), {}) in calls
     assert ("order", ("decided_at",), {"desc": True}) in calls
+
+
+def test_planning_context_reads_what_venue_staff_judge_a_booking_by(monkeypatch):
+    """SCRUM-38 AC1: the booking request shows the event's status and
+    accessibility needs beside its attendance, layout and facilities."""
+    selects = []
+
+    class ContextQuery:
+        def select(self, columns):
+            selects.append(columns)
+            return self
+
+        def in_(self, field, values):
+            self.ids = values
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[{"id": "e1", "status": "planning", "accessibility_needs": "Ramp"}])
+
+    class AdminClient:
+        def table(self, name):
+            assert name == "events"
+            return ContextQuery()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    rows = repository.list_planning_context(["e1", None, "e1"])
+
+    assert rows == [{"id": "e1", "status": "planning", "accessibility_needs": "Ramp"}]
+    for column in ("status", "accessibility_needs", "expected_attendance", "layout_preference", "facilities_required"):
+        assert column in selects[0]
+    assert repository.list_planning_context([]) == []

@@ -101,6 +101,29 @@ class VenueConflictError(HTTPException):
         )
 
 
+class BookingNotFoundError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
+
+
+class BookingDecisionConflictError(HTTPException):
+    """The booking is no longer a live hold, so it can't be decided (SCRUM-38 AC9, AC10)."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+class BookingDecisionTextError(HTTPException):
+    """The database refused the decision's text, which the API had already
+    validated, so this is a backstop (SCRUM-38 AC2, AC3)."""
+
+    def __init__(self, field: str) -> None:
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[{"loc": ["body", field], "msg": "Must be 1 to 1000 characters.", "type": "value_error"}],
+        )
+
+
 class NotAssignedCoordinatorError(HTTPException):
     def __init__(self) -> None:
         super().__init__(

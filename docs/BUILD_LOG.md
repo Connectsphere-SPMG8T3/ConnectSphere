@@ -1797,3 +1797,110 @@ Fixed on `fix/events-test-fixed-dates`, branched from `main` at `a6080f9`, 2026-
 - **Full suite:** `pytest` 992 passed.
 - **Time-shifted runs:** the suite was run with the whole process clock moved forward (`time-machine`, loaded from a scratch directory, not added to the project). The fix passes all 992 at +0, +30, +365 and +1000 days. `main` at +365 fails only the same three tests, so no other test in the suite depends on the date.
 - **Not run:** live checks, since nothing outside the test suite changed.
+
+### 4.42. Chore — Second seeded Event Coordinator account
+
+On `chore/seed-extra-coordinator-account`, branched from `main` at `11d4342`, 2026-10-13. Numbered 4.42 after the D25 fix (4.41).
+
+A second coordinator gives the team an account to test coordinator-to-coordinator behaviour with (assignment, and a coordinator being denied another's events), which the single seeded coordinator could not. The existing coordinator also holds Venue Staff, so it is a poor stand-in for "an ordinary coordinator".
+
+1. **Seed.** `supabase/seed.sql` gains `coordinator2@connectsphere.dev` (`a0000000-…-0008`, Nadia Koh, `+65 9000 0008`), password `Cs1234`, **single** Event Coordinator role, department "Event Planning" (copied from the first coordinator), through the same loop as the other accounts. There are now 8 seeded accounts covering 7 roles.
+2. **Live project.** Created on 2026-10-13 with a one-off script running the seed loop's per-account steps for this account only, through `supabase db query --linked -f`. **The whole seed was deliberately not re-run:** it truncates the equipment tables (`truncate … restart identity cascade`), which would wipe shared fixtures on the live project.
+3. **Docs.** `README.md` and `SETUP.md` list the account and now say 8 accounts / 7 roles. The README's "five user roles" and "five dashboard placeholders" are corrected to seven (the Lead and Safety Officer roles were never counted there).
+
+- **Verified:** after the script, the profile holds `event_coordinator` with the copied department and a null organisation; `user_roles` holds only `event_coordinator`; the stored password hash matches `Cs1234`; the email is confirmed and one identity exists, identical to the first coordinator.
+- **Verified live (2026-10-13):** once the publishable key in `frontend/.env` was replaced (it had been rejected with "Invalid API key" for every account), Supabase Auth's password grant issued a token (HTTP 200) and the account read its own profile (`event_coordinator`). Against this branch's backend on port 8010: `POST /auth/login` 200 with the `event_coordinator` profile and `roles: ['event_coordinator']`; `GET /auth/me` 200; `GET /events/dashboard/coordinator` 200; `GET /venues/dashboard/venue-staff` 403 ("requires … venue_staff"), so the single role does not reach Venue Staff, unlike the first coordinator; the coordinator dashboard without a token is 401.
+- **Checked manually by the developer (2026-10-13):** logging in as this account in the browser lands on `/dashboard/coordinator`, and the page renders with no console errors. Not recorded as a run file, since this chore adds no test-case IDs.
+- **Not verified:** a fresh `supabase db reset` with the new seed (no local database).
+- **Follow-up:** `docs/test-cases/` and `verify_live.py` do not use the new account yet; the first story that needs a second coordinator should. PR, review and merge are the developer's.
+
+### 4.43. SCRUM-38 — Venue staff reject a booking request with a reason
+
+On `feature/scrum-38-reject-booking-request`, branched from `main` at `d731ddb`, 2026-10-12. Numbered 4.43: the CR-99 branch uses 4.40, and the seed chore took 4.42 on `main`. The Product backlog sheet couldn't be read through the connector, so the story and acceptance criteria are as the developer pasted them. The epic, estimate and priority weren't available.
+
+| Field | Value |
+|---|---|
+| ID | SCRUM-38 |
+| Title | Reject a booking request with a reason |
+| Status | In review: rebased onto CR-99, migration applied, live checks and the developer's manual pass passing on 2026-10-13 |
+| Sprint | 3 (6–20 October) |
+
+**User story:** As Venue Staff, I want to be able to reject a booking request with a reason, so that I'm not forced to commit my venue to a booking I can't support.
+
+**Acceptance criteria (as pasted by the developer):**
+
+> AC1. Venue Staff can view a Held booking request with the event's date, time, capacity, layout and other requirements (same view as 36).
+> AC2. Can reject a request only by providing a reason (e.g. unavailable, unsuitable layout, capacity exceeded). The reason cannot be blank and is at most 1000 characters.
+> AC3. When rejecting, can optionally add a suggested alternative venue or arrangement as a note (at most 1000 characters). It is a suggestion only: it does not create a hold or booking.
+> AC4. Rejecting sets the booking's status to Rejected and notifies the assigned Event Coordinator.
+> AC5. [W7 CR-04] A rejected booking's hold is removed from the venue calendar and the slot is free for other requests (21 AC5 ignores Rejected bookings).
+> AC6. The reason and any suggested alternative are visible to the assigned Event Coordinator on the booking and the event. They are not shown to the Event Organiser or attendees.
+> AC7. The event stays in Planning and the coordinator can request another venue for it. A Rejected booking does not count as the event's venue (19 AC4, CR-97), as in 85 AC2.
+> AC8. [W7 CR-03] Rejecting one venue booking leaves the event's other venue bookings unchanged.
+> AC9. Only a Held booking can be rejected. A booking that is already approved, Rejected, Cancelled, Released or Expired is refused. An expired hold is shown as Expired (36 AC4, CR-99).
+> AC10. If approval (36), rejection and expiry (CR-99) happen at the same moment, only one outcome is saved and the others are refused.
+> AC11. Only users acting as Venue Staff can reject a booking. Everyone else gets Forbidden (403).
+> AC12. The rejection, its reason, who rejected it and when are recorded in the booking's history.
+
+#### Decisions
+
+- **[Team decision]** The developer chose free text for the reason and the suggestion, as AC2 and AC3 word them, over §6.13's preset reason list and venue link. REQUIREMENTS §6.13 is updated.
+- **Built on CR-99, not beside it.** Writing the migration's dry run showed that CR-99 (hold expiry, Xuan Wei) had been applied to the live project that day without being pushed. It creates `venue_booking_history` "for the approve, reject, cancel and replacement stories", adds `lock_hold_for_approval` and an `expired` status, and runs a pg_cron expiry job every minute. It also uses version `20261012120000`, which this story's first migration had taken. The developer chose to build on it: this story's migration (renamed `20261012140000`) adds `reason` and `suggestion_note` to CR-99's history instead of creating its own, and `reject_venue_booking` takes CR-99's lock, so a hold past its expiry is expired rather than rejected (AC9, AC10).
+- **[Assumption]** Only the assigned coordinator is notified, and the notification carries no reason (REQUIREMENTS §9 item 29). A `re_review` booking can't be rejected (AC9 allows Held only).
+
+#### What was built
+
+1. **Database (`20261012140000_venue_booking_rejection.sql`).**
+   - `venue_bookings` gains `suggestion_note`, `decided_by` and `decided_at`, with 1–1000-character checks on `decision_reason` and `suggestion_note`. CR-99's history table gains `reason` and `suggestion_note`.
+   - `reject_venue_booking` is `security definer`, `service_role` only, and returns an outcome code instead of raising: `ok`, `booking_not_found`, `not_held`, `hold_expired`, `invalid_reason` or `invalid_suggestion`.
+   - On `ok` it sets the decision, writes one `rejected` history row and notifies the coordinator (never the actor), all in one transaction.
+2. **Backend.**
+   - `GET /venue-bookings/{id}`: venue staff may read any booking; a coordinator only bookings on their assigned events.
+   - `POST /venue-bookings/{id}/reject`: venue staff only, by active role.
+   - `EventPlanningContext` gains `status` and `accessibility_needs`.
+   - The coordinator's event read gains `rejected_bookings`. The organiser's never does.
+   - Three typed errors in `core/exceptions.py`.
+3. **Frontend.**
+   - `BookingRequestView` replaces the SCRUM-70 stub.
+   - New `RejectBookingModal`, `useBookingDecisionStore`, and pure helpers in `features/venues/bookingDecision.js`.
+   - The coordinator's Venue panel lists rejections above **Find a venue**.
+   - The `/bookings/:id` route now admits coordinators. The router test that pinned the old restriction ("whose side ships with SCRUM-19/20") was updated, and a new test checks that the organiser is still refused.
+4. **Tests and checks.**
+   - Cases TC-BOOK-014–026 in `docs/test-cases/venues.md`.
+   - Live checks TC-BOOK-014–020 in `verify_live.py`.
+   - E2E TC-BOOK-021–022 in `bookings.e2e.js`.
+   - SQL check `venue_booking_reject_checks.sql` (TC-BOOK-023).
+
+#### Verification
+
+- **Red first, at every layer:**
+  - The SQL check failed against the live project with "function `reject_venue_booking` does not exist".
+  - The API tests failed on the missing repository functions.
+  - The Vitest specs failed on the missing modules.
+- **Database:** the migration plus the SQL check, run against the live project in one transaction that was rolled back, printed `BOOKING REJECT CHECKS PASSED`. Nothing was applied.
+- **Full suites:** `pytest` 1042 passed; `npm run test:coverage` 740 passed. Every new and changed line in `backend/app/` and `frontend/src/` is covered; the lines still uncovered in the touched files predate this branch. `npm run build` succeeds.
+- **Not verified:**
+  - On 2026-10-12, nothing ran against the real API or browser, because the migration wasn't applied yet. It was applied and checked on 2026-10-13; see "Applied and checked live" below.
+  - AC8 with several bookings on one event, which needs CR-98 on `main`.
+  - AC10 against approval, which needs SCRUM-36 to take the same lock.
+
+**Rebase onto CR-99 (2026-10-13).**
+- CR-99 merged (PR #53) with the same `venue_booking_history`, `lock_hold_for_approval` and `expired` status this story was built against. Its three migrations match the live project's recorded statements exactly.
+- Conflicts were all additions in the same places. In `verify_live.py`, the checks now use CR-99's `hold_for` helper instead of a duplicate. CR-99 also has an e2e `createThrowawayHold` with a different signature, so this story's helper is now `createThrowawayRequest`.
+- After the rebase: `pytest` 1066 passed, `npm run test:coverage` 761 passed, and the build succeeds. The migration plus `venue_booking_reject_checks.sql` again print `BOOKING REJECT CHECKS PASSED` against the live project in a rolled-back transaction.
+- Found while rebasing: DEFECTS D26 (CR-95's live migration lost its history row to CR-99's prune migration, which used the same version).
+
+**Applied and checked live (2026-10-13).**
+- The developer ran `supabase db push`. CR-98's two migration files were first copied from its branch, uncommitted, after confirming they match the live project's recorded statements, so the CLI accepted the push. The dry run listed only `20261012140000`, and the files were removed afterwards.
+- `venue_booking_reject_checks.sql`, run for real, printed `BOOKING REJECT CHECKS PASSED`.
+- `supabase db advisors`: nothing on this story's objects. The 14 warnings are the known leaked-password one, D19's nine, and four on CR-98's functions, which `anon` and `authenticated` can execute (`populate_booking_space_request`, `sync_event_space_periods`). Those four are reported to the CR-98 owner, not fixed here.
+- `verify_live.py --record`, backend on port 8010: **89/89 passed**, including TC-BOOK-014–020 and 023 (`runs/2026-10-13-0115-api-db-c3499b0.md`).
+- `npm run test:e2e:record`, frontend on port 5183: the first run had **58/59 passed** (`runs/2026-10-13-0122-e2e-c3499b0.md`). TC-BOOK-022 failed because the spec switched from coordinator to organiser inside one tab, and `seedSession` signs a tab in only once, so the organiser step still ran as the coordinator. That was a fault in the test, not the app. The spec was split into one test per role, and the re-run had **60/60 passed** (`runs/2026-10-13-0126-e2e-c3499b0.md`). Both run logs name `c3499b0` because the spec fix was uncommitted when they ran.
+
+**Manual pass (2026-10-13).** The developer checked TC-BOOK-024–026 in the browser at desktop and 375px, against two throwaway held requests on the live project: all three passed (`runs/2026-10-13-0143-manual-93e9492.md`).
+
+#### Follow-ups
+
+- CR-98 merges, and CR-95's history is repaired (DEFECTS D26). Until then, every `db push` needs CR-98's files copied in locally the same way.
+- SCRUM-36 (approve) builds on this branch's page, store and lock pattern (IMPLEMENTATION_MAP §5).
+- CR-99's seeded fixture hold (`d0000000-…-0201`) expires on the live project at 2026-10-19 11:14 UTC (checked 2026-10-12; the `expire-venue-holds` cron job is active), which may break checks that rely on that fixture. That's worth raising with Xuan Wei.

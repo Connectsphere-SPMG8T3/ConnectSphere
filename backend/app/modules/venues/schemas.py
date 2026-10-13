@@ -409,3 +409,73 @@ class HoldExpiry(BaseModel):
     id: str
     status: str
     expires_at: datetime
+
+class VenueBookingReject(BaseModel):
+    """Venue staff's rejection of a held booking (SCRUM-38 AC2, AC3). Both
+    texts are trimmed first, so the limits count what is stored."""
+
+    reason: str = Field(min_length=1, max_length=BOOKING_NOTE_MAX_LENGTH)
+    suggestion: str | None = Field(default=None, max_length=BOOKING_NOTE_MAX_LENGTH)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _trim_reason(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("suggestion", mode="before")
+    @classmethod
+    def _blank_suggestion_is_none(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+
+class BookingEventRequirements(BaseModel):
+    """What the booking's event needs from a venue (SCRUM-38 AC1)."""
+
+    id: str
+    name: str | None = None
+    status: str | None = None
+    expected_attendance: int | None = None
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] = []
+    accessibility_needs: str | None = None
+
+
+class BookingDecision(BaseModel):
+    """Venue staff's latest decision on a booking. Internal: shown to venue
+    staff and the assigned coordinator only (AC6, AUTH-R2)."""
+
+    reason: str
+    suggestion: str | None = None
+    decided_by_name: str | None = None
+    decided_at: datetime
+
+
+class BookingHistoryEntry(BaseModel):
+    """One change to a booking, from CR-99's `venue_booking_history` (AC12)."""
+
+    action: str
+    from_status: str | None = None
+    to_status: str | None = None
+    actor_name: str | None = None
+    reason: str | None = None
+    suggestion: str | None = None
+    at: datetime
+
+
+class VenueBookingDetail(BaseModel):
+    """One booking request as venue staff decide on it (SCRUM-38 AC1; SCRUM-36's
+    approval reads the same page)."""
+
+    id: str
+    status: str
+    venue_id: str
+    venue_name: str | None = None
+    period: Period
+    request_note: str | None = None
+    requested_at: datetime
+    requested_by_name: str | None = None
+    event: BookingEventRequirements
+    decision: BookingDecision | None = None
+    history: list[BookingHistoryEntry] = []
