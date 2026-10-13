@@ -306,7 +306,7 @@ See [safety-decisions.md](test-cases/safety-decisions.md) for pending officer-de
   - **Multi-venue (CR-97/98):** `venue_bookings_one_active_per_event` (BR-R1) goes, and each booking gets its own window inside the event's schedule (BR-R15), an `is_primary` flag (BR-R17) and per-booking preparation progress (RD-R2).
   - **Safety Officer access (CR-103):** officers now pick up a review, and only the assigned officer sees the event's details, change history and decision. The 9 Oct design let every officer see every queued review and every officer's decisions (AUTH-R8, SF-R5).
   - **Lead role is exclusive:** an account holding `event_coordinator_lead` can't hold any other role. Nothing enforces this in `user_roles` yet (AUTH-R7).
-  - **Changes (37) and venue unavailability (CR-95):** nothing moves to `re_review` automatically; the coordinator chooses (LC-R7, §6.19, CAL-R4).
+  - **Changes (37) and venue unavailability (CR-95):** nothing moves to `re_review` automatically. After a change, the system marks only the bookings and lines the change touches **Needs re-review** (CR-R5's table, which counts as not ready); the coordinator sends them to staff or replaces the venue. For an unavailable venue, the coordinator decides (LC-R7, CAL-R4).
   - **Backlog ACs that no longer match** (the sheet is not updated yet): CR-97 AC7, 98 AC3, CR-100 AC5, CR-94 AC2, CR-101 AC5–AC6, CR-104 AC2–AC3, and CR-95 AC7's automatic return to Planning (now only when the coordinator requests a new venue).
 
 **Architecture and conventions**
