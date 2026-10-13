@@ -138,3 +138,15 @@ def safety_decisions_offline(monkeypatch, request):
     """
     if request.node.path.name != "test_safety_contracts.py":
         monkeypatch.setattr("app.modules.events.repository.list_safety_decisions", lambda event_id: [])
+
+
+@pytest.fixture(autouse=True)
+def rejected_bookings_offline(monkeypatch, request):
+    """Coordinator event reads predate SCRUM-38; default to no rejected bookings.
+
+    Tests about rejections set their own rows, and the repository's own test
+    needs the real function. No other test may reach the real booking table
+    through a coordinator's event read.
+    """
+    if request.node.path.name != "test_venue_booking_decision_repository.py":
+        monkeypatch.setattr("app.modules.venues.repository.list_rejected_bookings", lambda event_id: [])

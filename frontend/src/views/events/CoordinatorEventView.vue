@@ -16,6 +16,7 @@ import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import { showToast } from "@/composables/useToast";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReviewStore } from "@/features/events/eventReviewStore";
+import { formatDecisionTime } from "@/features/venues/bookingDecision";
 import { BOOKING_STATUS_LABELS, venuePanelState } from "@/features/venues/bookingRequest";
 import { formatHoldExpiry } from "@/features/venues/dashboard";
 
@@ -35,6 +36,8 @@ const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
 const venuePanel = computed(() => venuePanelState(event.value));
+// SCRUM-38 AC6, AC7: why venue staff said no, shown above the way to try another venue.
+const rejectedBookings = computed(() => event.value?.rejected_bookings ?? []);
 
 function displayDateTime(value, timeZone) {
   if (!value) return "Not provided";
@@ -195,8 +198,28 @@ watch(
           </dl>
         </BauhausCard>
 
-        <BauhausCard v-if="venuePanel.kind !== 'none'" background="white" accent="none" data-testid="venue-panel">
+        <BauhausCard
+          v-if="venuePanel.kind !== 'none' || rejectedBookings.length"
+          background="white"
+          accent="none"
+          data-testid="venue-panel"
+        >
           <h2 class="text-2xl font-black uppercase tracking-tight">Venue</h2>
+          <ul v-if="rejectedBookings.length" class="mt-4 space-y-4">
+            <li v-for="rejected in rejectedBookings" :key="rejected.id" class="border-2 border-ink p-4">
+              <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Rejected by venue staff</p>
+              <p class="mt-1 font-black uppercase tracking-tight">
+                <RouterLink :to="{ name: 'booking-request', params: { id: rejected.id } }" class="underline decoration-2 underline-offset-4">
+                  {{ rejected.venue_name ?? "Venue" }}
+                </RouterLink>
+              </p>
+              <p v-if="rejected.decided_at" class="text-sm font-medium text-ink/70">{{ formatDecisionTime(rejected.decided_at) }}</p>
+              <p class="mt-2 whitespace-pre-wrap text-sm font-medium">{{ rejected.reason ?? "No reason was recorded." }}</p>
+              <p v-if="rejected.suggestion" class="mt-2 whitespace-pre-wrap text-sm font-medium">
+                <span class="font-bold">Suggested instead:</span> {{ rejected.suggestion }}
+              </p>
+            </li>
+          </ul>
           <template v-if="venuePanel.kind === 'booked'">
             <p class="mt-4 text-lg font-black uppercase tracking-tight">
               <RouterLink

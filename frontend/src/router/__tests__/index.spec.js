@@ -67,12 +67,21 @@ describe("booking request route (SCRUM-70)", () => {
     expect(router.currentRoute.value.params.id).toBe("d0000000-0000-4000-8000-000000000002");
   });
 
-  it("is not reachable by a coordinator, whose side of it ships with SCRUM-19/20", async () => {
+  it("opens for a coordinator, who reads why a booking was rejected (SCRUM-38 AC6)", async () => {
+    // The API still checks the coordinator is assigned to the booking's event.
     const { router } = await loadAppWithStoredRole("event_coordinator");
 
     await router.push("/bookings/d0000000-0000-4000-8000-000000000002");
 
-    expect(router.currentRoute.value.path).toBe("/dashboard/coordinator");
+    expect(router.currentRoute.value.name).toBe("booking-request");
+  });
+
+  it("is not reachable by the organiser, who never sees booking decisions (SCRUM-38 AC6)", async () => {
+    const { router } = await loadAppWithStoredRole("event_organiser");
+
+    await router.push("/bookings/d0000000-0000-4000-8000-000000000002");
+
+    expect(router.currentRoute.value.name).not.toBe("booking-request");
   });
 
   it("sends an anonymous visitor to login rather than to the catch-all", async () => {

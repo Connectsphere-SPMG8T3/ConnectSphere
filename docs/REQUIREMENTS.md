@@ -726,20 +726,25 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - Venue staff see a queue that defaults to `held` and `re_review`; pending holds come soonest expiry first (CR-99). It can be filtered by status, venue, date range, and waiting time.
 - The detail page shows event timing, pax, layout, facilities, accessibility, and the calendar around the slot.
 - **Approve:** `held` → `approved`.
-- **Reject:** a reason is required, chosen from a list (unavailable, unsuitable layout, capacity exceeded, operational, other) plus free text. Venue staff can optionally **suggest an alternative venue or arrangement** (QA-137). Rejection releases the hold.
+- **Reject:** a reason is required. Venue staff can optionally **suggest an alternative venue or arrangement** (QA-137). Rejection releases the hold.
+  - **[Team decision, SCRUM-38, 2026-10-12]** Both are free text, as SCRUM-38 AC2 and AC3 word them: the reason is 1–1000 characters after trimming, with "unavailable, unsuitable layout, capacity exceeded" given as examples rather than a list, and the suggestion is an optional note of at most 1000 characters. It holds nothing and links to no venue, so `venue_bookings.suggested_venue_id` stays unused. This replaces the earlier preset reason list.
 - **No partial approval**, such as approving the date but not the layout (QA-137).
 
 **Rules**
 - **BA-R1:** Because holds are already exclusive (DB-1), approval can't create a double booking.
-- **BA-R2:** The rejection reason and any suggestion are shown to the coordinator. A suggested venue opens pre-selected in search.
+- **BA-R2:** The rejection reason and any suggestion are shown to the event's assigned coordinator, on the event page and on the booking, and never to the organiser or attendees (SCRUM-38 AC6, AUTH-R2). The suggestion is free text, so nothing opens pre-selected in search.
 - **BA-R3:** Approving updates the event's Venue readiness item (§6.6).
 - **BA-R4:** Rejecting a booking **never changes the event status**: the event stays in `planning` so the coordinator can request an alternative venue (QA2-19).
 - **BA-R5:** There is **no turnaround SLA** for venue staff decisions (QA2-26). A hold's expiry (BR-R10) is the one deadline, and it is the customer's (W7 CR-04): an unapproved hold is released, not escalated. The queue shows each hold's expiry and sorts by it.
+- **BA-R6 (SCRUM-38):** Only a `held` booking can be rejected. `approved`, `re_review`, `rejected`, `cancelled` and `released` bookings are refused; an `expired` hold, or one already past its expiry (CR-99), is refused as expired, and the expiry is what is saved. Rejection, approval (SCRUM-36) and the expiry job all decide under one lock on the booking row, so when they happen at the same moment only one outcome is saved (AC9, AC10).
+- **BA-R7 (SCRUM-38):** Every decision is recorded in the booking's history (`venue_booking_history`, from CR-99): who, when, from and to which status, and for a rejection the reason and suggestion (AC12). Rejecting one booking leaves the event's other bookings unchanged (AC8, CR-03).
+- **[Assumption, SCRUM-38]** Only the event's assigned coordinator is notified of a rejection, never the venue-staff actor. The notification names the venue and event but not the reason, which is read on the page (as with CR-104's officer text). See §9.
 
 **Acceptance criteria**
 - **Given** a held booking, **when** I approve it, **then** it's `approved`, the calendar shows it as booked, and the coordinator is notified.
 - **Given** I reject without a reason, **then** the action is blocked.
-- **Given** I reject with "Capacity exceeded" and suggest Hall B, **then** the hold is released, and the coordinator sees the reason plus a link to Hall B.
+- **Given** I reject with "Capacity exceeded" and suggest Hall B, **then** the hold is released, and the coordinator sees the reason and the suggestion on the event page.
+- **Given** a booking that was approved after I opened it, **when** I reject it, **then** I'm told it is no longer held and nothing changes (SCRUM-38 AC10).
 
 ### 6.14 Booking conflict detection *(SCRUM-21)*
 
@@ -1213,6 +1218,10 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 29. **[Assumption]** CR-99 AC1: when an event is less than 7 days away, the default hold expiry is the event start (the AC asks for both "7 days after the request" and "before the event starts"). Confirm with the customer whether such a hold should instead be refused or get a shorter fixed window.
 30. **[Team decision]** CR-99: holds are expired by a `pg_cron` job every minute (the only way to send the 24-hour warning without a backend worker), backed by the request, expiry-change and approval paths expiring an overdue hold themselves. A second daily job keeps only the last 7 days of the expiry job's run log (`cron.job_run_details`), so the per-minute schedule doesn't grow the shared database without end. The team still has to confirm enabling the `pg_cron` extension on the shared project.
 31. **[Dependency]** CR-99 AC4/AC8: SCRUM-36's approve function must call `public.lock_hold_for_approval(booking_id)` first in its transaction and refuse on `hold_expired`. CR-98's `request_venue_booking_for_space` should call `public.expire_venue_holds()` before its insert, as `request_venue_booking` does, or a hold past its expiry can block it for up to a minute.
+
+**SCRUM-38 additions (2026-10-12):**
+29. **[Assumption]** A booking rejection notifies only the event's assigned coordinator, and the notification carries no reason (the coordinator reads it on the event or booking page). Should venue staff colleagues, or the organiser, be told too? The organiser currently learns nothing, per AUTH-R2.
+30. **[Dependency]** SCRUM-38 builds on CR-99's `venue_booking_history` and `lock_hold_for_approval` (Xuan Wei, on `main` since 2026-10-13). Its migration was applied on 2026-10-13. AC8 with several bookings on one event still needs CR-98 on `main`.
 
 ## 10. Non-functional requirements
 

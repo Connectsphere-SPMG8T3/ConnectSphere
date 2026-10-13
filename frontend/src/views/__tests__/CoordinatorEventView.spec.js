@@ -62,6 +62,32 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     vi.clearAllMocks();
   });
 
+  it("SCRUM-38 AC6, AC7 shows why venue staff rejected a booking and still offers another venue", async () => {
+    const el = await mountView(eventResponse({
+      status: "planning", venue_booking: null,
+      rejected_bookings: [{ id: "b9", venue_id: "v1", venue_name: "Innovation Lab", reason: "Capacity exceeded",
+        suggestion: "Try Heritage Hall", decided_at: "2026-10-08T02:00:00Z" }],
+    }));
+
+    const panel = el.querySelector('[data-testid="venue-panel"]');
+    for (const text of ["Rejected by venue staff", "Innovation Lab", "Capacity exceeded", "Try Heritage Hall", "8 Oct"]) {
+      expect(panel.textContent).toContain(text);
+    }
+    expect(panel.querySelector('a[href="/bookings/b9"]')).not.toBeNull();
+    expect(panel.textContent).toContain("Find a venue");
+  });
+
+  it("SCRUM-38 lists a rejection that predates recorded reasons without inventing one", async () => {
+    const el = await mountView(eventResponse({
+      status: "planning", venue_booking: null,
+      rejected_bookings: [{ id: "b8", venue_id: "v2", venue_name: null, reason: null, suggestion: null, decided_at: null }],
+    }));
+
+    const panel = el.querySelector('[data-testid="venue-panel"]');
+    expect(panel.textContent).toContain("Rejected by venue staff");
+    expect(panel.textContent).toContain("No reason was recorded.");
+  });
+
   it("CR-104 shows the latest private decision and the full decision history", async () => {
     const latest = { id: "d1", decision: "arrangement_rejected", comment: "Replace this venue", decided_by_name: "Officer Lee",
       decided_at: "2026-10-08T02:00:00Z", affected_booking_ids: ["b1"], affected_equipment_request_ids: ["q1"], rejected_venue_ids: ["v1"] };
