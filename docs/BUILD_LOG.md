@@ -1797,3 +1797,19 @@ Fixed on `fix/events-test-fixed-dates`, branched from `main` at `a6080f9`, 2026-
 - **Full suite:** `pytest` 992 passed.
 - **Time-shifted runs:** the suite was run with the whole process clock moved forward (`time-machine`, loaded from a scratch directory, not added to the project). The fix passes all 992 at +0, +30, +365 and +1000 days. `main` at +365 fails only the same three tests, so no other test in the suite depends on the date.
 - **Not run:** live checks, since nothing outside the test suite changed.
+
+### 4.42. Chore — Second seeded Event Coordinator account
+
+On `chore/seed-extra-coordinator-account`, branched from `main` at `11d4342`, 2026-10-13. Numbered 4.42 after the D25 fix (4.41).
+
+A second coordinator gives the team an account to test coordinator-to-coordinator behaviour with (assignment, and a coordinator being denied another's events), which the single seeded coordinator could not. The existing coordinator also holds Venue Staff, so it is a poor stand-in for "an ordinary coordinator".
+
+1. **Seed.** `supabase/seed.sql` gains `coordinator2@connectsphere.dev` (`a0000000-…-0008`, Nadia Koh, `+65 9000 0008`), password `Cs1234`, **single** Event Coordinator role, department "Event Planning" (copied from the first coordinator), through the same loop as the other accounts. There are now 8 seeded accounts covering 7 roles.
+2. **Live project.** Created on 2026-10-13 with a one-off script running the seed loop's per-account steps for this account only, through `supabase db query --linked -f`. **The whole seed was deliberately not re-run:** it truncates the equipment tables (`truncate … restart identity cascade`), which would wipe shared fixtures on the live project.
+3. **Docs.** `README.md` and `SETUP.md` list the account and now say 8 accounts / 7 roles. The README's "five user roles" and "five dashboard placeholders" are corrected to seven (the Lead and Safety Officer roles were never counted there).
+
+- **Verified:** after the script, the profile holds `event_coordinator` with the copied department and a null organisation; `user_roles` holds only `event_coordinator`; the stored password hash matches `Cs1234`; the email is confirmed and one identity exists, identical to the first coordinator.
+- **Verified live (2026-10-13):** once the publishable key in `frontend/.env` was replaced (it had been rejected with "Invalid API key" for every account), Supabase Auth's password grant issued a token (HTTP 200) and the account read its own profile (`event_coordinator`). Against this branch's backend on port 8010: `POST /auth/login` 200 with the `event_coordinator` profile and `roles: ['event_coordinator']`; `GET /auth/me` 200; `GET /events/dashboard/coordinator` 200; `GET /venues/dashboard/venue-staff` 403 ("requires … venue_staff"), so the single role does not reach Venue Staff, unlike the first coordinator; the coordinator dashboard without a token is 401.
+- **Checked manually by the developer (2026-10-13):** logging in as this account in the browser lands on `/dashboard/coordinator`, and the page renders with no console errors. Not recorded as a run file, since this chore adds no test-case IDs.
+- **Not verified:** a fresh `supabase db reset` with the new seed (no local database).
+- **Follow-up:** `docs/test-cases/` and `verify_live.py` do not use the new account yet; the first story that needs a second coordinator should. PR, review and merge are the developer's.
