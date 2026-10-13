@@ -1967,3 +1967,41 @@ QA3-23 clarifies that each proposed event space can have its own date/time windo
 - On 2026-10-13 the developer reported checking the browser flows and that everything looked OK. The manual run record links TC-SPACE-003 and TC-SPACE-008; exact browser, fixture and environment details were not provided.
 
 The Product backlog status, PR review, and merge remain developer-owned follow-ups; no backlog edit or status change was made here.
+
+### 4.46. CR-101 — Event Coordinator Lead dashboard
+
+On `feature/cr-101-coordinator-lead-dashboard`, rebuilt onto `main` at `6043c9b`, 2026-10-13. The Product backlog sheet couldn't be read through the connector, so the story and acceptance criteria are as the developer pasted them. Design: `docs/superpowers/specs/2026-10-13-cr-101-coordinator-lead-dashboard-design.md`; plan: `docs/superpowers/plans/2026-10-13-cr-101-coordinator-lead-dashboard.md`.
+
+| Field | Value |
+|---|---|
+| ID | CR-101 |
+| Title | Event Coordinator Lead dashboard |
+| Status | Implementation and automated tests done; live checks and the manual pass pending the developer |
+| Sprint | 3 |
+
+**Acceptance criteria (as pasted by the developer):** AC1 the Lead sees the unassigned queue and in-scope active events with coordinator and status; AC2 filter by coordinator and status, with per-coordinator active counts; AC3 open an event from the list and reassign it (81); AC4 completed, cancelled and rejected events are not active; AC5 one or more Leads, each seeing the queue plus the events they assigned or last reassigned, legacy assignments visible to all; AC6 a coordinator with active events can't be deactivated; AC7 only the active Lead role; others 403.
+
+#### Decisions
+
+- **AC6 is out of scope**, by the developer's decision. No deactivation flag, endpoint or check was built.
+- **A minimal reassign is in scope** (AC3), small enough for story 81 to absorb. The developer is building 81 later.
+- **Scope rule:** besides AC5's text, an event assigned by someone who no longer holds the Lead role stays visible to every Lead, so nothing is orphaned. **[Assumption]**, REQUIREMENTS §6.5 LD-R3.
+- **The Lead's event page reads from the dashboard payload**, so there is no separate Lead read endpoint to secure; an event outside the Lead's scope simply isn't found, and the API enforces the scope again on reassign.
+- Task 8 (event page) was built before Task 7 (dashboard) because the dashboard links to its named route.
+
+#### What was built
+
+- Migration `20261013120000_lead_assignment.sql`: `events.assigned_by`/`assigned_at`, function `reassign_event` (service role only), and `supabase/verification/lead_assignment_checks.sql`.
+- Backend (`modules/events`): `lead_scope.py` (pure rules), `GET /events/dashboard/lead`, `POST /events/{id}/reassign`, repository reads and the RPC wrapper, two typed errors.
+- Frontend: `leadDashboard.js`, `leadDashboardStore.js`, the real `CoordinatorLeadDashboard`, `LeadEventView` at `/lead/events/:id`.
+- Tests: backend suite 1120 passed (new events code fully covered); frontend suite 803 passed and `npm run build` clean.
+
+#### Verification
+
+- Applied to the live project by the developer; `migration list` shows `20261013120000` on the remote. The local `supabase db push` was blocked by CR-98's remote-only versions, so the SQL was run in the dashboard and recorded with `migration repair`.
+- Live API checks TC-LEAD-001–005 and e2e TC-LEAD-006–007 are written; they need a backend with the project's secret key and are run by the developer.
+
+#### Follow-ups
+
+- Story 81 extends `service.reassign` and `reassign_event` (assignment on submit, notification wording, coordinator hand-over).
+- AC6 (QA3-22) needs a coordinator active flag and a deactivation path; `profiles` has neither today.

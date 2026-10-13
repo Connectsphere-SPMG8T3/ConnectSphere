@@ -589,6 +589,70 @@ def _(ctx: Context) -> None:
     expect_status(ctx.client.get(f"{ctx.api}{COORDINATOR_DASHBOARD}"), 401)
 
 
+# --- Event Coordinator Lead dashboard (CR-101) ------------------------------
+# Read-only: no live check reassigns a seeded event. The reassign success path
+# changes shared data and stays manual (TC-LEAD-011).
+
+LEAD_DASHBOARD = "/events/dashboard/lead"
+LEAD_ACTIVE_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed"}
+UNKNOWN_EVENT = "e0000000-0000-4000-8000-0000000009ff"
+SOME_COORDINATOR = "a0000000-0000-4000-8000-000000000002"
+LEAD_FIXTURE_EVENT = "e0000000-0000-4000-8000-000000000201"  # supabase/seed.sql: under_review, assigned
+
+
+@check("TC-LEAD-001", "The Lead's dashboard has the queue, active events and coordinator counts, active statuses only")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=ctx.shared("event_coordinator_lead").headers)
+    expect_status(response, 200)
+    body = response.json()
+    expect(set(body) == {"unassigned", "active_events", "coordinators"}, f"unexpected fields: {sorted(body)}")
+    listed = body["unassigned"] + body["active_events"]
+    stray = {event["status"] for event in listed} - LEAD_ACTIVE_STATUSES
+    expect(not stray, f"inactive statuses listed: {stray}")
+    expect(all(event["coordinator"] is None for event in body["unassigned"]), "the queue holds an assigned event")
+    expect(all(event["coordinator"] for event in body["active_events"]), "an active event has no coordinator")
+    expect(
+        all(isinstance(person["active_count"], int) and person["active_count"] >= 0 for person in body["coordinators"]),
+        "a coordinator count is not a non-negative integer",
+    )
+
+
+@check("TC-LEAD-002", "Only the Lead can read the Lead dashboard; every other role is 403")
+def _(ctx: Context) -> None:
+    for role in ACCOUNTS:
+        response = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=ctx.shared(role).headers)
+        expect(response.status_code == 403, f"{role} got HTTP {response.status_code}, expected 403")
+
+
+@check("TC-LEAD-003", "Only the Lead can reassign; every other role is 403 and nothing is written")
+def _(ctx: Context) -> None:
+    for role in ACCOUNTS:
+        response = ctx.client.post(
+            f"{ctx.api}/events/{LEAD_FIXTURE_EVENT}/reassign",
+            headers=ctx.shared(role).headers,
+            json={"coordinator_id": SOME_COORDINATOR},
+        )
+        expect(response.status_code == 403, f"{role} got HTTP {response.status_code}, expected 403")
+
+
+@check("TC-LEAD-004", "The Lead reassigning an unknown event is 404")
+def _(ctx: Context) -> None:
+    response = ctx.client.post(
+        f"{ctx.api}/events/{UNKNOWN_EVENT}/reassign",
+        headers=ctx.shared("event_coordinator_lead").headers,
+        json={"coordinator_id": SOME_COORDINATOR},
+    )
+    expect_status(response, 404)
+
+
+@check("TC-LEAD-005", "The Lead dashboard and reassign without a token are 401")
+def _(ctx: Context) -> None:
+    expect_status(ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}"), 401)
+    expect_status(
+        ctx.client.post(f"{ctx.api}/events/{UNKNOWN_EVENT}/reassign", json={"coordinator_id": SOME_COORDINATOR}), 401
+    )
+
+
 # --- Sign-up (SCRUM-80) ----------------------------------------------------
 
 

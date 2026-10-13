@@ -239,6 +239,47 @@ The two maintenance records are PA Systems 08:00–13:00 UTC ("Amplifier inspect
 **Automated coverage today.** `backend/tests/test_active_role_access.py` covers the server half of TC-TSD-009 and TC-TSD-010 for both endpoints — it enumerates every registered route, so `/equipment/maintenance` and `/equipment/inventory` are both parametrised into it automatically. Everything else in this section is **manual only**: `get_equipment_maintenance` has no functional test, and there is no `TechSupportDashboard` component spec, so TC-TSD-001 through 008, 011 and 012 have no automated equivalent yet. That gap is the first thing to close if this dashboard gains more logic.
 
 
+## Event Coordinator Lead dashboard (CR-101)
+
+**Preconditions for every case:** the migration `20261013120000_lead_assignment.sql` is applied; logged in as `coordinator.lead@connectsphere.dev` / `Cs1234`, on `/dashboard/coordinator-lead`, unless a case says otherwise. AC6 (the coordinator deactivation refusal, QA3-22) is out of scope for this story, so no case covers it.
+
+| ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
+|----|-------|----------------|------------|-------------|------------------|----------|
+| TC-LEAD-001 | AC1, AC4 — the API returns the queue, active events and counts, active statuses only | Signed in as the Lead | Send `GET /events/dashboard/lead` | — | 200 with exactly `unassigned`, `active_events`, `coordinators`. Every status is one of under review, returned, planning, safety review, confirmed. Queue events have no coordinator; active events all have one. | 🔴 |
+| TC-LEAD-002 | AC7 — every other role is refused the dashboard | Signed in as each seeded role in turn | Send `GET /events/dashboard/lead` directly, bypassing the SPA | — | 403 for organiser, coordinator, venue staff, tech support and attendee. | 🔴 |
+| TC-LEAD-003 | AC7 — every other role is refused reassign | As TC-LEAD-002 | Send `POST /events/<id>/reassign` with a coordinator id | `{"coordinator_id": "<a coordinator>"}` | 403 for every non-Lead role, and the event's coordinator is unchanged. | 🔴 |
+| TC-LEAD-004 | AC3 — reassigning an unknown event is 404 | Signed in as the Lead | `POST /events/<unknown id>/reassign` | a coordinator id | 404. | 🟠 |
+| TC-LEAD-005 | AC7 — no token, no access | — | Send both requests without an `Authorization` header | — | 401 each. | 🟠 |
+| TC-LEAD-006 | The dashboard loads from the real endpoint | Backend on this branch | Open `/dashboard/coordinator-lead` and wait for the network to settle | — | `GET /events/dashboard/lead` returns 200; "Unassigned queue" and "Active events" headings show; no error banner. | 🔴 |
+| TC-LEAD-007 | AC7 — a coordinator is sent away from the Lead page | Signed in as `coordinator@connectsphere.dev` | Open `/dashboard/coordinator-lead` | — | Redirected to `/dashboard/coordinator`. | 🔴 |
+| TC-LEAD-008 | The assignment columns and `reassign_event` against the real database | Migration applied | Run `supabase/verification/lead_assignment_checks.sql` (rolled back) | — | Prints `CR-101 LEAD ASSIGNMENT CHECKS PASSED`: assign and reassign set coordinator, `assigned_by`, `assigned_at` and bump the version; one history row; new coordinator, previous coordinator and organiser notified, never the Lead; a stale version, a non-coordinator target and a completed event change nothing; `anon` and `authenticated` cannot execute it. | 🔴 |
+| TC-LEAD-009 | AC1 — the queue and active events read correctly | At least one unassigned and one assigned active event exist | Read both lists | — | The queue lists unassigned requests with status, date and organiser. Active events show status, date and coordinator name. Wording and layout match the other dashboards. | 🔴 |
+| TC-LEAD-010 | AC2 — filters and counts | As TC-LEAD-009, two or more coordinators with events | Choose a coordinator; choose one or more statuses; type part of a name; press **Clear**. Read the workload chips | — | Each filter narrows only the active-events list (the queue is unchanged) and they combine. "No matching events" when nothing fits. Each coordinator's chip shows their active-event count, including 0. | 🔴 |
+| TC-LEAD-011 | AC3 — open an event and reassign it. **Changes shared data**: reassign it back, or reset the fixtures, afterwards | An active event and a second coordinator | Click an event; choose a coordinator; **Reassign**; confirm | — | The event page shows its details and current coordinator; the picker omits the current coordinator; **Reassign** is disabled until one is chosen. After confirming: a success message, back on the dashboard with the event under the new coordinator and counts updated. The new coordinator, the previous coordinator and the organiser each get a notification; the event's history shows who reassigned it. A stale page answers "updated by someone else. Reload." and leaves the event unchanged. | 🔴 |
+| TC-LEAD-012 | AC5 — scope with more than one Lead (needs a second Lead account) | A second Lead and events assigned by each | As each Lead in turn, read the dashboard | — | Both see the whole unassigned queue. Each sees the assigned events they assigned or last reassigned, plus events assigned before the Lead role existed. Neither sees events the other assigned. With one Lead, they see everything. | 🟠 |
+| TC-LEAD-013 | AC4 — closed events disappear from the active list | A coordinator-assigned event in planning | As the coordinator reject it (or complete one), then reload the Lead dashboard | — | The event is gone from Active events and from its coordinator's count. Opening its Lead page says it isn't in scope. | 🟠 |
+| TC-LEAD-014 | The dashboard looks like it belongs next to the coordinator's | `/dashboard/coordinator` open as the coordinator in another window | Compare both; resize to 1440, 768 and 375px | — | Same cards, borders, shadows, type and colours. Summary cards, chips, filter bar and rows stay inside the viewport at 375px, with no truncated text. | 🟠 |
+
+### Traceability — CR-101
+
+| Acceptance criterion | Covered by |
+|---|---|
+| AC1 queue and active events with coordinator and status | TC-LEAD-001, TC-LEAD-006, TC-LEAD-009 |
+| AC2 filter by coordinator and status; per-coordinator counts | TC-LEAD-010 |
+| AC3 open an event and reassign it | TC-LEAD-003, TC-LEAD-004, TC-LEAD-008, TC-LEAD-011 |
+| AC4 closed events are not active | TC-LEAD-001, TC-LEAD-013 |
+| AC5 one or more Leads; legacy assignments visible | TC-LEAD-012 (rules in `test_lead_scope.py`) |
+| AC6 deactivation refusal | Out of scope for this story |
+| AC7 only the active Lead role; others 403 | TC-LEAD-002, TC-LEAD-003, TC-LEAD-005, TC-LEAD-007 |
+
+Automated equivalents:
+
+- **pytest**, in `backend/tests/`: `test_lead_scope.py` (AC5 rules), `test_lead_dashboard.py` (scope, statuses, counts, 403 for every other role), `test_lead_reassign.py` (reassign success, 404/403/409/422, 403 for every other role), `test_lead_repository.py` (the reads and the RPC call), plus the all-routes matrix in `test_active_role_access.py`.
+- **Vitest**: `features/events/__tests__/leadDashboard.spec.js`, `leadDashboardStore.spec.js`, `views/__tests__/CoordinatorLeadDashboard.spec.js` and `LeadEventView.spec.js`, plus the all-routes guard in `router/__tests__/activeRoleAccess.spec.js`.
+- **Live checks:** TC-LEAD-001–005 in `backend/scripts/verify_live.py`, TC-LEAD-008 through `lead_assignment_checks.sql` in the same script, and TC-LEAD-006–007 in `frontend/e2e/lead-dashboard.e2e.js`.
+
+TC-LEAD-009–014 need a person (wording, layout, phone width) or change shared data, so they stay manual.
+
 ## Attendee dashboard — layout audit (D21)
 
 The attendee dashboard remains a placeholder with existing hardcoded metrics (known D8); this case checks layout only and does not validate those figures or implement registrations.
