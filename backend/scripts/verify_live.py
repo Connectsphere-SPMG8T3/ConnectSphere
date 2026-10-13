@@ -100,6 +100,7 @@ DB_SCRIPTS = [
     ("hold_expiry_checks.sql", "TC-HOLD-001–003 (database half: bounds, job, notices, approval race)"),
     ("equipment_request_checks.sql", "TC-EQR-002, 003, 006, 007, 008, 009 (database half)"),
     ("venue_edit_checks.sql", "TC-VENUE-058, 059, 061 (database half)"),
+    ("venue_booking_reject_checks.sql", "TC-BOOK-023"),
 ]
 
 
@@ -848,6 +849,137 @@ def _(ctx: Context) -> None:
                                json={"expires_at": "2031-06-21T09:00:00+08:00"})
     expect_status(refused, 409)
     expect_detail(refused, "This hold has already expired.")
+
+
+# --- Venue staff reject a booking request (SCRUM-38) ----------------------------
+
+def reject_booking(ctx: Context, session: Session, booking_id: str, reason: str | None = "Capacity exceeded",
+                   suggestion: str | None = None) -> httpx.Response:
+    return ctx.client.post(f"{ctx.api}{BOOKINGS}/{booking_id}/reject", headers=session.headers,
+                           json={"reason": reason, "suggestion": suggestion})
+
+
+@check("TC-BOOK-014", "Venue staff open a held request and see the event's requirements", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = hold_for(ctx, "014", "2031-06-02 14:00+08", "2031-06-02 17:00+08")
+    db_query(f"update public.events set expected_attendance = 40, layout_preference = 'classroom', "
+             f"accessibility_needs = 'Step-free access' where id = '{event_id}'")
+
+    response = ctx.client.get(f"{ctx.api}{BOOKINGS}/{booking_id}", headers=ctx.shared("venue_staff").headers)
+    expect_status(response, 200)
+    body = response.json()
+    expect(body["status"] == "held" and body["venue_name"], f"booking reads {body}")
+    event = body["event"]
+    expect(event["id"] == event_id and event["expected_attendance"] == 40 and event["layout_preference"] == "classroom"
+           and event["accessibility_needs"] == "Step-free access", f"event requirements read {event}")
+    expect(body["period"]["starts_at"].startswith("2031-06-02T06:00"), f"period is {body['period']}")
+
+
+@check("TC-BOOK-015", "Rejecting a hold with a reason frees the slot, keeps the event in planning and tells "
+                      "only the coordinator", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = hold_for(ctx, "015-a", "2031-06-03 14:00+08", "2031-06-03 17:00+08")
+    other_event = throwaway_event(ctx, "015-b", "2031-06-03 15:00+08", "2031-06-03 16:00+08")
+
+    response = reject_booking(ctx, ctx.shared("venue_staff"), booking_id, "  Capacity exceeded  ", " Try Heritage Hall ")
+    expect_status(response, 200)
+    body = response.json()
+    expect(body["status"] == "rejected" and body["decision"]["reason"] == "Capacity exceeded"
+           and body["decision"]["suggestion"] == "Try Heritage Hall", f"decision reads {body.get('decision')}")
+    expect([entry["action"] for entry in body["history"]] == ["rejected"], f"history is {body['history']}")
+
+    notified = db_query(f"select recipient_id, message from public.notifications "
+                        f"where event_id = '{event_id}' and type = 'venue_booking_rejected'")
+    expect([row["recipient_id"] for row in notified] == [COORDINATOR_ID],
+           f"venue_booking_rejected went to {notified} (want the assigned coordinator only)")
+    expect("Capacity" not in notified[0]["message"], "the notification carries the reason")
+
+    # AC5: another event can now hold the same venue for an overlapping time.
+    expect_status(request_venue(ctx, ctx.shared("event_coordinator"), other_event, INNOVATION_LAB), 201)
+    # AC7: the event stays in planning and can request another venue.
+    [event] = db_query(f"select status::text as status from public.events where id = '{event_id}'")
+    expect(event["status"] == "planning", f"the event became {event['status']}")
+    expect_status(request_venue(ctx, ctx.shared("event_coordinator"), event_id, HERITAGE_HALL), 201)
+
+
+@check("TC-BOOK-016", "A blank or over-long reason, or an over-long suggestion, is refused", needs_db=True)
+def _(ctx: Context) -> None:
+    _, booking_id = hold_for(ctx, "016", "2031-06-04 14:00+08", "2031-06-04 17:00+08")
+    staff = ctx.shared("venue_staff")
+
+    for reason, suggestion in (("   ", None), (None, None), ("x" * 1001, None), ("Closed", "y" * 1001)):
+        expect_status(reject_booking(ctx, staff, booking_id, reason, suggestion), 422)
+    [stored] = db_query(f"select status::text as status from public.venue_bookings where id = '{booking_id}'")
+    expect(stored["status"] == "held", f"a refused rejection left the booking {stored['status']}")
+
+
+@check("TC-BOOK-017", "A booking that is no longer held can't be rejected", needs_db=True)
+def _(ctx: Context) -> None:
+    _, booking_id = hold_for(ctx, "017", "2031-06-05 14:00+08", "2031-06-05 17:00+08")
+    staff = ctx.shared("venue_staff")
+
+    expect_status(reject_booking(ctx, staff, booking_id), 200)
+    again = reject_booking(ctx, staff, booking_id, "Again")
+    expect_status(again, 409)
+    expect_detail(again, "Only a held booking can be rejected. This one is already rejected.")
+    # Approval is SCRUM-36's, so the throwaway booking is set approved directly.
+    _, approved_id = hold_for(ctx, "017-b", "2031-06-05 18:00+08", "2031-06-05 19:00+08")
+    db_query(f"update public.venue_bookings set status = 'approved' where id = '{approved_id}'")
+    refused = reject_booking(ctx, staff, approved_id)
+    expect_status(refused, 409)
+    expect_detail(refused, "Only a held booking can be rejected. This one is approved.")
+
+
+@check("TC-BOOK-018", "Two simultaneous rejections of one hold: exactly one is saved", needs_db=True)
+def _(ctx: Context) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    _, booking_id = hold_for(ctx, "018", "2031-06-06 14:00+08", "2031-06-06 17:00+08")
+    staff = ctx.shared("venue_staff")
+
+    def fire(reason: str) -> int:
+        with httpx.Client(timeout=30) as client:
+            return client.post(f"{ctx.api}{BOOKINGS}/{booking_id}/reject", headers=staff.headers,
+                               json={"reason": reason}).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes = sorted(pool.map(fire, ["First reason", "Second reason"]))
+    expect(codes == [200, 409], f"expected one 200 and one 409, got {codes}")
+    [count] = db_query("select count(*)::int as n from public.venue_booking_history "
+                       f"where booking_id = '{booking_id}' and action = 'rejected'")
+    expect(count["n"] == 1, f"{count['n']} rejections were recorded")
+
+
+@check("TC-BOOK-019", "Only a session acting as venue staff can reject", needs_db=True)
+def _(ctx: Context) -> None:
+    _, booking_id = hold_for(ctx, "019", "2031-06-07 14:00+08", "2031-06-07 17:00+08")
+    for role in ("event_organiser", "event_coordinator", "tech_support", "attendee"):
+        expect_status(reject_booking(ctx, ctx.shared(role), booking_id), 403)
+    # SCRUM-76: the seeded coordinator also holds venue_staff, but acting as coordinator is refused.
+    expect_status(reject_booking(ctx, ctx.login("event_coordinator"), booking_id), 403)
+    [stored] = db_query(f"select status::text as status from public.venue_bookings where id = '{booking_id}'")
+    expect(stored["status"] == "held", f"a refused caller left the booking {stored['status']}")
+
+
+@check("TC-BOOK-020", "The coordinator sees the reason on the event and the booking; the organiser sees neither",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = hold_for(ctx, "020", "2031-06-08 14:00+08", "2031-06-08 17:00+08")
+    expect_status(reject_booking(ctx, ctx.shared("venue_staff"), booking_id, "Under repair", "Heritage Hall"), 200)
+    coordinator, organiser = ctx.shared("event_coordinator"), ctx.shared("event_organiser")
+
+    event = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=coordinator.headers).json()
+    expect([(b["id"], b["reason"], b["suggestion"]) for b in event.get("rejected_bookings", [])]
+           == [(booking_id, "Under repair", "Heritage Hall")], f"coordinator reads {event.get('rejected_bookings')}")
+    booking = ctx.client.get(f"{ctx.api}{BOOKINGS}/{booking_id}", headers=coordinator.headers)
+    expect_status(booking, 200)
+    expect(booking.json()["decision"]["reason"] == "Under repair", "the coordinator can't see the reason on the booking")
+
+    seen = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=organiser.headers)
+    expect_status(seen, 200)
+    expect(seen.json().get("rejected_bookings") == [] and "Under repair" not in seen.text,
+           "the organiser's event read shows the rejection")
+    expect_status(ctx.client.get(f"{ctx.api}{BOOKINGS}/{booking_id}", headers=organiser.headers), 403)
 
 
 # --- Equipment requests (SCRUM-45) ----------------------------------------

@@ -1,6 +1,6 @@
 # ConnectSphere
 
-ConnectSphere is a regional event planning and venue booking platform for Singapore, orchestrating workflows across five user roles: **Event Organiser**, **Event Coordinator**, **Venue Staff**, **Technical Support Staff**, and **Attendee**.
+ConnectSphere is a regional event planning and venue booking platform for Singapore, orchestrating workflows across seven user roles: **Event Organiser**, **Event Coordinator**, **Event Coordinator Lead**, **Venue Staff**, **Technical Support Staff**, **Safety Officer**, and **Attendee**.
 
 This repository implements a **Modular Monolith** architecture:
 
@@ -18,7 +18,7 @@ For the full business context (roles, the Scrum item this implements, and the ar
 Implements the foundational authentication service:
 
 1. Login with email/password against Supabase Auth, issuing a JWT session.
-2. Role-based redirection to one of five dashboard placeholders.
+2. Role-based redirection to one of seven role dashboards.
 3. `GET /profile/me` (frontend) / `GET /api/v1/auth/me` (backend) to view the authenticated user's profile.
 4. Route guards that intercept unauthorised access and redirect to login or an appropriate dashboard.
 
@@ -113,7 +113,7 @@ To measure coverage, run `pytest --cov` here, or `npm run test:coverage` in `fro
 | Step | Command | Notes |
 |------|---------|-------|
 | Migrate DB | `supabase db push` | Creates `user_role` enum, `public.profiles`, trigger, RLS policies |
-| Seed test accounts | `psql "$DATABASE_URL" -f supabase/seed.sql` | One account per role, see below |
+| Seed test accounts | `psql "$DATABASE_URL" -f supabase/seed.sql` | Creates 8 accounts covering all 7 roles, see below |
 | Start backend | `uvicorn app.main:app --reload --port 8000` | Run from `backend/` |
 | Start frontend | `npm run dev` | Run from `frontend/` |
 | Run tests | `pytest` | Run from `backend/` |
@@ -127,6 +127,9 @@ To measure coverage, run `pytest --cov` here, or `npm run test:coverage` in `fro
 | Venue Staff | venue.staff@connectsphere.dev | Cs1234 | Single role |
 | Technical Support | tech.support@connectsphere.dev | Cs1234 | Single role |
 | Attendee | attendee@connectsphere.dev | Cs1234 | Single role |
+| Safety Officer | safety.officer@connectsphere.dev | Cs1234 | Single role (CR-103 AC5) |
+| Event Coordinator Lead | coordinator.lead@connectsphere.dev | Cs1234 | Single role (12 AC12) |
+| Event Coordinator (second) | coordinator2@connectsphere.dev | Cs1234 | Single role; a second coordinator for assignment and cross-coordinator checks |
 
 ## Architecture notes
 

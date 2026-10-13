@@ -24,6 +24,7 @@ export const BOOKING_STATUS_LABELS = {
   rejected: "Rejected",
   cancelled: "Cancelled",
   released: "Released",
+  expired: "Expired",
 };
 
 export const blockReasonLabel = (reason) => BLOCK_REASON_LABELS[reason] ?? String(reason ?? "").replace(/_/g, " ");

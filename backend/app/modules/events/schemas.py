@@ -28,10 +28,13 @@ class EventPlanningContext(BaseModel):
     """
 
     name: str | None = None
+    status: str | None = None
     coordinator_id: str | None = None
     expected_attendance: int | None = None
     layout_preference: VenueLayout | None = None
     facilities_required: list[Facility] = []
+    # SCRUM-38 AC1: venue staff see it on the booking request.
+    accessibility_needs: str | None = None
 
 
 class TechnicalReadiness(str, Enum):
@@ -129,6 +132,18 @@ class AmendmentRequest(BaseModel):
     # in, and a stored name that later leaves EventField must not break reads.
     flagged_fields: list[str]
     returned_at: datetime
+
+
+class EventRejectedBooking(BaseModel):
+    """A venue booking venue staff rejected, with what they said (SCRUM-38 AC6).
+    Coordinator view only: never on the organiser's read (AUTH-R2)."""
+
+    id: str
+    venue_id: str
+    venue_name: str | None = None
+    reason: str | None = None
+    suggestion: str | None = None
+    decided_at: datetime | None = None
 
 
 class EventVenueBooking(BaseModel):
@@ -246,6 +261,9 @@ class EventResponse(EventFields):
     # the event is confirmed (SCRUM-82 AC8); null otherwise. Before then the
     # organiser doesn't get it: booking state is internal planning detail (AUTH-R2).
     venue_booking: EventVenueBooking | None = None
+    # Bookings venue staff rejected, with their reason and suggestion, on the
+    # assigned coordinator's single-event read only (SCRUM-38 AC6, AC7).
+    rejected_bookings: list[EventRejectedBooking] = []
     safety_readiness: SafetyReadiness | None = None
     latest_safety_decision: SafetyDecision | SafetyDecisionSummary | None = None
 

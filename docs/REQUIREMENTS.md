@@ -976,21 +976,26 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - Venue staff see a queue that defaults to `held` and `re_review`; pending holds come soonest expiry first (CR-99). It can be filtered by status, venue, date range, and waiting time.
 - The detail page shows event timing, pax, layout, facilities, accessibility, and the calendar around the slot.
 - **Approve:** `held` → `approved`.
-- **Reject:** a reason is required, chosen from a list (unavailable, unsuitable layout, capacity exceeded, operational, other) plus free text. Venue staff can optionally **suggest an alternative venue or arrangement** (QA-137). Rejection releases the hold.
+- **Reject:** a reason is required. Venue staff can optionally **suggest an alternative venue or arrangement** (QA-137). Rejection releases the hold.
+  - **[Team decision, SCRUM-38, 2026-10-12]** Both are free text, as SCRUM-38 AC2 and AC3 word them: the reason is 1–1000 characters after trimming, with "unavailable, unsuitable layout, capacity exceeded" given as examples rather than a list, and the suggestion is an optional note of at most 1000 characters. It holds nothing and links to no venue, so `venue_bookings.suggested_venue_id` stays unused. This replaces the earlier preset reason list.
 - **No partial approval**, such as approving the date but not the layout (QA-137).
 
 **Rules**
 - **BA-R1:** Because holds are already exclusive (DB-1), approval can't create a double booking.
-- **BA-R2:** The rejection reason and any suggestion are shown to the coordinator. A suggested venue opens pre-selected in search.
+- **BA-R2:** The rejection reason and any suggestion are shown to the event's assigned coordinator, on the event page and on the booking, and never to the organiser or attendees (SCRUM-38 AC6, AUTH-R2). The suggestion is free text, so nothing opens pre-selected in search.
 - **BA-R3:** Approving updates the event's Venue readiness item (§6.6).
 - **BA-R4:** Rejecting a booking **never changes the event status**: the event stays in `planning` so the coordinator can request an alternative venue (QA2-19).
 - **BA-R5:** There is **no turnaround SLA** for venue staff decisions (QA2-26). A hold's expiry (BR-R10) is the one deadline, and it is the customer's (W7 CR-04): an unapproved hold is released, not escalated. The queue shows each hold's expiry and sorts by it.
-- **BA-R6:** In a multi-venue event, venue staff approve or reject **each booking on its own**. Rejecting one doesn't change the others, which stay approved and attached to the event (QA3-24, QA3-50).
+- **BA-R6 (SCRUM-38):** Only a `held` booking can be rejected. `approved`, `re_review`, `rejected`, `cancelled` and `released` bookings are refused; an `expired` hold, or one already past its expiry (CR-99), is refused as expired, and the expiry is what is saved. Rejection, approval (SCRUM-36) and the expiry job all decide under one lock on the booking row, so when they happen at the same moment only one outcome is saved (AC9, AC10).
+- **BA-R7 (SCRUM-38):** Every decision is recorded in the booking's history (`venue_booking_history`, from CR-99): who, when, from and to which status, and for a rejection the reason and suggestion (AC12). Rejecting one booking leaves the event's other bookings unchanged (AC8, CR-03).
+- **[Assumption, SCRUM-38]** Only the event's assigned coordinator is notified of a rejection, never the venue-staff actor. The notification names the venue and event but not the reason, which is read on the page (as with CR-104's officer text). See §9 item 43.
+- **BA-R8:** In a multi-venue event, venue staff approve or reject **each booking on its own**. Rejecting one doesn't change the others, which stay approved and attached to the event (QA3-24, QA3-50).
 
 **Acceptance criteria**
 - **Given** a held booking, **when** I approve it, **then** it's `approved`, the calendar shows it as booked, and the coordinator is notified.
 - **Given** I reject without a reason, **then** the action is blocked.
-- **Given** I reject with "Capacity exceeded" and suggest Hall B, **then** the hold is released, and the coordinator sees the reason plus a link to Hall B.
+- **Given** I reject with "Capacity exceeded" and suggest Hall B, **then** the hold is released, and the coordinator sees the reason and the suggestion on the event page.
+- **Given** a booking that was approved after I opened it, **when** I reject it, **then** I'm told it is no longer held and nothing changes (SCRUM-38 AC10).
 
 ### 6.14 Booking conflict detection *(SCRUM-21)*
 
@@ -1513,11 +1518,15 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 41. ~~**[Open, M3]** Scope of a safety "request changes".~~ **Closed by team decision (SF-R3):** the event returns to `planning`, not `under_review`, and only the venue the finding concerns is reworked. For a single-venue event that is the whole event, which is how we read the meeting's "review phase".
 42. **[Team decision, M3 and QA3-51]** After a significant change, venue staff are involved only when the change touches what they approved (the venue, the window, setup and turnaround, the layout, or attendance over capacity), and the safety check is always redone (CR-R5). This reconciles the meeting's "require a new review/sign-off" with QA3-51's "no automatic reset". Confirm with the customer that an attendance change within capacity doesn't need venue staff.
 
+**SCRUM-38 additions (2026-10-12):**
+43. **[Assumption]** A booking rejection notifies only the event's assigned coordinator, and the notification carries no reason (the coordinator reads it on the event or booking page). Should venue staff colleagues, or the organiser, be told too? The organiser currently learns nothing, per AUTH-R2.
+44. **[Dependency]** SCRUM-38 builds on CR-99's `venue_booking_history` and `lock_hold_for_approval` (Xuan Wei, on `main` since 2026-10-13). Its migration was applied on 2026-10-13. AC8 with several bookings on one event still needs CR-98 on `main`.
+
 **SCRUM-85 addition:**
-43. **[Assumption]** 85 AC4: cancelling the venue booking of a `confirmed` or `preparation` event returns the event to `planning`, because the venue is no longer ready and the event must be re-confirmed (readiness, §6.6). The customer hasn't answered this case directly. It is consistent with QA3-52, where an event goes back to Planning once the coordinator replaces a venue. Is that right?
+45. **[Assumption]** 85 AC4: cancelling the venue booking of a `confirmed` or `preparation` event returns the event to `planning`, because the venue is no longer ready and the event must be re-confirmed (readiness, §6.6). The customer hasn't answered this case directly. It is consistent with QA3-52, where an event goes back to Planning once the coordinator replaces a venue. Is that right?
 
 **Story 112 addition:**
-44. **[Open]** If the organiser tells the coordinator about a significant change offline (QA2-27), can the coordinator raise the change request on the organiser's behalf, or must the organiser submit it themselves? Until answered, only the organiser raises change requests (§6.19); the coordinator's direct edits cover ordinary fields only (§6.7, 112).
+46. **[Open]** If the organiser tells the coordinator about a significant change offline (QA2-27), can the coordinator raise the change request on the organiser's behalf, or must the organiser submit it themselves? Until answered, only the organiser raises change requests (§6.19); the coordinator's direct edits cover ordinary fields only (§6.7, 112).
 
 ## 10. Non-functional requirements
 
@@ -1621,7 +1630,7 @@ Customer Q&A, Session 3 (Sprint 3, on the Week 7 change notice; added 13 Oct 202
 | QA3-21 | External users currently sign up themselves. Is there any case where the Lead needs to add external users (for example, onboarding a new client organisation)? | No. External users continue to register for their own accounts. The | §2.1 ACC-R9 |
 | QA3-22 | When an internal user is deactivated or leaves, what happens to events assigned to them? Should the Lead have to reassign them before the account can be deactivated? | Before deactivation, the Lead should reassign every active event to another Coordinator. Do not leave active work assigned to an inactive user. | §2.1 ACC-R10; §6.5 LA-R8; §9 item 37 |
 | QA3-23 | Can each venue in a multi-venue event have its own times (e.g. breakouts only in the afternoon), or do all share the event's time? | Yes. Each venue booking in a multi-venue event may have its own date/time window, provided it fits the event’s overall schedule. Check suitability, availability, setup and turnaround independently for each venue and its specific booking interval. | §6.12 BR-R15; §9 item 34 |
-| QA3-24 | Can the event be confirmed if some venues are approved and one is rejected, or must every requested venue be approved? | Every required venue booking must be approved before the event can be confirmed. If one venue is rejected, the event remains in planning while the Coordinator arranges a replacement or revises the plan; approved venues remain associated with the event and are not automatically removed. | §5; §6.6 readiness; §6.13 BA-R6 |
+| QA3-24 | Can the event be confirmed if some venues are approved and one is rejected, or must every requested venue be approved? | Every required venue booking must be approved before the event can be confirmed. If one venue is rejected, the event remains in planning while the Coordinator arranges a replacement or revises the plan; approved venues remain associated with the event and are not automatically removed. | §5; §6.6 readiness; §6.13 BA-R8 |
 | QA3-25 | Is attendance checked per venue (e.g. 40 per breakout) or the event total against each venue? | The allocations must still account for the expected attendees who need to use the venues, and no venue may exceed its capacity. | §6.12 BR-R16 |
 | QA3-26 | Is there a main venue Attendees should see, or are all venues shown equally? | For multi  venue event, allow the Coordinator to designate one venue as the primary attendee-facing location, while listing the other venues as part of the same event. Attendees see the primary location, Organizer can see all the venue. | §6.12 BR-R17; §6.18 |
 | QA3-27 | When is cancelling one venue "explicitly required" to also remove the others? | Cancelling one venue arrangement does not cancel the others by default. Remove other venue bookings only when the whole event is cancelled. | §6.12 BR-R18; §7 |

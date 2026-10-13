@@ -5,16 +5,28 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 
-from app.core.exceptions import NotAssignedCoordinatorError, VenueConflictError, VenueNotFoundError
+from app.core.exceptions import (
+    BookingDecisionConflictError,
+    BookingDecisionTextError,
+    BookingNotFoundError,
+    NotAssignedCoordinatorError,
+    VenueConflictError,
+    VenueNotFoundError,
+)
 from app.modules.events import service as events_service
 from app.modules.events.schemas import EventPlanningContext
 from app.modules.venues import impact, repository, search
 from app.modules.venues.schemas import (
+    BookingDecision,
+    BookingEventRequirements,
+    BookingHistoryEntry,
     BookingImpactContext,
     Editor,
     HoldExpiry,
     VenueBooking,
     VenueBookingCreate,
+    VenueBookingDetail,
+    VenueBookingReject,
     VenueDetail,
     VenueEditHistoryEntry,
     VenueEditHistoryResponse,
@@ -363,3 +375,91 @@ def event_bookings_with_venues(event_id: str) -> list[dict]:
                           layouts=[layout["layout"] for layout in venue.get("venue_layouts") or []],
                           accessibility_features=venue.get("accessibility_features") or []))
     return items
+
+
+def _booking_detail(booking: dict) -> VenueBookingDetail:
+    event_id = booking["event_id"]
+    context = events_service.planning_context_by_id([event_id]).get(event_id) or EventPlanningContext()
+    decision = None
+    if booking["status"] == "rejected" and booking.get("decision_reason") and booking.get("decided_at"):
+        decision = BookingDecision(reason=booking["decision_reason"], suggestion=booking.get("suggestion_note"),
+                                   decided_by_name=booking.get("decided_by_name"), decided_at=booking["decided_at"])
+    return VenueBookingDetail(
+        id=booking["id"], status=booking["status"], venue_id=booking["venue_id"],
+        venue_name=booking.get("venue_name"), period=booking["period"], request_note=booking.get("request_note"),
+        requested_at=booking["requested_at"], requested_by_name=booking.get("requested_by_name"),
+        event=BookingEventRequirements(
+            id=event_id, name=context.name, status=context.status,
+            expected_attendance=context.expected_attendance, layout_preference=context.layout_preference,
+            facilities_required=context.facilities_required, accessibility_needs=context.accessibility_needs,
+        ),
+        decision=decision,
+        history=[BookingHistoryEntry(**entry) for entry in repository.list_booking_history(booking["id"])],
+    )
+
+
+def booking_detail(booking_id: str, user_id: str, role: str) -> VenueBookingDetail:
+    """One booking request with its event's requirements (SCRUM-38 AC1).
+
+    Venue staff read every booking: they work as a pool and staff-to-venue
+    allocation is not tracked (AUTH-R5). A coordinator reads only bookings on
+    events assigned to them (404 / 403 from the events module), so they see
+    the reason for a rejection on the booking as well as on the event (AC6).
+    """
+    booking = repository.get_booking(booking_id)
+    if booking is None:
+        raise BookingNotFoundError()
+    if role == "event_coordinator":
+        events_service.assigned_event(booking["event_id"], user_id)
+    return _booking_detail(booking)
+
+
+# How a booking that is no longer held reads to venue staff (AC9).
+_NOT_HELD_LABELS = {
+    "approved": "approved",
+    "rejected": "already rejected",
+    "cancelled": "cancelled",
+    "released": "released",
+    "re_review": "under re-review",
+}
+
+
+def reject_booking(booking_id: str, actor_id: str, body: VenueBookingReject) -> VenueBookingDetail:
+    """Venue staff reject a held booking (SCRUM-38, REQUIREMENTS §6.13).
+
+    Whether it is still held is decided by `public.reject_venue_booking` under
+    a lock on the booking row, so a rejection racing an approval (SCRUM-36) or
+    the expiry job (CR-99) is refused, never overwritten (AC10). The event stays
+    in planning and its other bookings are untouched (AC7, AC8, BA-R4).
+    """
+    booking = repository.get_booking(booking_id)
+    if booking is None:
+        raise BookingNotFoundError()
+    event_name = events_service.names_by_id([booking["event_id"]]).get(booking["event_id"], "your event")
+    venue_name = booking.get("venue_name") or "the venue"
+    result = repository.reject_booking(
+        booking_id, actor_id, body.reason, body.suggestion,
+        # No reason in the notification: the coordinator reads it on the page.
+        notify_message=f'Venue staff rejected the booking of {venue_name} for "{event_name}".',
+    )
+    outcome = result["outcome"]
+    if outcome == "booking_not_found":
+        raise BookingNotFoundError()
+    if outcome == "hold_expired":
+        raise BookingDecisionConflictError("This hold has expired, so it can't be rejected.")
+    if outcome == "not_held":
+        label = _NOT_HELD_LABELS.get(result["from_status"], str(result["from_status"]).replace("_", " "))
+        raise BookingDecisionConflictError(f"Only a held booking can be rejected. This one is {label}.")
+    if outcome == "invalid_reason":
+        raise BookingDecisionTextError("reason")
+    if outcome == "invalid_suggestion":
+        raise BookingDecisionTextError("suggestion")
+    return _booking_detail(repository.get_booking(booking_id))
+
+
+def rejected_bookings_for_event(event_id: str) -> list[dict]:
+    """The event's rejected bookings with venue staff's reason and suggestion
+    (SCRUM-38 AC6). Callers must already have checked the reader is the
+    assigned coordinator: the organiser never sees these (AUTH-R2)."""
+    return repository.list_rejected_bookings(event_id)
+

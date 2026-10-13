@@ -436,3 +436,128 @@ def set_hold_expiry(booking_id: str, actor_id: str, expires_at: datetime) -> dic
         .execute()
     )
     return (response.data or [])[0]
+
+
+# SCRUM-38. `venue_bookings` has two foreign keys to `venues` and two to
+# `profiles` (requester and decider), so every embed names its constraint.
+_BOOKING_DETAIL_COLUMNS = (
+    "id, event_id, venue_id, occupied_period, status, request_note, created_at, "
+    "decision_reason, suggestion_note, decided_at, "
+    "venue:venues!venue_bookings_venue_id_fkey(name), "
+    "requester:profiles!venue_bookings_requested_by_fkey(full_name), "
+    "decider:profiles!venue_bookings_decided_by_fkey(full_name)"
+)
+
+
+def _embedded_name(row: dict, key: str, field: str) -> str | None:
+    embedded = row.get(key)
+    if isinstance(embedded, list):
+        embedded = embedded[0] if embedded else None
+    return (embedded or {}).get(field)
+
+
+def get_booking(booking_id: str) -> dict | None:
+    """One booking with its venue's name, who requested it and who decided it,
+    shaped for `service.booking_detail`; None if it doesn't exist."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_bookings")
+        .select(_BOOKING_DETAIL_COLUMNS)
+        .eq("id", booking_id)
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    if not rows:
+        return None
+    row = rows[0]
+    decided_at = row.get("decided_at")
+    return {
+        "id": row["id"],
+        "event_id": row["event_id"],
+        "venue_id": row["venue_id"],
+        "venue_name": _embedded_name(row, "venue", "name"),
+        "period": _parse_range(row["occupied_period"]),
+        "status": row["status"],
+        "request_note": row.get("request_note"),
+        "requested_at": datetime.fromisoformat(row["created_at"]),
+        "requested_by_name": _embedded_name(row, "requester", "full_name"),
+        "decision_reason": row.get("decision_reason"),
+        "suggestion_note": row.get("suggestion_note"),
+        "decided_by_name": _embedded_name(row, "decider", "full_name"),
+        "decided_at": datetime.fromisoformat(decided_at) if decided_at else None,
+    }
+
+
+def list_booking_history(booking_id: str) -> list[dict]:
+    """CR-99's history of one booking, oldest first, with each actor's name.
+    A null actor is the system (the expiry job)."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_booking_history")
+        .select("action, from_status, to_status, reason, suggestion_note, created_at, "
+                "actor:profiles!venue_booking_history_actor_id_fkey(full_name)")
+        .eq("booking_id", booking_id)
+        .order("created_at")
+        .execute()
+    )
+    return [
+        {
+            "action": row["action"],
+            "from_status": row.get("from_status"),
+            "to_status": row.get("to_status"),
+            "actor_name": _embedded_name(row, "actor", "full_name"),
+            "reason": row.get("reason"),
+            "suggestion": row.get("suggestion_note"),
+            "at": datetime.fromisoformat(row["created_at"]),
+        }
+        for row in response.data or []
+    ]
+
+
+def reject_booking(booking_id: str, actor_id: str, reason: str, suggestion: str | None, *,
+                   notify_message: str) -> dict:
+    """Run `public.reject_venue_booking` (SCRUM-38): the decision, its history
+    row and the coordinator's notification in one transaction. Returns
+    `{outcome, event_id, from_status}`; every refusal is an outcome code."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "reject_venue_booking",
+            {
+                "p_booking_id": booking_id,
+                "p_actor_id": actor_id,
+                "p_reason": reason,
+                "p_suggestion": suggestion,
+                "p_notify_message": notify_message,
+            },
+        )
+        .execute()
+    )
+    return (response.data or [])[0]
+
+
+def list_rejected_bookings(event_id: str) -> list[dict]:
+    """The event's rejected bookings, newest decision first, with what venue
+    staff said (SCRUM-38 AC6). For the assigned coordinator only."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_bookings")
+        .select("id, venue_id, decision_reason, suggestion_note, decided_at, "
+                "venue:venues!venue_bookings_venue_id_fkey(name)")
+        .eq("event_id", event_id)
+        .eq("status", "rejected")
+        .order("decided_at", desc=True)
+        .execute()
+    )
+    return [
+        {
+            "id": row["id"],
+            "venue_id": row["venue_id"],
+            "venue_name": _embedded_name(row, "venue", "name"),
+            "reason": row.get("decision_reason"),
+            "suggestion": row.get("suggestion_note"),
+            "decided_at": datetime.fromisoformat(row["decided_at"]) if row.get("decided_at") else None,
+        }
+        for row in response.data or []
+    ]
