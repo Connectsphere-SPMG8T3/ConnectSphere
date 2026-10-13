@@ -58,5 +58,5 @@ Reference implementations: `modules/auth/` for Supabase Auth, and `modules/venue
 
 - Run `pytest` from `backend/`, and run the full suite before declaring done.
 - Mock at the Supabase client seam (`get_supabase_admin_client`, `get_supabase_anon_client`, `create_auth_client`). Tests never hit live Supabase; verify against the real project separately (root "Verification").
-- Name test files by module and behaviour (e.g. `test_venue_search.py`, `test_venues_api.py`), not by PBI ID. Put the ID (`SCRUM-<n>` or `NEW-<nn>`) in the test module's docstring for traceability.
+- Name test files by module and behaviour (e.g. `test_venue_search.py`, `test_venues_api.py`), not by PBI ID. Put the ID (`SCRUM-<n>` or `CR-<n>`, as the sheet shows it) in the test module's docstring for traceability.
 - Cover the happy path, boundaries, failures (including Supabase outages), and authorisation denials for every endpoint.

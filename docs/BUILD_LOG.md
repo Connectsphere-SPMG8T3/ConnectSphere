@@ -16,11 +16,11 @@ When a story is completed, copy the template below, fill it in from the PBI's ro
 <summary><strong>Template for a new entry (click to expand)</strong></summary>
 
 ```markdown
-### 4.N. SCRUM-XX / NEW-XX — <title> (exact backlog record)
+### 4.N. SCRUM-XX / CR-XX — <title> (exact backlog record)
 
 | Field | Value |
 |---|---|
-| ID | `SCRUM-XX` or `NEW-XX` |
+| ID | `SCRUM-XX`, `CR-XX` or the sheet's plain number |
 | Title | <copy from the Product backlog> |
 | Type | US: Core feature / US: Non-core feature / Bug fix / Enhancement |
 | Status | <status at time of writing this entry> |

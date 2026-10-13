@@ -55,7 +55,7 @@ Every run, automated or manual, is recorded in [runs/](runs/README.md). That fol
 ## Adding cases for a new story
 
 1. Put the story in the file for its area. Start a new file only for a new area, and add it to the table above.
-2. Give it a `## <Story name> (<PBI ID>)` section, where the PBI ID is `SCRUM-<n>` or `NEW-<nn>` as the Product backlog shows it. The section has the preconditions, then the case table, then `### Traceability — <PBI ID>`, then a short note naming the automated tests that cover each case.
+2. Give it a `## <Story name> (<PBI ID>)` section, where the PBI ID is `SCRUM-<n>`, `CR-<n>` or the plain number, as the Product backlog shows it. The section has the preconditions, then the case table, then `### Traceability — <PBI ID>`, then a short note naming the automated tests that cover each case.
 3. Continue the area's ID prefix and numbering. Never renumber or reuse an existing ID; other docs and tests cite them.
 4. Where a case's outcome can be checked by a request or a browser assertion without changing shared data, add an automated check for it, named with its ID (root `AGENTS.md`, "Live checks and the manual browser pass").
 

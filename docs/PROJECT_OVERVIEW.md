@@ -13,7 +13,7 @@ Sources for this document: `IS212 (AY2026/27, T1) — Scrum Project Instructions
 
 This repository is the codebase for an **IS212 (Software Project Management) team project**: a term-long exercise in running an agile (Scrum) software project against a simulated customer, ConnectSphere. The grading rubric (Week 4 instructions) weighs the Scrum *process* — sprint evidence, estimation, backlog quality, retrospectives — at least as heavily as the delivered software, and explicitly penalises "an AI-generated solution that you cannot explain/justify." Practically, this means:
 
-- Every change in this repo should be traceable back to a specific backlog item (a PBI such as `SCRUM-48` or `NEW-03` in the Product backlog sheet) and, ultimately, back to a piece of the customer briefing.
+- Every change in this repo should be traceable back to a specific backlog item (a PBI such as `SCRUM-48` or `CR-99` in the Product backlog sheet) and, ultimately, back to a piece of the customer briefing.
 - Code should be something the team can explain and defend in a 20-minute instructor Q&A, not just something that passes.
 - Test coverage and traceability from requirement → code → test matters as much as the feature working.
 

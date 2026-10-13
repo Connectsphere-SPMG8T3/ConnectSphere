@@ -9,7 +9,7 @@ Every file here has one job, and its name says which. Start with the question yo
 | [`REQUIREMENTS.md`](REQUIREMENTS.md) | What should the system do? Behaviour specs per feature, the access matrix, the domain model, the event lifecycle, customer Q&A answers, open questions | Edited when a rule, assumption or design decision changes |
 | [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) | Who is the customer, what is in the first release, and why is the system built this way? Course context, the 20 core features, architecture, design system, database principles | Rarely: only when the customer or the architecture changes |
 | [`IMPLEMENTATION_MAP.md`](IMPLEMENTATION_MAP.md) | What exists right now? Status by story, endpoints, components, tables, and what to know before building on them | Edited in place with every change |
-| [`BUILD_LOG.md`](BUILD_LOG.md) | How was story SCRUM-XX or NEW-XX built and verified? Verbatim backlog record (Jira until Sprint 2), interpretation, what was built | Append-only: one entry per story, fix or enabler |
+| [`BUILD_LOG.md`](BUILD_LOG.md) | How was story SCRUM-XX or CR-XX built and verified? Verbatim backlog record (Jira until Sprint 2), interpretation, what was built | Append-only: one entry per story, fix or enabler |
 | [`DEFECTS.md`](DEFECTS.md) | What is known to be broken, and is it fixed? D1, D2, … with evidence and status | Edited in place: new rows, status updates |
 | [`ROADMAP.md`](ROADMAP.md) | What is planned for each sprint? | Edited at sprint planning |
 | [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) | When is a backlog item Done? The team's checklist, from the Scrum playbook | Edited when the team changes the DoD at a retrospective |
