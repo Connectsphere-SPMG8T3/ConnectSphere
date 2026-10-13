@@ -10,6 +10,8 @@ from app.modules.venues.schemas import (
     HoldExpiryUpdate,
     VenueBooking,
     VenueBookingCreate,
+    VenueBookingDetail,
+    VenueBookingReject,
     VenueDetail,
     VenueEditHistoryResponse,
     VenueSearchCriteria,
@@ -123,3 +125,23 @@ def change_hold_expiry(booking_id: UUID, body: HoldExpiryUpdate, current_user: V
     future and no later than the event start; 409 once the hold has expired or
     is no longer a hold."""
     return service.change_hold_expiry(str(booking_id), current_user.id, body.expires_at)
+
+# A booking request is read by the venue staff who decide it and by the
+# coordinator whose event it is (the service checks the assignment). Deciding
+# it is venue staff's alone (SCRUM-38 AC11), on the session's active role.
+BookingViewer = Annotated[CurrentUser, Depends(require_roles(["venue_staff", "event_coordinator"]))]
+
+
+@bookings_router.get("/{booking_id}", response_model=VenueBookingDetail, status_code=status.HTTP_200_OK)
+def read_venue_booking(booking_id: UUID, current_user: BookingViewer) -> VenueBookingDetail:
+    """One booking request with its event's requirements, venue staff's decision
+    if there is one, and the booking's history (SCRUM-38 AC1, AC6, AC12)."""
+    return service.booking_detail(str(booking_id), current_user.id, current_user.role)
+
+
+@bookings_router.post("/{booking_id}/reject", response_model=VenueBookingDetail, status_code=status.HTTP_200_OK)
+def reject_venue_booking(booking_id: UUID, body: VenueBookingReject, current_user: VenueStaffOnly) -> VenueBookingDetail:
+    """Reject a held booking with a reason and an optional suggestion (SCRUM-38).
+    The hold is released and the assigned coordinator is notified. Refused with
+    409 when the booking is no longer held, including a hold that has expired."""
+    return service.reject_booking(str(booking_id), current_user.id, body)
