@@ -1,21 +1,22 @@
 # ConnectSphere — Requirements & System Design
 
-**Status:** living document, v0.3 (15 Sep 2026, Sprint 1). v0.2 applied the Session 1 customer clarifications; v0.3 applies the Session 2 answers (§12) and closes the §9 questions they resolved.
+**Status:** living document, v0.4 (13 Oct 2026, Sprint 3). v0.2 applied the Session 1 customer clarifications; v0.3 applies the Session 2 answers (§12) and closes the §9 questions they resolved; v0.4 applies the Session 3 answers on the Week 7 changes (§13).
 
 `docs/BUILD_LOG.md` records what was *built*; this file records what the system *should do*. Update this file whenever the customer clarifies a rule.
 
 **Sources, in priority order (latest clarification wins):**
-1. **Session 2 Clarification Answers**, cited as **`QA2-<n>`**, where `<n>` is the row number in §12. Where Session 2 differs from Session 1, Session 2 wins (for example QA2-24 supersedes QA-15 on dual roles).
-2. **Session 1 Clarification Answers (G8)**, cited as **`QA-<row>`**, where `<row>` is the spreadsheet row number. For example, QA-18 is the "approved vs confirmed" answer.
-3. **Week 4 Project Instructions**: the 20 core features for the Week 12 release, cited as **`W4`**.
-4. **Week 1 Customer Briefing**: the full system vision, cited as **`W1 §n`**.
+1. **Session 3 Clarification Answers** (the Week 7 change notice: Event Coordinator Lead, Safety Officer, Preparation, setup/turnaround, multi-venue events, hold expiry), cited as **`QA3-<n>`**, where `<n>` is the row number in §13 (the customer's sheet, header = row 1, so the customer's own "Refer row 13" is QA3-13). Where Session 3 differs from an earlier session or from the Week 7 change notice's backlog wording, Session 3 wins.
+2. **Session 2 Clarification Answers**, cited as **`QA2-<n>`**, where `<n>` is the row number in §12. Where Session 2 differs from Session 1, Session 2 wins (for example QA2-24 supersedes QA-15 on dual roles).
+3. **Session 1 Clarification Answers (G8)**, cited as **`QA-<row>`**, where `<row>` is the spreadsheet row number. For example, QA-18 is the "approved vs confirmed" answer.
+4. **Week 4 Project Instructions**: the 20 core features for the Week 12 release, cited as **`W4`**.
+5. **Week 1 Customer Briefing**: the full system vision, cited as **`W1 §n`**.
 
 **Standing guidance from the prof:**
 - **Change can come at any time and in any form, not only as new features.** The product backlog changes constantly, so the design must absorb new or changed rules without rework. This is why §3 favours configurable rules, a single state machine, and event-driven side effects.
 - **Week 1 features that are not among the 20 core features stay in the product backlog at lower priority** (§8).
 
 **How rules are labelled:**
-- A rule with a `QA-`, `W4`, or `W1` citation is **customer-confirmed**.
+- A rule with a `QA3-`, `QA2-`, `QA-`, `W4`, or `W1` citation is **customer-confirmed**.
 - **[Team decision]**: the customer explicitly left this to us. We chose it, and it is ours to justify.
 - **[Assumption]**: not yet answered by the customer. Each one is listed in §9 to ask at the next Q&A.
 
@@ -34,6 +35,7 @@
 10. [Non-functional requirements](#10-non-functional-requirements)
 11. [Explicitly out of scope](#11-explicitly-out-of-scope)
 12. [Session 2 clarification answers](#12-session-2-clarification-answers)
+13. [Session 3 clarification answers](#13-session-3-clarification-answers)
 
 ---
 
@@ -42,22 +44,23 @@
 | Priority | Meaning | Contents |
 |---|---|---|
 | **P1 (Core)** | Must work end-to-end by Friday of Week 12 | The 20 core features (§6) |
-| **P2 (Enablers)** | Not listed as core features, but required by them or by explicit clarifications | Change history visible in the UI (QA-70) · coordinator auto-assignment engine (QA-5) · venue and equipment catalogue data entry · role dashboards (QA-51) · CI pipeline |
+| **P2 (Enablers)** | Not listed as core features, but required by them or by explicit clarifications | Change history visible in the UI (QA-70) · Event Coordinator Lead assignment queue (W7 CR-05, QA3-12) · venue and equipment catalogue data entry · role dashboards (QA-51) · CI pipeline |
 | **P3 (Backlog)** | Kept in the product backlog but not planned for release 1 | Week 1 features outside the core 20 (§8) |
 
 The release is judged on **coherent end-to-end workflows** (W4). This is the reference workflow it must demonstrate:
 
 1. Organiser drafts and submits a request.
-2. **The system auto-assigns** a coordinator.
+2. The request enters the **unassigned queue**, and an **Event Coordinator Lead assigns** a coordinator (QA3-12, QA3-37).
 3. The coordinator reviews it and **returns it for amendment**; the organiser edits and resubmits.
 4. The coordinator approves it, and planning begins.
-5. The coordinator runs a venue search and suitability check, then submits a booking request, which **tentatively holds** the venue.
-6. Venue staff approve the booking.
+5. The coordinator runs a venue search and suitability check for each venue the event needs, then submits a booking request per venue, which **tentatively holds** it (with an expiry) for its occupied interval, setup and turnaround included.
+6. Venue staff approve each booking.
 7. Equipment is requested and **fully reserved** by tech support.
-8. Mandatory arrangements are complete, so the coordinator confirms the event.
-9. Attendees register within the organiser's registration window.
-10. The organiser requests a significant change, the coordinator approves it, and **venue and equipment go back to staff for re-review** (nothing is automatically un-booked). Everyone affected is notified.
-11. Alternatively, the organiser requests cancellation, the coordinator approves it, reservations are freed, and attendees are notified.
+8. Every required arrangement is approved, so the coordinator **sends the event for the Operational Safety Check**; the **Safety Officer approves** it and the event is **Confirmed** (QA3-2, QA3-3).
+9. The coordinator starts **Preparation**; venue staff and tech support record preparation progress (QA3-45).
+10. Attendees register within the organiser's registration window.
+11. The organiser requests a significant change, the coordinator approves it and the event returns to Planning; **the coordinator decides which venue and equipment arrangements go back to staff for re-review** (nothing is automatically reset or un-booked, QA3-16, QA3-51). Everyone affected is notified.
+12. Alternatively, the organiser requests cancellation, the coordinator approves it, reservations are freed, and attendees are notified.
 
 ---
 
@@ -67,14 +70,16 @@ The release is judged on **coherent end-to-end workflows** (W4). This is the ref
 
 | Rule | Source |
 |---|---|
-| **ACC-R1:** There is **no system administrator role.** | QA-3, QA2-1 |
+| **ACC-R1:** There is **no system administrator role.** The Week 7 changes don't introduce one (QA3-18). | QA-3, QA2-1, QA3-18 |
 | **ACC-R2:** **Event Organisers and Attendees sign up themselves.** At sign-up they choose one of these two roles and nothing else. | QA-3, QA-4, QA2-1 |
-| **ACC-R3:** **Internal staff accounts (Coordinator, Venue Staff, Tech Support, Safety Officer, Event Coordinator Lead) are system defaults**: created by seed or migration, never through sign-up. | QA-3, QA2-1 |
+| **ACC-R3:** **Internal staff accounts (Coordinator, Venue Staff, Tech Support, Safety Officer, Event Coordinator Lead) are system defaults**: created by seed or migration, never through sign-up. | QA-3, QA2-1, QA3-18 |
 | **ACC-R4:** An account **may hold two or more roles** so one person can finish a task that spans both (for example Coordinator and Venue Staff). This **supersedes** Session 1's "strictly one role" (QA-15). How roles are managed in the UI is ours to choose. **[Team decision]** Implemented in SCRUM-74/75 as an explicit, session-scoped active-role switcher rather than a union-of-permissions model: `user_roles` holds the roles an account is allowed to act as; `profiles.role` is that account's default role for a brand-new login session; `session_active_roles` (keyed by the JWT `session_id`) holds the role the caller actively switched to for the current session, so a switch on one device never affects another concurrent session for the same account. A nav dropdown (`Nav.vue`) lets the user pick which held role to act as; the profile page (`ProfileView.vue`, SCRUM-78) separately lists every role the account holds, so a multi-role user has a persistent view of all their roles, not just whichever one is currently active. Access follows the **active** role at both layers (SCRUM-76): `require_roles` in the API and RLS's `private.current_user_role()` both read the role the session is acting as, so holding a role the session is not acting as never grants its access, whether the request comes through the API or straight to the database. `current_user_role()` returns the `session_active_roles` row for the JWT's `session_id` and this user, falling back to `profiles.role` when the session never switched or the token has no `session_id`. (Until SCRUM-76 this function read `profiles.role`, and this rule called that an intentional gap; it stopped being one once a switched role could differ from the default at the database.) Granting an account a second role has no in-app path yet — a system admin inserts directly into `user_roles` via SQL; building a grant UI/endpoint is a follow-up story. Sign-up doesn't add a role to an existing account either: an email that already has an account is refused (409, SCRUM-80), so an organiser who also wants to register for events as an attendee needs `attendee` granted the same way, or a second account with a different email. **[Assumption]** (SCRUM-80). Two composite foreign keys enforce "revoking a role ends access" at the database level rather than by convention alone: `session_active_roles (profile_id, role) → user_roles`, so revoking a role a session actively switched into invalidates that session immediately, and `profiles (id, role) → user_roles`, so `profiles.role` itself can never point at a role the account no longer holds — an admin revoking someone's *default* (never-switched) role must first repoint `profiles.role` to a role they still hold, in the same transaction, or the revoke is rejected. | QA2-24 (supersedes QA-15) |
 | **ACC-R5:** An Organiser records an organisation name at sign-up, which links them to a client profile. ConnectSphere maintains client profiles. **[Assumption]** Until a client-profile story exists, sign-up (SCRUM-80) requires the organisation name and stores it as plain text on `profiles.organisation_name`, with an optional phone number. Nothing links it to a client record yet. | QA-90 |
 | **ACC-R6:** The authentication mechanism is a team choice. We use Supabase Auth with email and password. **[Team decision]** Users sign in with their **email**; there is no separate username. SCRUM-48's acceptance criteria say "username and password", but Supabase Auth's `sign_in_with_password` is email-based and `profiles.email` is the unique identifying field. If the customer asks for a non-email username, that is a schema and auth-flow change, not a relabelled login field. | QA-50 |
 | **ACC-R7:** A signed-up account can log in immediately. The email address is **not** verified, and an email that already has an account is refused. **[Team decision]** Sign-up creates the account through the Supabase admin API, already confirmed ([ADR-0003](adr/0003-signup-via-admin-api-without-email-confirmation.md)). | SCRUM-80 AC3, AC6 |
 | **ACC-R8:** A password has at least 8 characters, including at least one letter and one digit. **[Team decision]** Checked by the API (`SignupRequest`) and the sign-up page, and matched by Supabase's minimum password length (8). "Digit" means a decimal digit (`str.isdecimal`, `\p{Nd}`), the same on both sides. If Supabase's own policy is ever stricter, its reason is returned as a 422 on `password`. | SCRUM-80 AC4 |
+| **ACC-R9:** The **Event Coordinator Lead does not administer accounts.** The Lead manages event assignments only: they don't create accounts, assign or change roles, or deactivate users, internal or external. External users keep registering themselves (ACC-R2); internal accounts stay with the existing setup (ACC-R3). | QA3-18, QA3-19, QA3-20, QA3-21 |
+| **ACC-R10:** **No active work may sit with an inactive coordinator.** Before a coordinator account is deactivated, a Lead reassigns every active event it holds to another coordinator (§6.5 LA-R8). **[Team decision]** There is no deactivation screen (ACC-R9), so the rule is enforced where deactivation happens: the database refuses to deactivate a coordinator who still holds an active event, naming the events. This **replaces** CR-101 AC6 ("their active events go back to the unassigned queue"). | QA3-22 |
 
 ### 2.2 Access matrix
 
@@ -104,11 +109,13 @@ Access depends on **role** *and* on the user's **relationship to the event** (W4
 
 **Rules**
 - **AUTH-R1:** Organisers never see events of unrelated clients (QA-25, QA-87). An organiser **views** their own requests **and their organisation's events** (QA2-4, which settles the cross-visibility gap left by QA-25), but **edits only their own requests** (QA2-4); each request has exactly one organiser (QA-38, QA-119). **[Team decision]** Organisation-level visibility shows the same external-safe detail as the owner sees (AUTH-R2); drafts stay private to their owner (DR-R2).
-- **AUTH-R2:** External users (Organisers and Attendees) never see internal planning details (QA-51). **[Team decision, CR-103/104]** Safety decision comments are readable only by the assigned coordinator and active Safety Officers in `event_safety_decisions`, never in status-history reasons or notifications. Organisers see only a fixed plain-language reason summary on planning, safety-review and confirmed events; attendees receive no decision comment. That covers coordinator notes, booking and equipment state beyond "arranged / pending", staff preparation notes, and internal-only history entries.
+- **AUTH-R2:** External users (Organisers and Attendees) never see internal planning details (QA-51). **[Team decision, CR-103/104]** Safety decisions are split (QA3-17): the **outcome and the officer's actionable comments** are shown to the organiser; **private internal notes** are readable only by the assigned coordinator and active Safety Officers, never by the organiser, in status-history reasons or in notifications. Attendees receive neither. *(This replaces the earlier team decision that organisers see only a fixed summary; see §6.6.1.)* That covers coordinator notes, booking and equipment state beyond "arranged / pending", staff preparation notes, and internal-only history entries.
 - **AUTH-R3:** Sign-up metadata can never grant a staff role (ACC-R2, ACC-R3). Enforced twice: `handle_new_user()` accepts only `event_organiser` or `attendee` from metadata (DEFECTS D2, fixed), and `POST /auth/signup` refuses any other role with 422 before Supabase is called (SCRUM-80).
 - **AUTH-R4:** A request for an existing resource the caller has no relationship to returns `404` for external users (which avoids revealing that the resource exists) and `403` for internal staff. **[Team decision]**
 - **AUTH-R5:** **Staff operate as pools.** All Venue Staff can act on all venues, and all Tech Support can act on all equipment requests. Allocation of staff to venues or clusters is not tracked (QA-44). Tech staff are a single pool with no skill tiers (QA-41).
 - **AUTH-R6:** Every endpoint, RLS policy and route guard authorises by the session's **active** role, never by every role the account holds (ACC-R4, SCRUM-76). A user acting as role Y is denied role-X-only resources even if the account also holds X. **[Team decision]** Enforced by the access-matrix tests in `backend/tests/test_active_role_access.py` and `frontend/src/router/__tests__/activeRoleAccess.spec.js`, and at the database by `supabase/verification/active_role_checks.sql`.
+- **AUTH-R7 (Event Coordinator Lead):** a Lead reviews assignment and active-event information and assigns or reassigns events to coordinators. A Lead **does not act as a coordinator** on any event: no approve, return, reject, confirm, cancel or send-for-safety-check, and no assigning an event to themselves to manage it (QA3-13, QA3-36, QA3-40). A Lead sees the shared unassigned queue and the active events in their supervisory scope (§6.5 LA-R2). An account that holds both roles acts as a coordinator only while its active role is coordinator (AUTH-R6).
+- **AUTH-R8 (Safety Officer):** a Safety Officer sees only the events routed to safety review and the events they reviewed, with the details and change history needed for the review (attendance, venue/layout, access and equipment changes). They have no access to unrelated event information. Every safety check records who reviewed it (QA3-49).
 
 ---
 
@@ -122,7 +129,9 @@ C4Context
 
   Person(organiser, "Event Organiser", "External client representative. Signs up, submits and tracks event requests")
   Person(attendee, "Attendee", "External participant. Signs up, registers for confirmed events")
-  Person(coordinator, "Event Coordinator", "Internal. Auto-assigned owner of an event's planning")
+  Person(lead, "Event Coordinator Lead", "Internal. Assigns and reassigns events to coordinators")
+  Person(coordinator, "Event Coordinator", "Internal. Lead-assigned owner of an event's planning")
+  Person(safety, "Safety Officer", "Internal. Operational Safety Check before confirmation")
   Person(venueStaff, "Venue Staff", "Internal. Manages venues and blocks, decides booking requests")
   Person(techStaff, "Technical Support Staff", "Internal. Manages equipment, reserves for events")
 
@@ -132,7 +141,9 @@ C4Context
   System_Ext(calendar, "Personal calendar apps", "P3: .ics export")
 
   Rel(organiser, cs, "Drafts, submits, amends, requests changes and cancellation, tracks status")
-  Rel(coordinator, cs, "Reviews, returns, approves, rejects; books venues; requests equipment; confirms")
+  Rel(lead, cs, "Works the unassigned queue; assigns and reassigns coordinators")
+  Rel(coordinator, cs, "Reviews, returns, approves, rejects; books venues; requests equipment; sends for safety check; starts preparation")
+  Rel(safety, cs, "Reviews safety checklist; approves, requests changes, or rejects a venue arrangement")
   Rel(venueStaff, cs, "Maintains venues and blocks; approves or rejects bookings; updates venue prep")
   Rel(techStaff, cs, "Maintains equipment; checks availability; reserves; updates technical prep")
   Rel(attendee, cs, "Browses, registers, withdraws, joins waitlist")
@@ -148,11 +159,11 @@ C4Context
 C4Container
   title Container Diagram: ConnectSphere
 
-  Person(user, "Any user", "Organiser, Coordinator, Venue Staff, Tech Support, Attendee")
+  Person(user, "Any user", "Organiser, Coordinator Lead, Coordinator, Venue Staff, Tech Support, Safety Officer, Attendee")
 
   System_Boundary(cs, "ConnectSphere") {
     Container(spa, "Web SPA", "Vue 3, Vite, Pinia, Vue Router, Tailwind", "Responsive UI for desktop and mobile. Role-based dashboards. Talks only to the API")
-    Container(api, "API Application", "Python 3.11, FastAPI (modular monolith)", "All business rules, role and relationship authorisation, workflow, auto-assignment and consistency logic")
+    Container(api, "API Application", "Python 3.11, FastAPI (modular monolith)", "All business rules, role and relationship authorisation, workflow, assignment queue and consistency logic")
     ContainerDb(db, "Relational Database", "PostgreSQL 15 (Supabase)", "Events, venues, bookings, equipment, registrations, notifications, change history. Enforces no overlapping venue holds and no over-reservation")
   }
 
@@ -193,7 +204,7 @@ C4Component
     Component(users, "users", "Router/Service/Repository", "Profiles, communication preferences, client organisations")
     Component(events, "events", "Router/Service/Repository", "Drafts, submission, review, returns, change and cancellation requests, event info")
     Component(lifecycle, "events.lifecycle", "Domain state machine", "Allowed transitions, guards, readiness check")
-    Component(assign, "events.assignment", "Domain policy", "Auto-assigns least-loaded coordinator")
+    Component(assign, "events.assignment", "Domain policy", "Unassigned queue; Lead assigns and reassigns (no auto-assignment, QA3-37)")
     Component(venues, "venues", "Router/Service/Repository", "Catalogue, blocks, search, suitability, calendar, holds and booking decisions")
     Component(suit, "venues.suitability", "Domain rule set", "Pluggable suitability rules returning pass/fail and reason")
     Component(equipment, "equipment", "Router/Service/Repository", "Catalogue, outages, requests, availability, reservations")
@@ -277,8 +288,10 @@ C4Component
 sequenceDiagram
   autonumber
   actor O as Organiser
+  actor L as Coordinator Lead
   actor C as Coordinator
   actor V as Venue Staff
+  actor S as Safety Officer
   actor T as Tech Support
   actor A as Attendee
   participant API as ConnectSphere API
@@ -286,7 +299,9 @@ sequenceDiagram
 
   O->>API: POST /events (save draft)
   O->>API: POST /events/{id}/submit
-  API->>DB: draft to submitted, auto-assign least-loaded coordinator, to under_review
+  API->>DB: draft to submitted (unassigned queue)
+  L->>API: POST /events/{id}/assignment (coordinator)
+  API->>DB: submitted to under_review, coordinator set, Lead recorded
   API-->>C: notify new assignment
   API-->>O: notify coordinator assigned
   C->>API: POST /events/{id}/return (message, flagged fields)
@@ -306,14 +321,21 @@ sequenceDiagram
   T->>API: GET availability, then POST reserve (full quantity only)
   API->>DB: reserve_equipment() locks and checks
   T->>API: PATCH technical readiness = ready
-  C->>API: POST /events/{id}/confirm
-  API->>DB: guard: booking approved, all equipment reserved, tech ready
+  C->>API: POST /events/{id}/send-for-safety-check
+  API->>DB: guard: every required booking approved, tech ready; planning to safety_review
+  API-->>S: notify safety review waiting
+  S->>API: POST /events/{id}/safety-decision (approve, checklist)
+  API->>DB: safety_review to confirmed
   API-->>O: notify event confirmed
+  C->>API: POST /events/{id}/start-preparation
+  API->>DB: confirmed to preparation
+  V->>API: PATCH venue booking preparation progress
   A->>API: POST /events/{id}/registrations
   API->>DB: register_attendee() within window and capacity
   O->>API: POST /events/{id}/change-requests (attendance 80 to 150)
   C->>API: POST /change-requests/{id}/approve
-  API->>DB: apply change, booking to re_review (no un-booking), event to planning
+  API->>DB: apply change, event to planning (nothing reset or un-booked)
+  C->>API: send booking for re-review (coordinator's decision, QA3-51)
   API-->>V: notify booking needs re-review
   API-->>A: notify event details changed
   V->>API: reject booking (capacity 100 below 150), hold released
@@ -517,12 +539,20 @@ erDiagram
 
 | ID | Guarantee | Implementation | Source |
 |---|---|---|---|
-| **DB-1** | **No two events hold or book the same venue for overlapping periods.** First-come-first-served, with no override. | `EXCLUDE USING gist (venue_id WITH =, occupied_period WITH &&) WHERE (status IN ('held','approved','re_review'))`, plus the `btree_gist` extension. `occupied_period = [starts_at, ends_at)`. Because the range is half-open and turnaround is zero, back-to-back events are allowed. | QA-6, QA-10, QA-113, QA-28, QA-62 |
+| **DB-1** | **No two events hold or book the same venue for overlapping periods.** First-come-first-served, with no override. | `EXCLUDE USING gist (venue_id WITH =, occupied_period WITH &&) WHERE (status IN ('held','approved','re_review'))`, plus the `btree_gist` extension. `occupied_period = [booking start − setup, booking end + turnaround)`, using the setup and turnaround copied onto the booking (§6.8 VC-R5). The range is half-open, so a later booking's setup may start exactly when the earlier booking's turnaround ends, but never overlap it. *(Until CR-100/21 land, setup and turnaround are zero and the range is the booking's own period.)* | QA-6, QA-10, QA-113, QA-62, QA3-5 (supersedes QA-28) |
 | **DB-2** | An attendee has at most one active registration per event. | Partial unique index on `(event_id, attendee_id) WHERE status IN ('registered','waitlisted','invited')` | [Team decision] |
 | **DB-3** | Registrations stop at capacity. | `register_attendee(event_id)` locks the event row, counts `registered`, and inserts `registered` or `waitlisted` | QA-107 |
 | **DB-4** | **Reservations are full or nothing** and never exceed availability. | `reserve_equipment(request_id)` locks the equipment-type row, computes availability (§6.16), and reserves the full quantity or raises an error | QA-125, QA-7 |
 | **DB-5** | Concurrent edits to an event are detected. | `events.version` optimistic lock | [Team decision] |
 | **DB-6** | Records are never hard-deleted once submitted. | Submitted events, bookings, reservations, registrations, and history are soft-deleted or kept. Only never-submitted drafts can be discarded. | QA-123 |
+
+**Target-schema changes from Session 3 (§13; not built yet).** The ERD above predates them:
+- `events.status` gains **`preparation`** after `confirmed` (§5, QA3-3).
+- `events` records the **assigning Lead** (`assigned_by`, the Lead who last assigned or reassigned it), which is the Lead's supervisory scope (§6.5 LA-R2, QA3-33, QA3-41). Assignments and reassignments are kept as history rows (from, to, by, when, reason).
+- `venues` gains **`setup_minutes`** and **`turnaround_minutes`** (non-negative, per venue, QA3-4, QA3-28). `venue_bookings` copies both at request time and gets its **own booking window** inside the event's schedule (QA3-23); `occupied_period` is derived from them (DB-1).
+- `venue_bookings` gains **`is_primary`** (at most one per event, set by the coordinator, QA3-26), **per-booking preparation progress** (QA3-50) and, for a replacement, a link to the booking it replaces (QA3-9).
+- Safety decisions hold a **structured checklist** per review (QA3-17), separate organiser-visible comments from private notes, and record the reviewer (QA3-49).
+- `EQUIPMENT_TYPES.location` is catalogue information only (where the stock is kept, for delivery planning); it never reserves or blocks a venue (QA3-34).
 
 **Design trade-off (equipment tracking):** the customer tracks equipment by type and quantity, though individual items do have IDs, and left the choice to us (QA-7). **[Team decision]** We track by **type + quantity**, with outages recorded as quantities over a period. This keeps availability a single arithmetic query, and it matches how the Week 4 brief phrases availability ("sufficient quantity"). If per-item tracking is needed later, an `equipment_items` table can be added under `equipment_types` without changing the reservation API.
 
@@ -530,14 +560,14 @@ erDiagram
 
 ## 5. Event lifecycle
 
-**Status set.** The answers conflict. QA-18 says "approved" and "confirmed" refer to the same thing, with process statuses requested / planning / confirmed / completed. QA-56 lists Approved as "initial check passed" and Confirmed as "venue/tech ready". QA-21 lists *approve* and *confirm* as separate coordinator actions. **We reconcile them** by treating *approve* as the action that moves an event into **`planning`**, which the UI labels "Planning". *Confirm* moves `planning` → `confirmed`. That gives two distinct actions (QA-21), a distinct "initial check passed" stage (QA-56), and no separate `approved` status (QA-18). **Session 2 confirmed this model** (QA2-8): the customer's status list is Under Review (coordinator evaluating or seeking clarification), Planning (feasibility check passed, venue and equipment planning underway), Confirmed/Approved as one status (essential venue and technical arrangements fully approved), Completed (event date/time passed), Rejected (venue or equipment unavailable, or a suitability issue), and Cancelled (organiser request, or the coordinator cancelled it). §9 Q1 is closed. **[Team decision]** Because the customer's "Approved" now means the final Confirmed status (QA2-8), no status other than `confirmed` is labelled or described as "approved" in the UI. `planning` was previously labelled "Approved – planning", which told organisers their event was settled before any venue or equipment was secured (the confusion W1 §2 lists: organisers "unsure whether an event … has been approved or confirmed"). Confirmation is tracked as its own story, SCRUM-82. **W7 CR-06 adds `safety_review` between `planning` and `confirmed`:** the coordinator sends a ready event for the Operational Safety Check (SCRUM-82), and only the Safety Officer's approval confirms it (CR-104). The coordinator no longer confirms directly. [Assumption] The customer's "preparation" stage is our `confirmed`. **Status (groundwork, `feature/scrum-82-send-for-safety-check`):** the status and its five transitions (`send_to_safety`, `safety_approve`, `safety_request_changes`, `safety_reject`, `safety_withdraw`) exist in `events/lifecycle.py`; `send_to_safety` is now used by SCRUM-82; CR-104 implements decision/withdrawal contracts on its branch (live verification pending), plus `approved_change` from confirmed to planning. AC6/AC10 callers remain unwired.
+**Status set.** The answers conflict. QA-18 says "approved" and "confirmed" refer to the same thing, with process statuses requested / planning / confirmed / completed. QA-56 lists Approved as "initial check passed" and Confirmed as "venue/tech ready". QA-21 lists *approve* and *confirm* as separate coordinator actions. **We reconcile them** by treating *approve* as the action that moves an event into **`planning`**, which the UI labels "Planning". *Confirm* moves `planning` → `confirmed`. That gives two distinct actions (QA-21), a distinct "initial check passed" stage (QA-56), and no separate `approved` status (QA-18). **Session 2 confirmed this model** (QA2-8): the customer's status list is Under Review (coordinator evaluating or seeking clarification), Planning (feasibility check passed, venue and equipment planning underway), Confirmed/Approved as one status (essential venue and technical arrangements fully approved), Completed (event date/time passed), Rejected (venue or equipment unavailable, or a suitability issue), and Cancelled (organiser request, or the coordinator cancelled it). §9 Q1 is closed. **[Team decision]** Because the customer's "Approved" now means the final Confirmed status (QA2-8), no status other than `confirmed` is labelled or described as "approved" in the UI. `planning` was previously labelled "Approved – planning", which told organisers their event was settled before any venue or equipment was secured (the confusion W1 §2 lists: organisers "unsure whether an event … has been approved or confirmed"). Confirmation is tracked as its own story, SCRUM-82. **W7 CR-06 adds `safety_review` between `planning` and `confirmed`:** the coordinator sends a ready event for the Operational Safety Check (SCRUM-82), and only the Safety Officer's approval confirms it (CR-104). The coordinator no longer confirms directly. **Session 3 confirmed the full Week 7 lifecycle** (QA3-2, QA3-3): Draft → Submitted (unassigned queue) → Assigned / Under Review → Planning → venue and technical arrangements approved → Pending Safety Check (`safety_review`) → **Confirmed** (only after the Safety Officer's approval) → **Preparation** → Completed, plus Returned, Rejected and Cancelled as separate outcomes. **Preparation is a separate status** that can't begin before safety approval (QA3-3); this replaces our earlier assumption that "preparation" was `confirmed` (§9 item 22). **[Team decision]** The assigned coordinator moves an event from `confirmed` to `preparation` with an explicit **Start preparation** action, which is recorded in history like Send for safety check; venue staff and tech support can record preparation progress only once the event is in `preparation` (QA3-45). A submitted request now **waits in `submitted`** (the unassigned queue) until a Lead assigns it, which moves it to `under_review` (QA3-2, W7 CR-05). **Status (groundwork, `feature/scrum-82-send-for-safety-check`):** the status and its five transitions (`send_to_safety`, `safety_approve`, `safety_request_changes`, `safety_reject`, `safety_withdraw`) exist in `events/lifecycle.py`; `send_to_safety` is now used by SCRUM-82; CR-104 implements decision/withdrawal contracts on its branch (live verification pending), plus `approved_change` from confirmed to planning. AC6/AC10 callers remain unwired.
 
 ```mermaid
 stateDiagram-v2
   [*] --> draft : save draft (organiser)
   draft --> [*] : discard draft (organiser)
   draft --> submitted : submit (organiser, basic info complete)
-  submitted --> under_review : auto-assign coordinator (system)
+  submitted --> under_review : assign coordinator (Event Coordinator Lead)
   under_review --> returned : return for amendment (coordinator)
   returned --> under_review : edit and resubmit (organiser)
   under_review --> planning : approve (coordinator)
@@ -547,14 +577,18 @@ stateDiagram-v2
   safety_review --> confirmed : approve (safety officer)
   safety_review --> planning : request changes / reject the safety arrangement (safety officer)
   safety_review --> planning : an arrangement stops being ready (system)
-  confirmed --> planning : significant change approved, arrangements re-reviewed (system)
+  confirmed --> preparation : start preparation (coordinator)
+  confirmed --> planning : change approved by coordinator (system)
+  preparation --> planning : change approved by coordinator (system)
   under_review --> cancelled : cancellation request approved (coordinator)
   returned --> cancelled : cancellation request approved (coordinator)
   planning --> cancelled : cancellation request approved (coordinator)
   confirmed --> cancelled : cancellation request approved (coordinator)
   planning --> cancelled : cancel with reason, no organiser request (coordinator)
   confirmed --> cancelled : cancel with reason, no organiser request (coordinator)
+  preparation --> cancelled : cancellation request approved, or cancel with reason (coordinator)
   confirmed --> completed : event end time passed (system)
+  preparation --> completed : event end time passed (system)
   rejected --> [*]
   cancelled --> [*]
   completed --> [*]
@@ -563,19 +597,20 @@ stateDiagram-v2
 | Transition | Actor | Guard (all must hold) | Side effects (domain events) | Source |
 |---|---|---|---|---|
 | draft → submitted | Owner organiser | Basic info complete (§6.2) | `EventSubmitted` | QA-19, QA-24 |
-| submitted → under_review | **System** | A coordinator exists (§6.5) | `CoordinatorAssigned`: notify coordinator and organiser | QA-5, QA-54 |
+| submitted → under_review | **Event Coordinator Lead**, acting as Lead | The event is in the unassigned queue; the chosen user is an active coordinator (§6.5) | `CoordinatorAssigned`: notify the coordinator and the organiser; record the Lead | W7 CR-05, QA3-12, QA3-37, QA3-43 |
 | under_review → returned | Assigned coordinator | Message not empty | `EventReturned`: notify organiser | QA-21, QA-22 |
-| returned → under_review | Owner organiser | Basic info still complete; resubmission note | `EventResubmitted`: notify coordinator | QA-22, QA-77 |
+| returned → under_review | Owner organiser | Basic info still complete; resubmission note | `EventResubmitted`: notify coordinator. The request stays with **its current coordinator**; it never goes back to the unassigned queue (a Lead may reassign it, §6.5) | QA-22, QA-77, QA3-15 |
 | under_review → planning | Assigned coordinator | Status is `under_review` (so no open return) | `EventApproved`: notify organiser | QA-21, QA-22 |
 | under_review / planning → rejected | Assigned coordinator | Reason not empty | `EventRejected`: notify organiser. From `planning`: frees any held or approved booking and reservations. | QA-23, QA-34, QA-83, QA-95, QA2-6, QA2-8 |
-| planning → safety_review | Assigned coordinator, acting as coordinator | **Readiness (§6.6):** every active venue booking `approved` and none flagged; technical status Ready or Not required. **No override.** | `EventSentForSafetyCheck`: notify Safety Officers and organiser **[Team decision]**: matches other coordinator transitions and keeps the organiser informed (W1 §2) | SCRUM-82, W7 CR-06, QA-17, QA-49, QA-106, QA-118 |
+| planning → safety_review | Assigned coordinator, acting as coordinator | **Readiness (§6.6):** every required venue booking `approved` and none flagged (QA3-24); technical status Ready or Not required. **No override.** | `EventSentForSafetyCheck`: notify Safety Officers and organiser **[Team decision]**: matches other coordinator transitions and keeps the organiser informed (W1 §2) | SCRUM-82, W7 CR-06, QA-17, QA-49, QA-106, QA-118 |
 | safety_review → confirmed | Safety Officer | Status is `safety_review` | `EventConfirmed`: notify organiser, coordinator, venue staff, tech support | CR-104 AC1, W7 CR-06 |
-| safety_review → planning | Safety Officer: request changes (comment) or reject the safety arrangement (reason) | Comment or reason not empty | Arrangements marked for re-review or replacement; notify coordinator | CR-104 AC2, AC3 |
+| safety_review → planning | Safety Officer: request changes (comment) or reject a venue's safety arrangement (reason) | Comment or reason not empty | **Nothing is reset or released automatically**: the issue and reason are shown to the coordinator, who decides what to change (QA3-46). A safety rejection rejects the **venue arrangement**, not the event (QA3-47). Notify coordinator | CR-104 AC2, AC3, QA3-46, QA3-47 |
 | safety_review → planning | System | An arrangement stopped being ready | Notify coordinator and Safety Officers | CR-104 AC10 |
-| confirmed → planning | System | A significant change was approved (§6.19) | `EventReopened` | QA-2, QA-32, QA-98 |
+| confirmed → preparation | Assigned coordinator, acting as coordinator | Status is `confirmed` | `PreparationStarted`: notify venue staff and tech support; unlocks their preparation updates **[Team decision]** | QA3-3, QA3-45 |
+| confirmed / preparation → planning | System, when the coordinator accepts a change (§6.19) | A change affecting the confirmed event was approved by the coordinator | `EventReopened`. No arrangement is reset; the coordinator decides which go back for review, and the event must pass the safety check again before it is re-confirmed | QA-2, QA-32, QA-98, QA3-16, QA3-51 |
 | non-terminal → cancelled | Assigned coordinator, approving the organiser's cancellation request (the coordinator may also **reject** the request, §6.19) | An open cancellation request exists | `CancellationApproved`: free bookings and reservations, cancel registrations, notify everyone involved | QA-12, QA-33, QA-114, QA2-6 |
-| planning / confirmed → cancelled | Assigned coordinator, **without** an organiser request | Reason not empty; `now() < starts_at` (LC-R5) | `EventCancelled`: same side effects as `CancellationApproved` | QA2-5, QA2-6 |
-| confirmed → completed | **System**, once the event's end time has passed | `now() ≥ ends_at` | `EventCompleted` | W1 Step 14, QA2-8 |
+| planning / confirmed / preparation → cancelled | Assigned coordinator, **without** an organiser request | Reason not empty; `now() < starts_at` (LC-R5) | `EventCancelled`: same side effects as `CancellationApproved` | QA2-5, QA2-6 |
+| confirmed / preparation → completed | **System**, once the event's end time has passed | `now() ≥ ends_at` | `EventCompleted` | W1 Step 14, QA2-8 |
 
 - **LC-R1:** Any transition not in the table returns `409 Conflict` with the message `"Cannot <action> an event that is <status>"`.
 - **LC-R2:** Every transition writes `event_status_history` and a `change_history` entry, both **visible in the UI** (QA-70).
@@ -583,7 +618,8 @@ stateDiagram-v2
 - **LC-R3:** Status display labels live in one mapping, so renaming "planning" is a one-line change.
 - **LC-R4:** There are no SLA timers or forced review deadlines on any status (QA-55, QA-68, QA2-26).
 - **LC-R5:** **Rejection and cancellation are different.** Rejection is for requirements that cannot be met *before* the event is confirmed; cancellation applies to events already in planning or confirmed, either on the organiser's request or by the coordinator directly (QA2-6). The customer set **no time boundary** on coordinator cancellation and asked us to choose one with a rationale (QA2-5). **[Team decision]** A coordinator can cancel until the event's start time; once it has started there is nothing left to release, so the event runs to `completed`.
-- **LC-R6:** Completion is **automatic**: a scheduled job marks `confirmed` events `completed` once `ends_at` has passed (QA2-8, "Completed: event date/time passed"). **[Team decision]** The job runs hourly; no manual action is needed.
+- **LC-R6:** Completion is **automatic**: a scheduled job marks `confirmed` and `preparation` events `completed` once `ends_at` has passed (QA2-8, "Completed: event date/time passed"). **[Team decision]** The job runs hourly; no manual action is needed.
+- **LC-R7:** **Nothing resets automatically.** Neither an approved change, a safety decision nor a venue becoming unavailable resets venue or equipment sign-offs, or releases them. The coordinator reviews the situation and decides the next action; a replacement venue goes through the full request and approval process (QA3-30, QA3-46, QA3-51, QA3-52).
 
 ---
 
@@ -626,7 +662,7 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 
 **Rules**
 - **ER-R1:** Submit validates everything and returns **all** field errors at once.
-- **ER-R2:** SCRUM-8 submission changes the draft to `under_review`. Coordinator assignment and submission notifications are separate scope owned by SCRUM-12 / SCRUM-68; until those stories land, `coordinator_id` remains null and the organiser sees that assignment is pending.
+- **ER-R2:** SCRUM-8 submission changes the draft to `under_review`. Coordinator assignment and submission notifications are separate scope owned by SCRUM-12 / SCRUM-68; until those stories land, `coordinator_id` remains null and the organiser sees that assignment is pending. **Superseded by Session 3 (QA3-2):** a submitted request waits in `submitted`, the Lead's unassigned queue, and moves to `under_review` only when a Lead assigns it (§5, §6.5). SCRUM-12 makes that change. Until a coordinator is assigned, the organiser's "Event Coordinator" row reads **"Unassigned"**, then the coordinator's name (QA3-42).
 - **ER-R3:** After submission the organiser can't edit directly. They edit only when the request is **returned** (§6.4), or they raise a change request (§6.19). Organisers who "submit and request amendments later" follow this route (QA-94).
 - **ER-R4:** Submitting an already-submitted event returns `409`, so a double-click can't create a duplicate.
 
@@ -676,26 +712,32 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 - **Given** a returned request, **when** I try to create a venue booking for it, **then** I'm blocked with "Requirements are still being amended."
 - **Given** I reject with a reason, **then** the organiser sees "Rejected" with the reason, and no resubmit option exists.
 
-### 6.5 Coordinator assignment *(SCRUM-12, SCRUM-68)*
+### 6.5 Coordinator assignment *(SCRUM-12, SCRUM-81, CR-101; W7 CR-05)*
 
-> **Superseded in part by the Event Coordinator Lead (customer clarification of 2026-10-05, QA row to be added).** The customer has introduced a new internal role, the **Event Coordinator Lead**. Newly submitted requests are no longer assigned directly to a coordinator: they enter an **unassigned queue** that the Lead can view. The Lead reviews basic event information, assigns a suitable coordinator, and can reassign. Coordinators manage only the events assigned to them; the Lead can view all coordinator assignments and the active events under their supervision. Relevant users are notified of assignments and reassignments.
->
-> This replaces automatic assignment (AS-R1, AS-R3) and the "Awaiting assignment" alert on every coordinator dashboard (AS-R5), and it contradicts "no manager exists (QA-3)" below. The rules beneath are kept for the record until the story that builds the Lead role rewrites this section. Already applied: the coordinator dashboard no longer shows or receives an unassigned count (SCRUM-72, §6.21). Still open: §9 item 19.
+**Manual assignment by an Event Coordinator Lead replaces automatic assignment for new requests** (W7 CR-05, QA3-12, QA3-37). There is no auto-assignment and no suggested coordinator. The Session 1–2 rules (least-loaded auto-assignment AS-R1/AS-R3, coordinator-initiated handover AS-R4, the "Awaiting assignment" alert AS-R5, QA-5, QA2-7) are **superseded**; strictly one coordinator per event (AS-R2) and "the previous coordinator loses action rights" (AS-R6) still hold as LA-R5 and LA-R6.
 
-**Automatic assignment** (QA-5, QA-54, QA-79, QA2-7). Coordinators don't claim requests and no manager exists (QA-3). The customer named "round-robin or load-based" and left the detailed criteria to us (QA2-7).
-
-- **AS-R1:** On submission, the system assigns the **least-loaded active coordinator**. Load is the number of assigned events in `under_review`, `returned`, `planning`, or `confirmed`. Ties go to whoever was least recently assigned, then to the lowest ID. **[Team decision]** QA-54 says "by system load/availability", and schedules are out of scope (QA-14), so load is the measure.
-- **AS-R2:** **Strictly at most one coordinator per event** (QA-5, QA2-7).
-- **AS-R3:** Assignment and the status change happen in one transaction, with a lock on the choice, so a burst of submissions spreads across coordinators instead of all going to the same one.
-- **AS-R4 (reassignment, W4, QA2-7):** reassignment is **initiated by the assigned coordinator** after agreeing offline with a colleague. They select "Hand over", pick the receiving coordinator, and give a reason. The system reassigns and notifies the new coordinator, the previous one, and the organiser. **[Team decision]** If no receiver is picked, AS-R1 re-runs **excluding** the current coordinator. When a coordinator account is deactivated, all of their non-terminal events are reassigned the same way.
-- **AS-R5:** If no active coordinator exists, the event stays `submitted` and appears in an "Awaiting assignment" alert on every coordinator dashboard. The next coordinator activation, or the next submission, triggers assignment. **[Team decision]**
-- **AS-R6:** After a handover, the previous coordinator immediately loses action rights (read-only).
+**Rules**
+- **LA-R1 (queue):** a submitted request enters the **common unassigned queue** (status `submitted`). Drafts never appear in it (DR-R2). The queue shows each event's basic information (name, date, expected attendance, venue needs), oldest first (SCRUM-12 AC10).
+- **LA-R2 (Leads and scope):** the system supports **one or more Leads**, and no single Lead account is hard-coded. At least one Lead must be available to work the common queue (QA3-33). Every Lead sees the **whole unassigned queue**. Each Lead also sees the **active events they assigned or last reassigned** (QA3-41). That is their recorded supervisory scope (QA3-33), held on the event as the assigning Lead. **[Team decision]** Events auto-assigned before Week 7 have no assigning Lead, so they are visible to every Lead until one reassigns them, which brings them into that Lead's scope. *This replaces CR-101 AC5 ("Every Lead sees all coordinators and events").*
+- **LA-R3 (the Lead is not a coordinator):** a Lead reviews assignment and active-event information and assigns or reassigns, but never acts as a coordinator on an event, including on an event they might assign to themselves (QA3-13, AUTH-R7).
+- **LA-R4 (assign):** only an active user holding the Event Coordinator role can be assigned. Assigning moves the event `submitted` → `under_review` (§5).
+- **LA-R5 (one coordinator):** each event has exactly one coordinator. An event is never both assigned and queued.
+- **LA-R6 (reassign, Lead only):** **only a Lead changes an assignment** (QA3-35, QA3-39). A coordinator may **ask** the Lead to reassign an event but can't hand it over directly (QA3-12). After reassignment, the previous coordinator immediately loses action rights.
+  - **[Team decision]** The coordinator's request is a "Request reassignment" action with a reason, which notifies the Lead in whose scope the event sits (every Lead for an event without one) and appears in their view. The Lead decides; the request changes nothing itself.
+- **LA-R7 (records stay with the event):** on reassignment, every event-linked record stays attached to the event and becomes available to the new coordinator: pending venue and equipment requests, holds, comments and history (QA3-14).
+- **LA-R8 (deactivation):** before a coordinator is deactivated, a Lead reassigns every one of their active events (QA3-22, ACC-R10). Active work is never left with an inactive user.
+- **LA-R9 (returned requests):** a returned request stays with its coordinator, and resubmission goes back to that coordinator, not to the queue. The Lead can reassign it if staffing has changed (QA3-15).
+- **LA-R10 (existing assignments):** events already auto-assigned before Week 7 keep their coordinator. Nothing is reset. A Lead can reassign them when needed, notifying the affected users (QA3-38).
+- **LA-R11 (notifications):** a new assignment notifies the **newly assigned coordinator and the organiser**. A reassignment notifies the **new coordinator, the previous coordinator and the organiser** (QA3-14, QA3-43). The Lead's action is always recorded in history (who, when, from, to). **[Team decision]** Other Leads are not notified: the customer left it to us (QA3-43), and scope is per Lead (LA-R2).
+- **LA-R12 (organiser view):** before assignment, the organiser sees the coordinator as **"Unassigned"**; afterwards they see the coordinator's name (QA3-42).
 
 **Acceptance criteria**
-- **Given** coordinators A (3 active events) and B (1 active event), **when** an organiser submits, **then** B is assigned.
-- **Given** A and B both have 2 active events and B was assigned most recently, **when** an organiser submits, **then** A is assigned.
-- **Given** 10 simultaneous submissions and 2 equally loaded coordinators, **then** each event has exactly one coordinator, and the split is 5/5 (±1).
-- **Given** I hand over an event, **then** another coordinator is assigned, all three parties are notified, and I get `403` on actions.
+- **Given** an organiser submits a request, **then** it is `submitted` and in the unassigned queue, no coordinator is set, and no coordinator is notified.
+- **Given** a queued event, **when** a Lead assigns coordinator B, **then** the event is `under_review`, B and the organiser are notified, and the history records the Lead, B and the time.
+- **Given** an event Lead L1 assigned, **when** Lead L2 opens their active-events view, **then** the event is not listed; it is listed for L1.
+- **Given** I am an assigned coordinator, **when** I try to reassign my event directly through the API, **then** I get `403`; I can only request reassignment.
+- **Given** a Lead reassigns my event to C, **then** C, I and the organiser are notified, C sees the pending holds, requests and comments, and I get `403` on actions.
+- **Given** I am acting as Lead, **when** I try to approve, return or reject any event, **then** I get `403`.
 
 ### 6.6 Event status management and readiness *(SCRUM-13: 65, 68; SCRUM-82, W7 CR-06)*
 
@@ -710,12 +752,13 @@ See §5 for the state machine.
 
 | Item | Ready when | Who updates it |
 |---|---|---|
-| Venue | At least one active booking (`held`, `approved`, `re_review`), and every active booking `approved` and not flagged Affected, Conflict, Unsuitable or Expired (SCRUM-82 AC9, AC10). The at-least-one rule is an **[Assumption]**, §9 item 23. | Venue staff, by approving the booking (QA-128). The flags come from CR-94, CR-95 and CR-99. |
+| Venue | At least one active booking (`held`, `approved`, `re_review`), and **every required venue booking** `approved` and not flagged Affected, Conflict, Unsuitable, Safety rejected or Expired (SCRUM-82 AC9, AC10, QA3-24). Each booking has its own approval and availability state; the event-level item is the aggregate (QA3-50). If one venue is rejected, the event stays in `planning` while the coordinator arranges a replacement or revises the plan, and the approved venues stay on the event (QA3-24). The at-least-one rule is an **[Assumption]**, §9 item 23. | Venue staff, by approving the booking (QA-128). The flags come from CR-94, CR-95 and CR-99. |
 | Technical status | `ready` or `not_required` (SCRUM-82 AC1, AC3). Read only through `events.service.technical_status(row)`, which reads `technical_readiness` until story 24 derives it from equipment lines (24 AC11: no lines gives `not_required`). Equipment is not a separate item: the 8 Oct clarification folds it into 24's technical status, so it isn't checked twice. | Tech support (QA-128), through story 24 |
 | Programme, registration setup | Shown for information only; **not blocking** (QA-17, QA-133). Programmes arrive as attachments with non-core story 89. | Organiser or coordinator |
 
 - **RD-R1:** "Send for safety check" is enabled only when every blocking item is ready. The server repeats the check and names every missing item. **No override** (QA-118). Only the Safety Officer's approval confirms an event (CR-104).
-- **RD-R2:** Venue staff may add venue preparation notes, and tech support may add technical preparation notes (QA-81). These notes are internal only (AUTH-R2), including on the organiser's confirmed arrangements.
+- **RD-R2:** Venue staff record **venue preparation progress per venue booking**, and tech support record technical preparation progress (QA-81, QA3-50). These updates are **available only once the event is in `preparation`**, after the Safety Officer's approval, not after the venue and technical sign-offs (QA3-45). Preparation notes are internal only (AUTH-R2), including on the organiser's confirmed arrangements.
+- **RD-R4:** An event can't be confirmed or prepared until every required venue and technical arrangement is ready **and** safety is approved (QA3-50).
 - **RD-R3:** Tech support approve or reject each request on the availability of staff and equipment **as requested** (QA2-12). An event with no equipment lines has technical status `not_required` and is not blocked by the technical check (SCRUM-82 AC3). On-site support is no longer tracked separately (8 Oct clarification).
 - The readiness check runs before the transactional send, and booking changes don't bump the event's version, so an arrangement can stop being ready in between. The recovery is CR-104 AC10 (IMPLEMENTATION_MAP §5).
 
@@ -724,6 +767,8 @@ See §5 for the state machine.
 - **Given** a held, re-review or flagged booking, or no active booking, **when** I send for safety check directly through the API, **then** it returns `409` naming each missing item, and nothing changes.
 - **Given** all blocking items are ready, **when** I send for safety check as the assigned coordinator acting as coordinator, **then** the status is `safety_review`, the history records me and the time, and the organiser and every Safety Officer are notified.
 - **Given** an event in `safety_review`, **when** the Safety Officer approves it (CR-104), **then** the status is `confirmed`, and the organiser, venue staff, and tech support are notified. No coordinator action reaches `confirmed`.
+- **Given** a `confirmed` event, **when** venue staff try to record preparation progress, **then** it is refused until the coordinator starts preparation; **given** a `preparation` event, **then** they can record it per venue booking (QA3-45, QA3-50).
+- **Given** an event with two required venues where one is approved and one rejected, **when** I send for safety check, **then** it is blocked naming the rejected venue, and the approved booking remains on the event (QA3-24).
 - **Given** any API call that attempts a transition not in §5, **then** it returns `409` and the status is unchanged.
 
 ### 6.6.1 Safety queue and decisions (CR-103 / CR-104)
@@ -733,18 +778,25 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 | Lifecycle action | Source → target | Behaviour |
 |---|---|---|
 | `safety_approve` | safety_review → confirmed | Safety Officer only; active bookings exist and all are approved, technical readiness passes; organiser, assigned coordinator, venue staff and tech support notified, deduplicated and excluding actor |
-| `safety_request_changes` | safety_review → planning | Required comment; selected approved bookings and selected reserved equipment lines marked re_review; pending equipment remains unchanged; coordinator notified |
-| `safety_reject` | safety_review → planning | Required reason; selected bookings released and venue IDs recorded, selected equipment lines rejected; coordinator notified; event not rejected |
+| `safety_request_changes` | safety_review → planning | Required comment; the comment names the arrangements it concerns; **no booking or equipment line changes status** (QA3-46): the coordinator decides what to change; coordinator notified |
+| `safety_reject` | safety_review → planning | Required reason; rejects the **venue arrangement** for its suitability for this event, not the event (QA3-47); the rejected booking is flagged **Safety rejected** (counts as not ready) and **not released** **[Assumption]**, §9 item 33; the issue and reason stay visible to the coordinator; coordinator notified |
 | `safety_withdraw` | safety_review → planning | System return after an arrangement stops being ready; coordinator and Safety Officers notified |
-| `approved_change` | confirmed → planning | System return after approved attendance/venue/equipment change; coordinator notified |
+| `approved_change` | confirmed / preparation → planning | System return after the coordinator accepts a change affecting the confirmed event (QA3-16); coordinator notified |
 
 **[Team decision]** Only the active Safety Officer role sees the queue/review and decides; the assigned coordinator also reads decision history. The queue uses the most recent entry into review, oldest first with event ID tie-breaker. Resubmission moves an event to its new position. The review shows attendance, event accessibility needs, venue capacity/layout/accessibility and attendance-to-capacity, equipment lines and previous decisions. Crowd-movement concerns are recorded in the decision comment. Emergency access/restrictions (CR-100) and exit confirmation (24 AC10) remain null/“Not recorded” until those stories land; this does not satisfy their dependent criteria.
 
-**[Team decision]** Every decision records who/when and affected IDs in private decision history (AUTH-R2); system withdrawals record a reason code and no actor/comment. Approve comment is optional; request-changes/reject text is required, trimmed to 1–1000 characters. The organiser sees only “Approved by the Safety Officer.”, “The Safety Officer asked for changes to the arrangements.”, “The Safety Officer did not accept an arrangement; it must be replaced.”, or “An arrangement changed, so the event went back to planning.” Officer text never enters notifications or public history. There is no timeout/escalation. Coordinator sends corrected arrangements for safety check again using SCRUM-82; there is no direct coordinator confirmation.
+**Session 3 (QA3-17, QA3-46, QA3-47, QA3-49) changes the approved design.** CR-104's branch was built to the 9 Oct design and must be reworked where the two differ: no automatic re_review or release on a safety decision, organiser-visible actionable comments, and the structured checklist. See IMPLEMENTATION_MAP.
+- **SF-R1 (checklist):** the review is a **structured checklist** of the factors in the change notice: attendance/capacity, layout, emergency access, accessibility, equipment placement and venue restrictions. It carries comments and **one outcome**: approve, reject the safety arrangement, or request changes (QA3-17). **[Team decision]** Each factor is marked Satisfactory, Concern or Not applicable with an optional note. The venue-specific factors (capacity, layout, emergency access, accessibility, restrictions) are answered per venue booking, so a rejection names the venue it rejects (QA3-47).
+- **SF-R2 (what the organiser sees):** the organiser sees the **outcome and the actionable comments**, not the officer's **private internal notes** (QA3-17). The officer writes the two separately. This **replaces** the team decision below that organisers see only a fixed summary.
+- **SF-R3 (no automatic reset):** after "request changes" or a rejection, the event stays in planning until every approval is done again. Nothing is reassigned or reset automatically; the coordinator makes the changes they judge necessary (QA3-46).
+- **SF-R4 (rejection scope):** a safety rejection rejects the **venue** for its suitability for the event, not the event request. The event stays in planning with the safety issue and reason visible to the coordinator, who may revise the arrangement (for example the layout) or replace the venue, then send it for another safety review. Rejecting or cancelling the event is a separate coordinator decision under the normal process (QA3-47). This answers §9 item 25: revision is allowed, so replacement isn't mandatory.
+- **SF-R5 (access):** reviews are routed through the safety-review queue. A Safety Officer sees the event details and the relevant change history (attendance, venue/layout, access and equipment changes) for events in the queue or that they reviewed, and nothing else. Each check records who reviewed it (QA3-49, AUTH-R8).
+
+**[Team decision, 9 Oct; organiser-visibility part superseded by SF-R2]** Every decision records who/when and affected IDs in private decision history (AUTH-R2); system withdrawals record a reason code and no actor/comment. Approve comment is optional; request-changes/reject text is required, trimmed to 1–1000 characters. ~~The organiser sees only “Approved by the Safety Officer.”, “The Safety Officer asked for changes to the arrangements.”, “The Safety Officer did not accept an arrangement; it must be replaced.”, or “An arrangement changed, so the event went back to planning.” Officer text never enters notifications or public history.~~ There is no timeout/escalation. Coordinator sends corrected arrangements for safety check again using SCRUM-82; there is no direct coordinator confirmation.
 
 **[Team decision, CR-103 AC7, added 9 Oct]** The Safety Officer dashboard shows how many events are waiting and how long the oldest has waited, how many decisions in the last 30 days were approvals, requested changes or rejected arrangements (system withdrawals are listed but not counted), and those decisions newest first with event, outcome, decider ("System" for withdrawals), time and comment. Every active Safety Officer sees every officer's decisions. Only the active Safety Officer role can read it.
 
-**[Assumption]** Rejecting an arrangement requires replacement rather than adjustment (CR-104 AC3), pending the project consult. Rebooking the same venue is not blocked by this delivery; rejected venue IDs and a coordinator warning preserve the context. See §9.
+~~**[Assumption]** Rejecting an arrangement requires replacement rather than adjustment (CR-104 AC3), pending the project consult.~~ **Answered by QA3-47 (SF-R4):** the coordinator may revise or replace. Rebooking the same venue is therefore not blocked.
 
 **[Team decision / delivery boundary]** CR-104 delivers `return_to_planning` from both review and confirmed with no callers wired. AC6/AC10 are not complete until CR-94/95, 85, 24 and 37 invoke it after their own record changes. A return changes no bookings/equipment itself. Technical readiness still has a read/transition race until story 24; no broader fix is included.
 
@@ -761,8 +813,9 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 | draft | Everything | – | – |
 | submitted / under_review | Change request only | Ordinary fields directly | – |
 | returned | Everything (resubmit) | – | – |
-| planning | Change request only | Ordinary fields directly. Significant fields **directly, with an impact confirmation dialog**; the same re-review rules as §6.19 apply. | Their preparation sections |
-| confirmed | Change request only | Ordinary fields directly. Significant fields only by approving a change request (post-confirmation changes need re-request/review, QA-2). | Their preparation sections |
+| planning | Change request only | Ordinary fields directly. Significant fields **directly, with an impact confirmation dialog**; the same re-review rules as §6.19 apply. | – (preparation opens in `preparation`, QA3-45) |
+| confirmed | Change request only | Ordinary fields directly. Significant fields only by approving a change request (post-confirmation changes need re-request/review, QA-2, QA3-16). | – (QA3-45) |
+| preparation | Change request only | As confirmed | Their preparation sections, per venue booking for venue staff (QA3-45, QA3-50) |
 | terminal | Read-only | Read-only | Read-only |
 
 **Change history** is visible in the UI (QA-70, W1 §8f):
@@ -796,7 +849,8 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - **VC-R2:** Changing capacity, facilities, layouts, or operating hours does **not** automatically change existing bookings (QA-117). The system **lists upcoming bookings that may be affected** in a warning before saving, and after saving notifies those events' coordinators and venue staff. Resolution is manual.
 - **VC-R3:** Every edit is recorded in history (§6.7).
 - **VC-R4 [Team decision, SCRUM-67]:** The profile shows **when** it was last updated and **by whom**. "When" is `venues.updated_at`, maintained by the SCRUM-39 trigger. "By whom" is `venues.updated_by`, a **last-writer stamp, not an audit trail** — the per-field change history VC-R3 asks for is §6.7 / SCRUM-14 and needs its own table. `updated_by` is null for every venue edited before the column existed and for an editor whose account has since been removed; the UI says "Not recorded" in both cases rather than naming anyone. It is written by the venue edit path (SCRUM-63/64), not by a trigger: every API write uses the secret key, so the database cannot see which signed-in user it is acting for.
-- **VC-R5 [Team decision, SCRUM-67]:** The profile **states the setup/turnaround time** rather than leaving the reader to infer it from bookings that sit back to back. The figure is zero (QA-28, VS-R1) and is served on the response (`turnaround_minutes`) instead of being hard-coded in the SPA, so the day the customer asks for a real buffer, §6.11 and §6.14 change in one place and the profile follows.
+- **VC-R5 [Team decision, SCRUM-67]:** The profile **states the setup/turnaround time** rather than leaving the reader to infer it from bookings that sit back to back. The figure is served on the response (`turnaround_minutes`) instead of being hard-coded in the SPA. It is zero until CR-100 lands.
+- **VC-R9 (setup and turnaround, W7 CR-01, CR-100):** Venue Staff maintain each venue's **setup** and **turnaround** time. Each is a **non-negative** number of minutes (0 is valid), set **per venue** independently, so venues may differ (QA3-4, QA3-28). The customer set no maximum. There is **no per-event adjustment**: every booking at a venue uses that venue's figures, and nobody can lengthen them for one event's needs (QA3-4). **Once a venue booking is confirmed, its setup and turnaround can't change** (QA3-4, QA3-6). **[Team decision]** Each booking **copies the venue's setup and turnaround when it is requested** and keeps them. Venue Staff can still edit the venue's figures, but that changes only bookings requested afterwards, so an existing booking's occupied interval never moves and a buffer change can't create a conflict. This **replaces** CR-100 AC5 and CR-94 AC2's setup/turnaround Conflict flag.
 - **VC-R7 [Team decision, SCRUM-67]:** The profile leads with a **photo slideshow** and puts the detail sections behind **tabs** (Capacity & hours, Facilities & access, Upcoming bookings, Blocks). Tabs hide content by design, which is a real cost for VC-R6, so the two time-based tabs **carry a count in the tab itself** — a closed tab never implies there is nothing behind it. The attribute tabs carry no count, because every venue has capacity and hours and a `0` there would read as "none recorded". Inside the bookings tab the three statuses of VC-R6 are **themselves tabs**, each labelled with its own count, and the venue's total is stated once above them so it is never hidden. That tab row **opens on the first status that has bookings**, not always Confirmed: a venue whose only commitment is a hold would otherwise open on an empty Confirmed panel, which reads as "nothing booked".
 - **VC-R8 [Team decision, SCRUM-67]:** There is **no venue photo data**: no column, no `venue_photos` table, and no storage bucket on the project. `VenueDetail.photos` is declared and always empty, and stock imagery is not used — this page exists so staff can *verify current information*, so invented photos would defeat its purpose (the same failure as DEFECTS D8's fabricated dashboard metrics). Instead the carousel shows **one schematic per layout the venue supports**, drawn from `venue_layouts`, which is data we hold. Every such slide is labelled **"Schematic arrangement — not this room's floor plan"**, because the system does not hold the venue's geometry and a generic diagram must not be read as a survey of the actual room. Where the capacity shown is the venue-wide figure rather than one measured for that layout (VS-R6), the slide says so. Real photos, once they exist, lead the carousel and the schematics follow. A photo library is **§8 backlog** and needs a table, a bucket with RLS, and an upload path in SCRUM-63/64.
 - **VC-R6 [Team decision, SCRUM-67]:** The profile's booking summary covers **every booking that occupies the venue** (§6.14), grouped as **confirmed** (`approved`), **tentative** (`held`) and **under re-review** (`re_review`). `re_review` is its own group: counting it as confirmed would overstate what is agreed, and as tentative would understate it. Each row names its event, falling back to a short event id when the event record cannot be read (`CONTEXT.md`: Hold, Booking).
@@ -822,6 +876,13 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - **CAL-R2:** A block's end is exclusive. The venue is available from that instant.
 - **CAL-R3:** A blocked period makes the venue unavailable for *new* holds (§6.14).
 
+**When a booked venue becomes unavailable** (W7 CR-02, CR-95; QA3-7 to QA3-9, QA3-52, QA3-53)
+- **CAL-R4:** the affected booking is flagged, and the **coordinator reviews the unavailability and decides the next action**. Nothing is reset automatically (LC-R7). If the coordinator decides on a new venue, the event goes back to `planning`, and the new venue request goes through the **full request and approval process**, like any new booking (QA3-30, QA3-52).
+- **CAL-R5:** the **organiser is notified** that their venue arrangement is affected, with the next action explained. **Attendees are not told** about an unresolved internal booking issue. They are notified only once a replacement or other material change is confirmed and attendee-facing details change (QA3-7).
+- **CAL-R6:** the system **never cancels or rejects the event automatically** when no replacement is available, and sets no deadline for finding one. The coordinator works with the organiser on alternatives; if none is found, the coordinator may cancel the event (QA3-8).
+- **CAL-R7:** if the **original venue becomes available again** before a replacement is confirmed, the event may go back to its original booking, provided the venue is free for the **full occupied interval** and **Venue Staff confirm** the booking can be restored (QA3-9).
+- **CAL-R8:** organisers see **each venue on their event separately**, with its status, any unavailability affecting their plans, and the next action (QA3-53).
+
 **Acceptance criteria**
 - **Given** Hall A is blocked 1–3 Oct for maintenance, **when** a coordinator views October, **then** 1–3 Oct shows as blocked with the reason, and search excludes Hall A for those dates.
 - **Given** a confirmed event in Hall A on 2 Oct, **when** venue staff add that block, **then** they see a warning naming the event, the coordinator is notified, and the booking remains `approved` until someone acts on it.
@@ -836,11 +897,11 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - API: `GET /api/v1/venues?starts_at&ends_at&min_capacity&location&layout&facilities&accessibility&include_excluded` and `GET /api/v1/venues/{id}`, coordinators and venue staff only (§2).
 
 **Rules**
-- **VS-R1:** By default, results include only venues that are active, have no hard-rule failure, and have no hold, booking, or block overlapping `[starts_at, ends_at)`. **No setup or turnaround buffer** is applied (QA-28, QA-82, QA-93, QA-103).
+- **VS-R1:** By default, results include only venues that are active, have no hard-rule failure, and have no hold, booking, or block overlapping the requested booking's **occupied interval**: its start minus the venue's setup to its end plus the venue's turnaround (QA3-5, §6.14). *Until CR-100/21 land, setup and turnaround are zero, so this is `[starts_at, ends_at)` (the old QA-28 rule, now superseded).*
 - **VS-R2:** Results come back in reasonable time. There is no numeric SLA (QA-29); see NFR-P1 for our own target. **[Team decision]** No pagination: the whole catalogue (≈50 venues) is one response; overlap detection runs in Postgres on the GiST-indexed ranges.
 - **VS-R3:** When no venue satisfies every filter, the customer accepts either an empty result or partial matches with suitability warnings (QA2-18). **[Team decision]** We show an empty state with the "Show N excluded" toggle, which is the partial-match view with reasons.
 - **VS-R4 [Team decision]:** **Every criterion the coordinator sets is strict**, including layout and accessibility, which §6.11 treats as warnings for the suitability badge. A filter the coordinator chose should filter; VS-R3's toggle keeps excluded venues discoverable. Unset criteria are not applied (no minimum capacity → no capacity check).
-- **VS-R5 [Team decision]:** Any block, whatever its reason (also `internal_activity`, `other`), excludes the venue (CAL-R3); SCRUM-39's "maintenance, renovation, or safety" are examples. `held`, `approved` and `re_review` bookings exclude; `rejected`, `cancelled`, `released` do not (§6.14). SCRUM-39's "setup, reset, and turnaround buffers" criterion is withdrawn under VS-R1.
+- **VS-R5 [Team decision]:** Any block, whatever its reason (also `internal_activity`, `other`), excludes the venue (CAL-R3); SCRUM-39's "maintenance, renovation, or safety" are examples. `held`, `approved` and `re_review` bookings exclude; `rejected`, `cancelled`, `released` do not (§6.14). SCRUM-39's "setup, reset, and turnaround buffers" criterion returns with W7 CR-01 (VS-R1, 21).
 - **VS-R6 [Team decision]:** When a layout is requested and the venue records a capacity for it, that figure is compared with the minimum; otherwise the venue capacity (§6.11). Location matches as a case-insensitive substring of the venue's free-text location.
 - **VS-R7 [Team decision]:** The period is optional; without it availability is `not_checked` and no venue is excluded on availability. `starts_at`/`ends_at` must be given together, timezone-aware, with `ends_at > starts_at`. The SPA sends Singapore time as a fixed `+08:00` offset (no daylight saving); the database stores UTC. Operating hours are displayed but not enforced here (a §6.11 warning, SCRUM-18).
 
@@ -863,7 +924,7 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 | Layout supported | Parameter (warning) | The preferred layout isn't supported | QA-27 |
 | Accessibility | Parameter (warning) | The event lists needs and the venue has no matching feature recorded | QA-27 |
 | Operating hours | Parameter (warning) | The event time falls outside operating hours | QA-27 |
-| Turnaround / setup | **Not applied** | – | QA-28, QA-82, QA-103 |
+| Turnaround / setup | Part of **availability** (§6.14), not suitability | – | QA3-5 (supersedes QA-28, QA-82, QA-103) |
 
 - A venue is **Suitable** when every rule passes, **Suitable with warnings** when only parameter rules fail, and **Unsuitable** when any hard rule fails. Every result lists its reasons.
 - **Availability is reported separately** (§6.14), so "wrong room" and "right room, wrong time" stay distinguishable.
@@ -882,20 +943,26 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **Submitting the request creates a tentative hold** (status `held`) for `[starts_at, ends_at)` (QA-6). Venue staff then decide on it (§6.13).
 
 **Rules**
-- **BR-R1:** **One venue per event** (QA-116, QA-135). An event can have at most one booking in `held`, `approved`, or `re_review`. To try another venue, the coordinator cancels the current hold first.
+- **BR-R1:** ~~**One venue per event** (QA-116, QA-135).~~ **Superseded by W7 CR-03 (CR-97):** an event may have several venue bookings; BR-R15 to BR-R19 give the multi-venue rules. A venue still hosts one event at a time (QA-116).
 - **BR-R2:** **Two events can't hold the same venue for overlapping times** (QA-6). The first request wins (QA-10, QA-113); later requests are refused with "Venue already held for this time by another event." There is no override (QA-10). Two coordinators racing for the same slot are resolved strictly first-come-first-served (QA2-23). DB-1 guarantees this under concurrency.
 - **BR-R3:** Requests for Unsuitable venues (a hard-rule failure) are refused. Venues with warnings are allowed after the coordinator acknowledges the warnings.
 - **BR-R4:** A hold is released when the event is rejected or cancelled, or when the coordinator updates or cancels the booking (QA2-13). **Holds expire (W7 CR-04, CR-99)**, which replaces the earlier "no expiry" (QA-6) and the team's release-1 decision not to expire holds: see BR-R10–BR-R14. Venue staff dashboards sort pending holds by soonest expiry.
 - **BR-R5:** The coordinator can cancel a `held` or `approved` booking, which releases the slot and notifies venue staff.
 - **BR-R6:** A booking request can't be made while the event is `under_review` or `returned` (QA-22).
-- **BR-R7 [Team decision, SCRUM-19]:** The hold always covers the **event's own** `[starts_at, ends_at)`. The request carries only the event, the venue and an optional note; the client can't supply or widen the period. A search opened from the event is pre-filled with that period, and a venue is only offered for request while the search checks it.
+- **BR-R7 [Team decision, SCRUM-19; window superseded by BR-R15]:** The hold always covers the **event's own** `[starts_at, ends_at)`. The request carries only the event, the venue and an optional note; the client can't supply or widen the period. A search opened from the event is pre-filled with that period, and a venue is only offered for request while the search checks it.
 - **BR-R8 [Team decision, SCRUM-19]:** Every refusal is decided by `public.request_venue_booking` under a lock on the event, with DB-1 as the only judge of overlaps, so two coordinators racing for one slot can't both win (QA2-23). A venue block refuses the request too ("Venue blocked for this time.", §6.14); the block check isn't locked, because a block may overlap a hold anyway (CAL-R1).
 - **BR-R9 [Assumption, SCRUM-19]:** The note for venue staff is optional and capped at **1000 characters** after trimming, like the other free-text fields. See §9.
-- **BR-R10 (W7 CR-04, CR-99 AC1):** Every hold has an expiry date and time. It defaults to **7 days after the request**, never later than the event start, and is set by the database whatever path writes the hold. **[Assumption]** An event less than 7 days away is held until its start (§9 item 29). Holds that existed before CR-99 got 7 days from the migration, not from their request.
+- **BR-R10 (W7 CR-04, CR-99 AC1):** Every hold has an expiry date and time. The customer set no default length or extension limit and left both to the team (QA3-31), so **[Team decision]** it defaults to **7 days after the request**, never later than the event start, and is set by the database whatever path writes the hold. **[Assumption]** An event less than 7 days away is held until its start (§9 item 29). Holds that existed before CR-99 got 7 days from the migration, not from their request.
 - **BR-R11 (CR-99 AC2):** Venue Staff (any of them, AUTH-R5) can change or extend a hold's expiry before it passes, to any time after now and no later than the event start; shortening is allowed. Each change is recorded in `venue_booking_history` with who made it and the old and new expiry.
-- **BR-R12 (CR-99 AC3):** The assigned coordinator, and only them, is notified once when the hold comes within 24 hours of expiry and once when it expires. A changed expiry gets its own warning. A hold that is already past its expiry is not warned first.
+- **BR-R12 (CR-99 AC3):** The coordinator must be informed before or when the hold expires (QA3-11); the warning time is ours (QA3-32). **[Team decision]** The assigned coordinator, and only them, is notified once when the hold comes within 24 hours of expiry and once when it expires. A changed expiry gets its own warning. A hold that is already past its expiry is not warned first.
 - **BR-R13 (CR-99 AC4, AC5, AC8):** At its expiry, or when its event starts if sooner, an unapproved hold becomes `expired`: it no longer occupies the venue, is never counted as a booking (including for the safety check, §6.6), and can't be revived or have its expiry changed. Approval first takes the hold's lock and is refused once the hold has expired, so approval and expiry never both happen. **[Team decision]** A `pg_cron` job, `expire-venue-holds`, runs every minute; booking requests, expiry changes and the approval guard also expire an overdue hold themselves, so a slot is free to the second (§9 item 30).
 - **BR-R14 (CR-99 AC7):** After a hold expires, the coordinator can request the same venue again if it's still free. The event page shows the expired hold with the venue search still offered.
+- **BR-R20 (hold flow, QA3-10, QA3-11):** the coordinator confirms the venue they want held and informs venue staff by submitting the booking request; **venue staff approve it**, which turns the hold into a confirmed booking. An expired hold is never treated as a confirmed booking. The event stays in `planning` until its venues and equipment are confirmed. Holds apply to **venues only**, never to equipment (QA3-11).
+- **BR-R15 (booking window, QA3-23):** in a multi-venue event, **each venue booking may have its own date and time window**, provided it **fits within the event's overall schedule**. Suitability, availability, setup and turnaround are checked **independently** for each venue and its own window. This **replaces** CR-97 AC7 and 98 AC3 ("all spaces use the event's date and time"). **[Assumption]** The organiser may give each proposed event space (98) its own window inside the event's schedule, defaulting to the whole event; the coordinator's booking request for that space uses that window. See §9 item 34.
+- **BR-R16 (attendance, QA3-25):** the venue allocations must account for the expected attendees who need to use the venues, and **no venue may exceed its capacity**. **[Team decision]** Each booking carries the attendance allocated to it (from its event space, 98), and §6.11's capacity rule checks that figure against that venue. Allocations aren't required to add up to the event total, since the same attendees may use different venues at different times.
+- **BR-R17 (primary venue, QA3-26):** the coordinator may designate **one venue as the primary, attendee-facing location**. Attendees see the primary location; the organiser sees all the venues. **[Assumption]** A single-venue event's only venue is its primary venue automatically.
+- **BR-R18 (cancelling one venue, QA3-27):** cancelling one venue booking **doesn't cancel the others**. Other venue bookings are removed only when the whole event is cancelled.
+- **BR-R19 (replacement, QA3-30):** a replacement venue is a change request: it goes through a new venue request and every approval, like a new booking.
 - **SCRUM-19 scope:** BR-R3 (suitability) is **not enforced by SCRUM-19**; it moves to SCRUM-18, which owns the suitability verdict. BR-R5 (coordinator cancels a hold) is **not built**; it is **SCRUM-85**. Until it exists, a coordinator who picks the wrong venue is held to it unless venue staff reject the booking (§6.13).
 
 **Acceptance criteria**
@@ -918,6 +985,7 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **BA-R3:** Approving updates the event's Venue readiness item (§6.6).
 - **BA-R4:** Rejecting a booking **never changes the event status**: the event stays in `planning` so the coordinator can request an alternative venue (QA2-19).
 - **BA-R5:** There is **no turnaround SLA** for venue staff decisions (QA2-26). A hold's expiry (BR-R10) is the one deadline, and it is the customer's (W7 CR-04): an unapproved hold is released, not escalated. The queue shows each hold's expiry and sorts by it.
+- **BA-R6:** In a multi-venue event, venue staff approve or reject **each booking on its own**. Rejecting one doesn't change the others, which stay approved and attached to the event (QA3-24, QA3-50).
 
 **Acceptance criteria**
 - **Given** a held booking, **when** I approve it, **then** it's `approved`, the calendar shows it as booked, and the coordinator is notified.
@@ -926,11 +994,13 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 
 ### 6.14 Booking conflict detection *(SCRUM-21)*
 
-**Definition** (QA-62, QA2-22): two venue reservations are **incompatible** when they are for the same venue and their `[starts_at, ends_at)` ranges overlap by **any amount, even one second**. Turnaround is zero (QA-28). Holds (`held`), approved bookings, and bookings under re-review all occupy the venue. Blocks make the venue unavailable.
+**Definition** (QA-62, QA2-22, QA3-5): two venue reservations are **incompatible** when they are for the same venue and their **occupied intervals** overlap by **any amount, even one second**. The venue is occupied **from the beginning of setup through the end of turnaround**: `[booking start − setup, booking end + turnaround)`, using each booking's own copied figures (VC-R9). A later booking's setup may start exactly when the earlier booking's turnaround ends, but may not overlap it. Availability and conflict checks use these occupied intervals, never only the advertised event times (QA3-5). This supersedes "turnaround is zero" (QA-28). The examples below use zero setup and turnaround unless stated. Holds (`held`), approved bookings, and bookings under re-review all occupy the venue. Blocks make the venue unavailable.
 
 | Case | Result |
 |---|---|
-| A 09:00–12:00, B 12:00–15:00 | Compatible (half-open ranges, zero turnaround) |
+| A 09:00–12:00, B 12:00–15:00 | Compatible (half-open ranges, zero setup and turnaround) |
+| Venue setup 30 min, turnaround 45 min: A 10:00–12:00 occupies 09:30–12:45; B 13:30–15:00 occupies 13:00–15:45 | Compatible |
+| Same venue: A occupies 09:30–12:45; B 13:00–15:00 occupies 12:30–15:45 | Conflict (B's setup overlaps A's turnaround) |
 | A 09:00–12:00, B 11:59–13:00 | Conflict |
 | A `held`, B requested overlapping | B refused (first-come-first-served, QA2-23) |
 | A `approved`, B requested overlapping | B refused |
@@ -984,7 +1054,8 @@ available(type, W) = total_quantity
                    − max concurrent reserved quantity overlapping W     (reservations with status reserved or re_review)
 ```
 
-- Equipment has **no transit, setup, or teardown time** (QA-126). "Incompatible" means the same limited equipment is committed to overlapping events (QA-62).
+- Equipment has **no transit, setup, or teardown time** (QA-126). Week 7's setup and turnaround apply to venues only; equipment availability comes from the catalogue and inventory (QA3-29).
+- Equipment **location** is catalogue information that helps tech support see where stock is kept and whether it can be delivered in time. It never reserves or blocks a venue. Availability depends on **quantity and condition** only (QA3-34). "Incompatible" means the same limited equipment is committed to overlapping events (QA-62).
 - **AV-R1:** The result shows **Sufficient** (available ≥ requested) or **Insufficient**, with a breakdown: "Requested 6 · Available 4 (20 total, 2 in maintenance, 14 reserved by 3 overlapping events)". The overlapping events are listed for tech support only.
 - **AV-R2:** Availability uses the **worst moment** within W. Using the maximum concurrent usage, rather than a simple sum, avoids undercounting when overlapping reservations don't overlap each other.
 
@@ -1017,14 +1088,14 @@ available(type, W) = total_quantity
 
 **Behaviour**
 - Registration is configured by the organiser when creating or updating the request, including when it opens and closes (QA2-2). **Attendees must register before attending**: without a registration an attendee can see the event but cannot attend it (QA2-2).
-- Attendees browse `confirmed` events with registration enabled that haven't started. They see public information only (AUTH-R2).
+- Attendees browse `confirmed` and `preparation` events with registration enabled that haven't started. They see public information only (AUTH-R2), and for a multi-venue event only its **primary venue** (BR-R17, QA3-26).
 - **Register** shows the result immediately: "Registered", "Waitlisted", "Registration not open yet", or "Registration closed".
 - **My registrations** separates upcoming and past events.
 - **Withdraw** is allowed until the withdrawal cutoff.
 - Organisers (own events) and assigned coordinators see registered, waitlisted, and withdrawn counts, remaining places, and the attendee list.
 
 **Rules**
-- **RG-R1:** Registration is possible only when the event is `confirmed`, registration is enabled, and now is between `opens_at` and `closes_at` (QA-89, W1 Step 11).
+- **RG-R1:** Registration is possible only when the event is `confirmed` or in `preparation` **[Team decision]** (Preparation follows confirmation, QA3-3), registration is enabled, and now is between `opens_at` and `closes_at` (QA-89, W1 Step 11).
 - **RG-R2:** **Registrations stop at capacity** (QA-107, QA2-20). Registration capacity can never exceed the venue's capacity (QA2-11), so venue overflow cannot arise from registrations. Capacity is enforced atomically (DB-3).
 - **RG-R3:** A duplicate active registration is refused (DB-2). Re-registering after withdrawal is allowed only if the event setting permits it (QA-136).
 - **RG-R4:** When the event is cancelled, registrations are cancelled and attendees notified (QA-114). When the event is rescheduled, attendees **stay registered** and are notified. **[Team decision]** Reconfirmation was left to us (QA-124).
@@ -1054,12 +1125,12 @@ available(type, W) = total_quantity
   - how many registered attendees will be notified.
 - The coordinator sees current vs proposed values and the impact, then approves or rejects with a reason.
 
-**On approval of a significant change** (QA-2, QA-32, QA-98, QA-117, QA2-9)
+**On approval of a significant change** (QA-2, QA-32, QA-98, QA-117, QA2-9, QA3-16, QA3-51)
 - New values are applied in one transaction and recorded in history.
-- **Nothing is un-booked automatically.** The venue booking and affected equipment lines move to **`re_review`**, keeping their hold or reservation, and venue staff and tech support are notified to review again against the new details.
+- **Nothing is reset or un-booked automatically** (QA3-51, LC-R7). The coordinator reviews the change and **decides which venue bookings and equipment lines go back to staff**. Those move to **`re_review`**, keeping their hold or reservation, and venue staff and tech support are notified to review them again against the new details. The impact preview suggests which arrangements look affected, but the coordinator chooses. *This replaces the earlier rule that every affected booking and line moved to re-review automatically.*
   - **Venue re-review:** venue staff *approve* (the booking period moves to the new window, re-checked by DB-1) or *reject* with a reason, which releases the hold. Capacity overflow is absolute and must be rejected (QA-27).
   - **Equipment re-review:** tech support *re-reserve* for the new window (full quantity) or *reject*.
-- If the event was `confirmed`, it returns to **`planning`** and must be re-confirmed after re-review (readiness guard). If the new essential requirements cannot be accommodated, the coordinator may **reject** the change or **return** it for modification (QA2-9).
+- If the event was `confirmed` or in `preparation`, it returns to **`planning`** and goes through the standard lifecycle again: readiness, then a **new safety check** before it is confirmed (QA3-16, QA3-48). If the new essential requirements cannot be accommodated, the coordinator may **reject** the change or **return** it for modification (QA2-9).
 - Registered attendees are notified of date, time, or venue changes (RG-R4).
 
 **On approval of an ordinary change:** values are applied, with no re-review and no status change (QA2-10).
@@ -1074,7 +1145,7 @@ available(type, W) = total_quantity
 
 **Acceptance criteria**
 - **Given** a confirmed event in Hall A (capacity 100), **when** the organiser proposes 150 pax, **then** the coordinator's preview shows "Venue capacity 100 < 150: venue re-review required."
-- **Given** that change is approved, **then** pax = 150, the booking is `re_review` (still holding Hall A), the event is `planning`, venue staff are notified, and the booking is **not** released until venue staff reject it.
+- **Given** that change is approved and the coordinator sends the Hall A booking for re-review, **then** pax = 150, the booking is `re_review` (still holding Hall A), the event is `planning`, venue staff are notified, and the booking is **not** released until venue staff reject it. **Given** the coordinator selects no arrangement, **then** nothing changes status except the event (QA3-51).
 - **Given** a change moving the event to a time when Hall A is held by another event, **when** venue staff try to re-approve, **then** it fails with the conflict message, and they must reject.
 - **Given** a confirmed event with 30 registrations and reserved equipment, **when** its cancellation is approved, **then** the booking and equipment are freed, registrations are cancelled, and 30 attendees are notified.
 
@@ -1084,7 +1155,9 @@ The delivery channel and delivery preferences are a team choice (QA-11, QA-39, Q
 
 | Domain event | Recipients | Source |
 |---|---|---|
-| CoordinatorAssigned / HandedOver | Organiser; new coordinator; previous coordinator | QA-5 |
+| CoordinatorAssigned | Organiser; the assigned coordinator | QA3-43 |
+| CoordinatorReassigned | Organiser; new coordinator; previous coordinator (the Lead's action is recorded; other Leads not notified, LA-R11) | QA3-14, QA3-43 |
+| ReassignmentRequested | The Lead whose scope holds the event (every Lead if none) | QA3-12, LA-R6 |
 | EventReturned / EventResubmitted | Organiser / coordinator | QA-22 |
 | EventApproved / EventRejected (with reason) | Organiser (+ venue staff and tech support if holds were freed) | W1 §6 |
 | VenueBookingRequested | Venue staff | W1 §6 |
@@ -1092,12 +1165,16 @@ The delivery channel and delivery preferences are a team choice (QA-11, QA-39, Q
 | EquipmentRequested / LineChanged | Tech support | W1 §6 |
 | EquipmentReserved / Rejected | Coordinator | W1 §6 |
 | EventConfirmed | Organiser; venue staff; tech support | W1 §6 |
+| PreparationStarted | Venue staff; tech support | QA3-45 |
+| SafetyDecision (changes requested / venue rejected) | Coordinator; organiser sees the outcome and actionable comments only (SF-R2) | QA3-17 |
 | ChangeRequested / CancellationRequested | Coordinator | QA-12 |
 | ChangeApproved / Rejected | Organiser (+ venue staff and tech support when re-review is needed) | QA-2 |
 | ArrangementNeedsReReview | Venue staff / tech support | QA-32 |
 | EventDetailsChanged (date, time, venue) | Registered attendees | QA-124 |
 | EventCancelled | Organiser; coordinator; venue staff; tech support; registered attendees | QA-114 |
-| VenueChangedAffectsBooking / VenueBlockedAffectsBooking | Affected coordinators; venue staff | QA-26, QA-117 |
+| VenueChangedAffectsBooking / VenueBlockedAffectsBooking | Affected coordinators; venue staff; for an unavailable venue, also the **organiser**, with the next action (CAL-R5). **Not** attendees | QA-26, QA-117, QA3-7 |
+| ReplacementVenueConfirmed (attendee-facing details changed) | Registered attendees | QA3-7 |
+| HoldExpiring / HoldExpired | Assigned coordinator | QA3-11, BR-R12 |
 | EquipmentOutageAffectsReservation | Tech support; affected coordinators | QA-31 |
 | RegistrationFull | Organiser; coordinator | W1 §6 |
 | WaitlistInvitation | The invited attendee | QA-30 |
@@ -1118,9 +1195,9 @@ Each dashboard composes widgets from the feature stores. **Build a widget only w
 
 | Role | Widgets (in priority order) |
 |---|---|
-| Organiser | Drafts · Returned requests needing my amendment · My requests with status · Upcoming confirmed events · Decided change requests |
+| Organiser | Drafts · Returned requests needing my amendment · My requests with status and coordinator ("Unassigned" until assigned, QA3-42) · Upcoming confirmed events, with **each venue and its status** and any unavailability with the next action (QA3-53) · Decided change requests |
 | Coordinator | My events needing action (resubmitted, change or cancellation requested, booking or equipment decided, re-review outcomes, issues) · My events by status · Readiness gaps in the next 14 days. No unassigned figure: unassigned events are the Event Coordinator Lead's queue (§6.5) |
-| Event Coordinator Lead | The unassigned queue · all coordinator assignments and active events under their supervision. **Not built yet**; to be specified with the Lead story (§6.5, §9 item 19) |
+| Event Coordinator Lead | The common unassigned queue (oldest first) · the active events in my scope (those I assigned or last reassigned, plus pre-Week 7 events with no Lead) with their coordinator and status · open reassignment requests from coordinators · active events per coordinator. **Not built yet** (SCRUM-12, 81, CR-101; LA-R1, LA-R2) |
 | Venue staff | Pending holds (soonest expiry first, CR-99) · Bookings in re-review · Active and upcoming blocks · Venues (active/inactive). **All venues**, since staff are a pool (AUTH-R5). |
 | Tech support | Pending and re-review equipment lines · Events needing technical readiness · Equipment in maintenance · Upcoming reservations (7 days) |
 | Attendee | My upcoming registrations and waitlist invitations · Browse open events |
@@ -1273,12 +1350,15 @@ The customer's principle: **the system detects and notifies; staff decide.** It 
 
 | Trigger | Venue booking | Equipment | Registrations | Event status | Notify |
 |---|---|---|---|---|---|
-| **Significant change approved:** date, time, or duration | `re_review` (hold kept). Venue staff re-approve for the new window (DB-1) or reject. | Affected lines `re_review` (reservation kept). Tech support re-reserve or reject. | Kept (RG-R4) | confirmed → planning | Venue staff, tech support, attendees |
-| **Significant change approved:** pax, layout, or facilities | `re_review`. Capacity overflow must be rejected (QA-27). | – | Kept. If `registration_capacity` > new pax, the coordinator is warned. | confirmed → planning | Venue staff |
-| **Significant change approved:** equipment requirements | – | Edited lines `re_review`; new lines `pending` | – | confirmed → planning | Tech support |
+| **Significant change approved:** date, time, or duration | Bookings **the coordinator selects** go to `re_review` (hold kept). Venue staff re-approve for the new window (DB-1) or reject. | Lines the coordinator selects go to `re_review` (reservation kept). Tech support re-reserve or reject. | Kept (RG-R4) | confirmed / preparation → planning | Venue staff, tech support, attendees |
+| **Significant change approved:** pax, layout, or facilities | Bookings the coordinator selects go to `re_review`. Capacity overflow must be rejected (QA-27). | – | Kept. If `registration_capacity` > new pax, the coordinator is warned. | confirmed / preparation → planning | Venue staff |
+| **Significant change approved:** equipment requirements | – | Edited lines the coordinator selects go to `re_review`; new lines `pending` | – | confirmed / preparation → planning | Tech support |
 | **Ordinary change** | – | – | – | – | – |
 | **Venue attributes edited** (capacity, facilities, hours) | **Unchanged.** Affected upcoming events are listed and flagged "Venue changed – check suitability". | – | – | Unchanged | Affected coordinators, venue staff |
-| **Venue blocked** over existing bookings | **Unchanged.** Flagged "Venue blocked". | – | – | Unchanged | Affected coordinators, venue staff |
+| **Venue blocked** over existing bookings | **Unchanged.** Flagged "Venue blocked". The coordinator decides the next action (CAL-R4). | – | – | Unchanged until the coordinator requests a new venue (then → planning) | Affected coordinators, venue staff, the organiser with the next action; **not** attendees until a replacement is confirmed (CAL-R5) |
+| **Venue setup/turnaround edited** | **Unchanged.** Existing bookings keep the figures they copied (VC-R9). | – | – | Unchanged | – |
+| **Safety request changes / safety rejection** | **Unchanged** (a rejected venue is flagged Safety rejected). The coordinator decides (SF-R3, SF-R4). | Unchanged | – | safety_review → planning | Coordinator; organiser sees outcome and actionable comments |
+| **One venue booking cancelled** (multi-venue) | That booking only; the others are unchanged (BR-R18) | – | – | – | Venue staff |
 | **Equipment outage** below reserved quantity | – | **Unchanged.** Flagged "Equipment issue". | – | Unchanged | Tech support, affected coordinators |
 | **Cancellation approved** | **Freed** | **Freed** | Cancelled | cancelled | Everyone involved, attendees |
 | **Rejected from planning** | **Freed** | **Freed** | – | rejected | Organiser, venue staff, tech support |
@@ -1286,7 +1366,7 @@ The customer's principle: **the system detects and notifies; staff decide.** It 
 
 **Consistency invariant (NFR-R1):** users never see *contradictory* information. There are two parts:
 1. Any flag raised on an event ("Venue blocked", "Venue changed", "Equipment issue", `re_review`) is shown on the event page, its Arrangements panel, and the relevant staff dashboards until someone resolves it.
-2. An event can only be **confirmed**, or re-confirmed, while the readiness guard holds. Because the customer rules out automatic recalculation, a confirmed event that later gets a flag **keeps** its status but displays the flag prominently.
+2. An event can only be **confirmed**, or re-confirmed, while the readiness guard holds and the Safety Officer has approved it. Because the customer rules out automatic recalculation, a confirmed event that later gets a flag **keeps** its status but displays the flag prominently.
 
 ---
 
@@ -1300,20 +1380,20 @@ These are the Week 1 features outside the core 20. They stay in the Product back
 | Client management | Client profiles maintained; organisers linked; deletion policy TBD (QA-90) | `client_organisations` |
 | Event categories | Category list maintained by system defaults (no admin, QA-3) | `events.category` |
 | Event programme and agenda | Sessions and breaks. Timing changes that move the event window are significant (QA-98). | `event_sessions` |
-| Multi-session events | Different timings per session; venue rules TBD after Week 4 (QA-115). Release 1 is one venue and one date per event (QA-116, QA-135). | `event_sessions` |
+| Multi-session events | Different timings per session; venue rules TBD after Week 4 (QA-115). One date per event (QA-135). *Multi-venue events with a window per venue booking are now core (W7 CR-03, BR-R15).* | `event_sessions` |
 | Recurring or similar events | Clone a past event's baseline data; each copy keeps its own dates and requirements (QA-99, QA-120). Filtering rules are a team choice; retrigger rules pending (QA-57, QA-63). SCRUM-66. | `events` service |
 | Comments and discussion | **Built in SCRUM-61.** Attached to the event record; offline conversations recorded manually by staff (QA-100, QA2-27); @mentions and resolve are optional (QA-131, QA-132) and not built; **not** progression blockers (QA-133). Session 2 named comments as the organiser–coordinator channel (for example asking for a site recce); no floor-plan feature is required (QA2-27). **[Team decision]** Readers and posters are the owning organiser and the assigned coordinator, each in that active role (QA2-27; venue staff and tech support wait until bookings and equipment requests link them to an event). Posting is open from `submitted` to `confirmed`; `rejected`, `cancelled` and `completed` keep a read-only thread; a `draft` has none. Comments are append-only (no edit or delete), and each one notifies the other party (`comment_added`; nobody when no coordinator is assigned yet, **[Assumption]**). An offline conversation is recorded as an ordinary comment. Length cap: §9 Q15. | `event_comments`, `add_event_comment` |
 | Supporting documents | Attachments (Supabase Storage) | `event_documents` |
 | Venue photo library | The profile's carousel is built and its `photos` contract is live, but nothing populates it; layout schematics stand in (VC-R8). Needs a `venue_photos` table, a storage bucket with RLS, and an upload path in the venue edit screen | `venue_photos` |
 | Tentative venue holding | **Now core behaviour** (§6.12, QA-6) | – |
-| Setup and turnaround time | **Assumed zero** by the customer (QA-28); a future rule plugs into §6.11 and §6.14. Surfaced as `turnaround_minutes` on the venue profile since SCRUM-67 (VC-R5), so the figure has one home when it stops being zero | – |
+| Setup and turnaround time | **Now core behaviour** (W7 CR-01, CR-100; VC-R9, §6.14, QA3-4, QA3-5) | – |
 | Venue unavailability management | Covered by blocks (§6.9) | – |
 | Room layout management | Covered by `venue_layouts` | – |
 | Event capacity management | Covered by §6.11 capacity rule and §7 | – |
 | Equipment catalogue (full CRUD) | Add, edit, retire types; view-only is P2 | `equipment` |
 | Equipment maintenance status | Covered by `equipment_outages` (§6.16) | – |
 | Technical support requests | Coordinator describes on-site support needs | `events` |
-| Technical staff assignment | **Auto-assigned** from a single pool, no skill matching, schedules out of scope (QA-35, QA-41, QA-14, QA-42); reuse the §6.5 load policy | `events.assignment` |
+| Technical staff assignment | From a single pool, no skill matching, schedules out of scope (QA-35, QA-41, QA-14, QA-42). The §6.5 least-loaded policy it was to reuse no longer exists (QA3-37), so the assignment method is undecided | `events.assignment` |
 | Event readiness tracking | Core subset in §6.6. Full checklist (programme, registration) is P3 (QA-127). | – |
 | Outstanding action tracking | Cross-event "incomplete arrangements" list | Dashboards |
 | Registration period | **Now core behaviour** (§6.18, QA-89) | – |
@@ -1364,9 +1444,18 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 8. **Waitlist:** wanted. First-come-first-served, capped at venue capacity; the organiser decides whether to close registration or leave it open (QA2-20, RG-R5). The 24-hour invitation window is still ours (QA-121).
 9. **"Important notifications":** delivery preferences are left to us (QA2-21, NT-R4).
 
-**Still open** (bring to Session 3):
+**Resolved in Session 3** (verbatim answers in §13; the rules above are updated):
 
-5. **Readiness updates:** QA-128 says Venue Staff and Tech Staff update readiness. Is venue booking approval enough for "venue ready", or should venue staff also mark physical preparation complete before confirmation? (QA2-12 covers only the tech side.)
+- **Item 2 (reassignment)** is superseded: only a Lead reassigns; a coordinator can only ask (QA3-35, QA3-39, §6.5 LA-R6).
+- **Item 5 (readiness updates):** venue booking approval is what makes a venue ready for the safety check; physical preparation is recorded per venue booking only once the event is in `preparation` (QA3-45, QA3-50, RD-R2).
+- **Item 19 (Event Coordinator Lead):** the Lead doesn't act as a coordinator (QA3-13); the queue shows basic event information (SCRUM-12 AC10); only the Lead reassigns (QA3-35); a request waits in `submitted` until assigned (QA3-2); notifications as LA-R11 (QA3-43).
+- **Item 22 ("Preparation"):** our assumption was wrong. Preparation is a separate status after `confirmed` (QA3-3, §5).
+- **Items 25 and 26 (safety rejection):** a safety rejection rejects the venue arrangement, not the event; the coordinator may revise or replace it, so rebooking the same venue is not blocked (QA3-47, SF-R4).
+- **Item 29 (default hold expiry):** the customer left the default length, extension limit and warning time to the team (QA3-31, QA3-32), so BR-R10 to BR-R12 stand as team decisions.
+
+**Still open** (some carried over from Session 3):
+
+5. **Readiness updates:** QA-128 says Venue Staff and Tech Staff update readiness. Is venue booking approval enough for "venue ready", or should venue staff also mark physical preparation complete before confirmation? (QA2-12 covers only the tech side.) **→ Resolved in Session 3 (see above).**
 6. **Organiser edits under review:** QA2-4 says organisers "edit/resubmit their requests only". We read that as editing only while `returned` (§6.7). Can an organiser also edit directly while the request is `under_review`, before any return?
 10. ~~**Dual roles (QA2-24)**~~ — **Resolved by SCRUM-74/75/78** (see ACC-R4): the schema and UI now support an account holding 2+ roles via a session-scoped active-role switcher, plus a persistent "All Roles" list on the profile page. Still open: which role combinations are expected beyond Coordinator + Venue Staff (the seeded example), and whether a user acting as both may approve their own booking or equipment request. **[Assumption]** No rule against self-approval has been added, so it is treated as allowed until a story says otherwise — the customer left this unanswered, and self-approval is now technically reachable now that a single account can hold both a requesting and an approving role.
 11. **Coordinator cancellation boundary:** is "until the event's start time" (LC-R5) an acceptable rule, given the customer asked us to choose one with a rationale (QA2-5)?
@@ -1377,10 +1466,10 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 16. **Arrangement issues (SCRUM-72):** **[Assumption]** A technical readiness of `issue` on a planning, safety review or confirmed event is shown as an arrangement issue, the coordinator's most urgent action (§6.21.1). Are there other "issues" the coordinator must see before change requests and re-review exist?
 17. **Equipment readiness before SCRUM-24 (SCRUM-72):** **[Assumption]** Ready once any reservation exists for the event (or `not_required` when none was asked for). Is that close enough until per-line equipment requests exist? *(SCRUM-45 now creates per-line requests, but the dashboard still uses this assumption: switching it to "every line `reserved`" is a follow-up, IMPLEMENTATION_MAP §5.)*
 18. ~~**Awaiting-assignment count (SCRUM-72)**~~ — **Resolved by the Event Coordinator Lead clarification** (customer clarification of 2026-10-05, QA row to be added): coordinators no longer see unassigned events at all; the Lead's queue does (§6.5).
-19. **Event Coordinator Lead (§6.5):** the clarification leaves open: whether the Lead can also act as a coordinator on events (approve, reject, return); what "basic event information" the queue shows; whether a coordinator can still hand over an event themselves (AS-R4) or only the Lead reassigns; whether submission stays `draft → under_review` or a request waits in `submitted` until assigned; and who exactly is notified on assignment and reassignment (organiser, new coordinator, previous coordinator).
+19. **Event Coordinator Lead (§6.5):** the clarification leaves open: whether the Lead can also act as a coordinator on events (approve, reject, return); what "basic event information" the queue shows; whether a coordinator can still hand over an event themselves (AS-R4) or only the Lead reassigns; whether submission stays `draft → under_review` or a request waits in `submitted` until assigned; and who exactly is notified on assignment and reassignment (organiser, new coordinator, previous coordinator). **→ Resolved in Session 3 (see above).**
 20. **Booking request note length (SCRUM-19):** **[Assumption]** The coordinator's note to venue staff is capped at 1000 characters after trimming, the same cap as a comment. Jira sets no bound. Is a different limit expected?
 21. **Equipment request details (SCRUM-45):** **[Assumption]**s, none answered by the customer or Jira: (a) an item appears at most once per submission, so tech support decide one quantity per item ("combine the quantities"); (b) a submission holds at most 50 items; (c) "visible to the submitting coordinator" is read as the *assigned* coordinator, who is the same person until reassignment exists (§6.5); (d) a `retired` catalogue item can't be requested; (e) tech support's list leaves out lines on `rejected`, `cancelled` and `completed` events until SCRUM-24 releases them (§6.15 `released`). Are any of these wrong?
-22. **"Preparation" stage (SCRUM-82, CR-104, W7 CR-06):** **[Assumption]** The customer's "preparation" stage, which an event reaches on Safety Officer approval, is our `confirmed` status (§5). Is that right?
+22. **"Preparation" stage (SCRUM-82, CR-104, W7 CR-06):** **[Assumption]** The customer's "preparation" stage, which an event reaches on Safety Officer approval, is our `confirmed` status (§5). Is that right? **→ Resolved in Session 3 (see above).**
 
 ---
 
@@ -1389,13 +1478,24 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 24. **[Team decision / dependency]** Until 24 lands, `technical_status` reads the unwritten column (default Not required). This preserves one contract for Eileen; derived technical readiness is not yet verified end to end. Contract text is in the SCRUM-82 design §9; teammate agreement remains pending.
 
 **CR-103/104 additions (2026-10-09):**
-25. **[Assumption]** CR-104 AC3: confirm at the project consult whether rejecting a safety arrangement requires replacement rather than adjustment; the event returns to Planning, not Rejected.
-26. **[Assumption]** Same-venue rebooking after safety rejection is not blocked. Should a different venue be mandatory? Rejected booking/venue IDs and a coordinator warning are retained meanwhile; `request_venue_booking` is unchanged.
+25. **[Assumption]** CR-104 AC3: confirm at the project consult whether rejecting a safety arrangement requires replacement rather than adjustment; the event returns to Planning, not Rejected. **→ Resolved in Session 3 (see above).**
+26. **[Assumption]** Same-venue rebooking after safety rejection is not blocked. Should a different venue be mandatory? Rejected booking/venue IDs and a coordinator warning are retained meanwhile; `request_venue_booking` is unchanged. **→ Resolved in Session 3 (see above).**
 27. **[Dependency]** CR-100 supplies venue emergency access/restrictions; current review values are null, not inferred from accessibility features. Confirm the recording contract when CR-100 lands.
 28. **[Dependency]** Story 24 supplies exit confirmation and derived technical readiness, and calls `return_to_planning` when readiness is cleared. Current exit confirmation is null; AC6/AC10 integration and teammate agreement remain pending.
-29. **[Assumption]** CR-99 AC1: when an event is less than 7 days away, the default hold expiry is the event start (the AC asks for both "7 days after the request" and "before the event starts"). Confirm with the customer whether such a hold should instead be refused or get a shorter fixed window.
+29. **[Assumption]** CR-99 AC1: when an event is less than 7 days away, the default hold expiry is the event start (the AC asks for both "7 days after the request" and "before the event starts"). Confirm with the customer whether such a hold should instead be refused or get a shorter fixed window. **→ Resolved in Session 3 (see above).**
 30. **[Team decision]** CR-99: holds are expired by a `pg_cron` job every minute (the only way to send the 24-hour warning without a backend worker), backed by the request, expiry-change and approval paths expiring an overdue hold themselves. A second daily job keeps only the last 7 days of the expiry job's run log (`cron.job_run_details`), so the per-minute schedule doesn't grow the shared database without end. The team still has to confirm enabling the `pg_cron` extension on the shared project.
 31. **[Dependency]** CR-99 AC4/AC8: SCRUM-36's approve function must call `public.lock_hold_for_approval(booking_id)` first in its transaction and refuse on `hold_expired`. CR-98's `request_venue_booking_for_space` should call `public.expire_venue_holds()` before its insert, as `request_venue_booking` does, or a hold past its expiry can block it for up to a minute.
+
+**Session 3 additions (2026-10-13):**
+32. **[Team decision]** The assigned coordinator moves `confirmed` → `preparation` with an explicit **Start preparation** action (§5). The customer said Preparation can't begin before safety approval (QA3-3) but not what starts it. Is a coordinator action acceptable?
+33. **[Assumption]** A safety rejection flags the venue booking **Safety rejected** (not ready) and doesn't release it, because nothing resets automatically (QA3-46, QA3-51). The coordinator then cancels it and requests a replacement (85, BR-R19), or revises the arrangement and sends the event for another safety review (SF-R4).
+34. **[Assumption]** The organiser can give each proposed event space (98) its own time window inside the event's schedule, and the coordinator's booking for that space uses it (BR-R15). QA3-23 says each booking may have its own window but not who sets it.
+35. **[Team decision]** A booking copies its venue's setup and turnaround when requested, so a later edit to the venue never changes existing bookings (VC-R9). This reads QA3-4 ("once set can't be updated") and QA3-6 ("can't be changed once venue is confirmed") together: the venue's defaults stay editable for future bookings.
+36. **[Team decision]** A Lead's supervisory scope is the active events they assigned or last reassigned. Pre-Week 7 events with no Lead are visible to every Lead (LA-R2). QA3-33 asks for the scope to be recorded without defining it; QA3-41 defines what a Lead sees.
+37. **[Team decision]** Deactivating a coordinator who still holds active events is refused, naming the events (ACC-R10). This replaces CR-101 AC6's "return them to the unassigned queue", which QA3-22 rules out.
+38. **[Team decision]** A coordinator's reassignment request is an in-app action with a reason that notifies the responsible Lead (LA-R6). The customer said only that the coordinator "may ask" (QA3-12).
+39. **[Assumption]** A single-venue event's only venue is its primary venue automatically (BR-R17).
+40. **[Team decision]** Registration stays open while the event is in `preparation` (RG-R1).
 
 ## 10. Non-functional requirements
 
@@ -1421,6 +1521,9 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 | Pricing, invoices, cancellation fees, any financial transaction | QA-36 |
 | External surveys, predictive or ML analysis | QA-75 |
 | Staff schedules, skill or specialisation matching, on-site workload tracking | QA-14, QA-41, QA-42, QA-54 |
+| Automatic or suggested coordinator assignment | QA3-12, QA3-37 |
+| Account administration by the Event Coordinator Lead (creating users, changing roles, deactivating) | QA3-18 to QA3-20 |
+| Per-event setup or turnaround overrides | QA3-4 |
 | Geographic staff clusters | QA-44 |
 | Separate booking of foyers, corridors, catering areas (recorded as special requests instead) | QA-130 |
 | Multiple bookable rooms inside one venue | QA-116 |
@@ -1428,7 +1531,7 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 | Partial equipment fulfilment; partial booking approval | QA-125, QA-137 |
 | Automatic substitution of venues or equipment; automatic re-booking | QA-26, QA-31, QA-97 |
 | Workflow SLAs, review deadlines, submission lead times | QA-55, QA-68, QA-80 |
-| Setup, turnaround, or equipment transit buffers | QA-28, QA-126 |
+| Equipment setup, turnaround or transit buffers (venue setup and turnaround are now core, VC-R9) | QA-126, QA3-29 |
 | Verifying attendee-supplied information (system relies on user input) | QA-110 |
 
 ---
@@ -1466,3 +1569,64 @@ Customer Q&A, Session 2 (Sprint 1, recorded 15 Sep 2026). Answers are the custom
 | QA2-25 | For the functionality area of "Venue Suitability Checking", are there any other factors that constitutes a match in venue suitability other than attendance and required facility as stated in the example? | Factors include expected attendance vs. capacity, date/time availability, supported room layout, accessibility features, and required facilities. | §6.11 |
 | QA2-26 | Urgency of response for Venue Booking Approval: Is there a policy where the venue staff would be able to accept venue booking requests within a certain number of days and also have a buffer to read (min 2, max 5)? | No fixed SLA or turn-around policy. Operational timeframes and response windows are not strictly enforced by system rules. Team can decide the boundries and constraints and leave up to implementation detail. Team should have proper reasoning behind any constraints. | LC-R4, §6.13 BA-R5 |
 | QA2-27 | Would it be possible for the event organiser to alert the event coordinator to check with the venue staff so that he/she could recee the location before confirming the venue? If that is not possible, would there be mentions of a floorplan given to confirm their decisions? | Communication between Organiser and Coordinator takes place via comments attached to the event record.<br>For simplicity it can takes place offline. and Event Co-ordinator can update in the system manually. (I leave up to team implementation) | §8 comments row; §9 Q12 |
+
+---
+
+## 13. Session 3 clarification answers
+
+Customer Q&A, Session 3 (Sprint 3, on the Week 7 change notice; added 13 Oct 2026). Answers are the customer's words, verbatim (including their spelling); only line breaks were converted for the table. Cite rows as **`QA3-<n>`**. `<n>` is the row in the customer's sheet, where row 1 is the header, so the customer's own "Refer row 13" means QA3-13. The last column says where each answer is applied in this document.
+
+| ID | Question | Answer (verbatim) | Applied in |
+|---|---|---|---|
+| QA3-2 | May I confirm that the updated event lifecycle is the following:Draft → Submitted (Unassigned queue) → Assigned / Under Review → Planning → Venue & Tech approved → Pending Safety Check → Confirmed → Preparation → Completed, plus Returned, Rejected and Cancelled? | Yes -Safety approval is required before Confirmed, followed by Preparation and Completed. Returned, Rejected and Cancelled are separate outcomes | §5 |
+| QA3-3 | In particular, is an event "Confirmed" before or after the Safety Officer approves it, and is "Preparation" a separate status? | Confirmed is after the Safety Officer approves the operational safety check. Preparation is a separate status/stage and cannot begin until that approval | §5; §9 items 22, 32 |
+| QA3-4 | Who sets and changes a venue's setup and turnaround times: Venue Staff or the Event Coordinator? Can they be adjusted for one event (for example, a complex layout needs extra setup), or are they always fixed per venue? | Venue Staff maintain each venue’s configurable setup and turnaround defaults. Once set can't be updated/adjusted. | §6.8 VC-R9; §9 item 35 |
+| QA3-5 | Can one event's turnaround overlap with the next event's setup at the same venue? Or must Event B's setup start only after Event A's turnaround has fully ended? | The venue is occupied from the beginning of setup through the end of turnaround. A later booking’s setup may start when the earlier booking’s turnaround ends, but will not overlap that interval. Availability and conflict checks use these effective intervals, not just advertised event times. | DB-1; §6.10 VS-R1; §6.14 |
+| QA3-6 | When a change to setup or turnaround times creates a conflict with existing bookings, who is notified (Venue Staff, the Coordinator, or both), and who has to resolve it? Does the affected event change status (for example, back to Planning), or keep its status with a warning flag? | They cant be changed once venue is confirmed | §6.8 VC-R9; §7 |
+| QA3-7 | Besides the Coordinator, should the Event Organiser also be told that their venue is affected? Should attendees be told at this stage, or only once the replacement is confirmed? | Yes - Notify the Event Organiser that their venue arrangement is affected and explain the next action. <br><br>Do not notify attendees about an unresolved internal booking issue; notify them when a replacement or other material change is confirmed and attendee-facing details change. | §6.9 CAL-R5; §6.20 |
+| QA3-8 | If no suitable replacement can be found, what happens to the event? Does the Coordinator cancel it, or reject it? Is there a deadline for finding a replacement? | The system will not automatically cancel or reject the event when no replacement is immediately available. Coordinator work with the Organiser on alternatives. If no alternative found then Event can be cancelled by Event Coordinator | §6.9 CAL-R6 |
+| QA3-9 | If the original venue becomes available again before a replacement is confirmed, can the event go back to its original booking? | Yes, if the original venue is available for the full effective interval and Venue Staff confirm that the booking can be restored. | §6.9 CAL-R7 |
+| QA3-10 | What is the "required action" that turns a hold into a confirmed booking: Venue Staff approval, the Coordinator confirming the event, or something else? | Coordinator confirm the hold venue and in inform venue staff. Venue staff will approve it. | §6.12 BR-R20 |
+| QA3-11 | When a hold expires, what happens to the event in terms of the event lifecycle? Does it go back to Planning? Are any linked equipment reservations also released? | The Event Coordinator should be informed before or when the hold expires, and an expired hold should not be treated as a confirmed booking. <br><br>By default a event is in planning state until the venue and equipment not confirmed. (New change put hold on Venue not on equipments) | §6.12 BR-R12, BR-R20 |
+| QA3-12 | Previously, coordinators were auto-assigned by the system, and a coordinator could start a reassignment after agreeing it offline. Does the Lead's manual assignment fully replace auto-assignment, or should the system still suggest a coordinator (for example, by workload)? Can coordinators still start reassignments, or now only the Lead? | Manual assignment by the Event Coordinator Lead replaces automatic assignment for new requests.<br><br>Coordinators may ask the Lead to reassign an event, but cannot directly transfer it. | §6.5 LA-R6; §9 item 38 |
+| QA3-13 | Is the Lead view-only over events, or can they also act as a coordinator (approve, reject, confirm), including assigning events to themselves? | Lead can review assignment/active-event information and assign or reassign events to Coordinator. They do not put hat of Coordinator | §2.2 AUTH-R7; §6.5 LA-R3 |
+| QA3-14 | When an event is reassigned partway through planning, does everything (pending venue and equipment requests, holds, comments) move to the new coordinator? Should the Organiser be notified of the change? | All event-linked records stay attached to the event and become available to its new Coordinator, including pending venue/equipment requests, holds, comments and history. Notify the Organiser, previous Coordinator and new Coordinator of a reassignment. | §6.5 LA-R7, LA-R11 |
+| QA3-15 | When a returned request is resubmitted, does it go back to the same coordinator or back into the Unassigned queue? | A returned request remains assigned to its current Coordinator. When the Organiser resubmits it, it returns to that Coordinator for review rather than going back to the Unassigned queue. The Lead can reassign it if staffing has changed or the Coordinator is unavailable. | §5; §6.5 LA-R9 |
+| QA3-16 | After a significant change (for example, more attendees or a replacement venue) on an event the Safety Officer has already approved, is a new safety check required? | Any change that affect confirmed event will be requested and reviewed by Coordinator and will go through a standard event lifecycle. If coordinator accepted the change as stated in previous session that event status will be updated from current state to planning/reviewing state. | §5; §6.19 |
+| QA3-17 | Should the review be a structured checklist covering the listed factors (attendance, capacity, emergency access and so on), or one decision with free-text comments? Can the Organiser see the safety outcome and comments? | Use a structured review checklist for the factors named in the change notice (attendance/capacity, layout, emergency access, accessibility, equipment placement, and venue restrictions), with comments and one outcome: approve, reject the safety arrangement, or request changes. Show the Organiser the outcome and actionable comments, but not private internal notes. | §2.2 AUTH-R2; §6.6.1 SF-R1, SF-R2 |
+| QA3-18 | Do we need a separate role to manage user authentication, or should an existing role (such as the Event Coordinator lead) handle it? Who is in charge of creating internal users, assigning or changing their roles, and deactivating them? | No separate System Administrator role is introduced by the Week 7 changes. The earlier clarification remains: external Organisers/Attendees sign up themselves, while internal accounts/roles are managed through the system’s existing internal setup/defaults. The Lead manages event assignments, not user authentication or account administration. | §2.1 ACC-R1, ACC-R3, ACC-R9 |
+| QA3-19 | Is the Event Coordinator Lead responsible for adding users? If so, only the coordinators under them, or all internal staff (Venue Staff, Technical Support, Safety Officers)? | No. The Lead is responsible for event-request and Coordinator assignments, not for creating or administering all internal users. | §2.1 ACC-R9 |
+| QA3-20 | Does the Lead create accounts directly in the system, or raise a Jira request to Technical Support to set up the account? In this system, "Technical Support Staff" handle event equipment, not IT. Do you mean that team, or a separate IT team outside the system? | Lead do not create new account. | §2.1 ACC-R9 |
+| QA3-21 | External users currently sign up themselves. Is there any case where the Lead needs to add external users (for example, onboarding a new client organisation)? | No. External users continue to register for their own accounts. The *(answer cut off here in the copy received)* | §2.1 ACC-R9 |
+| QA3-22 | When an internal user is deactivated or leaves, what happens to events assigned to them? Should the Lead have to reassign them before the account can be deactivated? | Before deactivation, the Lead should reassign every active event to another Coordinator. Do not leave active work assigned to an inactive user. | §2.1 ACC-R10; §6.5 LA-R8; §9 item 37 |
+| QA3-23 | Can each venue in a multi-venue event have its own times (e.g. breakouts only in the afternoon), or do all share the event's time? | Yes. Each venue booking in a multi-venue event may have its own date/time window, provided it fits the event’s overall schedule. Check suitability, availability, setup and turnaround independently for each venue and its specific booking interval. | §6.12 BR-R15; §9 item 34 |
+| QA3-24 | Can the event be confirmed if some venues are approved and one is rejected, or must every requested venue be approved? | Every required venue booking must be approved before the event can be confirmed. If one venue is rejected, the event remains in planning while the Coordinator arranges a replacement or revises the plan; approved venues remain associated with the event and are not automatically removed. | §5; §6.6 readiness; §6.13 BA-R6 |
+| QA3-25 | Is attendance checked per venue (e.g. 40 per breakout) or the event total against each venue? | The allocations must still account for the expected attendees who need to use the venues, and no venue may exceed its capacity. | §6.12 BR-R16 |
+| QA3-26 | Is there a main venue Attendees should see, or are all venues shown equally? | For multi  venue event, allow the Coordinator to designate one venue as the primary attendee-facing location, while listing the other venues as part of the same event. Attendees see the primary location, Organizer can see all the venue. | §6.12 BR-R17; §6.18 |
+| QA3-27 | When is cancelling one venue "explicitly required" to also remove the others? | Cancelling one venue arrangement does not cancel the others by default. Remove other venue bookings only when the whole event is cancelled. | §6.12 BR-R18; §7 |
+| QA3-28 | What maximum setup or turnaround time should we allow, and is 0 valid? | Venue Staff configure a non negative value for setup and turnaround time for each venue independently. Each venue may have different Setup & Turnaround time. | §6.8 VC-R9 |
+| QA3-29 | Should equipment reservations also cover the venue's setup and turnaround period? | Week 7 change require to have setup and turn around time only for venue. For equipment yo can assume it availability base on equipment catelog and inventory. | §6.16; §11 |
+| QA3-30 | Does a replacement venue need Venue Staff approval like a new booking? | Yes. A replacement considered a change request will pass through new venue request and all the approval needs to be done. | §6.12 BR-R19; LC-R7 |
+| QA3-31 | What default hold length should we use, and who can extend it, how many times? | The change document requires an expiry but does not set a default or extension limit. Team can dedicde add valid hold period. | §6.12 BR-R10, BR-R11 |
+| QA3-32 | How far before expiry should the Coordinator be warned? | Team can decide. coordinator should be informed | §6.12 BR-R12 |
+| QA3-33 | How many Lead Coordinator(s) will there be? Is there only one Lead Coordinator that oversees all coordinators, or several Lead Coordinators with a team of Event Coordinators each? | System should support one or more Event Coordinator Leads, with each Lead’s supervisory scope recorded. At least one Lead must be available to review the common unassigned queue and oversee assignments; do not hard-code a single Lead account. | §6.5 LA-R2; §9 item 36 |
+| QA3-34 | Why does equipment need location when venue and equipment should not block each other? Does the equipment's location affect whether it can be reservce for an event at a different venue or is location only for Technical Support's references? | Equipment location is catalogue/inventory information that helps Technical Support check where equipment is stored and whether it can be delivered in time. It does not reserve or block a venue. Equipment availability is based on quantity, condition | §4; §6.16 |
+| QA3-35 | Can Event Coordinators hand events to each other or only the Lead Coordinator can reassign? | Only the Lead performs the reassignment in the system. | §6.5 LA-R6 |
+| QA3-36 | Can Lead Coordinator hold double role as a Event Coordinator too (i.e. Lead Coordinator can also approve or reject requests) | Refer row 13 | §2.2 AUTH-R7 |
+| QA3-37 | New requests now go to an unassigned queue. Should auto-assignment be removed completely, or kept as a suggested Coordinator that the Lead can accept? | Yes, no auto-assingment. | §6.5; §11 |
+| QA3-38 | Should events already auto-assigned stay with their Coordinator? | Yes. Keep existing assignments; Week 7 changes the handling of newly submitted requests and does not require resetting work already assigned. The Lead can reassign an existing event when needed and should notify the affected users. | §6.5 LA-R10 |
+| QA3-39 | Can only the Lead reassign events, or can the assigned Coordinator still hand an event over? | Only the Lead changes the assignment. The Coordinator may request a transfer, but may not hand the event over directly; the Lead reviews and performs any reassignment. | §6.5 LA-R6 |
+| QA3-40 | Is the Lead also a Coordinator? Can they assign events to themselves and manage them directly? | Refer row 13 | §2.2 AUTH-R7 |
+| QA3-41 | Does the Lead see all active events, or only a team of Coordinators? Can there be more than one Lead? | The Lead should see all unassigned and active events that he/she previously assigned to event coordinator. | §6.5 LA-R2; §6.21 |
+| QA3-42 | What should the Organiser see in the "Event Coordinator" row before assignment, for example "Awaiting assignment"? | “Unassigned --> Coordinator name” | §6.2 ER-R2; §6.5 LA-R12 |
+| QA3-43 | Who is notified of assignments and reassignments: the new Coordinator, the previous Coordinator, the Organiser, or all three? | For a new assignment, notify the newly assigned Coordinator and the Organiser. <br><br>For a reassignment, notify the new and previous Coordinators and the Organiser. <br><br>Record the Lead’s action; notify other Leads only if they are responsible for that queue/supervisory scope.(I leave up to development team.You can consider or ignore to implement) | §6.5 LA-R11; §6.20 |
+| QA3-44 | Is the safety check before Confirmed, or between Confirmed and "preparation"? Is "preparation" a new status? | Refer row 2 | §5 |
+| QA3-45 | Should staff preparation updates unlock only after safety approval, instead of after the venue/technical sign-off? | Yes. Venue Staff and Technical Support preparation updates become available only after the Safety Officer approves the event and it enters Preparation. | §6.6 RD-R2; §6.7 |
+| QA3-46 | When the Safety Officer requests changes, which status does the event return to? Are venue/technical sign-offs reset automatically, or does the Coordinator decide? | At this stage event still in planning. and remain in planning until all approval done.<br><br>No auto assing or reset. Event coodinator will do the changes if necessary | §5 LC-R7; §6.6.1 SF-R3 |
+| QA3-47 | Does a safety rejection reject the whole event, or only the safety arrangement so the Coordinator can revise it? | A safety rejection applied on venue for its suitability for the event. Safty rejection reject the venue not the entire event request. Keep the event in planning with the safety issue and reason visible to the Coordinator; allow revised arrangements and another safety review. The Coordinator may separately reject/cancel the event only under the normal event decision process. | §6.6.1 SF-R4; §9 items 25, 26, 33 |
+| QA3-48 | If attendance or layout changes after safety approval, does the safety check need to be done again? | Refer row 16 | §5; §6.19 |
+| QA3-49 | Which event details can the Safety Officer see, including change history? Are they assigned to specific events, or does any Safety Officer review any event? | The Safety Officer should see the event details needed for the review and the relevant change history, including attendance, venue/layout, access and equipment changes. Reviews should be routed through a safety-review queue or assigned to an authorised Safety Officer; they should not receive unrestricted access to unrelated event information. Record who reviewed each check. | §2.2 AUTH-R8; §6.6.1 SF-R5 |
+| QA3-50 | Does each venue need its own sign-off and its own venue preparation status, or is there one for the whole event? | Yes. Each venue booking has its own approval and availability state, and venue preparation progress is tracked per venue. The event-level readiness/confirmation state is an aggregate: it cannot be confirmed or prepared until every required venue and technical arrangement is ready and safety is approved. | §6.6 readiness, RD-R2, RD-R4 |
+| QA3-51 | Should a significant change reset all venue sign-offs, or only those for the affected venue? | There is no automatic reset for any venue/equipemnt affected by a change.  Coordinator will review the changes and decide next action. | §5 LC-R7; §6.19; §7 |
+| QA3-52 | When a booked venue becomes unavailable, should its sign-off and preparation reset, and should the event move back to Planning? | Even Coordinator review the unavailability of the veneu and decide next action. New venue request will go through entire approval process.  and event goest to planning phase. | §6.9 CAL-R4 |
+| QA3-53 | Should Organisers see each venue separately, and see when one becomes unavailable? | Yes. Organisers should see each venue in the event separately, including its status and any unavailability that affects their plans, together with the next action. | §6.9 CAL-R8; §6.21 |
