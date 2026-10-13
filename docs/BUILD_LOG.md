@@ -1935,13 +1935,15 @@ CR-98 introduces multiple organiser-proposed venue requirements per event. `even
 2. The events API adds space CRUD, draft/returned ownership and lifecycle checks, submission completeness validation, and coordinator reads containing every space and its active bookings. Explicit-null space PATCH fields return validation errors rather than a server error (D27).
 3. The organiser form stages and edits multiple space cards, persists them with event actions, and displays field-specific validation and API errors. The coordinator detail view displays each space's pax, layout and facilities. Venue search and booking helpers carry selected-space criteria while preserving event-level timing and legacy API compatibility.
 4. Tests cover space CRUD, validation, lifecycle and version conflicts, coordinator visibility, selected-space booking integration, request payloads, and event-period handling. CR-98 traceability is in `docs/test-cases/events.md`; venue-booking follow-on coverage is identified as CR-97 in `docs/test-cases/venues.md`.
+5. D26 security follow-up: migration `20261013100000_revoke_event_space_trigger_execution.sql` revokes direct execution of both `SECURITY DEFINER` trigger functions from `PUBLIC`, `anon` and `authenticated`; `event_space_checks.sql` asserts the grants and trigger behavior. Its version follows the latest linked-ledger entry (`20261012140000`); `20261012120000` was already recorded remotely despite the live grants remaining open.
 
 #### Verification
 
-- Full backend suite: **780 passed**, **94.60%** coverage. Full frontend suite: **630 passed**, **95.66%** line coverage; focused CR-98 frontend tests: **112 passed**. Frontend production build passed.
+- Full backend suite after rebase and date-relative fixture correction: **1,016 passed**, **95.06%** coverage. Full frontend suite: **718 passed**, **95.81%** line coverage; focused CR-98 frontend tests: **112 passed**. Frontend production build passed.
 - Live SQL verification passed for event-period synchronization and legacy space/booking backfill; behavioral writes were rolled back. See `docs/test-cases/runs/2026-10-10-1124-api-db-a3cb625.md`.
-- Recorded Playwright regression suite: **50/50 passed**. See `docs/test-cases/runs/2026-10-10-1125-e2e-a3cb625.md`.
+- The D26 live privilege assertion failed against deployed grants on 2026-10-12. Applying the proposed revokes inside a separate transaction made the privilege and trigger assertions pass; rollback left the shared database unchanged. See `docs/test-cases/runs/2026-10-12-1433-api-db-d234eb1.md`. The revocation migration remains pending normal deployment.
+- An unrecorded Playwright run passed **55/55** against the integrated branch; the latest recorded rerun was **53/55** with TC-AUTH-002 organiser sign-in failing to leave the login page and the venue-staff sign-in test timing out during page setup. See `docs/test-cases/runs/2026-10-12-1458-e2e-d234eb1.md`; no CR-98 case failed in that run.
 - Manual CR-98 cases TC-SPACE-001, 002, 004 and 006 were reported passed. See `docs/test-cases/runs/2026-10-10-1104-manual-a3cb625.md`.
-- The live migration ledger contains remote-only version `20261009110000`, with no matching local migration. It was not changed as part of CR-98 verification; identify its source before any migration repair or push.
+- The linked migration ledger includes remote-only versions through `20261012140000`. The D26 revocation migration is local-only until merged and deployed through the normal migration workflow; the prior live privilege check confirmed the exposure before the fix.
 
 The Product backlog status, PR review, and merge are developer-owned follow-ups; no backlog edit or status change was made here.

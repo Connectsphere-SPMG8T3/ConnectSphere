@@ -18,6 +18,16 @@ declare
     v_space_start timestamptz;
     v_space_end timestamptz;
 begin
+    if has_function_privilege('anon', 'public.populate_booking_space_request()', 'EXECUTE')
+       or has_function_privilege('authenticated', 'public.populate_booking_space_request()', 'EXECUTE') then
+        raise exception 'CR-98 FAIL: untrusted roles can execute the booking-space trigger function';
+    end if;
+
+    if has_function_privilege('anon', 'public.sync_event_space_periods()', 'EXECUTE')
+       or has_function_privilege('authenticated', 'public.sync_event_space_periods()', 'EXECUTE') then
+        raise exception 'CR-98 FAIL: untrusted roles can execute the period-sync trigger function';
+    end if;
+
     if not exists (
         select 1
         from pg_trigger t

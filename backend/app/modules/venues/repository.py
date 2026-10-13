@@ -10,6 +10,8 @@ import re
 from collections.abc import Iterable
 from datetime import datetime
 
+from postgrest.exceptions import APIError
+
 from app.db.supabase import get_supabase_admin_client
 from app.modules.venues.schemas import (
     BlockSummary,
@@ -595,8 +597,10 @@ def list_active_bookings(event_id: str) -> list[dict]:
             .order("created_at")
             .execute()
         )
-    except Exception:
+    except APIError as exc:
         # Keep coordinator reads usable while the forward-only schema migration
-        # is rolling out; the legacy single-booking read remains authoritative.
-        return []
+        # is rolling out; only a missing schema-cache column permits fallback.
+        if exc.code == "PGRST204":
+            return []
+        raise
     return response.data or []

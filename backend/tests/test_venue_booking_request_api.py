@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+from postgrest.exceptions import APIError
 
 from app.modules.events import repository as events_repository
 from app.modules.events import service as events_service
@@ -265,9 +266,14 @@ def test_list_active_bookings_reads_rows_and_returns_empty_on_schema_read_failur
     query.response = SimpleNamespace(data=None)
     assert venues_repository.list_active_bookings(EVENT_ID) == []
 
-    failed_query = Query(error=RuntimeError("column not available during rollout"))
+    failed_query = Query(error=APIError({"code": "PGRST204", "message": "column not available during rollout"}))
     monkeypatch.setattr(venues_repository, "get_supabase_admin_client", lambda: AdminClient(failed_query))
     assert venues_repository.list_active_bookings(EVENT_ID) == []
+
+    failed_query = Query(error=RuntimeError("database unavailable"))
+    monkeypatch.setattr(venues_repository, "get_supabase_admin_client", lambda: AdminClient(failed_query))
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        venues_repository.list_active_bookings(EVENT_ID)
 
 
 def test_active_bookings_for_event_maps_each_space_booking(monkeypatch):
