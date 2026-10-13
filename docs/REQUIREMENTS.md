@@ -800,21 +800,21 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 
 **[Team decision / delivery boundary]** CR-104 delivers `return_to_planning` from both review and confirmed with no callers wired. AC6/AC10 are not complete until CR-94/95, 85, 24 and 37 invoke it after their own record changes. A return changes no bookings/equipment itself. Technical readiness still has a read/transition race until story 24; no broader fix is included.
 
-### 6.7 Event information management and change history *(SCRUM-14: 62; QA-70)*
+### 6.7 Event information management and change history *(SCRUM-14: 62, 112; QA-70)*
 
 **Field classification** (QA-13, QA-66, W4). This is configuration held in one place.
 - **Significant:** date and time (including duration), expected attendance, venue requirements (layout, facilities, location), equipment requirements. There is no numeric threshold: *any* change to these fields is significant (QA-66). Session 2 confirmed the list as date, duration, pax, venue, and equipment (QA2-10).
 - **Ordinary:** name, purpose, description, contact details, accessibility notes, internal notes. Routine edits such as contact information and descriptive text are normal updates that trigger no re-review and no status change (QA2-10). The customer lists accessibility as a suitability *parameter* rather than a significant change (QA-27, QA-66), so it is ordinary. **[Team decision]**
 
-**Who edits what, by status** (QA-25, QA-81, QA-2, QA2-4). Coordinators edit main event details; organisers edit or resubmit their own requests only; venue staff and tech support update their own sections (QA2-4).
+**Who edits what, by status** (QA-25, QA-81, QA-2, QA2-4). Coordinators edit main event details; organisers edit or resubmit their own requests only; venue staff and tech support update their own sections (QA2-4). The coordinator's direct edits are story 112. **A coordinator never edits a significant field directly at any status:** significant changes "require formal re-review" (QA2-10), so they always go through an approved change request (§6.19). Direct edits cover ordinary fields only, such as routine fixes or details agreed with the organiser offline (QA2-27).
 
 | Status | Organiser | Assigned coordinator | Venue staff / Tech support |
 |---|---|---|---|
 | draft | Everything | – | – |
-| submitted / under_review | Change request only | Ordinary fields directly | – |
+| submitted / under_review | Change request only | Ordinary fields directly once assigned. Significant fields: return the request for amendment (§6.4) or approve a change request | – |
 | returned | Everything (resubmit) | – | – |
-| planning | Change request only | Ordinary fields directly. Significant fields **directly, with an impact confirmation dialog**; the same re-review rules as §6.19 apply. | – (preparation opens in `preparation`, QA3-45) |
-| confirmed | Change request only | Ordinary fields directly. Significant fields only by approving a change request (post-confirmation changes need re-request/review, QA-2, QA3-16). | Their preparation sections; the first update moves the event to `preparation` (QA3-45, M3) |
+| planning | Change request only | Ordinary fields directly. Significant fields only by approving a change request (QA2-10). | – (preparation opens in `preparation`, QA3-45) |
+| confirmed | Change request only | Ordinary fields directly. Significant fields only by approving a change request (QA-2, QA2-10, QA3-16). | Their preparation sections; the first update moves the event to `preparation` (QA3-45, M3) |
 | preparation | Change request only | As confirmed | Their preparation sections, per venue booking for venue staff (QA3-45, QA3-50) |
 | terminal | Read-only | Read-only | Read-only |
 
@@ -826,7 +826,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 
 **Acceptance criteria**
 - **Given** a planning event, **when** the coordinator edits the description, **then** it saves and the History tab shows the old and new value, the coordinator's name, and the time.
-- **Given** a confirmed event, **when** the coordinator tries to PATCH `starts_at` directly, **then** it's rejected with "Changes to a confirmed event need a change request."
+- **Given** an event in any status, **when** the coordinator tries to change `starts_at` directly, **then** it's rejected with "Significant changes go through a change request." (112 AC2).
 - **Given** an organiser viewing History, **then** internal preparation notes and staff-only entries are not shown.
 
 ### 6.8 Venue catalogue *(SCRUM-15: 63, 64, 67 — 67 built; view part of 39)*
@@ -1085,7 +1085,7 @@ available(type, W) = total_quantity
 - **Given** a confirmed event with reserved equipment, **when** its cancellation is approved, **then** the equipment is available again for that window.
 - **Given** 10 projectors are reserved and 3 break (outage), **then** reservations are unchanged, and tech support and the coordinator are notified of the shortfall.
 
-### 6.18 Attendee registration *(SCRUM-25: 43, 55, 56, 35, 59)*
+### 6.18 Attendee registration *(SCRUM-25: 43, 55, 56, 35, 59; waitlist 86)*
 
 **Settings** (organiser, per event, QA-89, QA-108, QA-136, QA2-2): registration enabled, capacity, opens-at, closes-at, withdrawal allowed until (default: event start), re-registration allowed (default: yes). **[Team decision]** Withdrawal and re-registration were left "at the organiser's discretion", so they are per-event settings.
 
@@ -1117,7 +1117,7 @@ available(type, W) = total_quantity
 - **Given** I'm registered, **when** I withdraw before the cutoff, **then** a place frees up and I see a withdrawal confirmation. If someone is waitlisted, they're invited and notified, and not registered automatically.
 - **Given** an organiser of event X, **when** they open event Y's registrations, **then** they receive `404`.
 
-### 6.19 Event change requests *(SCRUM-26: 32, 37)*
+### 6.19 Event change requests *(SCRUM-26: 32, 37; cancellation 84)*
 
 **Kinds:** **change** or **cancellation**. The organiser can request either at any time after submission (QA-12). The assigned coordinator decides, and may reject a cancellation request (QA2-6).
 
@@ -1395,32 +1395,32 @@ These are the Week 1 features outside the core 20. They stay in the Product back
 
 | Feature | Behaviour sketch (with clarifications) | Fits into |
 |---|---|---|
-| User profile management (edit) | Edit name, phone, communication preferences (QA-46) | `users` |
+| User profile management (edit) | Edit name, phone, communication preferences (QA-46). Backlog **92** | `users` |
 | Client management | Client profiles maintained; organisers linked; deletion policy TBD (QA-90) | `client_organisations` |
-| Event categories | Category list maintained by system defaults (no admin, QA-3) | `events.category` |
+| Event categories | Category list maintained by system defaults (no admin, QA-3). Backlog **88** | `events.category` |
 | Event programme and agenda | Sessions and breaks. Timing changes that move the event window are significant (QA-98). | `event_sessions` |
 | Multi-session events | Different timings per session; venue rules TBD after Week 4 (QA-115). One date per event (QA-135). *Multi-venue events with a window per venue booking are now core (W7 CR-03, BR-R15).* | `event_sessions` |
 | Recurring or similar events | Clone a past event's baseline data; each copy keeps its own dates and requirements (QA-99, QA-120). Filtering rules are a team choice; retrigger rules pending (QA-57, QA-63). SCRUM-66. | `events` service |
 | Comments and discussion | **Built in SCRUM-61.** Attached to the event record; offline conversations recorded manually by staff (QA-100, QA2-27); @mentions and resolve are optional (QA-131, QA-132) and not built; **not** progression blockers (QA-133). Session 2 named comments as the organiser–coordinator channel (for example asking for a site recce); no floor-plan feature is required (QA2-27). **[Team decision]** Readers and posters are the owning organiser and the assigned coordinator, each in that active role (QA2-27; venue staff and tech support wait until bookings and equipment requests link them to an event). Posting is open from `submitted` to `confirmed`; `rejected`, `cancelled` and `completed` keep a read-only thread; a `draft` has none. Comments are append-only (no edit or delete), and each one notifies the other party (`comment_added`; nobody when no coordinator is assigned yet, **[Assumption]**). An offline conversation is recorded as an ordinary comment. Length cap: §9 Q15. | `event_comments`, `add_event_comment` |
-| Supporting documents | Attachments (Supabase Storage) | `event_documents` |
+| Supporting documents | Attachments (Supabase Storage). Backlog **89** | `event_documents` |
 | Venue photo library | The profile's carousel is built and its `photos` contract is live, but nothing populates it; layout schematics stand in (VC-R8). Needs a `venue_photos` table, a storage bucket with RLS, and an upload path in the venue edit screen | `venue_photos` |
 | Tentative venue holding | **Now core behaviour** (§6.12, QA-6) | – |
 | Setup and turnaround time | **Now core behaviour** (W7 CR-01, CR-100; VC-R9, §6.14, QA3-4, QA3-5) | – |
 | Venue unavailability management | Covered by blocks (§6.9) | – |
 | Room layout management | Covered by `venue_layouts` | – |
 | Event capacity management | Covered by §6.11 capacity rule and §7 | – |
-| Equipment catalogue (full CRUD) | Add, edit, retire types; view-only is P2 | `equipment` |
+| Equipment catalogue (full CRUD) | Add, edit, retire types; view-only is P2. Backlog **93** | `equipment` |
 | Equipment maintenance status | Covered by `equipment_outages` (§6.16) | – |
 | Technical support requests | Coordinator describes on-site support needs | `events` |
 | Technical staff assignment | From a single pool, no skill matching, schedules out of scope (QA-35, QA-41, QA-14, QA-42). The §6.5 least-loaded policy it was to reuse no longer exists (QA3-37), so the assignment method is undecided | `events.assignment` |
 | Event readiness tracking | Core subset in §6.6. Full checklist (programme, registration) is P3 (QA-127). | – |
 | Outstanding action tracking | Cross-event "incomplete arrangements" list | Dashboards |
 | Registration period | **Now core behaviour** (§6.18, QA-89) | – |
-| Attendee waiting list | **Now core behaviour** (§6.18 RG-R5): the customer specified it in Session 2 (QA2-20) | – |
-| Attendance recording | Distinguish registered from attended; method is a team choice (QA-16) | `registrations.attended` |
+| Attendee waiting list | **Now core behaviour** (§6.18 RG-R5): the customer specified it in Session 2 (QA2-20). Backlog **86** | – |
+| Attendance recording | Distinguish registered from attended; method is a team choice (QA-16). Backlog **91** | `registrations.attended` |
 | Rescheduling | Covered by change requests (§6.19) | – |
 | Cancellation management | **Core behaviour** in §6.19 | – |
-| Reminder system | Upcoming events and incomplete arrangements | Scheduled worker |
+| Reminder system | Upcoming events and incomplete arrangements. Backlog **90** | Scheduled worker |
 | Event calendar | Role-filtered calendar of events | SPA |
 | Search and filtering (events) | Role-restricted: organisers see only their own; staff see relevant events (QA-87) | `events` |
 | Activity history / change history (UI) | **Promoted to P2** because the UI is required (QA-70); see §6.7 | `audit` |
@@ -1521,6 +1521,12 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 **SCRUM-38 additions (2026-10-12):**
 43. **[Assumption]** A booking rejection notifies only the event's assigned coordinator, and the notification carries no reason (the coordinator reads it on the event or booking page). Should venue staff colleagues, or the organiser, be told too? The organiser currently learns nothing, per AUTH-R2.
 44. **[Dependency]** SCRUM-38 builds on CR-99's `venue_booking_history` and `lock_hold_for_approval` (Xuan Wei, on `main` since 2026-10-13). Its migration was applied on 2026-10-13. AC8 with several bookings on one event still needs CR-98 on `main`.
+
+**SCRUM-85 addition:**
+45. **[Assumption]** 85 AC4: cancelling the venue booking of a `confirmed` or `preparation` event returns the event to `planning`, because the venue is no longer ready and the event must be re-confirmed (readiness, §6.6). The customer hasn't answered this case directly. It is consistent with QA3-52, where an event goes back to Planning once the coordinator replaces a venue. Is that right?
+
+**Story 112 addition:**
+46. **[Open]** If the organiser tells the coordinator about a significant change offline (QA2-27), can the coordinator raise the change request on the organiser's behalf, or must the organiser submit it themselves? Until answered, only the organiser raises change requests (§6.19); the coordinator's direct edits cover ordinary fields only (§6.7, 112).
 
 ## 10. Non-functional requirements
 
