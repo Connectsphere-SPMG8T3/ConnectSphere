@@ -1797,3 +1797,19 @@ Fixed on `fix/events-test-fixed-dates`, branched from `main` at `a6080f9`, 2026-
 - **Full suite:** `pytest` 992 passed.
 - **Time-shifted runs:** the suite was run with the whole process clock moved forward (`time-machine`, loaded from a scratch directory, not added to the project). The fix passes all 992 at +0, +30, +365 and +1000 days. `main` at +365 fails only the same three tests, so no other test in the suite depends on the date.
 - **Not run:** live checks, since nothing outside the test suite changed.
+
+### 4.43. Chore — Replace the hand-drawn ER diagram with the live schema
+
+On `chore/er-diagram-to-supabase-visualiser`, branched from `main` at `11d4342`, 2026-10-13. Numbered 4.43 because `feature/scrum-38-reject-booking-request`, not yet merged, uses 4.42.
+
+**Why.** The course deliverables ask for the system design as a C4 model only, so `REQUIREMENTS.md` §4's Mermaid ER diagram wasn't required, and it had drifted from what was built. It drew `EQUIPMENT_TYPES` and `EQUIPMENT_OUTAGES`, where the built tables are `equipment`, `equipment_unavailability` and `equipment_reservations`. It drew a `CLIENT_ORGANISATIONS` table where `profiles` has `organisation_name`. It left out `user_roles`, `session_active_roles`, `event_comments`, `event_safety_decisions`, `venue_edit_history` and `venue_booking_history`. Supabase's schema visualiser draws the built schema from the database itself.
+
+**Changed.**
+1. `REQUIREMENTS.md` §4 points at the schema visualiser and `supabase/migrations/` as the built schema, records the change as a **[Team decision]**, and keeps the conventions, the integrity guarantees (DB-1 to DB-6) and the equipment trade-off.
+2. `DEFECTS.md` D26: the live project has `venues.inactive_reason`/`inactive_note` and `venue_bookings.flag`/`flag_reason`/`flagged_at`, with their enums, that no migration on any branch creates.
+
+#### Verification
+
+- Live schema read on 2026-10-13 with read-only `supabase db query` calls: `information_schema.columns`, `pg_enum` and `supabase_migrations.schema_migrations`.
+- Branch search: `git grep` over every local and remote branch for the drifted column and enum names.
+- **Not run:** tests and live checks, since only docs changed.
