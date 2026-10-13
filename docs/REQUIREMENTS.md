@@ -545,15 +545,15 @@ erDiagram
 | **DB-5** | Concurrent edits to an event are detected. | `events.version` optimistic lock | [Team decision] |
 | **DB-6** | Records are never hard-deleted once submitted. | Submitted events, bookings, reservations, registrations, and history are soft-deleted or kept. Only never-submitted drafts can be discarded. | QA-123 |
 
-**Target-schema changes from Session 3 (§13; not built yet).** The ERD above predates them:
+**Target-schema changes from Session 3 (§13; not built yet):**
 - `events.status` gains **`preparation`** after `confirmed` (§5, QA3-3).
 - `events` records the **assigning Lead** (`assigned_by`, the Lead who last assigned or reassigned it), which is the Lead's supervisory scope (§6.5 LA-R2, QA3-33, QA3-41). Assignments and reassignments are kept as history rows (from, to, by, when, reason).
 - `venues` gains default **`setup_minutes`** and **`turnaround_minutes`** (non-negative, per venue, QA3-4, QA3-28). `venue_bookings` gets its own `setup_minutes`/`turnaround_minutes`, copied from the venue and adjustable by Venue Staff until approval (VC-R9, M3), and its **own booking window** inside the event's schedule (QA3-23); `occupied_period` is derived from them (DB-1).
 - `venue_bookings` gains **`is_primary`** (at most one per event, set by the coordinator, QA3-26), **per-booking preparation progress** (QA3-50) and, for a replacement, a link to the booking it replaces (QA3-9).
 - Safety decisions hold a **structured checklist** per review (QA3-17), separate organiser-visible comments from private notes, and record the reviewer (QA3-49).
-- `EQUIPMENT_TYPES.location` is catalogue information only (where the stock is kept, for delivery planning); it never reserves or blocks a venue (QA3-34).
+- An equipment item's storage location is catalogue information only (where the stock is kept, for delivery planning); it never reserves or blocks a venue (QA3-34).
 
-**Design trade-off (equipment tracking):** the customer tracks equipment by type and quantity, though individual items do have IDs, and left the choice to us (QA-7). **[Team decision]** We track by **type + quantity**, with outages recorded as quantities over a period. This keeps availability a single arithmetic query, and it matches how the Week 4 brief phrases availability ("sufficient quantity"). If per-item tracking is needed later, an `equipment_items` table can be added under `equipment_types` without changing the reservation API.
+**Design trade-off (equipment tracking):** the customer tracks equipment by type and quantity, though individual items do have IDs, and left the choice to us (QA-7). **[Team decision]** We track by **type + quantity**: each `equipment` row is a catalogue entry with a `total_quantity`, and outages (`equipment_unavailability`) are quantities over a period. This keeps availability a single arithmetic query, and it matches how the Week 4 brief phrases availability ("sufficient quantity"). If per-item tracking is needed later, a table of individual items can be added under `equipment` without changing the reservation API.
 
 ---
 
@@ -839,7 +839,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - **Controlled lists [Team decision, SCRUM-39].** The customer requires layouts and facilities to come from a controlled list (QA-24, W4) and accessibility to be boolean/tag features (QA2-14), but never enumerated the values. They are Postgres enums (adding a value is a one-line migration) mirrored in `backend/app/modules/venues/schemas.py` and `frontend/src/features/venues/venueSearchStore.js`:
   - `venue_layout`: theatre, classroom, boardroom, banquet, u_shape, reception
   - `facility`: projector, sound_system, microphone, video_conferencing, whiteboard, stage, wifi, catering_space
-  - `accessibility_feature`: wheelchair_access, step_free_entry, accessible_toilet, hearing_loop, lift_access — stored on the venue as an enum array (the ERD's free-text field could not be filtered exactly)
+  - `accessibility_feature`: wheelchair_access, step_free_entry, accessible_toilet, hearing_loop, lift_access — stored on the venue as an enum array (the original target schema's free-text field could not be filtered exactly)
   - `venue_block_reason`: maintenance, renovation, safety, internal_activity, other (§6.9)
   - `venue_booking_status`: held, approved, re_review, rejected, cancelled, released (§6.12–6.14)
   The event request (SCRUM-8) should reuse `venue_layout`, `facility` and `accessibility_feature` for `layout_preference`, required facilities and accessibility needs.
