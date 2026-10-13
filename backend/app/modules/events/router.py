@@ -14,6 +14,7 @@ from app.modules.events.schemas import (
     SafetyChangesRequest,
     SafetyRejectRequest,
     CoordinatorDashboard,
+    LeadDashboard,
     EventComment,
     EventCommentCreate,
     EventCommentsResponse,
@@ -33,6 +34,7 @@ router = APIRouter(prefix="/events", tags=["events"])
 SafetyOfficer = Annotated[CurrentUser, Depends(require_roles(["safety_officer"]))]
 EventOrganiser = Annotated[CurrentUser, Depends(require_roles(["event_organiser"]))]
 EventCoordinator = Annotated[CurrentUser, Depends(require_roles(["event_coordinator"]))]
+EventCoordinatorLead = Annotated[CurrentUser, Depends(require_roles(["event_coordinator_lead"]))]
 SafetyDecisionReader = Annotated[CurrentUser, Depends(require_roles(["event_coordinator", "safety_officer"]))]
 EventParticipant = Annotated[CurrentUser, Depends(require_roles(["event_organiser", "event_coordinator"]))]
 
@@ -77,6 +79,11 @@ def delete_event_space(event_id: UUID, space_id: UUID, current_user: EventOrgani
 @router.get("/dashboard/coordinator", response_model=CoordinatorDashboard)
 def coordinator_dashboard(current_user: EventCoordinator) -> CoordinatorDashboard:
     return service.coordinator_dashboard(current_user.id)
+
+
+@router.get("/dashboard/lead", response_model=LeadDashboard)
+def lead_dashboard(current_user: EventCoordinatorLead) -> LeadDashboard:
+    return service.lead_dashboard(current_user.id)
 
 
 @router.get("/safety-queue", response_model=SafetyQueueResponse)

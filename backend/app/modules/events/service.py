@@ -16,7 +16,7 @@ from app.core.exceptions import (
 # Module imports, not names: `venues.service` imports this module too, and a
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.equipment import service as equipment_service
-from app.modules.events import lifecycle, repository
+from app.modules.events import lead_scope, lifecycle, repository
 from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
 from app.modules.events.schemas import (
@@ -39,6 +39,9 @@ from app.modules.events.schemas import (
     CoordinatorActionKind,
     CoordinatorActiveEvent,
     CoordinatorDashboard,
+    LeadCoordinator,
+    LeadDashboard,
+    LeadEvent,
     EventComment,
     EventCommentsResponse,
     EventCreateRequest,
@@ -619,6 +622,41 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
         )
 
     return CoordinatorDashboard(action_items=action_items, active_events=active_events)
+
+
+def _lead_event(row: dict) -> LeadEvent:
+    return LeadEvent(
+        event_id=row["id"],
+        event_name=row["name"],
+        status=row["status"],
+        starts_at=row.get("starts_at"),
+        organiser_name=(row.get("organiser") or {}).get("full_name"),
+        purpose=row.get("purpose"),
+        expected_attendance=row.get("expected_attendance"),
+        coordinator=row.get("coordinator"),
+        assigned_at=row.get("assigned_at"),
+    )
+
+
+def lead_dashboard(lead_id: str) -> LeadDashboard:
+    """The Event Coordinator Lead's view (CR-101): the shared unassigned queue plus
+    the active events in this Lead's scope (AC5), and each coordinator's active
+    count over that scope. Filtering by coordinator and status is the SPA's job."""
+    lead_ids = repository.list_lead_ids()
+    rows = [
+        row
+        for row in repository.list_lead_events(ACTIVE_COORDINATOR_STATUSES)
+        if lead_scope.in_lead_scope(row, lead_id, lead_ids)
+    ]
+    counts = lead_scope.active_counts(rows)
+    return LeadDashboard(
+        unassigned=[_lead_event(r) for r in rows if r.get("coordinator_id") is None],
+        active_events=[_lead_event(r) for r in rows if r.get("coordinator_id") is not None],
+        coordinators=[
+            LeadCoordinator(id=c["id"], full_name=c["full_name"], active_count=counts.get(c["id"], 0))
+            for c in repository.list_coordinators()
+        ],
+    )
 
 
 def _comment_role(event: dict, author_id: str | None) -> str | None:

@@ -468,3 +468,60 @@ def list_safety_queue() -> list[dict]:
                   organiser_name=(row.get("organiser") or {}).get("full_name"),
                   entered_review_at=latest[row["id"]]) for row in events if row["id"] in latest]
     return sorted(items, key=lambda row: (row["entered_review_at"], row["event_id"]))
+
+
+# CR-101: the Lead's reads. Both profile embeds name their FK because `events`
+# points at `profiles` twice (organiser and coordinator).
+_LEAD_COLUMNS = (
+    "id, name, status, starts_at, purpose, expected_attendance, version, "
+    "coordinator_id, assigned_by, assigned_at, "
+    "organiser:profiles!events_organiser_id_fkey(full_name), "
+    "coordinator:profiles!events_coordinator_id_fkey(id, full_name)"
+)
+
+
+def list_lead_events(statuses: Iterable[str]) -> list[dict]:
+    response = (
+        get_supabase_admin_client()
+        .table("events")
+        .select(_LEAD_COLUMNS)
+        .in_("status", list(statuses))
+        .execute()
+    )
+    return response.data or []
+
+
+def list_lead_ids() -> set[str]:
+    """Profiles currently holding the Lead role. Used only to tell whether an
+    event's assigner is still a Lead (never to authorise a caller)."""
+    response = (
+        get_supabase_admin_client()
+        .table("user_roles")
+        .select("profile_id")
+        .eq("role", "event_coordinator_lead")
+        .execute()
+    )
+    return {row["profile_id"] for row in response.data or []}
+
+
+def list_coordinators() -> list[dict]:
+    """`{id, full_name}` of every account holding the coordinator role, by name."""
+    held = (
+        get_supabase_admin_client()
+        .table("user_roles")
+        .select("profile_id")
+        .eq("role", "event_coordinator")
+        .execute()
+    )
+    ids = [row["profile_id"] for row in held.data or []]
+    if not ids:
+        return []
+    response = (
+        get_supabase_admin_client()
+        .table("profiles")
+        .select("id, full_name")
+        .in_("id", ids)
+        .order("full_name")
+        .execute()
+    )
+    return response.data or []

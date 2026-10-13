@@ -492,6 +492,37 @@ class CoordinatorDashboard(BaseModel):
     # queue, not a coordinator's (customer clarification, REQUIREMENTS §6.5).
 
 
+class LeadCoordinator(BaseModel):
+    id: str
+    full_name: str
+    active_count: int = 0
+
+
+class LeadEvent(BaseModel):
+    event_id: str
+    event_name: str
+    status: EventStatus
+    starts_at: datetime | None = None
+    organiser_name: str | None = None
+    purpose: str | None = None
+    expected_attendance: int | None = None
+    coordinator: EventCoordinator | None = None
+    assigned_at: datetime | None = None
+
+
+class LeadDashboard(BaseModel):
+    """CR-101: the Event Coordinator Lead's view. `unassigned` is the shared queue;
+    `active_events` are the assigned events in this Lead's scope (AC5)."""
+
+    unassigned: list[LeadEvent] = []
+    active_events: list[LeadEvent] = []
+    coordinators: list[LeadCoordinator] = []
+
+
+class EventReassignRequest(BaseModel):
+    coordinator_id: UUID
+
+
 COMMENT_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as a rejection reason
 
 # Statuses whose thread accepts new comments (SCRUM-61). Drafts have no thread yet;
