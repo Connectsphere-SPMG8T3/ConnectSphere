@@ -9,6 +9,8 @@ from postgrest.exceptions import APIError
 from fastapi import HTTPException, status
 
 from app.core.exceptions import (
+    CoordinatorNotEligibleError,
+    EventNotInLeadScopeError,
     EventServiceUnavailableError,
     NotAssignedCoordinatorError,
     UnknownEventArrangementError,
@@ -657,6 +659,40 @@ def lead_dashboard(lead_id: str) -> LeadDashboard:
             for c in repository.list_coordinators()
         ],
     )
+
+
+def reassign(event_id: str, lead_id: str, coordinator_id: str) -> EventResponse:
+    """A Lead (re)assigns an event in their scope to a coordinator (CR-101 AC3).
+    Story 81 builds on this; the update, history and notices are one RPC."""
+    row = repository.get_lead_event(event_id)
+    if not row or row.get("status") == "draft":
+        raise EventNotFoundError()
+    if row["status"] not in ACTIVE_COORDINATOR_STATUSES:
+        raise EventConflictError(f"Cannot reassign an event that is {row['status'].replace('_', ' ')}")
+    if not lead_scope.in_lead_scope(row, lead_id, repository.list_lead_ids()):
+        raise EventNotInLeadScopeError()
+    target = repository.get_coordinator(coordinator_id)
+    if target is None:
+        raise CoordinatorNotEligibleError()
+    if row.get("coordinator_id") == coordinator_id:
+        raise EventConflictError("This event is already assigned to that coordinator.")
+    previous = (row.get("coordinator") or {}).get("full_name")
+    name = row["name"]
+    reason = (
+        f"Reassigned from {previous} to {target['full_name']}" if previous
+        else f"Assigned to {target['full_name']}"
+    )
+    updated = repository.reassign_event(
+        event_id, lead_id, coordinator_id, row["version"],
+        active_statuses=list(ACTIVE_COORDINATOR_STATUSES),
+        reason=reason,
+        notify_assigned=f'"{name}" has been assigned to you.',
+        notify_previous=f'"{name}" has been reassigned to {target["full_name"]}.',
+        notify_organiser=f'Your event "{name}" is now coordinated by {target["full_name"]}.',
+    )
+    if not updated:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return _to_response(updated)
 
 
 def _comment_role(event: dict, author_id: str | None) -> str | None:

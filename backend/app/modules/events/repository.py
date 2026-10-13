@@ -525,3 +525,75 @@ def list_coordinators() -> list[dict]:
         .execute()
     )
     return response.data or []
+
+
+def get_lead_event(event_id: str) -> dict | None:
+    response = (
+        get_supabase_admin_client()
+        .table("events")
+        .select(_LEAD_COLUMNS)
+        .eq("id", event_id)
+        .maybe_single()
+        .execute()
+    )
+    return response.data if response else None
+
+
+def get_coordinator(profile_id: str) -> dict | None:
+    """`{id, full_name}` if the profile holds the coordinator role, else None.
+    Eligibility of a reassignment *target*, never an authorisation of a caller."""
+    held = (
+        get_supabase_admin_client()
+        .table("user_roles")
+        .select("profile_id")
+        .eq("profile_id", profile_id)
+        .eq("role", "event_coordinator")
+        .maybe_single()
+        .execute()
+    )
+    if not held or not held.data:
+        return None
+    profile = (
+        get_supabase_admin_client()
+        .table("profiles")
+        .select("id, full_name")
+        .eq("id", profile_id)
+        .maybe_single()
+        .execute()
+    )
+    return profile.data if profile else None
+
+
+def reassign_event(
+    event_id: str,
+    lead_id: str,
+    coordinator_id: str,
+    expected_version: int,
+    *,
+    active_statuses: list[str],
+    reason: str,
+    notify_assigned: str,
+    notify_previous: str,
+    notify_organiser: str,
+) -> dict | None:
+    """Run `public.reassign_event`. Returns the updated row, or None when the event
+    had moved on (version or status) or the target lost the coordinator role."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "reassign_event",
+            {
+                "p_event_id": event_id,
+                "p_lead_id": lead_id,
+                "p_coordinator_id": coordinator_id,
+                "p_expected_version": expected_version,
+                "p_active_statuses": active_statuses,
+                "p_reason": reason,
+                "p_notify_assigned": notify_assigned,
+                "p_notify_previous": notify_previous,
+                "p_notify_organiser": notify_organiser,
+            },
+        )
+        .execute()
+    )
+    return _first_row(response)
