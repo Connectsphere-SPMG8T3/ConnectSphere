@@ -441,6 +441,76 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     }), "access");
   });
 
+  it("rejects space windows outside the event schedule and inverted windows", async () => {
+    const { el } = await mountNewForm();
+    const setValue = async (label, value, eventName = "input") => {
+      const control = controlFor(el, label);
+      control.value = value;
+      control.dispatchEvent(new Event(eventName));
+      await nextTick();
+    };
+    await setValue("Event title", "Schedule boundary test");
+    await setValue("Purpose", "Check space schedule validation");
+    await setValue("Proposed event date", "2099-12-01");
+    await setValue("Proposed start time", "10:00");
+    await setValue("Proposed end time", "18:00");
+    await setValue("Space label", "Main venue");
+    await setValue("Expected pax", "20");
+    await setValue("Preferred layout", "classroom", "change");
+
+    const scheduleToggle = el.querySelector('[data-testid="space-schedule-toggle"]');
+    scheduleToggle.checked = false;
+    scheduleToggle.dispatchEvent(new Event("change"));
+    await nextTick();
+
+    await setValue("Space starts", "2099-12-01T09:00");
+    await setValue("Space ends", "2099-12-01T16:00");
+    buttonByText(el, "Submit request").click();
+    await nextTick();
+    expect(el.textContent).toContain("Space schedule must be within the event's overall schedule.");
+
+    await setValue("Space starts", "2099-12-01T13:00");
+    await setValue("Space ends", "2099-12-01T19:00");
+    buttonByText(el, "Submit request").click();
+    await nextTick();
+    expect(el.textContent).toContain("Space schedule must be within the event's overall schedule.");
+
+    await setValue("Space starts", "2099-12-01T16:00");
+    await setValue("Space ends", "2099-12-01T12:00");
+    buttonByText(el, "Submit request").click();
+    await nextTick();
+    expect(el.textContent).toContain("Space end time must be after its start time.");
+    expect(eventsApi.submit).not.toHaveBeenCalled();
+  });
+
+  it("requires the overall event schedule before accepting a custom space window", async () => {
+    const { el } = await mountNewForm();
+    const setValue = async (label, value, eventName = "input") => {
+      const control = controlFor(el, label);
+      control.value = value;
+      control.dispatchEvent(new Event(eventName));
+      await nextTick();
+    };
+    await setValue("Event title", "Space without event schedule");
+    await setValue("Purpose", "Check parent schedule validation");
+    await setValue("Space label", "Main venue");
+    await setValue("Expected pax", "20");
+    await setValue("Preferred layout", "classroom", "change");
+
+    const scheduleToggle = el.querySelector('[data-testid="space-schedule-toggle"]');
+    scheduleToggle.checked = false;
+    scheduleToggle.dispatchEvent(new Event("change"));
+    await nextTick();
+    await setValue("Space starts", "2099-12-01T13:00");
+    await setValue("Space ends", "2099-12-01T16:00");
+
+    buttonByText(el, "Submit request").click();
+    await nextTick();
+
+    expect(el.textContent).toContain("Set the overall event schedule before this space schedule.");
+    expect(eventsApi.submit).not.toHaveBeenCalled();
+  });
+
   it("persists all spaces before submitting a new event request", async () => {
     const callOrder = [];
     const draft = returnedEvent({ id: "draft-submit", status: "draft", spaces: [], amendment: null });

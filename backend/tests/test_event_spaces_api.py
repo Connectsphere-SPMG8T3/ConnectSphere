@@ -140,6 +140,62 @@ def test_space_request_requires_both_schedule_bounds_or_neither(
     assert "starts_at and ends_at must be provided together" in str(response.json())
 
 
+@pytest.mark.parametrize(
+    ("starts_at", "ends_at", "message"),
+    [
+        ("2026-10-20T13:00:00", "2026-10-20T16:00:00+08:00", "timezone offset"),
+        ("2026-10-20T16:00:00+08:00", "2026-10-20T13:00:00+08:00", "end time must be after"),
+    ],
+)
+def test_space_request_rejects_naive_or_inverted_windows(
+    starts_at, ends_at, message, client, auth_headers, authenticate_as, monkeypatch
+):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    monkeypatch.setattr(repository, "get_event", lambda event_id: event_row())
+    monkeypatch.setattr(repository, "create_space", lambda *args: pytest.fail("invalid window must not be stored"))
+
+    response = client.post(
+        f"/api/v1/events/{EVENT_ID}/spaces",
+        json={
+            "label": "Afternoon breakout",
+            "expected_pax": 40,
+            "layout_preference": "classroom",
+            "starts_at": starts_at,
+            "ends_at": ends_at,
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert message in str(response.json()).lower()
+
+
+def test_space_window_requires_an_event_schedule(
+    client, auth_headers, authenticate_as, monkeypatch
+):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    parent = event_row()
+    parent["starts_at"] = None
+    parent["ends_at"] = None
+    monkeypatch.setattr(repository, "get_event", lambda event_id: parent)
+    monkeypatch.setattr(repository, "create_space", lambda *args: pytest.fail("window without event bounds must not be stored"))
+
+    response = client.post(
+        f"/api/v1/events/{EVENT_ID}/spaces",
+        json={
+            "label": "Afternoon breakout",
+            "expected_pax": 40,
+            "layout_preference": "classroom",
+            "starts_at": "2026-10-20T13:00:00+08:00",
+            "ends_at": "2026-10-20T16:00:00+08:00",
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert "requires the event's overall schedule" in str(response.json())
+
+
 def test_organiser_can_create_a_space_with_its_own_window_within_the_event(
     client, auth_headers, authenticate_as, monkeypatch
 ):
