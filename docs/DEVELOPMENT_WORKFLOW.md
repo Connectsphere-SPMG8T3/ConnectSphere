@@ -31,7 +31,7 @@ _Last updated: 2026-10-13 — the DoD (Sprint N) tabs are tracked in the sheet a
 | Code, tests, test cases and run logs | This repository. The team copies the test cases into the Test cases sheet before submission. |
 | Sprint 1 and 2 history | The Jira exports in the shared drive's `#4. Evidence` folder. |
 
-**PBI IDs.** Stories from Sprints 1–2 keep their Jira number: row `12` in the sheet is `SCRUM-12`. Stories added from the Week 7 changes use the sheet's own `NEW-<nn>` IDs. Cite whichever the sheet shows, in branches, commits, test cases and log entries.
+**PBI IDs.** Stories from Sprints 1–2 keep their Jira number: row `12` in the sheet is `SCRUM-12`. Stories added because of a customer change request (the Week 7 change notice and its clarifications) use `CR-<n>`, such as `CR-99`. A Done story reopened for new work keeps its ID with `-R`, such as `72-R` or `CR-104-R`. Other stories the team adds use the sheet's next plain number, such as `98`. Cite whichever the sheet shows, in branches, commits, test cases and log entries.
 
 ### Editing the backlog sheet
 

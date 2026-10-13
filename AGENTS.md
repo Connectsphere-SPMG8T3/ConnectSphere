@@ -21,18 +21,18 @@ The team's Scrum process is set by the [Team A-HA! Scrum Playbook](https://docs.
 
 From Sprint 3 (6 Oct 2026), the backlog lives in the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit), not Jira. Its **Product backlog** tab holds every PBI: user story, acceptance criteria, priority, estimate, status and customer clarifications. Each sprint has its own tab with the sprint's tasks and burndown. Jira's Sprint 1–2 records are kept only as exports in the shared drive. Before writing to the sheet, read "Editing the backlog sheet" in `docs/DEVELOPMENT_WORKFLOW.md` for the column layout, exact status values and date format.
 
-**PBI IDs.** Stories from Sprints 1–2 keep their Jira number: row `12` in the sheet is `SCRUM-12`. Stories added from the Week 7 changes use the sheet's own IDs, `NEW-<nn>`. Cite whichever the sheet shows.
+**PBI IDs.** Stories from Sprints 1–2 keep their Jira number: row `12` in the sheet is `SCRUM-12`. Stories added because of a customer change request (the Week 7 change notice and its clarifications) use `CR-<n>`, such as `CR-99`. A Done story reopened for new work keeps its ID with `-R`, such as `72-R` or `CR-104-R`. Other stories the team adds use the sheet's next plain number, such as `98`. Cite whichever the sheet shows.
 
 ## Start every task: Scrum story or fix?
 
 Before exploring or changing code, ask the developer which kind of work this is (skip the question if they've already said):
 
 1. **Scrum story** (or enhancement)
-   - Ask for the PBI ID (`SCRUM-<n>` or `NEW-<nn>`).
+   - Ask for the PBI ID (`SCRUM-<n>`, `CR-<n>`, a plain number, or one ending in `-R`).
    - Read its row in the Product backlog sheet through the Google Sheets connector: user story, acceptance criteria, epic, priority, estimate, sprint and customer clarifications. **Read only.** Never edit the sheet unless the developer asks.
    - If the sheet can't be read, ask the developer to paste the **user story** and **acceptance criteria**. Never work from the title alone, and never invent acceptance criteria.
    - **Suggest planning first.** In Claude Code, recommend switching to plan mode before any code is written. In other tools, write the plan out and get the developer's agreement. The plan maps every acceptance criterion to the files, tests, and verification that will satisfy it, and names anything from `docs/IMPLEMENTATION_MAP.md` it will reuse.
-   - Branch: `feature/scrum-<n>-<short-slug>`, or `feature/new-<nn>-<short-slug>` for a `NEW-<nn>` ID.
+   - Branch: `feature/scrum-<n>-<short-slug>`, or `feature/cr-<n>-<short-slug>` for a `CR-<n>` ID.
 2. **Fix**
    - Ask for the defect ID from `docs/DEFECTS.md` (D1, D2, …), or the observed vs expected behaviour and how to reproduce it. A fix is also a Bug fix PBI in the backlog. Ask for its ID if one exists.
    - Reproduce the defect first, then write a failing regression test before changing code.
@@ -69,7 +69,7 @@ Plan any change that spans more than one file or layer before writing code.
 ## Git workflow
 
 - **Never commit to `main`.** Branch from an up-to-date `main`:
-  - stories and enhancements: `feature/scrum-<n>-<short-slug>`, or `feature/new-<nn>-<short-slug>` for a `NEW-<nn>` ID
+  - stories and enhancements: `feature/scrum-<n>-<short-slug>`, or `feature/cr-<n>-<short-slug>` for a `CR-<n>` ID
   - bugs: `fix/<short-slug>`
   - enablers: `chore/<short-slug>`
 - Run `git status` first. Never discard or overwrite uncommitted work you didn't create.
