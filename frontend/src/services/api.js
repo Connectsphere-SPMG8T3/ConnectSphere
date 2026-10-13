@@ -134,6 +134,17 @@ export const eventsApi = {
   coordinatorDashboard(token) {
     return request("/events/dashboard/coordinator", { token });
   },
+  // CR-101: the Event Coordinator Lead's view and reassign action.
+  leadDashboard(token) {
+    return request("/events/dashboard/lead", { token });
+  },
+  reassign(eventId, coordinatorId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/reassign`, {
+      method: "POST",
+      body: { coordinator_id: coordinatorId },
+      token,
+    });
+  },
   list(token) {
     return request("/events", { token });
   },
