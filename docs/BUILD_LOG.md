@@ -1904,3 +1904,19 @@ On `feature/scrum-38-reject-booking-request`, branched from `main` at `d731ddb`,
 - CR-98 merges, and CR-95's history is repaired (DEFECTS D26). Until then, every `db push` needs CR-98's files copied in locally the same way.
 - SCRUM-36 (approve) builds on this branch's page, store and lock pattern (IMPLEMENTATION_MAP §5).
 - CR-99's seeded fixture hold (`d0000000-…-0201`) expires on the live project at 2026-10-19 11:14 UTC (checked 2026-10-12; the `expire-venue-holds` cron job is active), which may break checks that rely on that fixture. That's worth raising with Xuan Wei.
+
+### 4.44. Chore — Replace the hand-drawn ER diagram with the live schema
+
+On `chore/er-diagram-to-supabase-visualiser`, branched from `main` at `11d4342`, 2026-10-13. Numbered 4.44 after the seed chore (4.42) and SCRUM-38 (4.43), which merged to `main` first.
+
+**Why.** The course deliverables ask for the system design as a C4 model only, so `REQUIREMENTS.md` §4's Mermaid ER diagram wasn't required, and it had drifted from what was built. It drew `EQUIPMENT_TYPES` and `EQUIPMENT_OUTAGES`, where the built tables are `equipment`, `equipment_unavailability` and `equipment_reservations`. It drew a `CLIENT_ORGANISATIONS` table where `profiles` has `organisation_name`. It left out `user_roles`, `session_active_roles`, `event_comments`, `event_safety_decisions`, `venue_edit_history` and `venue_booking_history`. Supabase's schema visualiser draws the built schema from the database itself.
+
+**Changed.**
+1. `REQUIREMENTS.md` §4 points at the schema visualiser and `supabase/migrations/` as the built schema, records the change as a **[Team decision]**, and keeps the conventions, the integrity guarantees (DB-1 to DB-6) and the equipment trade-off.
+2. `DEFECTS.md` D26: SCRUM-38 recorded this drift on `main` first, as CR-95's migration losing its history row. This branch adds its evidence to that row: the two enums, a live venue already using `inactive_reason`, and no file on any branch creating the columns.
+
+#### Verification
+
+- Live schema read on 2026-10-13 with read-only `supabase db query` calls: `information_schema.columns`, `pg_enum` and `supabase_migrations.schema_migrations`.
+- Branch search: `git grep` over every local and remote branch for the drifted column and enum names.
+- **Not run:** tests and live checks, since only docs changed.
