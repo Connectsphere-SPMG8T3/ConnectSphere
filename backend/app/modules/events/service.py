@@ -164,17 +164,22 @@ def create_space(event_id: str, organiser_id: str, body: EventSpaceRequestCreate
     if event.get("status") not in ("draft", "returned"):
         raise EventConflictError("Event spaces can only be changed while the event is draft or returned.")
     values = body.model_dump(mode="json", exclude={"version"})
-    values.update({"starts_at": event.get("starts_at"), "ends_at": event.get("ends_at")})
+    errors = _space_schedule_errors(values, event, 0)
+    if errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
     return EventSpaceRequest(**repository.create_space(event_id, values))
 
 
 def update_space(space_id: str, organiser_id: str, body: EventSpaceRequestUpdate) -> EventSpaceRequest:
     event, space = _space_event(space_id, organiser_id)
     values = body.model_dump(mode="json", exclude_unset=True, exclude={"version"})
-    editable_fields = ("label", "expected_pax", "layout_preference", "facilities_required")
+    editable_fields = ("label", "expected_pax", "layout_preference", "facilities_required", "starts_at", "ends_at")
     merged = {field: space.get(field) for field in editable_fields}
     merged.update(values)
     validated = EventSpaceRequestFields(**merged)
+    errors = _space_schedule_errors(validated.model_dump(mode="python"), event, 0)
+    if errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
     updated = repository.update_space(space_id, values, space["version"])
     if not updated:
         raise EventSpaceConflictError()
@@ -350,6 +355,7 @@ def _validate_submission(row: dict) -> None:
         for field in ("label", "expected_pax", "layout_preference"):
             if space.get(field) in (None, ""):
                 errors.append({"loc": ["body", "spaces", index, field], "msg": "Field required", "type": "missing"})
+        errors.extend(_space_schedule_errors(space, row, index))
 
     if row.get("registration_enabled"):
         if not row.get("registration_capacity"):
@@ -381,6 +387,41 @@ def _parse_datetime(value: datetime | str) -> datetime:
     if parsed.tzinfo is None:
         raise HTTPException(status_code=422, detail="Date and time values must include a timezone offset.")
     return parsed
+
+
+def _space_schedule_errors(space: dict, event: dict, index: int) -> list[dict]:
+    starts_at = space.get("starts_at")
+    ends_at = space.get("ends_at")
+    if starts_at is None and ends_at is None:
+        return []
+
+    errors = []
+    event_starts_at = event.get("starts_at")
+    event_ends_at = event.get("ends_at")
+    if event_starts_at is None or event_ends_at is None:
+        return [{
+            "loc": ["body", "spaces", index, "starts_at"],
+            "msg": "An individual space schedule requires the event's overall schedule.",
+            "type": "value_error",
+        }]
+
+    starts_at = _parse_datetime(starts_at)
+    ends_at = _parse_datetime(ends_at)
+    event_starts_at = _parse_datetime(event_starts_at)
+    event_ends_at = _parse_datetime(event_ends_at)
+    if starts_at < event_starts_at:
+        errors.append({
+            "loc": ["body", "spaces", index, "starts_at"],
+            "msg": "A space schedule must be within the event's overall schedule.",
+            "type": "value_error",
+        })
+    if ends_at > event_ends_at:
+        errors.append({
+            "loc": ["body", "spaces", index, "ends_at"],
+            "msg": "A space schedule must be within the event's overall schedule.",
+            "type": "value_error",
+        })
+    return errors
 
 
 def create(organiser_id: str, body: EventCreateRequest) -> EventResponse:
@@ -453,6 +494,14 @@ def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventR
     if row.get("status") not in ("draft", "returned"):
         raise EventConflictError("Only draft or returned events can be edited.")
     values = body.model_dump(mode="json", exclude_unset=True)
+    candidate = {**row, **values}
+    errors = [
+        error
+        for index, space in enumerate(candidate.get("spaces") or [])
+        for error in _space_schedule_errors(space, candidate, index)
+    ]
+    if errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
     updated = repository.update_event(event_id, values, row["version"])
     if not updated:
         raise EventConflictError()

@@ -57,7 +57,7 @@ def test_organiser_can_create_a_space_request_with_pax_and_layout(
             "id": SPACE_ID,
             "event_id": event_id,
             **deepcopy({key: values[key] for key in (
-                "label", "expected_pax", "layout_preference", "facilities_required"
+                "label", "expected_pax", "layout_preference", "facilities_required", "starts_at", "ends_at"
             )}),
             "version": 1,
         }
@@ -84,13 +84,13 @@ def test_organiser_can_create_a_space_request_with_pax_and_layout(
     assert response.json()["expected_pax"] == 40
     assert response.json()["layout_preference"] == "classroom"
     assert response.json()["facilities_required"] == ["projector"]
-    assert "starts_at" not in response.json()
-    assert "ends_at" not in response.json()
-    assert created_values["starts_at"] == event_row()["starts_at"]
-    assert created_values["ends_at"] == event_row()["ends_at"]
+    assert response.json()["starts_at"] is None
+    assert response.json()["ends_at"] is None
+    assert created_values["starts_at"] is None
+    assert created_values["ends_at"] is None
 
 
-def test_space_request_rejects_space_level_schedule_fields(
+def test_space_request_rejects_window_outside_event_period(
     client, auth_headers, authenticate_as, monkeypatch
 ):
     authenticate_as("event_organiser", user_id=ORGANISER_ID)
@@ -107,7 +107,7 @@ def test_space_request_rejects_space_level_schedule_fields(
             "label": "Afternoon breakout",
             "expected_pax": 40,
             "layout_preference": "classroom",
-            "starts_at": "2026-10-20T10:00:00+08:00",
+            "starts_at": "2026-10-20T08:00:00+08:00",
             "ends_at": "2026-10-20T12:00:00+08:00",
             "facilities_required": ["projector"],
         },
@@ -115,6 +115,65 @@ def test_space_request_rejects_space_level_schedule_fields(
     )
 
     assert response.status_code == 422
+    assert "within the event's overall schedule" in str(response.json())
+
+
+def test_space_request_requires_both_schedule_bounds_or_neither(
+    client, auth_headers, authenticate_as, monkeypatch
+):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    monkeypatch.setattr(repository, "get_event", lambda event_id: event_row())
+    monkeypatch.setattr(repository, "create_space", lambda *args: pytest.fail("invalid window must not be stored"))
+
+    response = client.post(
+        f"/api/v1/events/{EVENT_ID}/spaces",
+        json={
+            "label": "Afternoon breakout",
+            "expected_pax": 40,
+            "layout_preference": "classroom",
+            "starts_at": "2026-10-20T13:00:00+08:00",
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert "starts_at and ends_at must be provided together" in str(response.json())
+
+
+def test_organiser_can_create_a_space_with_its_own_window_within_the_event(
+    client, auth_headers, authenticate_as, monkeypatch
+):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    parent = event_row()
+    monkeypatch.setattr(repository, "get_event", lambda event_id: parent)
+    created = {}
+
+    def create_space(event_id, values):
+        created.update(values)
+        return {"id": SPACE_ID, "event_id": event_id, **values, "version": 1}
+
+    monkeypatch.setattr(repository, "create_space", create_space)
+    window = {
+        "starts_at": "2026-10-20T13:00:00+08:00",
+        "ends_at": "2026-10-20T16:00:00+08:00",
+    }
+
+    response = client.post(
+        f"/api/v1/events/{EVENT_ID}/spaces",
+        json={
+            "label": "Afternoon breakout",
+            "expected_pax": 40,
+            "layout_preference": "classroom",
+            **window,
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    assert created["starts_at"] == window["starts_at"]
+    assert created["ends_at"] == window["ends_at"]
+    assert response.json()["starts_at"] == window["starts_at"]
+    assert response.json()["ends_at"] == window["ends_at"]
 
 
 def test_organiser_can_update_a_space_request_without_internal_row_fields(
@@ -151,6 +210,102 @@ def test_organiser_can_update_a_space_request_without_internal_row_fields(
     assert response.status_code == 200
     assert response.json()["label"] == "Updated breakout"
     assert response.json()["version"] == 2
+
+
+def test_organiser_can_set_and_clear_a_space_schedule(monkeypatch, client, auth_headers, authenticate_as):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    monkeypatch.setattr(repository, "get_event", lambda event_id: event_row("returned"))
+    space = {
+        "id": SPACE_ID,
+        "event_id": EVENT_ID,
+        "label": "Afternoon breakout",
+        "expected_pax": 40,
+        "layout_preference": "classroom",
+        "facilities_required": [],
+        "starts_at": None,
+        "ends_at": None,
+        "version": 1,
+    }
+    monkeypatch.setattr(repository, "get_space", lambda space_id: space)
+    writes = []
+
+    def update_space(space_id, values, version):
+        writes.append(values)
+        return {**space, **values, "version": version + 1}
+
+    monkeypatch.setattr(repository, "update_space", update_space)
+    window = {"starts_at": "2026-10-20T13:00:00+08:00", "ends_at": "2026-10-20T16:00:00+08:00"}
+
+    response = client.patch(f"/api/v1/events/{EVENT_ID}/spaces/{SPACE_ID}", json=window, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["starts_at"] == window["starts_at"]
+    assert response.json()["ends_at"] == window["ends_at"]
+
+    space.update(window, version=2)
+    cleared = client.patch(
+        f"/api/v1/events/{EVENT_ID}/spaces/{SPACE_ID}",
+        json={"starts_at": None, "ends_at": None, "version": 2},
+        headers=auth_headers,
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["starts_at"] is None
+    assert cleared.json()["ends_at"] is None
+    assert writes == [window, {"starts_at": None, "ends_at": None}]
+
+
+def test_event_schedule_cannot_be_shrunk_past_an_explicit_space_window(
+    client, auth_headers, authenticate_as, monkeypatch
+):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    event = event_row()
+    event["spaces"] = [{
+        "id": SPACE_ID,
+        "event_id": EVENT_ID,
+        "label": "Afternoon breakout",
+        "expected_pax": 40,
+        "layout_preference": "classroom",
+        "facilities_required": [],
+        "starts_at": "2026-10-20T13:00:00+08:00",
+        "ends_at": "2026-10-20T16:00:00+08:00",
+        "version": 1,
+    }]
+    monkeypatch.setattr(repository, "get_event", lambda event_id: event)
+    monkeypatch.setattr(repository, "update_event", lambda *args: pytest.fail("invalid event period must not be saved"))
+
+    response = client.patch(
+        f"/api/v1/events/{EVENT_ID}",
+        json={"ends_at": "2026-10-20T14:00:00+08:00"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert "within the event's overall schedule" in str(response.json())
+
+
+def test_submission_rejects_a_space_window_outside_the_event_period(
+    client, auth_headers, authenticate_as, monkeypatch
+):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    event = event_row()
+    event.update({"purpose": "Plan the summit"})
+    event["spaces"] = [{
+        "id": SPACE_ID,
+        "event_id": EVENT_ID,
+        "label": "Afternoon breakout",
+        "expected_pax": 40,
+        "layout_preference": "classroom",
+        "facilities_required": [],
+        "starts_at": "2026-10-20T13:00:00+08:00",
+        "ends_at": "2026-10-20T19:00:00+08:00",
+        "version": 1,
+    }]
+    monkeypatch.setattr(repository, "get_event", lambda event_id: event)
+    monkeypatch.setattr(repository, "transition_event", lambda *args, **kwargs: pytest.fail("invalid event must not submit"))
+
+    response = client.post(f"/api/v1/events/{EVENT_ID}/submit", headers=auth_headers)
+
+    assert response.status_code == 422
+    assert "within the event's overall schedule" in str(response.json())
 
 
 @pytest.mark.parametrize(

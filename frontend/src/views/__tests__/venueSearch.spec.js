@@ -207,6 +207,7 @@ describe("VenueSearchView", () => {
       venue_bookings: [{ id: "booking-1", event_space_request_id: "space-booked", status: "held" }],
     };
     eventsApi.get.mockResolvedValue(event);
+    venuesApi.search.mockResolvedValue(RESPONSE);
     const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
     const { el } = await mountView(VenueSearchView, {
       route: { name: "venue-search", query: { event: event.id, space: "space-booked" } },
@@ -248,7 +249,7 @@ describe("VenueSearchView", () => {
     venuesStore.criteria.endTime = "18:00";
     await nextTick();
 
-    expect(el.textContent).toContain("Search the event's own date and times to request a venue for it.");
+    expect(el.textContent).toContain("Search the selected space's date and times to request a venue for it.");
     expect(el.querySelector('[aria-label="Request Hall A"]')).toBeNull();
   });
 
@@ -322,6 +323,38 @@ describe("VenueSearchView", () => {
 });
 
 describe("event and space booking criteria", () => {
+  it("prefills search and booking context with the selected space window", async () => {
+    const event = {
+      id: "event-space-window",
+      name: "Partner Summit",
+      status: "planning",
+      event_timezone: "Asia/Singapore",
+      starts_at: "2026-10-20T01:00:00Z",
+      ends_at: "2026-10-20T10:00:00Z",
+      spaces: [{
+        id: "space-afternoon",
+        label: "Afternoon breakout",
+        expected_pax: 20,
+        layout_preference: "classroom",
+        facilities_required: [],
+        starts_at: "2026-10-20T05:00:00Z",
+        ends_at: "2026-10-20T08:00:00Z",
+      }],
+    };
+    eventsApi.get.mockResolvedValue(event);
+    venuesApi.search.mockResolvedValue(RESPONSE);
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el, venuesStore } = await mountView(VenueSearchView, {
+      route: { name: "venue-search", query: { event: event.id, space: "space-afternoon" } },
+    });
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Space: Afternoon breakout"));
+    expect(venuesStore.criteria).toMatchObject({ date: "2026-10-20", startTime: "13:00", endTime: "16:00" });
+    expect(el.textContent).toContain("1:00 pm");
+    expect(el.textContent).toContain("4:00 pm");
+    expect(el.textContent).not.toContain("10:00 am");
+  });
+
   it("overrides event-level capacity, layout and facilities with the selected space", () => {
     const event = {
       starts_at: "2026-10-10T06:00:00Z",

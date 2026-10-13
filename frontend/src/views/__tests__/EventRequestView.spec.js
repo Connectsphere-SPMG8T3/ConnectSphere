@@ -397,6 +397,50 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     expect(controlFor(el, "Space label").value).toBe("");
   });
 
+  it("lets a space override the event schedule and persists its own window", async () => {
+    const draft = returnedEvent({
+      id: "draft-space-window",
+      status: "draft",
+      starts_at: "2099-12-01T02:00:00Z",
+      ends_at: "2099-12-01T10:00:00Z",
+      spaces: [],
+      amendment: null,
+    });
+    eventsApi.create.mockResolvedValue(draft);
+    eventsApi.createSpace.mockResolvedValue({ id: "space-window", version: 1 });
+    eventsApi.get.mockResolvedValue(draft);
+    const { el } = await mountNewForm();
+    const setValue = async (label, value, eventName = "input") => {
+      const control = controlFor(el, label);
+      control.value = value;
+      control.dispatchEvent(new Event(eventName));
+      await nextTick();
+    };
+
+    await setValue("Event title", "Venue planning workshop");
+    await setValue("Proposed event date", "2099-12-01");
+    await setValue("Proposed start time", "10:00");
+    await setValue("Proposed end time", "18:00");
+    await setValue("Space label", "Afternoon breakout");
+    await setValue("Expected pax", "40");
+    await setValue("Preferred layout", "classroom", "change");
+
+    const scheduleToggle = el.querySelector('[data-testid="space-schedule-toggle"]');
+    expect(scheduleToggle.checked).toBe(true);
+    scheduleToggle.checked = false;
+    scheduleToggle.dispatchEvent(new Event("change"));
+    await nextTick();
+    await setValue("Space starts", "2099-12-01T13:00");
+    await setValue("Space ends", "2099-12-01T16:00");
+    buttonByText(el, "Save draft").click();
+
+    await vi.waitFor(() => expect(eventsApi.createSpace).toHaveBeenCalled());
+    expect(eventsApi.createSpace).toHaveBeenCalledWith("draft-space-window", expect.objectContaining({
+      starts_at: "2099-12-01T05:00:00.000Z",
+      ends_at: "2099-12-01T08:00:00.000Z",
+    }), "access");
+  });
+
   it("persists all spaces before submitting a new event request", async () => {
     const callOrder = [];
     const draft = returnedEvent({ id: "draft-submit", status: "draft", spaces: [], amendment: null });
@@ -481,6 +525,8 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
       expected_pax: 40,
       layout_preference: "theatre",
       facilities_required: [],
+      starts_at: null,
+      ends_at: null,
       version: 1,
     }, "access");
     await vi.waitFor(() => expect(eventsApi.get).toHaveBeenCalledTimes(2));

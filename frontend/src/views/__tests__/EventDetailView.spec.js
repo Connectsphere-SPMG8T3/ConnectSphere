@@ -79,14 +79,17 @@ describe("EventDetailView status", () => {
       layout_preference: "theatre",
       facilities_required: ["projector"],
       spaces: [
-        { id: "space-1", label: "Main venue", expected_pax: 120, layout_preference: "theatre", facilities_required: ["projector"] },
-        { id: "space-2", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: ["whiteboard"] },
+        { id: "space-1", label: "Main venue", expected_pax: 120, layout_preference: "theatre", facilities_required: ["projector"], starts_at: "2026-11-01T05:00:00Z", ends_at: "2026-11-01T06:00:00Z" },
+        { id: "space-2", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: ["whiteboard"], starts_at: null, ends_at: null },
       ],
     }));
 
     expect(el.textContent).toContain("Space requirements");
     expect(el.textContent).toContain("Main venue: 120 pax · theatre · projector");
     expect(el.textContent).toContain("Breakout room: 20 pax · classroom · whiteboard");
+    expect(el.textContent).toContain("1 Nov 2026");
+    expect(el.textContent).toContain("1:00 pm");
+    expect(el.textContent).toContain("Uses event schedule");
     expect(el.textContent).not.toContain("Preferred layout");
     expect(el.textContent).not.toContain("Facilities");
   });

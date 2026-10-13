@@ -10,7 +10,7 @@ _EVENT_COLUMNS = (
     "registration_opens_at, registration_closes_at, technical_readiness, submitted_at, "
     "version, created_at, updated_at"
 )
-_SPACE_COLUMNS = "id, event_id, label, expected_pax, layout_preference, facilities_required, version"
+_SPACE_COLUMNS = "id, event_id, label, expected_pax, layout_preference, facilities_required, starts_at, ends_at, version"
 
 
 def list_event_spaces(event_id: str) -> list[dict]:

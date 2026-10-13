@@ -30,9 +30,8 @@ const requestedVenue = ref(null);
 
 const canRequest = computed(() => venuePanelState(bookingEvent.value, bookingSpace.value).kind === "can-request");
 
-// The hold always covers the event's own period, so a venue is only offered
-// while the search is checking that same period; otherwise "Available" would
-// describe a different time from the one being held.
+// A venue is only offered while the search checks the selected space's
+// effective period; otherwise "Available" would describe a different interval.
 const searchMatchesEvent = computed(() => {
   const wanted = eventCriteria.value;
   const current = venuesStore.criteria;
@@ -46,13 +45,15 @@ const searchMatchesEvent = computed(() => {
 
 const eventPeriod = computed(() => {
   const event = bookingEvent.value;
-  if (!event?.starts_at || !event?.ends_at) return "";
+  const startsAt = bookingSpace.value?.starts_at ?? event?.starts_at;
+  const endsAt = bookingSpace.value?.ends_at ?? event?.ends_at;
+  if (!startsAt || !endsAt) return "";
   const format = new Intl.DateTimeFormat("en-SG", {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: event.event_timezone || "Asia/Singapore",
   });
-  return `${format.format(new Date(event.starts_at))} – ${format.format(new Date(event.ends_at))}`;
+  return `${format.format(new Date(startsAt))} – ${format.format(new Date(endsAt))}`;
 });
 
 async function loadEventContext(eventId, spaceId) {
@@ -136,7 +137,7 @@ async function confirmRequest(note) {
           {{ venuePanelState(bookingEvent, bookingSpace).reason ?? "This space already has a venue." }}
         </p>
         <p v-else-if="!searchMatchesEvent" class="mt-3 text-sm font-bold">
-          Search the event's own date and times to request a venue for it.
+          Search the {{ bookingSpace ? "selected space's" : "event's own" }} date and times to request a venue for it.
         </p>
         <RouterLink
           :to="{ name: 'coordinator-event', params: { id: bookingEvent.id } }"

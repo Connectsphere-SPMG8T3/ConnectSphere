@@ -264,6 +264,9 @@ describe("event store", () => {
       expectedPax: "",
       layoutPreference: "",
       facilitiesRequired: [],
+      useEventSchedule: true,
+      startsAt: "",
+      endsAt: "",
     });
     expect(spaceToPayload({
       label: "  Main venue  ",
@@ -275,6 +278,23 @@ describe("event store", () => {
       expected_pax: 120,
       layout_preference: "theatre",
       facilities_required: ["projector"],
+      starts_at: null,
+      ends_at: null,
+    });
+  });
+
+  it("serializes a custom space window in the event timezone", () => {
+    expect(spaceToPayload({
+      label: "Breakout",
+      expectedPax: "40",
+      layoutPreference: "classroom",
+      facilitiesRequired: [],
+      useEventSchedule: false,
+      startsAt: "2026-10-20T17:00",
+      endsAt: "2026-10-20T19:00",
+    }, "Asia/Singapore")).toMatchObject({
+      starts_at: "2026-10-20T09:00:00.000Z",
+      ends_at: "2026-10-20T11:00:00.000Z",
     });
   });
 

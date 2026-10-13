@@ -173,8 +173,8 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
   it("shows facilities for each proposed space", async () => {
     const el = await mountView(eventResponse({ status: "planning",
       spaces: [
-        { id: "space-a", label: "Main hall", expected_pax: 80, layout_preference: "theatre", facilities_required: ["projector"] },
-        { id: "space-b", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: ["whiteboard"] },
+        { id: "space-a", label: "Main hall", expected_pax: 80, layout_preference: "theatre", facilities_required: ["projector"], starts_at: "2026-11-12T05:00:00Z", ends_at: "2026-11-12T08:00:00Z" },
+        { id: "space-b", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: ["whiteboard"], starts_at: null, ends_at: null },
       ],
     }));
 
@@ -184,7 +184,9 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     const requestDetailLabels = [...el.querySelectorAll("dt")].map((node) => node.textContent.trim());
     expect(requestDetailLabels).not.toContain("Preferred layout");
     expect(requestDetailLabels).not.toContain("Facilities");
-    expect(spaceSection.textContent).not.toContain("Uses event period");
+    expect(spaceSection.textContent).toContain("1:00 pm");
+    expect(spaceSection.textContent).toContain("4:00 pm");
+    expect(spaceSection.textContent).toContain("Uses event schedule");
     expect(el.textContent).toContain("Starts");
     expect(el.textContent).toContain("Ends");
     expect([...spaceSection.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toEqual([

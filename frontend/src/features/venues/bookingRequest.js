@@ -38,7 +38,11 @@ export function criteriaFromEvent(event) {
 }
 
 export function criteriaFromSpace(space, event) {
-  const criteria = criteriaFromEvent(event ?? {});
+  const criteria = criteriaFromEvent({
+    ...(event ?? {}),
+    starts_at: space?.starts_at ?? event?.starts_at,
+    ends_at: space?.ends_at ?? event?.ends_at,
+  });
   if (space?.expected_pax) criteria.minCapacity = space.expected_pax;
   if (space?.layout_preference) criteria.layout = space.layout_preference;
   if (space?.facilities_required) criteria.facilities = [...space.facilities_required];

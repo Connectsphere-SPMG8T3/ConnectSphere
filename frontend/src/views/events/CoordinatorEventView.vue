@@ -45,6 +45,14 @@ function displayDateTime(value, timeZone) {
   return new Intl.DateTimeFormat("en-SG", { dateStyle: "full", timeStyle: "short", timeZone }).format(new Date(value));
 }
 
+function spaceSchedule(space) {
+  const startsAt = space.starts_at ?? event.value?.starts_at;
+  const endsAt = space.ends_at ?? event.value?.ends_at;
+  if (!startsAt || !endsAt) return "Schedule not provided";
+  const prefix = space.starts_at && space.ends_at ? "Schedule" : "Uses event schedule";
+  return `${prefix}: ${displayDateTime(startsAt, event.value.event_timezone)} – ${displayDateTime(endsAt, event.value.event_timezone)}`;
+}
+
 function displayValue(value) {
   return value || "Not provided";
 }
@@ -206,6 +214,7 @@ watch(
                   <div>
                     <h4 class="text-lg font-black uppercase tracking-tight">{{ space.label }}</h4>
                     <p class="mt-1 text-sm font-medium">{{ space.expected_pax }} pax · {{ space.layout_preference }}</p>
+                    <p class="mt-1 text-sm font-medium">{{ spaceSchedule(space) }}</p>
                   </div>
                   <RouterLink
                     v-if="event.status === 'planning'"

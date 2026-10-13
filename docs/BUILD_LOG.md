@@ -1947,3 +1947,23 @@ CR-98 introduces multiple organiser-proposed venue requirements per event. `even
 - The linked migration ledger includes remote-only versions through `20261012140000`. The D26 revocation migration is local-only until merged and deployed through the normal migration workflow; the prior live privilege check confirmed the exposure before the fix.
 
 The Product backlog status, PR review, and merge are developer-owned follow-ups; no backlog edit or status change was made here.
+
+### 4.44. CR-98 AC3 — individual event-space windows (QA3-23)
+
+QA3-23 clarifies that each proposed event space can have its own date/time window inside the event's overall schedule. A space with no window inherits the event's current schedule; the event remains the required outer envelope for registration and lifecycle rules. All space windows use the event's IANA timezone.
+
+#### What was built
+
+1. Migration `20261013110000_event_spaces_allow_individual_schedules.sql` removes event-to-space period synchronization, converts legacy copied-equal periods to inherited null pairs, and preserves distinct explicit windows.
+2. The events API accepts an optional timezone-aware start/end pair on space create and update. Partial, inverted, and out-of-envelope windows are rejected; clearing both bounds restores inheritance. Event schedule edits and submission also reject any now-out-of-envelope space window.
+3. The organiser form can toggle inheritance or enter a space-specific interval. Venue search and booking context use the selected space's effective interval; organiser and coordinator event details display the explicit window or inherited event schedule.
+4. TC-SPACE-003 and the CR-97 follow-on TC-SPACE-008 now cover the independent/inherited behavior. Requirements, implementation map, and rollback SQL traceability were updated.
+
+#### Verification
+
+- Backend: **1,046 passed**, **95.09%** coverage; the configured 92% floor passed.
+- Frontend: **745 passed**, **95.86%** line coverage; the configured coverage gate passed. Production build passed.
+- The linked Supabase database was not changed and the rollback SQL was not run: the D26 and QA3-23 migrations are pending deployment. The updated SQL check must be run after those migrations are available.
+- On 2026-10-13 the developer reported checking the browser flows and that everything looked OK. The manual run record links TC-SPACE-003 and TC-SPACE-008; exact browser, fixture and environment details were not provided.
+
+The Product backlog status, PR review, and merge remain developer-owned follow-ups; no backlog edit or status change was made here.

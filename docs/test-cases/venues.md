@@ -229,4 +229,4 @@ Venue selection and booking for each proposed space are downstream of CR-98's co
 |---|---|---|
 | A coordinator selects a venue for one proposed space at a time | TC-SPACE-008 | `test_venue_booking_request_api.py::TestRequest::test_a_space_request_can_hold_a_venue_independently`; `venueBookingStore.spec.js`; `venueSearch.spec.js` selected-space flow |
 | One active booking per space; legacy single-space/event-scoped requests remain readable | TC-SPACE-005, TC-BOOK-004 | `20261008100000_event_space_requests.sql`; booking-request SQL checks and API tests |
-| Search criteria and booking request use the selected space's effective period: its explicit window or the event period when inherited | TC-SPACE-008 | `bookingRequest.js` tests; `VenueSearchView` and booking API/store tests |
+| Search criteria and booking request use the selected space's effective period (its explicit window, or the event period when it inherits) | TC-SPACE-008 | `bookingRequest.js` tests; `VenueSearchView` and booking API/store tests |
