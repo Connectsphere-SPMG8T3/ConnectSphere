@@ -508,6 +508,8 @@ class LeadEvent(BaseModel):
     expected_attendance: int | None = None
     coordinator: EventCoordinator | None = None
     assigned_at: datetime | None = None
+    # The Lead sends it back on reassign, so a screen that is behind can't overwrite a newer change.
+    version: int
 
 
 class LeadDashboard(BaseModel):
@@ -521,6 +523,7 @@ class LeadDashboard(BaseModel):
 
 class EventReassignRequest(BaseModel):
     coordinator_id: UUID
+    expected_version: int
 
 
 COMMENT_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as a rejection reason

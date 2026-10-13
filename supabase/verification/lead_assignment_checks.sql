@@ -24,7 +24,7 @@ declare
     history_count integer;
     notification_count integer;
 begin
-    if to_regprocedure('public.reassign_event(uuid, uuid, uuid, integer, text[], text, text, text, text)') is null then
+    if to_regprocedure('public.reassign_event(uuid, uuid, uuid, integer, text[], text, text, text)') is null then
         raise exception 'CR-101: reassign_event missing';
     end if;
     if not exists (select 1 from information_schema.columns
@@ -36,15 +36,15 @@ begin
 
     -- First assignment of an unassigned event.
     select version into v from public.events where id = e;
-    select * into r from public.reassign_event(e, lead, coordinator_a, v, active, 'Assigned to A', 'to A', 'prev', 'to organiser');
+    select * into r from public.reassign_event(e, lead, coordinator_a, v, active, 'to A', 'prev', 'to organiser');
     if r.coordinator_id is distinct from coordinator_a or r.assigned_by is distinct from lead
        or r.assigned_at is null or r.version <> v + 1 or r.status is distinct from 'under_review' then
         raise exception 'CR-101: assign did not set coordinator/assigned_by/assigned_at/version';
     end if;
-    if (select count(*) from public.event_status_history
-         where event_id = e and from_status = 'under_review' and to_status = 'under_review'
-           and actor_id = lead and reason = 'Assigned to A') <> 1 then
-        raise exception 'CR-101: history row';
+    -- A reassignment is not a status change: it must leave no history row, or the
+    -- Safety Officer's queue order and the organiser's history would be corrupted.
+    if exists (select 1 from public.event_status_history where event_id = e and from_status = to_status) then
+        raise exception 'CR-101: reassign wrote a same-status history row';
     end if;
     if (select count(*) from public.notifications where event_id = e and recipient_id = coordinator_a and message = 'to A') <> 1
        or (select count(*) from public.notifications where event_id = e and recipient_id = organiser and message = 'to organiser') <> 1 then
@@ -58,7 +58,7 @@ begin
     end if;
 
     -- Reassignment notifies the previous coordinator too.
-    select * into r from public.reassign_event(e, lead, coordinator_b, r.version, active, 'A to B', 'to B', 'prev', 'to organiser 2');
+    select * into r from public.reassign_event(e, lead, coordinator_b, r.version, active, 'to B', 'prev', 'to organiser 2');
     if r.coordinator_id is distinct from coordinator_b then raise exception 'CR-101: reassign'; end if;
     if (select count(*) from public.notifications where event_id = e and recipient_id = coordinator_a and message = 'prev') <> 1 then
         raise exception 'CR-101: previous coordinator notice';
@@ -68,7 +68,7 @@ begin
     select count(*) into notification_count from public.notifications where event_id = e;
 
     -- A stale version changes nothing.
-    select count(*) into n from public.reassign_event(e, lead, coordinator_a, r.version - 1, active, 'x', 'x', 'x', 'x');
+    select count(*) into n from public.reassign_event(e, lead, coordinator_a, r.version - 1, active, 'x', 'x', 'x');
     if n <> 0 or (select version from public.events where id = e) <> r.version
        or (select coordinator_id from public.events where id = e) <> coordinator_b
        or (select count(*) from public.event_status_history where event_id = e) <> history_count
@@ -77,14 +77,14 @@ begin
     end if;
 
     -- A target who is not a coordinator is refused (the organiser holds no coordinator role).
-    select count(*) into n from public.reassign_event(e, lead, organiser, r.version, active, 'x', 'x', 'x', 'x');
+    select count(*) into n from public.reassign_event(e, lead, organiser, r.version, active, 'x', 'x', 'x');
     if n <> 0 or (select coordinator_id from public.events where id = e) <> coordinator_b then
         raise exception 'CR-101: non-coordinator target accepted';
     end if;
 
     -- A terminal event is refused.
     select version into v from public.events where id = done_event;
-    select count(*) into n from public.reassign_event(done_event, lead, coordinator_b, v, active, 'x', 'x', 'x', 'x');
+    select count(*) into n from public.reassign_event(done_event, lead, coordinator_b, v, active, 'x', 'x', 'x');
     if n <> 0 or (select coordinator_id from public.events where id = done_event) <> coordinator_a then
         raise exception 'CR-101: completed event reassigned';
     end if;
@@ -94,7 +94,7 @@ end $$;
 set local role anon;
 do $$ begin
     begin
-        perform public.reassign_event(null, null, null, 0, array['planning'], 'x', 'x', 'x', 'x');
+        perform public.reassign_event(null, null, null, 0, array['planning'], 'x', 'x', 'x');
         raise exception 'CR-101: anon execute permitted';
     exception when insufficient_privilege then null; end;
 end $$;
@@ -102,7 +102,7 @@ reset role;
 set local role authenticated;
 do $$ begin
     begin
-        perform public.reassign_event(null, null, null, 0, array['planning'], 'x', 'x', 'x', 'x');
+        perform public.reassign_event(null, null, null, 0, array['planning'], 'x', 'x', 'x');
         raise exception 'CR-101: authenticated execute permitted';
     exception when insufficient_privilege then null; end;
 end $$;

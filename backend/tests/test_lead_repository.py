@@ -115,14 +115,14 @@ def test_reassign_event_calls_the_rpc_with_every_parameter_and_returns_the_row(m
     client = use(monkeypatch, rpc_data=[{"id": "e1", "coordinator_id": "c2"}])
 
     row = repository.reassign_event(
-        "e1", "l1", "c2", 3, active_statuses=["planning"], reason="why",
+        "e1", "l1", "c2", 3, active_statuses=["planning"],
         notify_assigned="a", notify_previous="p", notify_organiser="o",
     )
 
     assert row == {"id": "e1", "coordinator_id": "c2"}
     assert client.rpcs == [("reassign_event", {
         "p_event_id": "e1", "p_lead_id": "l1", "p_coordinator_id": "c2", "p_expected_version": 3,
-        "p_active_statuses": ["planning"], "p_reason": "why",
+        "p_active_statuses": ["planning"],
         "p_notify_assigned": "a", "p_notify_previous": "p", "p_notify_organiser": "o",
     })]
 
@@ -130,6 +130,6 @@ def test_reassign_event_calls_the_rpc_with_every_parameter_and_returns_the_row(m
 def test_reassign_event_is_none_when_the_rpc_returns_no_row(monkeypatch):
     use(monkeypatch, rpc_data=[])
     assert repository.reassign_event(
-        "e1", "l1", "c2", 3, active_statuses=[], reason="", notify_assigned="", notify_previous="",
+        "e1", "l1", "c2", 3, active_statuses=[], notify_assigned="", notify_previous="",
         notify_organiser="",
     ) is None

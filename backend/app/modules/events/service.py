@@ -637,6 +637,7 @@ def _lead_event(row: dict) -> LeadEvent:
         expected_attendance=row.get("expected_attendance"),
         coordinator=row.get("coordinator"),
         assigned_at=row.get("assigned_at"),
+        version=row["version"],
     )
 
 
@@ -661,7 +662,7 @@ def lead_dashboard(lead_id: str) -> LeadDashboard:
     )
 
 
-def reassign(event_id: str, lead_id: str, coordinator_id: str) -> EventResponse:
+def reassign(event_id: str, lead_id: str, coordinator_id: str, expected_version: int) -> EventResponse:
     """A Lead (re)assigns an event in their scope to a coordinator (CR-101 AC3).
     Story 81 builds on this; the update, history and notices are one RPC."""
     row = repository.get_lead_event(event_id)
@@ -674,18 +675,14 @@ def reassign(event_id: str, lead_id: str, coordinator_id: str) -> EventResponse:
     target = repository.get_coordinator(coordinator_id)
     if target is None:
         raise CoordinatorNotEligibleError()
+    if row["version"] != expected_version:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
     if row.get("coordinator_id") == coordinator_id:
         raise EventConflictError("This event is already assigned to that coordinator.")
-    previous = (row.get("coordinator") or {}).get("full_name")
     name = row["name"]
-    reason = (
-        f"Reassigned from {previous} to {target['full_name']}" if previous
-        else f"Assigned to {target['full_name']}"
-    )
     updated = repository.reassign_event(
         event_id, lead_id, coordinator_id, row["version"],
         active_statuses=list(ACTIVE_COORDINATOR_STATUSES),
-        reason=reason,
         notify_assigned=f'"{name}" has been assigned to you.',
         notify_previous=f'"{name}" has been reassigned to {target["full_name"]}.',
         notify_organiser=f'Your event "{name}" is now coordinated by {target["full_name"]}.',

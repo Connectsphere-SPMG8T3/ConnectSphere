@@ -159,7 +159,7 @@ def reject_event(event_id: UUID, body: EventRejectRequest, current_user: EventCo
 
 @router.post("/{event_id}/reassign", response_model=EventResponse)
 def reassign_event(event_id: UUID, body: EventReassignRequest, current_user: EventCoordinatorLead) -> EventResponse:
-    return service.reassign(str(event_id), current_user.id, str(body.coordinator_id))
+    return service.reassign(str(event_id), current_user.id, str(body.coordinator_id), body.expected_version)
 
 
 @router.post("/{event_id}/return", response_model=EventResponse)

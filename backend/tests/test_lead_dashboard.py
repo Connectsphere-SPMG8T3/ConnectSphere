@@ -19,6 +19,7 @@ def event(event_id, status, coordinator=None, assigned_by=None, **extra):
         "name": f"Event {event_id}",
         "status": status,
         "starts_at": "2026-11-12T10:00:00+08:00",
+        "version": 5,
         "purpose": "Conference",
         "expected_attendance": 80,
         "coordinator_id": coordinator["id"] if coordinator else None,
@@ -67,6 +68,7 @@ class TestScopeAndStatuses:
         [assigned] = dashboard.active_events
         assert (assigned.event_id, assigned.status.value, assigned.coordinator.full_name) == ("e2", "planning", "Marcus Lim")
         assert assigned.organiser_name == "Olivia Tan"
+        assert assigned.version == 5  # the Lead sends it back so a stale screen can't overwrite a newer change
 
     def test_every_lead_sees_the_queue_but_only_their_own_assigned_events(self, data):
         data.lead_ids = {LEAD, OTHER_LEAD}

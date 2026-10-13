@@ -52,35 +52,38 @@ def data(monkeypatch):
 
 
 def test_assigns_an_unassigned_event_and_passes_the_row_version(data):
-    result = service.reassign(EVENT, LEAD, NEW)
+    result = service.reassign(EVENT, LEAD, NEW, 3)
     assert result.coordinator_id == NEW
     (args, kwargs), = data.rpc_calls
     assert args == (EVENT, LEAD, NEW, 3)
     assert set(kwargs["active_statuses"]) == {"under_review", "returned", "planning", "safety_review", "confirmed"}
-    assert "Priya Nair" in kwargs["reason"]
+    # A reassignment is not a status change: it must not ask for a status-history row,
+    # which would reorder the Safety Officer's queue and show the organiser a fake transition.
+    assert "reason" not in kwargs
 
 
-def test_reassign_names_both_coordinators_in_the_history_reason(data):
+def test_the_notices_name_the_event_and_the_new_coordinator(data):
     data.event = lead_row(coordinator_id=OLD, coordinator={"id": OLD, "full_name": "Marcus Lim"}, assigned_by=LEAD)
-    service.reassign(EVENT, LEAD, NEW)
-    reason = data.rpc_calls[0][1]["reason"]
-    assert "Marcus Lim" in reason and "Priya Nair" in reason
+    service.reassign(EVENT, LEAD, NEW, 3)
+    kwargs = data.rpc_calls[0][1]
+    assert "Annual Conference" in kwargs["notify_assigned"]
+    assert "Priya Nair" in kwargs["notify_previous"] and "Priya Nair" in kwargs["notify_organiser"]
 
 
 def test_missing_event_and_draft_are_404(data):
     data.event = None
     with pytest.raises(EventNotFoundError):
-        service.reassign(EVENT, LEAD, NEW)
+        service.reassign(EVENT, LEAD, NEW, 3)
     data.event = lead_row(status="draft")
     with pytest.raises(EventNotFoundError):
-        service.reassign(EVENT, LEAD, NEW)
+        service.reassign(EVENT, LEAD, NEW, 3)
 
 
 @pytest.mark.parametrize("status", ["rejected", "cancelled", "completed"])
 def test_terminal_events_are_409_and_nothing_is_written(data, status):
     data.event = lead_row(status=status)
     with pytest.raises(EventConflictError) as caught:
-        service.reassign(EVENT, LEAD, NEW)
+        service.reassign(EVENT, LEAD, NEW, 3)
     assert caught.value.status_code == 409
     assert data.rpc_calls == []
 
@@ -89,28 +92,37 @@ def test_an_event_another_current_lead_manages_is_403(data):
     data.lead_ids = {LEAD, OTHER_LEAD}
     data.event = lead_row(coordinator_id=OLD, assigned_by=OTHER_LEAD)
     with pytest.raises(EventNotInLeadScopeError):
-        service.reassign(EVENT, LEAD, NEW)
+        service.reassign(EVENT, LEAD, NEW, 3)
     assert data.rpc_calls == []
 
 
 def test_a_target_who_is_not_a_coordinator_or_unknown_is_422(data):
     with pytest.raises(CoordinatorNotEligibleError):
-        service.reassign(EVENT, LEAD, "not-a-coordinator")
+        service.reassign(EVENT, LEAD, "not-a-coordinator", 3)
     assert data.rpc_calls == []
 
 
 def test_reassigning_to_the_current_coordinator_is_409(data):
     data.event = lead_row(coordinator_id=NEW, coordinator={"id": NEW, "full_name": "Priya Nair"})
     with pytest.raises(EventConflictError) as caught:
-        service.reassign(EVENT, LEAD, NEW)
+        service.reassign(EVENT, LEAD, NEW, 3)
     assert "already" in caught.value.detail
+    assert data.rpc_calls == []
+
+
+def test_a_page_that_is_behind_the_event_is_409_reload_and_nothing_is_written(data):
+    """The Lead's screen shows version 2, but the event has since moved to 3 (another tab,
+    or another Lead's earlier change): the reassign must not silently replace it."""
+    with pytest.raises(EventConflictError) as caught:
+        service.reassign(EVENT, LEAD, NEW, 2)
+    assert caught.value.detail == service.STALE_EVENT_MESSAGE
     assert data.rpc_calls == []
 
 
 def test_a_lost_race_is_409_reload(data):
     data.rpc_result = None
     with pytest.raises(EventConflictError) as caught:
-        service.reassign(EVENT, LEAD, NEW)
+        service.reassign(EVENT, LEAD, NEW, 3)
     assert caught.value.detail == service.STALE_EVENT_MESSAGE
 
 
@@ -119,13 +131,18 @@ class TestEndpoint:
 
     def test_a_lead_can_reassign(self, authenticate_as, data, client: TestClient):
         authenticate_as("event_coordinator_lead", LEAD)
-        response = client.post(self.URL, json={"coordinator_id": NEW}, headers={"Authorization": "Bearer t"})
+        response = client.post(self.URL, json={"coordinator_id": NEW, "expected_version": 3}, headers={"Authorization": "Bearer t"})
         assert response.status_code == 200
         assert response.json()["coordinator_id"] == NEW
 
+    def test_the_body_must_carry_the_version_the_lead_saw(self, authenticate_as, data, client: TestClient):
+        authenticate_as("event_coordinator_lead", LEAD)
+        response = client.post(self.URL, json={"coordinator_id": NEW}, headers={"Authorization": "Bearer t"})
+        assert response.status_code == 422
+
     def test_the_body_must_carry_a_uuid(self, authenticate_as, data, client: TestClient):
         authenticate_as("event_coordinator_lead", LEAD)
-        response = client.post(self.URL, json={"coordinator_id": "nope"}, headers={"Authorization": "Bearer t"})
+        response = client.post(self.URL, json={"coordinator_id": "nope", "expected_version": 3}, headers={"Authorization": "Bearer t"})
         assert response.status_code == 422
 
     @pytest.mark.parametrize(
@@ -136,6 +153,6 @@ class TestEndpoint:
         self, authenticate_as, data, client: TestClient, role
     ):
         authenticate_as(role)
-        response = client.post(self.URL, json={"coordinator_id": NEW}, headers={"Authorization": "Bearer t"})
+        response = client.post(self.URL, json={"coordinator_id": NEW, "expected_version": 3}, headers={"Authorization": "Bearer t"})
         assert response.status_code == 403
         assert data.rpc_calls == []
