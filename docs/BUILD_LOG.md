@@ -1976,7 +1976,7 @@ On `feature/cr-101-coordinator-lead-dashboard`, rebuilt onto `main` at `6043c9b`
 |---|---|
 | ID | CR-101 |
 | Title | Event Coordinator Lead dashboard |
-| Status | Implementation and automated tests done; live checks and the manual pass pending the developer |
+| Status | Implementation, automated tests and live checks done (API/database 95/95, browser 62/62); the developer's manual pass (TC-LEAD-009–014) pending |
 | Sprint | 3 |
 
 **Acceptance criteria (as pasted by the developer):** AC1 the Lead sees the unassigned queue and in-scope active events with coordinator and status; AC2 filter by coordinator and status, with per-coordinator active counts; AC3 open an event from the list and reassign it (81); AC4 completed, cancelled and rejected events are not active; AC5 one or more Leads, each seeing the queue plus the events they assigned or last reassigned, legacy assignments visible to all; AC6 a coordinator with active events can't be deactivated; AC7 only the active Lead role; others 403.
@@ -2000,8 +2000,8 @@ On `feature/cr-101-coordinator-lead-dashboard`, rebuilt onto `main` at `6043c9b`
 #### Verification
 
 - Both migrations were applied by the developer and show on the remote. `lead_assignment_checks.sql` was run in the dashboard SQL Editor and printed `CR-101 LEAD ASSIGNMENT CHECKS PASSED` (`runs/2026-10-14-manual-3ab3f8c.md`). The local `supabase db push` was blocked by CR-98's remote-only versions, so the SQL was run in the dashboard and recorded with `migration repair`.
-- Live API and database run (`runs/2026-10-14-1359-api-db-b415df5.md`): **90/95**. TC-LEAD-001–005 and `lead_assignment_checks.sql` pass. The five failures are older checks: TC-DASH-013 (its status list lacked `safety_review`, fixed, D28), TC-BOOK-005 and TC-EQR-008 (the shared fixture event `…0201` had drifted to `planning`, so each check wrote a real row instead of being refused, D29, open), TC-HOLD-001 (404 on its throwaway event, unexplained) and TC-BOOK-018 (the CLI's temporary database login was refused, transient).
-- Live browser run (`runs/2026-10-14-1403-e2e-b415df5.md`): **60/62**. TC-LEAD-006–007 pass. TC-EQR-008 failed for the same fixture drift and TC-HOLD-005 with `fetch failed`.
+- First live API and database run (`runs/2026-10-14-1359-api-db-b415df5.md`): **90/95**. TC-LEAD-001–005 and `lead_assignment_checks.sql` passed. The five failures were older checks: TC-DASH-013 (its status list lacked `safety_review`, fixed, D28), TC-BOOK-005 and TC-EQR-008 (the shared fixture event `…0201` had drifted to `planning`, so each check wrote a real row instead of being refused, D29, still open), TC-HOLD-001 (404 on its throwaway event) and TC-BOOK-018 (the CLI's temporary database login was refused). The first browser run was 60/62 for the same fixture drift and a `fetch failed`; its log was removed as superseded.
+- After the developer reset the fixtures with `event_review_fixture_reset.sql` (checked read-only: `…0201` under review, `…0202` in planning, no stray hold or equipment line), the re-runs were clean: API and database **95/95** (`runs/2026-10-14-1426-api-db-ba3baae.md`) and browser **62/62** (`runs/2026-10-14-1433-e2e-ba3baae.md`). TC-HOLD-001 and TC-BOOK-018 passed, so those two were transient. TC-LEAD-001–008 pass. D29 stays open: TC-BOOK-005 and TC-EQR-008 pass only while the fixtures are in their seeded state.
 - Found on the way and fixed: D27, the live-check tooling crashed on the Supabase CLI's bare-list JSON (Python and Node).
 
 #### Follow-ups
