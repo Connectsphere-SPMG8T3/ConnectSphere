@@ -1976,7 +1976,7 @@ On `feature/cr-101-coordinator-lead-dashboard`, rebuilt onto `main` at `6043c9b`
 |---|---|
 | ID | CR-101 |
 | Title | Event Coordinator Lead dashboard |
-| Status | Implementation, automated tests and live checks done (API/database 95/95, browser 62/62); the developer's manual pass (TC-LEAD-009–014) pending |
+| Status | Implementation, automated tests and live checks done (API/database 95/95, browser 62/62); the developer's manual pass passed for TC-LEAD-009, 010, 011, 013 and 014 (`runs/2026-10-14-manual-27c0aea.md`); TC-LEAD-012 was skipped (only one Lead exists); PO acceptance pending |
 | Sprint | 3 |
 
 **Acceptance criteria (as pasted by the developer):** AC1 the Lead sees the unassigned queue and in-scope active events with coordinator and status; AC2 filter by coordinator and status, with per-coordinator active counts; AC3 open an event from the list and reassign it (81); AC4 completed, cancelled and rejected events are not active; AC5 one or more Leads, each seeing the queue plus the events they assigned or last reassigned, legacy assignments visible to all; AC6 a coordinator with active events can't be deactivated; AC7 only the active Lead role; others 403.
