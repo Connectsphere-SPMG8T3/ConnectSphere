@@ -9,6 +9,8 @@ from postgrest.exceptions import APIError
 from fastapi import HTTPException, status
 
 from app.core.exceptions import (
+    CoordinatorNotEligibleError,
+    EventNotInLeadScopeError,
     EventServiceUnavailableError,
     NotAssignedCoordinatorError,
     UnknownEventArrangementError,
@@ -16,7 +18,7 @@ from app.core.exceptions import (
 # Module imports, not names: `venues.service` imports this module too, and a
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.equipment import service as equipment_service
-from app.modules.events import lifecycle, repository
+from app.modules.events import lead_scope, lifecycle, repository
 from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
 from app.modules.events.schemas import (
@@ -39,6 +41,9 @@ from app.modules.events.schemas import (
     CoordinatorActionKind,
     CoordinatorActiveEvent,
     CoordinatorDashboard,
+    LeadCoordinator,
+    LeadDashboard,
+    LeadEvent,
     EventComment,
     EventCommentsResponse,
     EventCreateRequest,
@@ -619,6 +624,72 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
         )
 
     return CoordinatorDashboard(action_items=action_items, active_events=active_events)
+
+
+def _lead_event(row: dict) -> LeadEvent:
+    return LeadEvent(
+        event_id=row["id"],
+        event_name=row["name"],
+        status=row["status"],
+        starts_at=row.get("starts_at"),
+        organiser_name=(row.get("organiser") or {}).get("full_name"),
+        purpose=row.get("purpose"),
+        expected_attendance=row.get("expected_attendance"),
+        coordinator=row.get("coordinator"),
+        assigned_at=row.get("assigned_at"),
+        version=row["version"],
+    )
+
+
+def lead_dashboard(lead_id: str) -> LeadDashboard:
+    """The Event Coordinator Lead's view (CR-101): the shared unassigned queue plus
+    the active events in this Lead's scope (AC5), and each coordinator's active
+    count over that scope. Filtering by coordinator and status is the SPA's job."""
+    lead_ids = repository.list_lead_ids()
+    rows = [
+        row
+        for row in repository.list_lead_events(ACTIVE_COORDINATOR_STATUSES)
+        if lead_scope.in_lead_scope(row, lead_id, lead_ids)
+    ]
+    counts = lead_scope.active_counts(rows)
+    return LeadDashboard(
+        unassigned=[_lead_event(r) for r in rows if r.get("coordinator_id") is None],
+        active_events=[_lead_event(r) for r in rows if r.get("coordinator_id") is not None],
+        coordinators=[
+            LeadCoordinator(id=c["id"], full_name=c["full_name"], active_count=counts.get(c["id"], 0))
+            for c in repository.list_coordinators()
+        ],
+    )
+
+
+def reassign(event_id: str, lead_id: str, coordinator_id: str, expected_version: int) -> EventResponse:
+    """A Lead (re)assigns an event in their scope to a coordinator (CR-101 AC3).
+    Story 81 builds on this; the update, history and notices are one RPC."""
+    row = repository.get_lead_event(event_id)
+    if not row or row.get("status") == "draft":
+        raise EventNotFoundError()
+    if row["status"] not in ACTIVE_COORDINATOR_STATUSES:
+        raise EventConflictError(f"Cannot reassign an event that is {row['status'].replace('_', ' ')}")
+    if not lead_scope.in_lead_scope(row, lead_id, repository.list_lead_ids()):
+        raise EventNotInLeadScopeError()
+    target = repository.get_coordinator(coordinator_id)
+    if target is None:
+        raise CoordinatorNotEligibleError()
+    if row["version"] != expected_version:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    if row.get("coordinator_id") == coordinator_id:
+        raise EventConflictError("This event is already assigned to that coordinator.")
+    name = row["name"]
+    updated = repository.reassign_event(
+        event_id, lead_id, coordinator_id, row["version"],
+        active_statuses=list(ACTIVE_COORDINATOR_STATUSES),
+        notify_assigned=f'"{name}" has been assigned to you.',
+        notify_previous=f'"{name}" has been reassigned to {target["full_name"]}.',
+        notify_organiser=f'Your event "{name}" is now coordinated by {target["full_name"]}.',
+    )
+    if not updated:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return _to_response(updated)
 
 
 def _comment_role(event: dict, author_id: str | None) -> str | None:

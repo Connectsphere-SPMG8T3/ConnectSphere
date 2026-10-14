@@ -66,6 +66,14 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["event_coordinator"] },
   },
   {
+    // CR-101: the Event Coordinator Lead opens an event to assign or reassign
+    // it. Lead only; the API checks the event is in this Lead's scope.
+    path: "/lead/events/:id",
+    name: "lead-event",
+    component: () => import("@/views/events/LeadEventView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["event_coordinator_lead"] },
+  },
+  {
     path: "/dashboard/venue-staff",
     name: "dashboard-venue-staff",
     component: () => import("@/views/dashboards/VenueStaffDashboard.vue"),

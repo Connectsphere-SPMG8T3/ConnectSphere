@@ -168,3 +168,37 @@ describe("SCRUM-38 venueBookingsApi", () => {
     );
   });
 });
+
+describe("eventsApi Lead calls (CR-101)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubFetch(payload) {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => payload });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("reads the Lead dashboard with the caller's token", async () => {
+    const fetchMock = stubFetch({ unassigned: [] });
+
+    await expect(eventsApi.leadDashboard("access-token")).resolves.toEqual({ unassigned: [] });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/events/dashboard/lead",
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer access-token" }) }),
+    );
+  });
+
+  it("posts the coordinator id and the version the Lead saw, with an encoded event id", async () => {
+    const fetchMock = stubFetch({ id: "event/one" });
+
+    await eventsApi.reassign("event/one", "c2", 4, "access-token");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/events/event%2Fone/reassign",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ coordinator_id: "c2", expected_version: 4 }) }),
+    );
+  });
+});

@@ -567,6 +567,18 @@ CR-98 introduces organiser-proposed event spaces before venue booking. A space r
 - **LA-R11 (notifications):** a new assignment notifies the **newly assigned coordinator and the organiser**. A reassignment notifies the **new coordinator, the previous coordinator and the organiser** (QA3-14, QA3-43). The Lead's action is always recorded in history (who, when, from, to). **[Team decision]** Other Leads are not notified: the customer left it to us (QA3-43), and scope is per Lead (LA-R2).
 - **LA-R12 (organiser view):** the organiser sees whether a coordinator is assigned and who it is. Before assignment it reads **"Unassigned"**; afterwards it shows the coordinator's name (QA3-42). The exact UI is ours (M3).
 
+**CR-101 build notes (Lead dashboard, `feature/cr-101-coordinator-lead-dashboard`).** What is built against the rules above, and where it stops.
+
+- **Built.** The Lead dashboard shows the unassigned queue and the active events in the Lead's scope with coordinator and status, filterable by coordinator and status, with each coordinator's active count; only a session acting as Event Coordinator Lead can read it (others get 403).
+  - LA-R2 scope: `events.assigned_by` records the assigning Lead, and null means assigned before the Lead role existed, so every Lead sees it. **[Assumption]** An event whose assigner no longer holds the Lead role is also visible to every Lead, so no event is orphaned.
+  - LA-R6 and LA-R11 (minimal): a Lead-only `POST /events/{id}/reassign` through `reassign_event`, in the Lead's scope, to an account holding the coordinator role, with an `expected_version` check so a stale screen can't overwrite a newer assignment. It notifies the new coordinator, the previous coordinator and the organiser, never the Lead.
+- **Not built (story 81, SCRUM-12).**
+  - LA-R1 and LA-R4: a request still goes `draft → under_review` with no coordinator, not through `submitted`, so the Lead's "unassigned queue" is the active events that have no coordinator.
+  - The coordinator's "Request reassignment" action (LA-R6).
+  - LA-R8: the refusal to deactivate a coordinator with active events (CR-101 AC6, QA3-22) is out of scope by decision.
+  - **LA-R11's history ("who, when, from, to").** Only the last assigner and time are stored (`assigned_by`, `assigned_at`). Writing `event_status_history` was tried and rejected: readers treat every row there as a status transition, and a same-status row sent a Lead-reassigned event to the back of the Safety Officer's queue. Story 81 needs a dedicated assignment-history table.
+
+
 **Acceptance criteria**
 - **Given** an organiser submits a request, **then** it is `submitted` and in the unassigned queue, no coordinator is set, and no coordinator is notified.
 - **Given** a queued event, **when** a Lead assigns coordinator B, **then** the event is `under_review`, B and the organiser are notified, and the history records the Lead, B and the time.
@@ -1052,7 +1064,7 @@ Each dashboard composes widgets from the feature stores. **Build a widget only w
 |---|---|
 | Organiser | Drafts · Returned requests needing my amendment · My requests with status and coordinator ("Unassigned" until assigned, QA3-42) · Upcoming confirmed events, with **each venue and its status** and any unavailability with the next action (QA3-53) · Decided change requests |
 | Coordinator | My events needing action (resubmitted, change or cancellation requested, booking or equipment decided, re-review outcomes, issues) · My events by status · Readiness gaps in the next 14 days. No unassigned figure: unassigned events are the Event Coordinator Lead's queue (§6.5) |
-| Event Coordinator Lead | The common unassigned queue (oldest first) · the active events in my scope (those I assigned or last reassigned, plus pre-Week 7 events with no Lead) with their coordinator and status · open reassignment requests from coordinators · active events per coordinator. **Not built yet** (SCRUM-12, 81, CR-101; LA-R1, LA-R2) |
+| Event Coordinator Lead | The common unassigned queue (oldest first) · the active events in my scope (those I assigned or last reassigned, plus pre-Week 7 events with no Lead) with their coordinator and status · open reassignment requests from coordinators · active events per coordinator. **Built by CR-101:** the queue, scope, coordinator and status filters and per-coordinator counts (§6.5 CR-101 build notes). **Not built:** reassignment requests, and the `submitted` queue (SCRUM-12, 81; LA-R1) |
 | Venue staff | Pending holds (soonest expiry first, CR-99) · Bookings in re-review · Active and upcoming blocks · Venues (active/inactive). **All venues**, since staff are a pool (AUTH-R5). |
 | Tech support | Pending and re-review equipment lines · Events needing technical readiness · Equipment in maintenance · Upcoming reservations (7 days) |
 | Attendee | My upcoming registrations and waitlist invitations · Browse open events |

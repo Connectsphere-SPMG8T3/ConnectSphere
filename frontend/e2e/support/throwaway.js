@@ -40,7 +40,20 @@ function query(sql) {
     ["db", "query", "--linked", "--project-ref", PROJECT_REF, "-o", "json", sql],
     { cwd: REPO_ROOT, stdio: "pipe", encoding: "utf8" },
   );
-  return JSON.parse(out.slice(out.indexOf("{"))).rows ?? [];
+  return parseRows(out);
+}
+
+/**
+ * The rows in the CLI's JSON. It prints `{"rows": [...]}` under an agent but a bare list in
+ * a plain terminal (`[]` when nothing matched), with notices around either.
+ */
+export function parseRows(out) {
+  const starts = [out.indexOf("{"), out.indexOf("[")].filter((i) => i !== -1);
+  if (!starts.length) throw new Error(`database query printed no JSON: ${JSON.stringify(out.trim().slice(0, 200))}`);
+  const text = out.slice(Math.min(...starts));
+  const closer = text[0] === "[" ? "]" : "}";
+  const payload = JSON.parse(text.slice(0, text.lastIndexOf(closer) + 1));
+  return Array.isArray(payload) ? payload : (payload.rows ?? []);
 }
 
 // Same "live-check " name prefix as backend/scripts/verify_live.py, so either

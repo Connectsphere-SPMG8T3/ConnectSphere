@@ -134,6 +134,18 @@ export const eventsApi = {
   coordinatorDashboard(token) {
     return request("/events/dashboard/coordinator", { token });
   },
+  // CR-101: the Event Coordinator Lead's view and reassign action.
+  leadDashboard(token) {
+    return request("/events/dashboard/lead", { token });
+  },
+  // `expectedVersion` is the event version the Lead was looking at: a screen that is behind is refused.
+  reassign(eventId, coordinatorId, expectedVersion, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/reassign`, {
+      method: "POST",
+      body: { coordinator_id: coordinatorId, expected_version: expectedVersion },
+      token,
+    });
+  },
   list(token) {
     return request("/events", { token });
   },

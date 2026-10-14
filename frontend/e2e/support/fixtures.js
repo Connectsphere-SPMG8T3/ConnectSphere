@@ -21,6 +21,14 @@ export const ACCOUNTS = {
   attendee: { email: "attendee@connectsphere.dev", name: "Siti Rahman", dashboard: "/dashboard/attendee" },
 };
 
+// Seeded W7 staff (CR-101). Kept out of ACCOUNTS, whose loops assert a denial for every role in it.
+export const LEAD_ACCOUNT = {
+  email: "coordinator.lead@connectsphere.dev",
+  name: "Grace Chua",
+  dashboard: "/dashboard/coordinator-lead",
+};
+const W7_ACCOUNTS = { event_coordinator_lead: LEAD_ACCOUNT };
+
 // Supabase limits sign-ins per IP, and the backend currently reports that
 // refusal as a 401 "Invalid email or password." (DEFECTS D16), so a
 // refused sign-in with known-good credentials can't be told apart from broken
@@ -49,7 +57,7 @@ export async function apiLogin(role) {
   const response = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: ACCOUNTS[role].email, password: SEEDED_PASSWORD }),
+    body: JSON.stringify({ email: (ACCOUNTS[role] ?? W7_ACCOUNTS[role]).email, password: SEEDED_PASSWORD }),
   });
   if (response.status === 401 || response.status === 429) {
     markSignInRefused();

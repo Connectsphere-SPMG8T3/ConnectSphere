@@ -468,3 +468,130 @@ def list_safety_queue() -> list[dict]:
                   organiser_name=(row.get("organiser") or {}).get("full_name"),
                   entered_review_at=latest[row["id"]]) for row in events if row["id"] in latest]
     return sorted(items, key=lambda row: (row["entered_review_at"], row["event_id"]))
+
+
+# CR-101: the Lead's reads. Both profile embeds name their FK because `events`
+# points at `profiles` twice (organiser and coordinator).
+_LEAD_COLUMNS = (
+    "id, name, status, starts_at, purpose, expected_attendance, version, "
+    "coordinator_id, assigned_by, assigned_at, "
+    "organiser:profiles!events_organiser_id_fkey(full_name), "
+    "coordinator:profiles!events_coordinator_id_fkey(id, full_name)"
+)
+
+
+def list_lead_events(statuses: Iterable[str]) -> list[dict]:
+    response = (
+        get_supabase_admin_client()
+        .table("events")
+        .select(_LEAD_COLUMNS)
+        .in_("status", list(statuses))
+        .execute()
+    )
+    return response.data or []
+
+
+def list_lead_ids() -> set[str]:
+    """Profiles currently holding the Lead role. Used only to tell whether an
+    event's assigner is still a Lead (never to authorise a caller)."""
+    response = (
+        get_supabase_admin_client()
+        .table("user_roles")
+        .select("profile_id")
+        .eq("role", "event_coordinator_lead")
+        .execute()
+    )
+    return {row["profile_id"] for row in response.data or []}
+
+
+def list_coordinators() -> list[dict]:
+    """`{id, full_name}` of every account holding the coordinator role, by name."""
+    held = (
+        get_supabase_admin_client()
+        .table("user_roles")
+        .select("profile_id")
+        .eq("role", "event_coordinator")
+        .execute()
+    )
+    ids = [row["profile_id"] for row in held.data or []]
+    if not ids:
+        return []
+    response = (
+        get_supabase_admin_client()
+        .table("profiles")
+        .select("id, full_name")
+        .in_("id", ids)
+        .order("full_name")
+        .execute()
+    )
+    return response.data or []
+
+
+def get_lead_event(event_id: str) -> dict | None:
+    response = (
+        get_supabase_admin_client()
+        .table("events")
+        .select(_LEAD_COLUMNS)
+        .eq("id", event_id)
+        .maybe_single()
+        .execute()
+    )
+    return response.data if response else None
+
+
+def get_coordinator(profile_id: str) -> dict | None:
+    """`{id, full_name}` if the profile holds the coordinator role, else None.
+    Eligibility of a reassignment *target*, never an authorisation of a caller."""
+    held = (
+        get_supabase_admin_client()
+        .table("user_roles")
+        .select("profile_id")
+        .eq("profile_id", profile_id)
+        .eq("role", "event_coordinator")
+        .maybe_single()
+        .execute()
+    )
+    if not held or not held.data:
+        return None
+    profile = (
+        get_supabase_admin_client()
+        .table("profiles")
+        .select("id, full_name")
+        .eq("id", profile_id)
+        .maybe_single()
+        .execute()
+    )
+    return profile.data if profile else None
+
+
+def reassign_event(
+    event_id: str,
+    lead_id: str,
+    coordinator_id: str,
+    expected_version: int,
+    *,
+    active_statuses: list[str],
+    notify_assigned: str,
+    notify_previous: str,
+    notify_organiser: str,
+) -> dict | None:
+    """Run `public.reassign_event`. Returns the updated row, or None when the event
+    had moved on (version or status) or the target lost the coordinator role."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "reassign_event",
+            {
+                "p_event_id": event_id,
+                "p_lead_id": lead_id,
+                "p_coordinator_id": coordinator_id,
+                "p_expected_version": expected_version,
+                "p_active_statuses": active_statuses,
+                "p_notify_assigned": notify_assigned,
+                "p_notify_previous": notify_previous,
+                "p_notify_organiser": notify_organiser,
+            },
+        )
+        .execute()
+    )
+    return _first_row(response)

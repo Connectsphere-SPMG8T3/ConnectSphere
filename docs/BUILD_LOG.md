@@ -1967,3 +1967,44 @@ QA3-23 clarifies that each proposed event space can have its own date/time windo
 - On 2026-10-13 the developer reported checking the browser flows and that everything looked OK. The manual run record links TC-SPACE-003 and TC-SPACE-008; exact browser, fixture and environment details were not provided.
 
 The Product backlog status, PR review, and merge remain developer-owned follow-ups; no backlog edit or status change was made here.
+
+### 4.46. CR-101 — Event Coordinator Lead dashboard
+
+On `feature/cr-101-coordinator-lead-dashboard`, rebuilt onto `main` at `6043c9b`, 2026-10-13. The Product backlog sheet couldn't be read through the connector, so the story and acceptance criteria are as the developer pasted them.
+
+| Field | Value |
+|---|---|
+| ID | CR-101 |
+| Title | Event Coordinator Lead dashboard |
+| Status | Implementation, automated tests and live checks done (API/database 95/95, browser 62/62); the developer's manual pass passed for TC-LEAD-009, 010, 011, 013 and 014 (`runs/2026-10-14-manual-73a9426.md`); TC-LEAD-012 was skipped (only one Lead exists); PO acceptance pending |
+| Sprint | 3 |
+
+**Acceptance criteria (as pasted by the developer):** AC1 the Lead sees the unassigned queue and in-scope active events with coordinator and status; AC2 filter by coordinator and status, with per-coordinator active counts; AC3 open an event from the list and reassign it (81); AC4 completed, cancelled and rejected events are not active; AC5 one or more Leads, each seeing the queue plus the events they assigned or last reassigned, legacy assignments visible to all; AC6 a coordinator with active events can't be deactivated; AC7 only the active Lead role; others 403.
+
+#### Decisions
+
+- **AC6 is out of scope**, by the developer's decision. No deactivation flag, endpoint or check was built.
+- **A minimal reassign is in scope** (AC3), small enough for story 81 to absorb. The developer is building 81 later.
+- **Scope rule:** besides AC5's text, an event assigned by someone who no longer holds the Lead role stays visible to every Lead, so nothing is orphaned. **[Assumption]**, REQUIREMENTS §6.5 LD-R3.
+- **The Lead's event page reads from the dashboard payload**, so there is no separate Lead read endpoint to secure; an event outside the Lead's scope simply isn't found, and the API enforces the scope again on reassign.
+- Task 8 (event page) was built before Task 7 (dashboard) because the dashboard links to its named route.
+- **Whole-branch review fixes.** `reassign_event` first wrote a same-status history row; that reordered the Safety Officer's queue and showed the organiser a fake transition, so migration `20261013130000` replaces the function without it (the record is `assigned_by`/`assigned_at` plus the notices; a real assignment history is story 81's). The reassign request now carries `expected_version`, so a stale screen gets a 409 instead of silently replacing a newer assignment. Both Lead views reset the store as they open, so no earlier session's rows or errors show.
+
+#### What was built
+
+- Migrations `20261013120000_lead_assignment.sql` (`events.assigned_by`/`assigned_at`, first `reassign_event`) and `20261013130000_reassign_event_without_status_history.sql` (replaces the function), with `supabase/verification/lead_assignment_checks.sql`.
+- Backend (`modules/events`): `lead_scope.py` (pure rules), `GET /events/dashboard/lead`, `POST /events/{id}/reassign`, repository reads and the RPC wrapper, two typed errors.
+- Frontend: `leadDashboard.js`, `leadDashboardStore.js`, the real `CoordinatorLeadDashboard`, `LeadEventView` at `/lead/events/:id`.
+- Tests: backend suite 1122 passed (new events code fully covered); frontend suite 804 passed plus three unrelated view specs (TopBar, OrganiserDashboard, CoordinatorEventView) that time out under full-suite load and pass alone (52/52); `npm run build` clean.
+
+#### Verification
+
+- Both migrations were applied by the developer and show on the remote. `lead_assignment_checks.sql` was run in the dashboard SQL Editor and printed `CR-101 LEAD ASSIGNMENT CHECKS PASSED` (`runs/2026-10-14-manual-caf0544.md`). The local `supabase db push` was blocked by CR-98's remote-only versions, so the SQL was run in the dashboard and recorded with `migration repair`.
+- First live API and database run (**90/95**; its log is not kept, because only runs where every case passes are committed). TC-LEAD-001–005 and `lead_assignment_checks.sql` passed. The five failures were older checks: TC-DASH-013 (its status list lacked `safety_review`, fixed, D29), TC-BOOK-005 and TC-EQR-008 (the shared fixture event `…0201` had drifted to `planning`, so each check wrote a real row instead of being refused, D30, still open), TC-HOLD-001 (404 on its throwaway event) and TC-BOOK-018 (the CLI's temporary database login was refused). The first browser run was 60/62 for the same fixture drift and a `fetch failed`; its log was removed as superseded.
+- After the developer reset the fixtures with `event_review_fixture_reset.sql` (checked read-only: `…0201` under review, `…0202` in planning, no stray hold or equipment line), the re-runs were clean: API and database **95/95** (`runs/2026-10-14-1426-api-db-4fa6841.md`) and browser **62/62** (`runs/2026-10-14-1433-e2e-4fa6841.md`). TC-HOLD-001 and TC-BOOK-018 passed, so those two were transient. TC-LEAD-001–008 pass. D30 stays open: TC-BOOK-005 and TC-EQR-008 pass only while the fixtures are in their seeded state.
+- Found on the way and fixed: D28, the live-check tooling crashed on the Supabase CLI's bare-list JSON (Python and Node).
+
+#### Follow-ups
+
+- Story 81 extends `service.reassign` and `reassign_event` (assignment on submit, notification wording, coordinator hand-over).
+- AC6 (QA3-22) needs a coordinator active flag and a deactivation path; `profiles` has neither today.

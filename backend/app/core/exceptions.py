@@ -132,6 +132,22 @@ class NotAssignedCoordinatorError(HTTPException):
         )
 
 
+class EventNotInLeadScopeError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This event is managed by another Event Coordinator Lead.",
+        )
+
+
+class CoordinatorNotEligibleError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="That person is not an Event Coordinator.",
+        )
+
+
 class EquipmentRequestNotAllowedError(HTTPException):
     """The event's status doesn't accept equipment requests (SCRUM-45, QA-22)."""
 
