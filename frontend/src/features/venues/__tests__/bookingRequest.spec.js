@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BOOKING_STATUS_LABELS, venuePanelState } from "@/features/venues/bookingRequest";
+import { BOOKING_STATUS_LABELS, criteriaFromSpace, venuePanelState } from "@/features/venues/bookingRequest";
 
 const booking = (status) => ({
   id: "b1", venue_id: "v1", venue_name: "Innovation Lab", status, expires_at: "2026-11-01T04:00:00Z",
@@ -26,7 +26,41 @@ describe("venuePanelState", () => {
     expect(venuePanelState(event)).toEqual({ kind: "expired", booking: event.venue_booking, canRequest: false });
   });
 
+  it("shows an expired hold only for its event space", () => {
+    const expiredBooking = { ...booking("expired"), event_space_request_id: "space-1" };
+    const event = { status: "planning", venue_booking: expiredBooking, venue_bookings: [] };
+
+    expect(venuePanelState(event, { id: "space-1" })).toEqual({
+      kind: "expired", booking: expiredBooking, canRequest: true,
+    });
+    expect(venuePanelState(event, { id: "space-2" })).toEqual({ kind: "can-request" });
+  });
+
   it("labels the expired status for the coordinator", () => {
     expect(BOOKING_STATUS_LABELS.expired).toBe("Expired");
+  });
+});
+
+describe("space booking criteria", () => {
+  it("uses a space's own window instead of the event window", () => {
+    const criteria = criteriaFromSpace({
+      starts_at: "2026-10-20T09:00:00Z",
+      ends_at: "2026-10-20T11:00:00Z",
+    }, {
+      starts_at: "2026-10-20T06:00:00Z",
+      ends_at: "2026-10-20T12:00:00Z",
+      expected_attendance: 100,
+    });
+
+    expect(criteria).toMatchObject({ date: "2026-10-20", startTime: "17:00", endTime: "19:00" });
+  });
+
+  it("inherits the event window when the space has no override", () => {
+    const criteria = criteriaFromSpace({ starts_at: null, ends_at: null }, {
+      starts_at: "2026-10-20T06:00:00Z",
+      ends_at: "2026-10-20T12:00:00Z",
+    });
+
+    expect(criteria).toMatchObject({ date: "2026-10-20", startTime: "14:00", endTime: "20:00" });
   });
 });

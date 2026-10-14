@@ -30,6 +30,138 @@ def test_update_event_reads_the_updated_row_from_a_list_response(monkeypatch):
 
     assert result == updated_row
 
+
+class TableQuery:
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+
+    def select(self, columns):
+        self.calls.append(("select", columns))
+        return self
+
+    def eq(self, field, value):
+        self.calls.append(("eq", field, value))
+        return self
+
+    def order(self, field, **kwargs):
+        self.calls.append(("order", field, kwargs))
+        return self
+
+    def maybe_single(self):
+        self.calls.append(("maybe_single",))
+        return self
+
+    def insert(self, values):
+        self.calls.append(("insert", values))
+        return self
+
+    def update(self, values):
+        self.calls.append(("update", values))
+        return self
+
+    def delete(self):
+        self.calls.append(("delete",))
+        return self
+
+    def execute(self):
+        return self.response
+
+
+class TableClient:
+    def __init__(self, response):
+        self.response = response
+        self.queries = []
+
+    def table(self, name):
+        query = TableQuery(self.response)
+        query.calls.append(("table", name))
+        self.queries.append(query)
+        return query
+
+
+def test_event_space_repository_crud_covers_empty_and_singleton_responses(monkeypatch):
+    space = {"id": "space-1", "event_id": "event-1", "label": "Main venue", "version": 1}
+    client = TableClient(SimpleNamespace(data=[space]))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.list_event_spaces("event-1") == [space]
+    assert client.queries[-1].calls[0] == ("table", "event_space_requests")
+    assert ("eq", "event_id", "event-1") in client.queries[-1].calls
+
+    client.response = SimpleNamespace(data=None)
+    assert repository.list_event_spaces("event-1") == []
+
+    client.response = SimpleNamespace(data=[space])
+    assert repository.create_space("event-1", {"label": "Main venue"}) == space
+    assert ("insert", {"label": "Main venue", "event_id": "event-1"}) in client.queries[-1].calls
+
+    client.response = SimpleNamespace(data=space)
+    assert repository.create_space("event-1", {"label": "Main venue"}) == space
+
+    client.response = SimpleNamespace(data=[space])
+    assert repository.update_space("space-1", {"label": "Updated"}, 1) == space
+    assert ("update", {"label": "Updated", "version": 2}) in client.queries[-1].calls
+    assert ("eq", "version", 1) in client.queries[-1].calls
+
+    client.response = SimpleNamespace(data=space)
+    assert repository.update_space("space-1", {"label": "Updated"}, 1) == space
+    client.response = SimpleNamespace(data=[])
+    assert repository.update_space("space-1", {"label": "Updated"}, 1) is None
+    client.response = None
+    assert repository.update_space("space-1", {"label": "Updated"}, 1) is None
+
+    client.response = SimpleNamespace(data=[space])
+    assert repository.delete_space("space-1", 1) is True
+    assert ("eq", "version", 1) in client.queries[-1].calls
+    client.response = SimpleNamespace(data=[])
+    assert repository.delete_space("space-1", 1) is False
+    client.response = None
+    assert repository.delete_space("space-1", 1) is False
+
+    client.response = SimpleNamespace(data=space)
+    assert repository.get_space("space-1") == space
+    assert ("maybe_single",) in client.queries[-1].calls
+    client.response = None
+    assert repository.get_space("space-1") is None
+
+
+def test_event_responses_attach_space_requests_to_full_event_rows(monkeypatch):
+    event = {"id": "event-1", "status": "draft", "name": "Summit"}
+    space = {"id": "space-1", "event_id": "event-1", "label": "Main venue"}
+    monkeypatch.setattr(repository, "list_event_spaces", lambda event_id: [space])
+
+    assert repository._with_spaces(None) is None
+    assert repository._with_spaces({"id": "partial"}) == {"id": "partial"}
+    assert repository._with_spaces(event) == {**event, "spaces": [space]}
+
+    client = TableClient(SimpleNamespace(data=[event]))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+    assert repository.list_events("organiser-1") == [{**event, "spaces": [space]}]
+    assert ("eq", "organiser_id", "organiser-1") in client.queries[-1].calls
+
+    client.response = SimpleNamespace(data=event)
+    assert repository.get_event("event-1") == {**event, "spaces": [space]}
+    assert ("maybe_single",) in client.queries[-1].calls
+    client.response = None
+    assert repository.get_event("event-1") is None
+
+    client.response = SimpleNamespace(data=[event])
+    assert repository.create_event("organiser-1", {"name": "Summit"}) == {**event, "spaces": [space]}
+    assert ("insert", {"name": "Summit", "organiser_id": "organiser-1", "status": "draft"}) in client.queries[-1].calls
+    client.response = SimpleNamespace(data=event)
+    assert repository.create_event("organiser-1", {"name": "Summit"}) == {**event, "spaces": [space]}
+
+
+def test_update_event_enriches_a_full_event_row_with_its_spaces(monkeypatch):
+    event = {"id": "event-1", "status": "draft", "name": "Summit", "version": 2}
+    space = {"id": "space-1", "event_id": "event-1", "label": "Main venue"}
+    client = TableClient(SimpleNamespace(data=[event]))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+    monkeypatch.setattr(repository, "list_event_spaces", lambda event_id: [space])
+
+    assert repository.update_event("event-1", {"name": "Summit"}, 1) == {**event, "spaces": [space]}
+
 def test_status_history_puts_the_creation_entry_last_when_timestamps_tie(monkeypatch):
     """A creation row (no from_status) and a later row can share a timestamp,
     e.g. seeded events whose created_at and submitted_at are both now(); newest

@@ -10,15 +10,15 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 |---|---|---|
 | [auth.md](auth.md) | SCRUM-48 login, session, logout; SCRUM-80 organiser sign-up | TC-AUTH |
 | [roles-and-access.md](roles-and-access.md) | SCRUM-48 routing and data-layer security; SCRUM-74/75/76/78 role switching | TC-RBAC, TC-ROLE, TC-DATA |
-| [venues.md](venues.md) | SCRUM-39 venue search, SCRUM-67 venue profile, SCRUM-19 venue booking request, CR-99 hold expiry, SCRUM-38 reject a booking request | TC-VENUE, TC-BOOK, TC-HOLD |
-| [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment, SCRUM-61 comments | TC-EVENT, TC-REV, TC-AMD, TC-CMT, TC-SAFE |
+| [venues.md](venues.md) | SCRUM-39 venue search, SCRUM-67 venue profile, SCRUM-19 venue booking request, CR-99 hold expiry, SCRUM-38 booking rejection, CR-98 space-scoped venue selection | TC-VENUE, TC-BOOK, TC-HOLD, TC-SPACE |
+| [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment, SCRUM-61 comments, CR-98 event-space requirements | TC-EVENT, TC-REV, TC-AMD, TC-CMT, TC-SAFE, TC-SPACE |
 | [dashboards.md](dashboards.md) | SCRUM-72 coordinator, SCRUM-70 venue staff, SCRUM-71 organiser, SCRUM-73 technical support | TC-DASH, TC-VSD, TC-ORG, TC-TSD |
 | [safety-decisions.md](safety-decisions.md) | CR-103 queue/review (AC1–4, AC6), CR-104 safety decisions | TC-SDEC |
 | [equipment.md](equipment.md) | SCRUM-45 equipment request | TC-EQR |
 
 ## Environment
 
-- A Supabase project with every migration in `supabase/migrations/` applied and `supabase/seed.sql` run. Check the linked migration inventory first: the linked inventory has live-only `event_spaces` versions `20261008100000`/`20261009100000`, and the CR-103/104 safety-decision migration is pending (2026-10-09). Do not assume every local migration is applied.
+- A Supabase project with migrations applied and `supabase/seed.sql` run. Check the linked migration inventory before database work. On 2026-10-13, the linked ledger includes remote-only versions through `20261012140000`; CR-98's corrective grant migration `20261013100000` is pending merge/deployment.
 - Backend on `http://localhost:8000`, frontend on `http://localhost:5173`.
 - Data-layer cases run as a real role inside a rolled-back transaction (`set_config('request.jwt.claims', ...)` plus `set local role authenticated`), not with the service key. Several are automated by the scripts in `supabase/verification/`; each file says which.
 
@@ -32,9 +32,11 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 | Technical Support | `tech.support@connectsphere.dev` | Single role |
 | Attendee | `attendee@connectsphere.dev` | Single role |
 
-**Safety review prerequisites (CR-103/104):** no live Safety Officer account exists; officer-dependent cases remain pending. Grant staff roles manually using SETUP.md. The recorded API run used backend `http://localhost:8014`; the browser run uses frontend `http://localhost:5178` with that backend.
+**Safety review prerequisites (CR-103/104):** seeded Safety Officer and Event Coordinator Lead accounts are available; officer decision walkthrough cases remain subject to the manual checklist. Grant any additional staff roles using `SETUP.md`.
 
-**Deployment and live verification (9 Oct 2026):** the migration was not applied. `supabase db push --dry-run` is blocked because remote versions `20261008100000` and `20261009100000` are missing locally. Do not push or repair migration history in this work; integrate the migration owners' files and reconcile the inventory first. SQL parse/review was clean, but the safety-decision SQL assertions, live RLS, transactional success paths and post-application advisors remain unverified. No live Safety Officer account is available.
+**Historical deployment check (9 Oct 2026):** at that point, local migration files were missing from the linked inventory and safety-decision verification was blocked. This state was superseded when the CR-98 and CR-103/104 migration files were integrated and applied.
+
+**Current migration status (13 Oct 2026):** the linked ledger includes remote-only versions through `20261012140000`. The CR-98 D26 privilege-revocation migration `20261013100000_revoke_event_space_trigger_execution.sql` is pending merge and deployment. The live database currently still grants direct execution on the two trigger functions; see [the D26 run](runs/2026-10-12-1433-api-db-d234eb1.md).
 
 The [recorded API/database run](runs/2026-10-09-1433-api-db-ab6a851.md) has **67 passed, 3 failed, 1 blocked**. TC-SDEC-001/002 passed. TC-SAFE-002/003 and TC-BOOK-001 failed because eligible Planning event reads depend on the missing decision table; the safety-decision SQL preflight correctly recorded Blocked without executing its script.
 

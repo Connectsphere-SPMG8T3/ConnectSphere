@@ -36,6 +36,19 @@ function displayDateTime(date, time, timeZone) {
   return `${displayDate(date, timeZone)} at ${time}`;
 }
 
+function displaySpaceSchedule(space) {
+  const startsAt = space.starts_at ?? event.value?.starts_at;
+  const endsAt = space.ends_at ?? event.value?.ends_at;
+  if (!startsAt || !endsAt) return "Schedule not provided";
+  const format = (value) => new Intl.DateTimeFormat("en-SG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: event.value.eventTimezone,
+  }).format(new Date(value));
+  const prefix = space.starts_at && space.ends_at ? "Schedule" : "Uses event schedule";
+  return `${prefix}: ${format(startsAt)} – ${format(endsAt)}`;
+}
+
 function displayValue(value) {
   return value || "Not provided";
 }
@@ -112,8 +125,14 @@ onMounted(async () => {
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Expected attendance</dt><dd class="mt-1 font-medium">{{ displayValue(event.expectedAttendance) }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Proposed date</dt><dd class="mt-1 font-medium">{{ displayDate(event.date, event.eventTimezone) }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Time</dt><dd class="mt-1 font-medium">{{ displayValue(event.startTime) }}–{{ displayValue(event.endTime) }} ({{ event.eventTimezone }})</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Preferred layout</dt><dd class="mt-1 font-medium">{{ displayValue(event.layoutPreference) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Facilities</dt><dd class="mt-1 font-medium">{{ event.facilitiesRequired.length ? event.facilitiesRequired.join(", ") : "None specified" }}</dd></div>
+            <div v-if="event.spaces?.length" class="sm:col-span-2">
+              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Space requirements</dt>
+              <dd class="mt-2 grid gap-2">
+                <div v-for="space in event.spaces" :key="space.id" class="border-2 border-ink bg-canvas p-3 font-medium">
+                  <strong>{{ space.label }}</strong>: {{ space.expectedPax }} pax · {{ space.layoutPreference || "No layout" }} · {{ space.facilitiesRequired?.length ? space.facilitiesRequired.join(", ") : "No facilities" }}<br />{{ displaySpaceSchedule(space) }}
+                </div>
+              </dd>
+            </div>
             <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Description</dt><dd class="mt-1 whitespace-pre-wrap font-medium">{{ displayValue(event.description) }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Accessibility needs</dt><dd class="mt-1 font-medium">{{ displayValue(event.accessibilityNeeds) }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Equipment needs</dt><dd class="mt-1 font-medium">{{ displayValue(event.preliminaryEquipmentNeeds) }}</dd></div>

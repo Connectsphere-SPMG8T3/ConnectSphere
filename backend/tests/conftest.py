@@ -150,3 +150,14 @@ def rejected_bookings_offline(monkeypatch, request):
     """
     if request.node.path.name != "test_venue_booking_decision_repository.py":
         monkeypatch.setattr("app.modules.venues.repository.list_rejected_bookings", lambda event_id: [])
+
+
+@pytest.fixture(autouse=True)
+def active_space_bookings_offline(monkeypatch, request):
+    """Event-read tests default to no per-space bookings unless they provide rows.
+
+    Keep API tests isolated from Supabase when the branch adds the space-booking
+    read path; the helper's mapping behavior has its own repository-backed test.
+    """
+    if request.node.name != "test_active_bookings_for_event_maps_each_space_booking":
+        monkeypatch.setattr("app.modules.venues.service.active_bookings_for_event", lambda event_id: [])

@@ -27,6 +27,10 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  error: {
+    type: String,
+    default: "",
+  },
   ariaLabel: {
     type: String,
     default: "",
@@ -61,7 +65,12 @@ const selectedValues = computed(() => {
 });
 const usesMenu = computed(() => props.multiple || props.dropdown);
 const hasFlag = computed(() => Boolean(props.flag));
+const hasError = computed(() => Boolean(props.error));
 const flagId = `${selectId}-flag`;
+const errorId = `${selectId}-error`;
+const describedBy = computed(
+  () => [hasError.value && errorId, hasFlag.value && flagId].filter(Boolean).join(" ") || undefined,
+);
 const selectionLabel = computed(() => {
   if (!selectedValues.value.length) return props.placeholder;
   if (selectedValues.value.length === 1) {
@@ -102,10 +111,13 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
         :aria-label="ariaLabel || undefined"
         :aria-expanded="isOpen"
         aria-haspopup="listbox"
-        :aria-describedby="hasFlag ? flagId : undefined"
+        :aria-invalid="hasError || undefined"
+        :aria-describedby="describedBy"
         :data-flagged="hasFlag || undefined"
-        class="flex w-full items-center justify-between border-2 border-ink px-4 py-3 text-left text-base font-medium text-ink outline-none transition-colors focus:bg-bauhaus-yellow/20"
-        :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasFlag ? 'bg-bauhaus-yellow/30' : 'bg-canvas']"
+        class="focus-tint flex w-full items-center justify-between border-2 border-ink px-4 py-3 text-left text-base font-medium text-ink outline-none transition-colors"
+        :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasError ? 'border-bauhaus-red' : 'border-ink', hasFlag ? 'bg-bauhaus-yellow/30' : 'bg-canvas']"
+        @focus="$event.currentTarget.style.backgroundColor = 'rgb(250, 239, 211)'"
+        @blur="$event.currentTarget.style.backgroundColor = ''"
         @click.stop="isOpen = !isOpen"
       >
         <span class="truncate">{{ selectionLabel }}</span>
@@ -146,10 +158,13 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
       :value="modelValue"
       :aria-required="required"
       :aria-label="ariaLabel || undefined"
-      :aria-describedby="hasFlag ? flagId : undefined"
+      :aria-invalid="hasError"
+      :aria-describedby="describedBy"
       :data-flagged="hasFlag || undefined"
-      class="border-2 border-ink px-4 py-3 text-base font-medium text-ink outline-none transition-colors focus:bg-bauhaus-yellow/20"
-      :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasFlag ? 'bg-bauhaus-yellow/30' : 'bg-canvas']"
+      class="focus-tint border-2 border-ink px-4 py-3 text-base font-medium text-ink outline-none transition-colors"
+      :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasError ? 'border-bauhaus-red' : 'border-ink', hasFlag ? 'bg-bauhaus-yellow/30' : 'bg-canvas']"
+      @focus="$event.currentTarget.style.backgroundColor = 'rgb(250, 239, 211)'"
+      @blur="$event.currentTarget.style.backgroundColor = ''"
       @change="$emit('update:modelValue', $event.target.value)"
     >
       <option v-if="showPlaceholder" value="">{{ placeholder }}</option>
@@ -157,6 +172,9 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
         {{ option.label }}
       </option>
     </select>
+    <p v-if="hasError" :id="errorId" class="text-xs font-bold uppercase tracking-wide text-bauhaus-red">
+      {{ error }}
+    </p>
     <p v-if="hasFlag" :id="flagId" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold uppercase tracking-wide text-ink">
       {{ flag }}
     </p>

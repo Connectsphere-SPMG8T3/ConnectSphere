@@ -375,10 +375,14 @@ BOOKING_NOTE_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as the
 
 
 class VenueBookingCreate(BaseModel):
-    """A coordinator's booking request (SCRUM-19). No period: the hold always
-    covers the event's own start and end, read by the database function."""
+    """A coordinator's booking request.
 
-    event_id: UUID
+    `event_id` remains accepted for the legacy single-space flow while new
+    callers identify the organiser's requested space explicitly.
+    """
+
+    event_id: UUID | None = None
+    event_space_request_id: UUID | None = None
     venue_id: UUID
     note: str | None = Field(default=None, max_length=BOOKING_NOTE_MAX_LENGTH)
 
@@ -389,10 +393,17 @@ class VenueBookingCreate(BaseModel):
             return value.strip() or None
         return value
 
+    @model_validator(mode="after")
+    def _has_event_or_space(self):
+        if self.event_id is None and self.event_space_request_id is None:
+            raise ValueError("event_id or event_space_request_id is required")
+        return self
+
 
 class VenueBooking(BaseModel):
     id: str
     event_id: str
+    event_space_request_id: str | None = None
     venue_id: str
     status: str
     note: str | None = None

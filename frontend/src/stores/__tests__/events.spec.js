@@ -3,12 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
-import { emptyEvent, eventToPayload, useEventsStore } from "@/stores/events";
+import { emptyEvent, emptySpace, eventToPayload, spaceToPayload, useEventsStore } from "@/stores/events";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn(), resubmit: vi.fn(), clone: vi.fn() },
+  eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn(), resubmit: vi.fn(), clone: vi.fn(), createSpace: vi.fn(), updateSpace: vi.fn(), removeSpace: vi.fn() },
 }));
 
 function signedInStore() {
@@ -46,8 +46,6 @@ describe("event store", () => {
       starts_at: "2026-10-10T07:00:00.000Z",
       ends_at: "2026-10-10T10:00:00.000Z",
       expected_attendance: 150,
-      layout_preference: "theatre",
-      facilities_required: ["projector"],
       registration_enabled: false,
       registration_opens_at: "2026-09-20T02:00:00.000Z",
       registration_closes_at: "2026-10-09T11:00:00.000Z",
@@ -63,7 +61,6 @@ describe("event store", () => {
       purpose: null,
       description: null,
       expected_attendance: null,
-      layout_preference: null,
       accessibility_needs: null,
       preliminary_equipment_needs: null,
       registration_capacity: null,
@@ -83,7 +80,7 @@ describe("event store", () => {
 
     const result = await store.saveDraft(event);
 
-    expect(eventsApi.create).toHaveBeenCalledWith({ name: event.name, event_timezone: "Asia/Singapore", facilities_required: [], registration_enabled: false }, "access");
+    expect(eventsApi.create).toHaveBeenCalledWith({ name: event.name, event_timezone: "Asia/Singapore", registration_enabled: false }, "access");
     expect(result.id).toBe("e1");
     expect(store.events).toEqual([result]);
   });
@@ -145,7 +142,7 @@ describe("event store", () => {
     const result = await store.createAndSubmit(event);
 
     expect(eventsApi.create).toHaveBeenCalledWith(
-      { name: event.name, event_timezone: "Asia/Singapore", facilities_required: [], registration_enabled: false },
+      { name: event.name, event_timezone: "Asia/Singapore", registration_enabled: false },
       "access",
     );
     // Submitting edits the draft the create call just made, so empty fields go as null.
@@ -254,8 +251,94 @@ describe("event store", () => {
     });
     expect(eventsApi.update).toHaveBeenCalledWith(
       "e1",
-      expect.objectContaining({ name: "Updated workshop", facilities_required: [] }),
+      expect.objectContaining({ name: "Updated workshop" }),
       "access",
     );
+  });
+
+  it("creates and serializes a venue requirement space", () => {
+    expect(emptySpace()).toEqual({
+      id: null,
+      version: 1,
+      label: "",
+      expectedPax: "",
+      layoutPreference: "",
+      facilitiesRequired: [],
+      useEventSchedule: true,
+      startsAt: "",
+      endsAt: "",
+    });
+    expect(spaceToPayload({
+      label: "  Main venue  ",
+      expectedPax: "120",
+      layoutPreference: "theatre",
+      facilitiesRequired: ["projector"],
+    })).toEqual({
+      label: "Main venue",
+      expected_pax: 120,
+      layout_preference: "theatre",
+      facilities_required: ["projector"],
+      starts_at: null,
+      ends_at: null,
+    });
+  });
+
+  it("serializes a custom space window in the event timezone", () => {
+    expect(spaceToPayload({
+      label: "Breakout",
+      expectedPax: "40",
+      layoutPreference: "classroom",
+      facilitiesRequired: [],
+      useEventSchedule: false,
+      startsAt: "2026-10-20T17:00",
+      endsAt: "2026-10-20T19:00",
+    }, "Asia/Singapore")).toMatchObject({
+      starts_at: "2026-10-20T09:00:00.000Z",
+      ends_at: "2026-10-20T11:00:00.000Z",
+    });
+  });
+
+  it("normalizes spaces from an event response including nullable legacy fields", async () => {
+    const store = signedInStore();
+    eventsApi.get.mockResolvedValue({
+      id: "e1",
+      status: "draft",
+      name: "Planning workshop",
+      spaces: [
+        { id: "s1", event_id: "e1", label: "Main venue", expected_pax: 120, layout_preference: "theatre", facilities_required: ["projector"], version: 2 },
+        { id: "s2", event_id: "e1", label: "Breakout", expected_pax: null, layout_preference: null, facilities_required: null },
+      ],
+    });
+
+    const result = await store.get("e1");
+
+    expect(result.spaces).toEqual([
+      { ...emptySpace(), id: "s1", event_id: "e1", label: "Main venue", expected_pax: 120, layout_preference: "theatre", facilities_required: ["projector"], version: 2, expectedPax: 120, layoutPreference: "theatre", facilitiesRequired: ["projector"] },
+      { ...emptySpace(), id: "s2", event_id: "e1", label: "Breakout", expected_pax: null, layout_preference: null, facilities_required: null, expectedPax: "", layoutPreference: "", facilitiesRequired: [] },
+    ]);
+  });
+
+  it("creates, updates and removes space requests with the active session", async () => {
+    const store = signedInStore();
+    eventsApi.createSpace.mockResolvedValue({ id: "s1" });
+    eventsApi.updateSpace.mockResolvedValue({ id: "s1", version: 2 });
+    eventsApi.removeSpace.mockResolvedValue(undefined);
+
+    await store.createSpace("e1", { label: "Main venue" });
+    await store.updateSpace("e1", "s1", { label: "Updated venue", version: 1 });
+    await store.removeSpace("e1", "s1");
+
+    expect(eventsApi.createSpace).toHaveBeenCalledWith("e1", { label: "Main venue" }, "access");
+    expect(eventsApi.updateSpace).toHaveBeenCalledWith("e1", "s1", { label: "Updated venue", version: 1 }, "access");
+    expect(eventsApi.removeSpace).toHaveBeenCalledWith("e1", "s1", "access");
+  });
+
+  it("stores and rethrows a space CRUD refusal", async () => {
+    const store = signedInStore();
+    eventsApi.removeSpace.mockRejectedValue(new ApiError("The event space was changed by another request.", 409));
+
+    await expect(store.removeSpace("e1", "s1")).rejects.toThrow("The event space was changed by another request.");
+
+    expect(store.error).toBe("The event space was changed by another request.");
   });
 });

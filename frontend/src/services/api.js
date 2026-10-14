@@ -155,6 +155,15 @@ export const eventsApi = {
   submit(eventId, payload, token) {
     return request(`/events/${encodeURIComponent(eventId)}/submit`, { method: "POST", body: payload, token });
   },
+  createSpace(eventId, payload, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/spaces`, { method: "POST", body: payload, token });
+  },
+  updateSpace(eventId, spaceId, payload, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/spaces/${encodeURIComponent(spaceId)}`, { method: "PATCH", body: payload, token });
+  },
+  removeSpace(eventId, spaceId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/spaces/${encodeURIComponent(spaceId)}`, { method: "DELETE", token });
+  },
   // SCRUM-34/52: the assigned coordinator's decisions, and the history they leave.
   sendForSafetyCheck(eventId, token) {
     return request(`/events/${encodeURIComponent(eventId)}/send-for-safety-check`, { method: "POST", token });

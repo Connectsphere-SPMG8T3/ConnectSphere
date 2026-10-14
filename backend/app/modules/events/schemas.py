@@ -3,7 +3,7 @@ from enum import Enum
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.venues.schemas import Facility, VenueLayout
 
@@ -35,6 +35,93 @@ class EventPlanningContext(BaseModel):
     facilities_required: list[Facility] = []
     # SCRUM-38 AC1: venue staff see it on the booking request.
     accessibility_needs: str | None = None
+
+
+def _validate_space_window(starts_at: datetime | None, ends_at: datetime | None) -> None:
+    if starts_at is None and ends_at is None:
+        return
+    if starts_at is None or ends_at is None:
+        raise ValueError("starts_at and ends_at must be provided together.")
+    if starts_at.tzinfo is None or ends_at.tzinfo is None:
+        raise ValueError("Space schedule values must include a timezone offset.")
+    if ends_at <= starts_at:
+        raise ValueError("Space end time must be after its start time.")
+
+
+class EventSpaceRequestFields(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1, max_length=150)
+    expected_pax: int = Field(ge=1)
+    layout_preference: VenueLayout
+    facilities_required: list[Facility] = []
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def label_is_not_blank(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("A space label is required.")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        _validate_space_window(self.starts_at, self.ends_at)
+        return self
+
+class EventSpaceRequestCreate(EventSpaceRequestFields):
+    pass
+
+
+class EventSpaceRequestUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = Field(default=None, min_length=1, max_length=150)
+    expected_pax: int | None = Field(default=None, ge=1)
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    version: int | None = None
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def optional_label_is_not_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("A space label is required.")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def changed_fields_are_not_null(self):
+        for field in ("label", "expected_pax", "layout_preference", "facilities_required"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null.")
+        schedule_fields = {"starts_at", "ends_at"} & self.model_fields_set
+        if schedule_fields and schedule_fields != {"starts_at", "ends_at"}:
+            raise ValueError("starts_at and ends_at must be updated together.")
+        if schedule_fields:
+            _validate_space_window(self.starts_at, self.ends_at)
+        return self
+
+class EventSpaceRequest(EventSpaceRequestFields):
+    id: str
+    event_id: str
+    version: int = 1
+
+
+class EventSpaceRequestResponse(BaseModel):
+    id: str
+    event_id: str
+    label: str
+    expected_pax: int | None = None
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] = []
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    version: int = 1
 
 
 class TechnicalReadiness(str, Enum):
@@ -150,6 +237,7 @@ class EventVenueBooking(BaseModel):
     """The venue an event holds or has booked (SCRUM-19). Coordinator view only."""
 
     id: str
+    event_space_request_id: str | None = None
     venue_id: str
     venue_name: str | None = None
     status: str
@@ -240,6 +328,9 @@ class SafetyDecisionSummary(BaseModel):
     reason_label: str
     decided_at: datetime
 
+class EventSpaceVenueBooking(EventVenueBooking):
+    pass
+
 
 class EventResponse(EventFields):
     id: str
@@ -253,6 +344,7 @@ class EventResponse(EventFields):
     version: int
     created_at: datetime
     updated_at: datetime
+    spaces: list[EventSpaceRequestResponse] = []
     # The open amendment while the event is returned (SCRUM-33); null otherwise
     # and on list responses.
     amendment: AmendmentRequest | None = None
@@ -266,6 +358,7 @@ class EventResponse(EventFields):
     rejected_bookings: list[EventRejectedBooking] = []
     safety_readiness: SafetyReadiness | None = None
     latest_safety_decision: SafetyDecision | SafetyDecisionSummary | None = None
+    venue_bookings: list[EventSpaceVenueBooking] = []
 
 
 class EventListResponse(BaseModel):

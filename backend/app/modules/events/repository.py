@@ -10,6 +10,78 @@ _EVENT_COLUMNS = (
     "registration_opens_at, registration_closes_at, technical_readiness, submitted_at, "
     "version, created_at, updated_at"
 )
+_SPACE_COLUMNS = "id, event_id, label, expected_pax, layout_preference, facilities_required, starts_at, ends_at, version"
+
+
+def list_event_spaces(event_id: str) -> list[dict]:
+    response = (
+        get_supabase_admin_client()
+        .table("event_space_requests")
+        .select(_SPACE_COLUMNS)
+        .eq("event_id", event_id)
+        .execute()
+    )
+    return response.data or []
+
+
+def create_space(event_id: str, values: dict) -> dict:
+    response = (
+        get_supabase_admin_client()
+        .table("event_space_requests")
+        .insert({**values, "event_id": event_id})
+        .select(_SPACE_COLUMNS)
+        .execute()
+    )
+    return response.data[0] if isinstance(response.data, list) else response.data
+
+
+def update_space(space_id: str, values: dict, version: int) -> dict | None:
+    response = (
+        get_supabase_admin_client()
+        .table("event_space_requests")
+        .update({**values, "version": version + 1})
+        .eq("id", space_id)
+        .eq("version", version)
+        .select(_SPACE_COLUMNS)
+        .execute()
+    )
+    if not response or not response.data:
+        return None
+    return response.data[0] if isinstance(response.data, list) else response.data
+
+
+def delete_space(space_id: str, version: int) -> bool:
+    response = (
+        get_supabase_admin_client()
+        .table("event_space_requests")
+        .delete()
+        .eq("id", space_id)
+        .eq("version", version)
+        .execute()
+    )
+    return bool(response and response.data)
+
+
+def get_space(space_id: str) -> dict | None:
+    response = (
+        get_supabase_admin_client()
+        .table("event_space_requests")
+        .select(_SPACE_COLUMNS)
+        .eq("id", space_id)
+        .maybe_single()
+        .execute()
+    )
+    return response.data if response else None
+
+
+def _with_spaces(row: dict | None) -> dict | None:
+    if row is None:
+        return None
+    # Keep narrow repository-unit fixtures that return only the updated fields
+    # focused on the event write itself; full event rows carry status.
+    if "status" not in row:
+        return row
+    return {**row, "spaces": list_event_spaces(row["id"])}
 
 
 def list_events(organiser_id: str) -> list[dict]:
@@ -21,7 +93,7 @@ def list_events(organiser_id: str) -> list[dict]:
         .order("updated_at", desc=True)
         .execute()
     )
-    return response.data or []
+    return [_with_spaces(row) for row in response.data or []]
 
 
 # SCRUM-72: the coordinator dashboard's reads. The organiser is embedded through
@@ -114,7 +186,7 @@ def get_event(event_id: str) -> dict | None:
         .maybe_single()
         .execute()
     )
-    return response.data if response else None
+    return _with_spaces(response.data if response else None)
 
 
 def create_event(organiser_id: str, values: dict) -> dict:
@@ -126,8 +198,8 @@ def create_event(organiser_id: str, values: dict) -> dict:
         .execute()
     )
     if isinstance(response.data, list):
-        return response.data[0]
-    return response.data
+        return _with_spaces(response.data[0])
+    return _with_spaces(response.data)
 
 
 def update_event(event_id: str, values: dict, version: int) -> dict:
@@ -142,7 +214,7 @@ def update_event(event_id: str, values: dict, version: int) -> dict:
     )
     if not response or not response.data:
         return None
-    return response.data[0] if isinstance(response.data, list) else response.data
+    return _with_spaces(response.data[0] if isinstance(response.data, list) else response.data)
 
 
 def delete_event(event_id: str) -> None:

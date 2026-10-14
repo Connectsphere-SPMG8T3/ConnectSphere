@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+.focus-tint:focus {
+  background-color: rgb(250, 239, 211) !important;
+}
+
 @layer base {
   html,
   body {

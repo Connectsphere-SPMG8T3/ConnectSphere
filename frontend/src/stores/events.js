@@ -11,8 +11,57 @@ import { FACILITIES, LAYOUTS } from "@/features/venues/venueSearchStore";
 
 export { FACILITIES, LAYOUTS };
 
+export function emptySpace() {
+  return {
+    id: null,
+    version: 1,
+    label: "",
+    expectedPax: "",
+    layoutPreference: "",
+    facilitiesRequired: [],
+    useEventSchedule: true,
+    startsAt: "",
+    endsAt: "",
+  };
+}
+
+function spaceDateTimeToIso(value, eventTimezone) {
+  if (!value) return null;
+  const [date, time] = value.split("T");
+  return date && time ? toZonedIso(date, time, eventTimezone) : null;
+}
+
+export function spaceToPayload(space, eventTimezone = DEFAULT_EVENT_TIMEZONE) {
+  const inheritsEventSchedule = space.useEventSchedule !== false;
+  return {
+    label: space.label.trim(),
+    expected_pax: Number(space.expectedPax),
+    layout_preference: space.layoutPreference,
+    facilities_required: [...(space.facilitiesRequired ?? [])],
+    starts_at: inheritsEventSchedule ? null : spaceDateTimeToIso(space.startsAt, eventTimezone),
+    ends_at: inheritsEventSchedule ? null : spaceDateTimeToIso(space.endsAt, eventTimezone),
+  };
+}
+
+function spaceFromResponse(space, eventTimezone) {
+  const defaults = emptySpace();
+  const startsAt = fromZonedDateTime(space.starts_at, eventTimezone);
+  const endsAt = fromZonedDateTime(space.ends_at, eventTimezone);
+  return {
+    ...defaults,
+    ...space,
+    expectedPax: space.expected_pax ?? "",
+    layoutPreference: space.layout_preference ?? "",
+    facilitiesRequired: [...(space.facilities_required ?? [])],
+    useEventSchedule: !space.starts_at && !space.ends_at,
+    startsAt: startsAt.date && startsAt.time ? `${startsAt.date}T${startsAt.time}` : "",
+    endsAt: endsAt.date && endsAt.time ? `${endsAt.date}T${endsAt.time}` : "",
+  };
+}
+
 export function emptyEvent() {
   return {
+    spaces: [],
     name: "",
     eventTimezone: DEFAULT_EVENT_TIMEZONE,
     purpose: "",
@@ -44,8 +93,6 @@ export function eventToPayload(event, { clearing = false } = {}) {
     purpose: (event.purpose ?? "").trim() || blank,
     description: (event.description ?? "").trim() || blank,
     expected_attendance: event.expectedAttendance === "" || event.expectedAttendance == null ? blank : Number(event.expectedAttendance),
-    layout_preference: event.layoutPreference || blank,
-    facilities_required: [...event.facilitiesRequired],
     accessibility_needs: (event.accessibilityNeeds ?? "").trim() || blank,
     preliminary_equipment_needs: (event.preliminaryEquipmentNeeds ?? "").trim() || blank,
     registration_enabled: event.registrationEnabled,
@@ -81,6 +128,7 @@ function fromResponse(event) {
   return {
     ...defaults,
     ...event,
+    spaces: (event.spaces ?? []).map((space) => spaceFromResponse(space, eventTimezone)),
     name: event.name ?? defaults.name,
     eventTimezone,
     purpose: event.purpose ?? defaults.purpose,
@@ -101,6 +149,17 @@ function fromResponse(event) {
   };
 }
 
+async function withSpaceRequest(store, operation) {
+  const authStore = useAuthStore();
+  store.error = null;
+  try {
+    return await authStore.withSession(operation);
+  } catch (error) {
+    store.error = error.message;
+    throw error;
+  }
+}
+
 export const useEventsStore = defineStore("events", {
   state: () => ({ events: [], isLoading: false, isSaving: false, error: null }),
 
@@ -110,6 +169,18 @@ export const useEventsStore = defineStore("events", {
   },
 
   actions: {
+    async createSpace(eventId, payload) {
+      return withSpaceRequest(this, (token) => eventsApi.createSpace(eventId, payload, token));
+    },
+
+    async updateSpace(eventId, spaceId, payload) {
+      return withSpaceRequest(this, (token) => eventsApi.updateSpace(eventId, spaceId, payload, token));
+    },
+
+    async removeSpace(eventId, spaceId) {
+      return withSpaceRequest(this, (token) => eventsApi.removeSpace(eventId, spaceId, token));
+    },
+
     async load() {
       const authStore = useAuthStore();
       this.isLoading = true;

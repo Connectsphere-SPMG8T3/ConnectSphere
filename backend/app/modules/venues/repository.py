@@ -10,6 +10,8 @@ import re
 from collections.abc import Iterable
 from datetime import datetime
 
+from postgrest.exceptions import APIError
+
 from app.db.supabase import get_supabase_admin_client
 from app.modules.venues.schemas import (
     BlockSummary,
@@ -392,6 +394,27 @@ def request_booking(event_id: str, venue_id: str, actor_id: str, note: str | Non
     return rows[0]
 
 
+def request_booking_for_space(space_id: str, venue_id: str, actor_id: str, note: str | None, *,
+                              notify_message: str) -> dict:
+    """Create a hold for one event-space request using its own period."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "request_venue_booking_for_space",
+            {
+                "p_event_space_request_id": space_id,
+                "p_venue_id": venue_id,
+                "p_actor_id": actor_id,
+                "p_note": note,
+                "p_notify_message": notify_message,
+            },
+        )
+        .execute()
+    )
+    rows = response.data or []
+    return rows[0]
+
+
 def get_active_booking(event_id: str) -> dict | None:
     """The event's occupying booking, with its venue's name; or, when it has
     none, its most recent expired hold, so the event page can say the hold ran
@@ -399,7 +422,7 @@ def get_active_booking(event_id: str) -> dict | None:
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, venue_id, status, expires_at, venues!venue_bookings_venue_id_fkey(name)")
+        .select("id, event_space_request_id, venue_id, status, expires_at, venues!venue_bookings_venue_id_fkey(name)")
         .eq("event_id", event_id)
         .in_("status", [*OCCUPYING_STATUSES, "expired"])
         .order("created_at", desc=True)
@@ -561,3 +584,23 @@ def list_rejected_bookings(event_id: str) -> list[dict]:
         }
         for row in response.data or []
     ]
+
+
+def list_active_bookings(event_id: str) -> list[dict]:
+    try:
+        response = (
+            get_supabase_admin_client()
+            .table("venue_bookings")
+            .select("id, event_id, event_space_request_id, venue_id, status, venues!venue_bookings_venue_id_fkey(name)")
+            .eq("event_id", event_id)
+            .in_("status", list(OCCUPYING_STATUSES))
+            .order("created_at")
+            .execute()
+        )
+    except APIError as exc:
+        # Keep coordinator reads usable while the forward-only schema migration
+        # is rolling out; only a missing schema-cache column permits fallback.
+        if exc.code == "PGRST204":
+            return []
+        raise
+    return response.data or []
