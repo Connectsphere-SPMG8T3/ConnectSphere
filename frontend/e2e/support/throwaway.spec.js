@@ -1,5 +1,5 @@
 // The e2e support code reads the Supabase CLI's JSON in either of its two shapes
-// (the same bug as backend/scripts/verify_live.py, D27): `{"rows": [...]}` under an
+// (the same bug as backend/scripts/verify_live.py, D28): `{"rows": [...]}` under an
 // agent, a bare list in a plain terminal, and `[]` when a delete matched nothing.
 import { describe, expect, it } from "vitest";
 
