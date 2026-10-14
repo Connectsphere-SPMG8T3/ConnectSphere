@@ -323,23 +323,25 @@ def list_all_upcoming_blocks(since: datetime) -> list[VenueStaffBlock]:
 
 
 def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list[VenueStaffBooking]:
-    """Bookings on every venue in `statuses` whose period ends after `since`."""
-    response = (
+    """Read active requests and resolved history for every venue."""
+    requested_statuses = set(statuses)
+    query = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        # The embed must name the constraint. `venue_bookings` has two foreign
-        # keys to `venues` — `venue_id` and the `suggested_venue_id` a rejection
-        # may carry (§6.13) — so a bare `venues(name)` is ambiguous and
-        # PostgREST refuses the whole request with PGRST201 rather than
-        # guessing. `venue_blocks` has only one, which is why it can stay bare.
+        # Every relationship is named because bookings have multiple venue,
+        # event and profile foreign keys.
         .select(
             "id, event_id, venue_id, occupied_period, status, created_at, expires_at, "
-            "venues!venue_bookings_venue_id_fkey(name)"
+            "decision_reason, suggestion_note, decided_at, "
+            "venues!venue_bookings_venue_id_fkey(name), "
+            "events!venue_bookings_event_id_fkey(name, coordinator:profiles!events_coordinator_id_fkey(full_name)), "
+            "requester:profiles!venue_bookings_requested_by_fkey(full_name)"
         )
-        .in_("status", sorted(statuses))
-        .overlaps("occupied_period", _open_ended_literal(since))
-        .execute()
+        .in_("status", sorted(requested_statuses))
     )
+    if requested_statuses.issubset({"held", "re_review"}):
+        query = query.overlaps("occupied_period", _open_ended_literal(since))
+    response = query.execute()
     bookings = [
         VenueStaffBooking(
             id=row["id"],
@@ -350,6 +352,16 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
             status=row["status"],
             requested_at=datetime.fromisoformat(row["created_at"]),
             expires_at=datetime.fromisoformat(row["expires_at"]) if row.get("expires_at") else None,
+            event_name=_embedded_name(row, "events", "name"),
+            coordinator_name=_embedded_name(
+                {"coordinator": (_embedded_relation(row, "events") or {}).get("coordinator")},
+                "coordinator",
+                "full_name",
+            ),
+            requested_by_name=_embedded_name(row, "requester", "full_name"),
+            decision_reason=row.get("decision_reason"),
+            suggestion=row.get("suggestion_note"),
+            decided_at=datetime.fromisoformat(row["decided_at"]) if row.get("decided_at") else None,
         )
         for row in response.data or []
     ]
@@ -477,6 +489,13 @@ def _embedded_name(row: dict, key: str, field: str) -> str | None:
     if isinstance(embedded, list):
         embedded = embedded[0] if embedded else None
     return (embedded or {}).get(field)
+
+
+def _embedded_relation(row: dict, key: str) -> dict | None:
+    embedded = row.get(key)
+    if isinstance(embedded, list):
+        embedded = embedded[0] if embedded else None
+    return embedded if isinstance(embedded, dict) else None
 
 
 def get_booking(booking_id: str) -> dict | None:

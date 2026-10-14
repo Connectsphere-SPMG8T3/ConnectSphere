@@ -80,6 +80,12 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["venue_staff"] },
   },
   {
+    path: "/dashboard/venue-staff/requests",
+    name: "dashboard-venue-staff-requests",
+    component: () => import("@/views/venues/VenueStaffBookingRequestsView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["venue_staff"] },
+  },
+  {
     path: "/dashboard/tech-support",
     name: "dashboard-tech-support",
     component: () => import("@/views/dashboards/TechSupportDashboard.vue"),

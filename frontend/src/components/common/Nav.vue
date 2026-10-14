@@ -56,6 +56,7 @@ watch(
 const showVenuesLink = computed(() =>
   ["event_coordinator", "venue_staff"].includes(authStore.role),
 );
+const showVenueStaffRequests = computed(() => authStore.role === "venue_staff");
 // Organisers and coordinators get Overview/Events views of their dashboard;
 // each dashboard reads the tab from the route.
 const EVENT_VIEW_DASHBOARDS = {
@@ -65,7 +66,8 @@ const EVENT_VIEW_DASHBOARDS = {
 const eventViewsDashboard = computed(() => EVENT_VIEW_DASHBOARDS[authStore.role] ?? null);
 const showTechSupportViews = computed(() => authStore.role === "tech_support");
 
-const isDashboardActive = computed(() => route.name?.startsWith("dashboard-"));
+const isDashboardActive = computed(() => route.path === authStore.dashboardPath);
+const isVenueStaffRequestsActive = computed(() => route.name === "dashboard-venue-staff-requests");
 const isEventOverviewActive = computed(
   () => route.name === eventViewsDashboard.value && route.query.tab !== "events",
 );
@@ -278,6 +280,29 @@ async function handleLogout() {
           <path d="M5 10v10h5v-6h4v6h5V10" />
         </svg>
         <span :class="labelClass">Dashboard</span>
+      </RouterLink>
+
+      <RouterLink
+        v-if="showVenueStaffRequests"
+        :to="{ name: 'dashboard-venue-staff-requests' }"
+        :class="navLinkClass(isVenueStaffRequestsActive)"
+        title="Booking requests"
+        aria-label="Booking requests"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="h-5 w-5 shrink-0"
+          aria-hidden="true"
+        >
+          <path d="M4 5h16v14H4z" />
+          <path d="M8 9h8M8 13h5" />
+        </svg>
+        <span :class="labelClass">Booking requests</span>
       </RouterLink>
 
       <RouterLink

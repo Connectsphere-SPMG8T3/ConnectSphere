@@ -9,7 +9,7 @@ vi.mock("@/services/api", async (importOriginal) => ({
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn(), setActiveRole: vi.fn() },
 }));
 
-async function mountNav(profile) {
+async function mountNav(profile, initialPath = "/dashboard/coordinator") {
   // A fresh router (and its beforeEach guard) and a fresh auth store module
   // per test — sharing the router singleton across tests lets one test's
   // in-flight navigation (dynamic route imports are genuinely async) leak
@@ -24,7 +24,7 @@ async function mountNav(profile) {
   authStore.profile = profile;
   authStore.sessionVerified = true;
   const { default: router } = await import("@/router");
-  await router.push("/dashboard/coordinator");
+  await router.push(initialPath);
   const { default: Nav } = await import("@/components/common/Nav.vue");
   const el = document.createElement("div");
   document.body.appendChild(el);
@@ -258,5 +258,24 @@ describe("Nav for the staff roles added in 12 AC12 and CR-103 AC5", () => {
       o.textContent.trim(),
     );
     expect(optionLabels).toContain(label);
+  });
+});
+
+describe("Nav for venue staff", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+  });
+
+  it("links venue staff to the dedicated booking requests page", async () => {
+    const { el } = await mountNav(
+      { id: "u1", role: "venue_staff", roles: ["venue_staff"] },
+      "/dashboard/venue-staff/requests",
+    );
+
+    expect(el.querySelector('a[href="/dashboard/venue-staff/requests"]')).toBeTruthy();
+    expect(el.textContent).toContain("Booking requests");
+    expect(el.querySelector('a[aria-label="Dashboard"]').className).not.toContain("bg-bauhaus-yellow");
+    expect(el.querySelector('a[href="/dashboard/venue-staff/requests"]').className).toContain("bg-bauhaus-yellow");
   });
 });

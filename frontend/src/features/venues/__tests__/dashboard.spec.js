@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import {
   ALL_VENUE_STATUSES,
+  PENDING_BOOKING_STATUS,
   blockReasonLabel,
   bookingStatusLabel,
   filterVenueStatuses,
+  bookingStatusFilterOptions,
   expiryInputBounds,
   expiryInputToIso,
   formatEventReference,
   formatHoldExpiry,
+  filterBookingRequests,
   sortPendingHoldsSoonestExpiryFirst,
+  sortBookingRequests,
   summariseVenueStaffDashboard,
   venueStatusFilterOptions,
   venueStatuses,
@@ -114,6 +118,50 @@ describe("waitingDays", () => {
 
   it("is null when there is no usable timestamp", () => {
     expect(waitingDays({}, NOW)).toBeNull();
+  });
+});
+
+describe("booking request history", () => {
+  const requests = [
+    { id: "d-1", status: "approved", venue_id: "b-1", period: { starts_at: "2026-10-20T01:00:00Z" }, requested_at: "2026-09-01T00:00:00Z" },
+    { id: "d-2", status: "held", venue_id: "b-2", period: { starts_at: "2026-10-10T01:00:00Z" }, requested_at: "2026-09-10T00:00:00Z" },
+    { id: "d-3", status: "rejected", venue_id: "b-1", period: { starts_at: "2026-10-15T01:00:00Z" }, requested_at: "2026-09-05T00:00:00Z" },
+  ];
+
+  it("filters by status and venue together", () => {
+    expect(filterBookingRequests(requests, { status: "approved", venueId: "b-1" }).map((row) => row.id)).toEqual(["d-1"]);
+  });
+
+  it("returns select-compatible values for each status option", () => {
+    expect(bookingStatusFilterOptions(requests).map((option) => option.value)).toEqual([
+      "pending",
+      "all",
+      "approved",
+      "rejected",
+    ]);
+  });
+
+  it("treats held requests as the default pending view", () => {
+    expect(filterBookingRequests([...requests, { id: "d-4", status: "re_review", venue_id: "b-1", period: {} }], { status: PENDING_BOOKING_STATUS }).map((row) => row.id)).toEqual(["d-2"]);
+  });
+
+  it("shows every request when the status select is set to Any", () => {
+    expect(filterBookingRequests(requests, { status: "" }).map((row) => row.id)).toEqual(["d-1", "d-2", "d-3"]);
+  });
+
+  it("filters by an inclusive event date range", () => {
+    expect(
+      filterBookingRequests(requests, { startDate: "2026-10-15", endDate: "2026-10-15" }).map((row) => row.id),
+    ).toEqual(["d-3"]);
+  });
+
+  it("sorts by event date and pending wait time", () => {
+    expect(sortBookingRequests(requests, "event_soonest").map((row) => row.id)).toEqual(["d-2", "d-3", "d-1"]);
+    expect(sortBookingRequests(requests, "waiting_longest", new Date("2026-09-20T00:00:00Z")).map((row) => row.id)).toEqual([
+      "d-1",
+      "d-3",
+      "d-2",
+    ]);
   });
 });
 

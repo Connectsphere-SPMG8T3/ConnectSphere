@@ -38,12 +38,9 @@ from app.modules.venues.schemas import (
     VenueUpdateResponse,
 )
 
-# What the venue-staff dashboard tracks. `approved` is deliberately absent:
-# a settled booking is not work, and it belongs on the per-venue availability
-# calendar of §6.9 (SCRUM-16) rather than in a queue of things to decide.
-# The remaining occupying status, `held`, plus `re_review`, are exactly the two
-# that are waiting on a venue-staff decision (§6.12, §6.19).
-DASHBOARD_BOOKING_STATUSES = frozenset({"held", "re_review"})
+# What the venue-staff dashboard can discover. The response retains the active
+# queue partitions below while also exposing resolved history for reference.
+DASHBOARD_BOOKING_STATUSES = frozenset({"held", "re_review", "approved", "rejected", "expired"})
 
 
 def search_venues(criteria: VenueSearchCriteria) -> VenueSearchResponse:
@@ -259,6 +256,7 @@ def venue_staff_dashboard(now: datetime | None = None) -> VenueStaffDashboard:
     return VenueStaffDashboard(
         generated_at=now,
         venues=repository.list_venues(),
+        booking_requests=sorted(bookings, key=lambda b: (b.period.starts_at, b.id)),
         # Soonest expiry first (CR-99): the hold nearest to expiring most needs
         # a decision. One already past its expiry is left out even before the
         # minute job marks it expired (AC5). Tie-broken on id for a stable order.

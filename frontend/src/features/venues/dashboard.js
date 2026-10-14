@@ -27,6 +27,10 @@ export const BOOKING_STATUS_LABELS = {
   expired: "Expired",
 };
 
+export const ALL_BOOKING_STATUSES = "all";
+export const PENDING_BOOKING_STATUS = "pending";
+export const BOOKING_STATUS_ORDER = ["held", "re_review", "approved", "rejected", "expired"];
+
 export const blockReasonLabel = (reason) => BLOCK_REASON_LABELS[reason] ?? String(reason ?? "").replace(/_/g, " ");
 export const bookingStatusLabel = (status) => BOOKING_STATUS_LABELS[status] ?? String(status ?? "").replace(/_/g, " ");
 
@@ -93,6 +97,55 @@ export function waitingDays(booking, now = new Date()) {
   if (!Number.isFinite(requested)) return null;
   const days = Math.floor((now.getTime() - requested) / (24 * 60 * 60 * 1000));
   return Math.max(days, 0);
+}
+
+export function bookingStatusFilterOptions(rows = []) {
+  const counts = new Map();
+  for (const row of rows) counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
+  return [
+    {
+      key: PENDING_BOOKING_STATUS,
+      value: PENDING_BOOKING_STATUS,
+      label: "Pending",
+      count: counts.get("held") ?? 0,
+    },
+    { key: ALL_BOOKING_STATUSES, value: ALL_BOOKING_STATUSES, label: "All statuses", count: rows.length },
+    ...BOOKING_STATUS_ORDER.filter((status) => status !== "held" && counts.has(status)).map((status) => ({
+      key: status,
+      value: status,
+      label: bookingStatusLabel(status),
+      count: counts.get(status),
+    })),
+  ];
+}
+
+function singaporeDateKey(value) {
+  const instant = timestamp(value);
+  if (!Number.isFinite(instant)) return "";
+  return new Date(instant + SINGAPORE_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+export function filterBookingRequests(rows = [], { status = ALL_BOOKING_STATUSES, venueId = ALL_VENUE_STATUSES, startDate = "", endDate = "" } = {}) {
+  return rows.filter((row) => {
+    const eventDate = singaporeDateKey(row.period?.starts_at);
+    return (
+      (!status || status === ALL_BOOKING_STATUSES || (status === PENDING_BOOKING_STATUS && row.status === "held") || row.status === status) &&
+      (venueId === ALL_VENUE_STATUSES || row.venue_id === venueId) &&
+      (!startDate || eventDate >= startDate) &&
+      (!endDate || eventDate <= endDate)
+    );
+  });
+}
+
+export function sortBookingRequests(rows = [], sort = "event_soonest", now = new Date()) {
+  const direction = sort === "event_latest" ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    if (sort === "waiting_longest" || sort === "waiting_shortest") {
+      const waitingDifference = waitingDays(a, now) - waitingDays(b, now);
+      return (sort === "waiting_longest" ? -1 : 1) * waitingDifference || String(a.id).localeCompare(String(b.id));
+    }
+    return direction * (timestamp(a.period?.starts_at) - timestamp(b.period?.starts_at)) || String(a.id).localeCompare(String(b.id));
+  });
 }
 
 /**

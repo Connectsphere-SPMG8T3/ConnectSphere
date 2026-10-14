@@ -4,14 +4,14 @@ import { createThrowawayEvent, createThrowawayHold } from "./support/throwaway.j
 
 const INNOVATION_LAB = "b0000000-0000-4000-8000-000000000006";
 
-test("TC-HOLD-004 venue staff change a hold's expiry from the dashboard", async ({ page, sharedSessions }) => {
+test("TC-HOLD-004 venue staff change a hold's expiry from request history", async ({ page, sharedSessions }) => {
   const event = createThrowawayEvent("H004", "2031-06-24 10:00+08", "2031-06-24 12:00+08");
   const hold = createThrowawayHold(
     event, INNOVATION_LAB, "2031-06-24 10:00+08", "2031-06-24 12:00+08", "held", "2031-06-01 12:00+08",
   );
   await seedSession(page, await sharedSessions("venue_staff"));
 
-  await page.goto("/dashboard/venue-staff");
+  await page.goto("/dashboard/venue-staff/requests");
   const expiry = page.getByTestId(`hold-expiry-${hold.id}`);
   await expect(expiry).toContainText("Expires 1 Jun 2031, 12:00");
   await expiry.locator("..").getByRole("button", { name: "Change" }).click();

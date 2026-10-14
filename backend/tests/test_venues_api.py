@@ -451,6 +451,15 @@ def staff_queue(monkeypatch):
     re_review = make_staff_booking(
         "d0000000-0000-4000-8000-000000000005", "re_review", datetime(2026, 9, 10, 11, 45, tzinfo=SGT)
     )
+    approved = make_staff_booking(
+        "d0000000-0000-4000-8000-000000000006", "approved", datetime(2026, 9, 11, 11, 45, tzinfo=SGT)
+    )
+    rejected = make_staff_booking(
+        "d0000000-0000-4000-8000-000000000007", "rejected", datetime(2026, 9, 12, 11, 45, tzinfo=SGT)
+    )
+    expired = make_staff_booking(
+        "d0000000-0000-4000-8000-000000000008", "expired", datetime(2026, 9, 13, 11, 45, tzinfo=SGT)
+    )
     block = VenueStaffBlock(
         id="c0000000-0000-4000-8000-000000000001",
         venue_id=HALL_A_ID,
@@ -466,7 +475,7 @@ def staff_queue(monkeypatch):
 
     def _bookings(since, statuses):
         calls["bookings"].append((since, set(statuses)))
-        return [older_hold, newer_hold, re_review]
+        return [older_hold, newer_hold, re_review, approved, rejected, expired]
 
     def _blocks(since):
         calls["blocks"].append(since)
@@ -512,12 +521,12 @@ class TestVenueStaffDashboardAccess:
 
 
 class TestVenueStaffDashboardPayload:
-    def test_it_returns_the_four_lists(self, client, auth_headers, authenticate_as, staff_queue):
+    def test_it_returns_the_dashboard_lists(self, client, auth_headers, authenticate_as, staff_queue):
         authenticate_as("venue_staff")
 
         body = client.get(VENUE_STAFF_DASHBOARD, headers=auth_headers).json()
 
-        assert set(body) == {"generated_at", "venues", "pending_holds", "re_review_bookings", "blocks"}
+        assert set(body) == {"generated_at", "venues", "booking_requests", "pending_holds", "re_review_bookings", "blocks"}
         assert [v["name"] for v in body["venues"]] == ["Hall A", "Hall B"]
         assert len(body["pending_holds"]) == 2
         assert len(body["re_review_bookings"]) == 1
@@ -533,14 +542,13 @@ class TestVenueStaffDashboardPayload:
             "2031-02-01T09:00:00+08:00",
         ]
 
-    def test_only_held_and_re_review_are_requested(self, client, auth_headers, authenticate_as, staff_queue):
-        """An approved booking is settled work and belongs on §6.9's calendar."""
+    def test_all_dashboard_statuses_are_requested(self, client, auth_headers, authenticate_as, staff_queue):
         authenticate_as("venue_staff")
 
         client.get(VENUE_STAFF_DASHBOARD, headers=auth_headers)
 
         _, statuses = staff_queue["bookings"][0]
-        assert statuses == {"held", "re_review"}
+        assert statuses == {"held", "re_review", "approved", "rejected", "expired"}
 
     def test_holds_and_re_reviews_do_not_bleed_into_each_other(self, client, auth_headers, authenticate_as, staff_queue):
         authenticate_as("venue_staff")
@@ -549,6 +557,19 @@ class TestVenueStaffDashboardPayload:
 
         assert {h["status"] for h in body["pending_holds"]} == {"held"}
         assert {b["status"] for b in body["re_review_bookings"]} == {"re_review"}
+
+    def test_request_list_includes_pending_and_resolved_statuses(self, client, auth_headers, authenticate_as, staff_queue):
+        authenticate_as("venue_staff")
+
+        body = client.get(VENUE_STAFF_DASHBOARD, headers=auth_headers).json()
+
+        assert {request["status"] for request in body["booking_requests"]} == {
+            "held",
+            "re_review",
+            "approved",
+            "rejected",
+            "expired",
+        }
 
     def test_each_row_names_its_venue(self, client, auth_headers, authenticate_as, staff_queue):
         """The queue spans every venue, so a row without its venue is unusable."""

@@ -24,6 +24,7 @@ import { useAuthStore } from "@/stores/auth";
 export const useVenueStaffDashboardStore = defineStore("venueStaffDashboard", {
   state: () => ({
     venues: [],
+    bookingRequests: [],
     pendingHolds: [],
     reReviewBookings: [],
     blocks: [],
@@ -54,6 +55,7 @@ export const useVenueStaffDashboardStore = defineStore("venueStaffDashboard", {
 
     reset() {
       this.venues = [];
+      this.bookingRequests = [];
       this.pendingHolds = [];
       this.reReviewBookings = [];
       this.blocks = [];
@@ -75,6 +77,7 @@ export const useVenueStaffDashboardStore = defineStore("venueStaffDashboard", {
         this.venues = payload?.venues ?? [];
         this.pendingHolds = payload?.pending_holds ?? [];
         this.reReviewBookings = payload?.re_review_bookings ?? [];
+        this.bookingRequests = payload?.booking_requests ?? [...this.pendingHolds, ...this.reReviewBookings];
         this.blocks = payload?.blocks ?? [];
         this.generatedAt = payload?.generated_at ?? null;
         this.isAvailable = true;

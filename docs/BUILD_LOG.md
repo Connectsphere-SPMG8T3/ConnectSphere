@@ -2008,3 +2008,21 @@ On `feature/cr-101-coordinator-lead-dashboard`, rebuilt onto `main` at `6043c9b`
 
 - Story 81 extends `service.reassign` and `reassign_event` (assignment on submit, notification wording, coordinator hand-over).
 - AC6 (QA3-22) needs a coordinator active flag and a deactivation path; `profiles` has neither today.
+### 4.47. SCRUM-70-R — Venue Staff booking-request history and discovery
+
+SCRUM-70-R reopens the completed Venue Staff dashboard story. The confirmed estimate is **2 points**. It extends the original active queue so Venue Staff can discover and inspect the complete booking-request history without losing the existing pending-hold, re-review, calendar or expiry workflows.
+
+#### What was built
+
+1. **Backend contract.** `GET /api/v1/venues/dashboard/venue-staff` now requests and returns `held`, `re_review`, `approved`, `rejected` and `expired` booking rows in `booking_requests[]`. Rows include event and venue names, period, coordinator/requester, status, and resolved decision reason, suggested alternative, decision actor and decision time. The legacy `pending_holds[]` and `re_review_bookings[]` partitions remain for the original dashboard behavior.
+2. **Backend query and normalization.** The venue-booking query uses named PostgREST relationships for the venue, event/coordinator and requester embeds, and normalizes one-to-one embeds whether Supabase returns an object or a one-item list.
+3. **Frontend discovery.** The dashboard adds a request-history list with status, venue and inclusive event-date filters, event-date and pending-wait sorting, and a default Pending view that continues to mean held requests. Re-review remains separately selectable. Resolved rows show the decision details when present.
+4. **Compatibility.** The Pinia store falls back to the legacy queue partitions when an older backend response does not yet include `booking_requests`, so staged deployments retain the original dashboard behavior.
+5. **Tests and traceability.** Backend API/service fixtures cover all five statuses and metadata; frontend pure-function and view tests cover filtering, sorting, resolved details, loading/error/empty states and the original expiry controls. Manual/integration cases TC-VENUE-070–075 were added.
+
+#### Verification
+
+- Backend focused and full suite: **1,100 passed**.
+- Frontend focused dashboard slice after the compatibility fix: **71 passed**.
+- Full frontend Vitest run was started before the compatibility fix and exposed two legacy-fixture expectations; those were repaired and the focused slice passed. A final full frontend run and production build remain to be recorded after the last edit.
+- Live Supabase/API verification and the manual browser pass remain outstanding for TC-VENUE-070–075. No backlog sheet edit or commit was made.
