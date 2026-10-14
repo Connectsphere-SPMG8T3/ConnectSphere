@@ -18,14 +18,14 @@ const ASSIGNED_ID = "e0000000-0000-4000-8000-000000000302";
 const PAYLOAD = {
   unassigned: [
     {
-      event_id: QUEUE_ID, event_name: "Partner Summit", status: "under_review", starts_at: "2026-11-12T02:00:00Z",
+      event_id: QUEUE_ID, event_name: "Partner Summit", status: "under_review", starts_at: "2026-11-12T02:00:00Z", version: 3,
       organiser_name: "Olivia Tan", purpose: "Quarterly partner meeting", expected_attendance: 12,
       coordinator: null, assigned_at: null,
     },
   ],
   active_events: [
     {
-      event_id: ASSIGNED_ID, event_name: "Year-End Dinner", status: "planning", starts_at: "2026-12-12T02:00:00Z",
+      event_id: ASSIGNED_ID, event_name: "Year-End Dinner", status: "planning", starts_at: "2026-12-12T02:00:00Z", version: 8,
       organiser_name: "Olivia Tan", purpose: null, expected_attendance: null,
       coordinator: { id: "c1", full_name: "Marcus Lim" }, assigned_at: "2026-10-10T01:00:00Z",
     },
@@ -45,7 +45,7 @@ async function flush() {
   }
 }
 
-async function mountView(eventId) {
+async function mountView(eventId, seed) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const auth = useAuthStore();
@@ -54,6 +54,7 @@ async function mountView(eventId) {
   auth.profile = { id: "l1", full_name: "Joyce Lim", role: "event_coordinator_lead" };
   auth.sessionVerified = true;
 
+  if (seed) seed(await import("@/features/events/leadDashboardStore").then((m) => m.useLeadDashboardStore()));
   const { default: router } = await import("@/router");
   await router.push({ name: "lead-event", params: { id: eventId } });
   const { default: View } = await import("@/views/events/LeadEventView.vue");
@@ -97,6 +98,27 @@ describe("LeadEventView (CR-101 AC3)", () => {
     expect(el.textContent).toContain("Olivia Tan");
     expect(el.textContent).toContain("Quarterly partner meeting");
     expect(el.textContent).toContain("Unassigned");
+  });
+
+  it("always reloads, and never shows rows left in the store by an earlier session", async () => {
+    eventsApi.leadDashboard.mockReturnValue(new Promise(() => {}));
+
+    const { el } = await mountView(QUEUE_ID, (store) => {
+      store.unassigned = [{ event_id: QUEUE_ID, event_name: "Another Lead's Event", status: "under_review", coordinator: null }];
+      store.hasSettled = true;
+    });
+
+    expect(eventsApi.leadDashboard).toHaveBeenCalledTimes(1);
+    expect(el.textContent).not.toContain("Another Lead's Event");
+    expect(el.querySelector('[role="status"]').textContent).toMatch(/loading/i);
+  });
+
+  it("does not carry a reassign error over from another event", async () => {
+    const { el } = await mountView(QUEUE_ID, (store) => {
+      store.reassignError = "Left over from the previous event";
+    });
+
+    expect(el.textContent).not.toContain("Left over from the previous event");
   });
 
   it("names the current coordinator of an assigned event", async () => {
@@ -156,7 +178,8 @@ describe("LeadEventView (CR-101 AC3)", () => {
     document.querySelector('button[aria-label="Reassign"]').click();
     await flush();
 
-    expect(eventsApi.reassign).toHaveBeenCalledWith(QUEUE_ID, "c2", "access");
+    // The version the Lead saw (3), so a screen that is behind is refused rather than overwriting.
+    expect(eventsApi.reassign).toHaveBeenCalledWith(QUEUE_ID, "c2", 3, "access");
     expect(toastState.value.tone).toBe("success");
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-coordinator-lead"));
   });

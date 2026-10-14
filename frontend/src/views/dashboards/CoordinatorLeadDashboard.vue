@@ -33,6 +33,8 @@ import { useAuthStore } from "@/stores/auth";
 const authStore = useAuthStore();
 const store = useLeadDashboardStore();
 
+// Start from a fresh load so rows left by an earlier visit, or by another account on this tab, never show.
+store.reset();
 onMounted(() => store.load());
 
 // Until the first load settles no figure can be stood behind.

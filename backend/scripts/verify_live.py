@@ -630,7 +630,7 @@ def _(ctx: Context) -> None:
         response = ctx.client.post(
             f"{ctx.api}/events/{LEAD_FIXTURE_EVENT}/reassign",
             headers=ctx.shared(role).headers,
-            json={"coordinator_id": SOME_COORDINATOR},
+            json={"coordinator_id": SOME_COORDINATOR, "expected_version": 1},
         )
         expect(response.status_code == 403, f"{role} got HTTP {response.status_code}, expected 403")
 
@@ -640,7 +640,7 @@ def _(ctx: Context) -> None:
     response = ctx.client.post(
         f"{ctx.api}/events/{UNKNOWN_EVENT}/reassign",
         headers=ctx.shared("event_coordinator_lead").headers,
-        json={"coordinator_id": SOME_COORDINATOR},
+        json={"coordinator_id": SOME_COORDINATOR, "expected_version": 1},
     )
     expect_status(response, 404)
 
@@ -649,7 +649,7 @@ def _(ctx: Context) -> None:
 def _(ctx: Context) -> None:
     expect_status(ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}"), 401)
     expect_status(
-        ctx.client.post(f"{ctx.api}/events/{UNKNOWN_EVENT}/reassign", json={"coordinator_id": SOME_COORDINATOR}), 401
+        ctx.client.post(f"{ctx.api}/events/{UNKNOWN_EVENT}/reassign", json={"coordinator_id": SOME_COORDINATOR, "expected_version": 1}), 401
     )
 
 

@@ -138,10 +138,11 @@ export const eventsApi = {
   leadDashboard(token) {
     return request("/events/dashboard/lead", { token });
   },
-  reassign(eventId, coordinatorId, token) {
+  // `expectedVersion` is the event version the Lead was looking at: a screen that is behind is refused.
+  reassign(eventId, coordinatorId, expectedVersion, token) {
     return request(`/events/${encodeURIComponent(eventId)}/reassign`, {
       method: "POST",
-      body: { coordinator_id: coordinatorId },
+      body: { coordinator_id: coordinatorId, expected_version: expectedVersion },
       token,
     });
   },

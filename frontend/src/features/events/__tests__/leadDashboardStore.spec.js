@@ -102,9 +102,9 @@ describe("lead dashboard store", () => {
     eventsApi.reassign.mockResolvedValue({ id: "e1" });
     const store = useLeadDashboardStore();
 
-    expect(await store.reassign("e1", "c1")).toBe(true);
+    expect(await store.reassign("e1", "c1", 7)).toBe(true);
 
-    expect(eventsApi.reassign).toHaveBeenCalledWith("e1", "c1", "access-token");
+    expect(eventsApi.reassign).toHaveBeenCalledWith("e1", "c1", 7, "access-token");
     expect(eventsApi.leadDashboard).toHaveBeenCalledTimes(1);
     expect(store.reassignError).toBeNull();
     expect(store.isReassigning).toBe(false);
@@ -115,11 +115,29 @@ describe("lead dashboard store", () => {
     eventsApi.reassign.mockRejectedValue(new ApiError("This event was updated by someone else. Reload.", 409));
     const store = useLeadDashboardStore();
 
-    expect(await store.reassign("e1", "c1")).toBe(false);
+    expect(await store.reassign("e1", "c1", 7)).toBe(false);
 
     expect(store.reassignError).toBe("This event was updated by someone else. Reload.");
     expect(store.isReassigning).toBe(false);
     expect(eventsApi.leadDashboard).not.toHaveBeenCalled();
+  });
+
+  it("forgets everything on reset, so another account's rows or an old error never show", async () => {
+    signedInLead();
+    eventsApi.leadDashboard.mockResolvedValue(PAYLOAD);
+    eventsApi.reassign.mockRejectedValue(new ApiError("Nope", 409));
+    const store = useLeadDashboardStore();
+    await store.load();
+    await store.reassign("e1", "c1", 7);
+
+    store.reset();
+
+    expect(store.unassigned).toEqual([]);
+    expect(store.activeEvents).toEqual([]);
+    expect(store.coordinators).toEqual([]);
+    expect(store.hasSettled).toBe(false);
+    expect(store.error).toBeNull();
+    expect(store.reassignError).toBeNull();
   });
 
   it("reports a network failure while reassigning", async () => {
@@ -127,7 +145,7 @@ describe("lead dashboard store", () => {
     eventsApi.reassign.mockRejectedValue(new TypeError("Failed to fetch"));
     const store = useLeadDashboardStore();
 
-    expect(await store.reassign("e1", "c1")).toBe(false);
+    expect(await store.reassign("e1", "c1", 7)).toBe(false);
 
     expect(store.reassignError).toBe("Unable to reach the server. Please try again.");
   });

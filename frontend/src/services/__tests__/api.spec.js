@@ -191,14 +191,14 @@ describe("eventsApi Lead calls (CR-101)", () => {
     );
   });
 
-  it("posts the coordinator id to reassign, with an encoded event id", async () => {
+  it("posts the coordinator id and the version the Lead saw, with an encoded event id", async () => {
     const fetchMock = stubFetch({ id: "event/one" });
 
-    await eventsApi.reassign("event/one", "c2", "access-token");
+    await eventsApi.reassign("event/one", "c2", 4, "access-token");
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/v1/events/event%2Fone/reassign",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ coordinator_id: "c2" }) }),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ coordinator_id: "c2", expected_version: 4 }) }),
     );
   });
 });

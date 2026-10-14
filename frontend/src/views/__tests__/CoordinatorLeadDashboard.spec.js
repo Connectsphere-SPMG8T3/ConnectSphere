@@ -24,7 +24,7 @@ const PAYLOAD = {
   unassigned: [
     {
       event_id: QUEUE_ID, event_name: "Partner Summit", status: "under_review", starts_at: "2026-11-12T02:00:00Z",
-      organiser_name: "Olivia Tan", coordinator: null,
+      organiser_name: "Olivia Tan", coordinator: null, version: 1,
     },
   ],
   active_events: [
@@ -53,7 +53,7 @@ async function flush() {
   }
 }
 
-async function mountDashboard() {
+async function mountDashboard(seed) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const auth = useAuthStore();
@@ -61,6 +61,7 @@ async function mountDashboard() {
   auth.refreshToken = "refresh";
   auth.profile = { id: "l1", role: "event_coordinator_lead", full_name: "Joyce Lim" };
   auth.sessionVerified = true;
+  if (seed) seed(await import("@/features/events/leadDashboardStore").then((m) => m.useLeadDashboardStore()));
   const { default: router } = await import("@/router");
   await router.push("/dashboard/coordinator-lead");
   await router.isReady();
@@ -110,6 +111,19 @@ describe("CoordinatorLeadDashboard (CR-101)", () => {
     expect(el.querySelector('[role="status"]').textContent).toMatch(/loading/i);
     expect(queueSection(el)).toBeNull();
     expect(activeSection(el)).toBeNull();
+  });
+
+  it("never shows rows left in the store by an earlier session while it reloads", async () => {
+    eventsApi.leadDashboard.mockReturnValue(new Promise(() => {}));
+
+    const { el } = await mountDashboard((store) => {
+      store.unassigned = [{ event_id: QUEUE_ID, event_name: "Another Lead's Event", status: "under_review", coordinator: null }];
+      store.hasSettled = true;
+    });
+
+    expect(el.textContent).not.toContain("Another Lead's Event");
+    expect(queueSection(el)).toBeNull();
+    expect(el.querySelector('[role="status"]').textContent).toMatch(/loading/i);
   });
 
   it("shows a server failure instead of empty lists", async () => {

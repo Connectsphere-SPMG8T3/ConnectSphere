@@ -22,9 +22,10 @@ const route = useRoute();
 const router = useRouter();
 const store = useLeadDashboardStore();
 
-onMounted(async () => {
-  if (!store.hasSettled) await store.load();
-});
+// Always start from a fresh load: rows left by an earlier visit (or another account on
+// this tab) must never be shown, and the version sent on reassign must be current.
+store.reset();
+onMounted(() => store.load());
 
 const event = computed(() => store.eventById(route.params.id));
 const isLoaded = computed(() => store.hasSettled && !store.error);
@@ -50,7 +51,7 @@ async function reassign() {
   isConfirming.value = false;
   const eventName = event.value.event_name;
   const coordinatorName = selectedName.value;
-  const ok = await store.reassign(route.params.id, selected.value);
+  const ok = await store.reassign(route.params.id, selected.value, event.value.version);
   if (ok) {
     showToast(`"${eventName}" reassigned to ${coordinatorName}.`);
     router.push({ name: "dashboard-coordinator-lead" });

@@ -31,6 +31,17 @@ export const useLeadDashboardStore = defineStore("leadDashboard", {
   },
 
   actions: {
+    // Forget everything: a view calls this as it opens so it never shows rows or an
+    // error left by an earlier visit, or by another account on the same tab.
+    reset() {
+      this.unassigned = [];
+      this.activeEvents = [];
+      this.coordinators = [];
+      this.error = null;
+      this.hasSettled = false;
+      this.reassignError = null;
+    },
+
     async load() {
       const auth = useAuthStore();
       if (!auth.token) {
@@ -56,12 +67,12 @@ export const useLeadDashboardStore = defineStore("leadDashboard", {
       }
     },
 
-    async reassign(eventId, coordinatorId) {
+    async reassign(eventId, coordinatorId, expectedVersion) {
       const auth = useAuthStore();
       this.isReassigning = true;
       this.reassignError = null;
       try {
-        await auth.withSession((token) => eventsApi.reassign(eventId, coordinatorId, token));
+        await auth.withSession((token) => eventsApi.reassign(eventId, coordinatorId, expectedVersion, token));
       } catch (err) {
         this.reassignError = err instanceof ApiError ? err.message : NETWORK_ERROR;
         return false;

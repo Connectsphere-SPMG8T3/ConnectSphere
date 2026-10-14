@@ -1988,17 +1988,18 @@ On `feature/cr-101-coordinator-lead-dashboard`, rebuilt onto `main` at `6043c9b`
 - **Scope rule:** besides AC5's text, an event assigned by someone who no longer holds the Lead role stays visible to every Lead, so nothing is orphaned. **[Assumption]**, REQUIREMENTS §6.5 LD-R3.
 - **The Lead's event page reads from the dashboard payload**, so there is no separate Lead read endpoint to secure; an event outside the Lead's scope simply isn't found, and the API enforces the scope again on reassign.
 - Task 8 (event page) was built before Task 7 (dashboard) because the dashboard links to its named route.
+- **Whole-branch review fixes.** `reassign_event` first wrote a same-status history row; that reordered the Safety Officer's queue and showed the organiser a fake transition, so migration `20261013130000` replaces the function without it (the record is `assigned_by`/`assigned_at` plus the notices; a real assignment history is story 81's). The reassign request now carries `expected_version`, so a stale screen gets a 409 instead of silently replacing a newer assignment. Both Lead views reset the store as they open, so no earlier session's rows or errors show.
 
 #### What was built
 
-- Migration `20261013120000_lead_assignment.sql`: `events.assigned_by`/`assigned_at`, function `reassign_event` (service role only), and `supabase/verification/lead_assignment_checks.sql`.
+- Migrations `20261013120000_lead_assignment.sql` (`events.assigned_by`/`assigned_at`, first `reassign_event`) and `20261013130000_reassign_event_without_status_history.sql` (replaces the function), with `supabase/verification/lead_assignment_checks.sql`.
 - Backend (`modules/events`): `lead_scope.py` (pure rules), `GET /events/dashboard/lead`, `POST /events/{id}/reassign`, repository reads and the RPC wrapper, two typed errors.
 - Frontend: `leadDashboard.js`, `leadDashboardStore.js`, the real `CoordinatorLeadDashboard`, `LeadEventView` at `/lead/events/:id`.
-- Tests: backend suite 1120 passed (new events code fully covered); frontend suite 803 passed and `npm run build` clean.
+- Tests: backend suite 1122 passed (new events code fully covered); frontend suite 804 passed plus three unrelated view specs (TopBar, OrganiserDashboard, CoordinatorEventView) that time out under full-suite load and pass alone (52/52); `npm run build` clean.
 
 #### Verification
 
-- Applied to the live project by the developer; `migration list` shows `20261013120000` on the remote. The local `supabase db push` was blocked by CR-98's remote-only versions, so the SQL was run in the dashboard and recorded with `migration repair`.
+- `20261013120000` was applied by the developer and shows on the remote; `20261013130000` still needs applying. The local `supabase db push` was blocked by CR-98's remote-only versions, so the SQL was run in the dashboard and recorded with `migration repair`.
 - Live API checks TC-LEAD-001–005 and e2e TC-LEAD-006–007 are written; they need a backend with the project's secret key and are run by the developer.
 
 #### Follow-ups
