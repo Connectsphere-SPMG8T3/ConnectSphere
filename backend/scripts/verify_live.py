@@ -1409,7 +1409,17 @@ def db_query(sql: str) -> list[dict]:
     completed = _supabase_query(sql)
     if completed.returncode != 0:
         raise CheckFailed(f"database query failed: {_cli_error(completed.stderr)}")
-    return json.loads(completed.stdout[completed.stdout.index("{"):]).get("rows", [])
+    return _rows(completed.stdout)
+
+
+def _rows(stdout: str) -> list[dict]:
+    """The rows in the CLI's JSON. It prints `{"rows": [...]}` under an agent but a bare
+    list in a plain terminal (`[]` when nothing matched), with notices around either."""
+    starts = [i for i in (stdout.find("{"), stdout.find("[")) if i != -1]
+    if not starts:
+        raise CheckFailed(f"database query printed no JSON: {stdout.strip()[:200]!r}")
+    payload, _ = json.JSONDecoder().raw_decode(stdout[min(starts):])
+    return payload.get("rows", []) if isinstance(payload, dict) else payload
 
 
 def delete_throwaway_accounts() -> int:
@@ -1469,7 +1479,7 @@ def _cli_error(stderr: str) -> str:
 
 def _failed_rows(stdout: str) -> list[str]:
     """Scripts either raise on failure or return rows with a boolean `ok` column."""
-    rows = json.loads(stdout[stdout.index("{"):]).get("rows", [])
+    rows = _rows(stdout)
     failed = []
     for row in rows:
         values = list(row.values())
