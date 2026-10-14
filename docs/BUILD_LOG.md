@@ -1999,7 +1999,7 @@ On `feature/cr-101-coordinator-lead-dashboard`, rebuilt onto `main` at `6043c9b`
 
 #### Verification
 
-- `20261013120000` was applied by the developer and shows on the remote; `20261013130000` still needs applying. The local `supabase db push` was blocked by CR-98's remote-only versions, so the SQL was run in the dashboard and recorded with `migration repair`.
+- Both migrations were applied by the developer and show on the remote. `lead_assignment_checks.sql` was run in the dashboard SQL Editor and printed `CR-101 LEAD ASSIGNMENT CHECKS PASSED` (`runs/2026-10-14-manual-3ab3f8c.md`). The local `supabase db push` was blocked by CR-98's remote-only versions, so the SQL was run in the dashboard and recorded with `migration repair`.
 - Live API checks TC-LEAD-001–005 and e2e TC-LEAD-006–007 are written; they need a backend with the project's secret key and are run by the developer.
 
 #### Follow-ups
