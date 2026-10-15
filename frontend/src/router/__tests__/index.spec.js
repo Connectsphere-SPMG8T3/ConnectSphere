@@ -96,3 +96,38 @@ describe("booking request route (SCRUM-70)", () => {
     expect(router.currentRoute.value.query.redirect).toBe("/bookings/d-2");
   });
 });
+
+describe("venue-staff booking request history route (SCRUM-70-R)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    authApi.me.mockRejectedValue(new TypeError("Failed to fetch"));
+  });
+
+  it("opens the dedicated page for venue staff", async () => {
+    const { router } = await loadAppWithStoredRole("venue_staff");
+
+    await router.push("/dashboard/venue-staff/requests");
+
+    expect(router.currentRoute.value.name).toBe("dashboard-venue-staff-requests");
+  });
+
+  it("denies the dedicated page to an event organiser", async () => {
+    const { router } = await loadAppWithStoredRole("event_organiser");
+
+    await router.push("/dashboard/venue-staff/requests");
+
+    expect(router.currentRoute.value.name).not.toBe("dashboard-venue-staff-requests");
+  });
+
+  it("sends an anonymous visitor to login", async () => {
+    vi.resetModules();
+    setActivePinia(createPinia());
+    const { default: router } = await import("@/router");
+
+    await router.push("/dashboard/venue-staff/requests");
+
+    expect(router.currentRoute.value.name).toBe("login");
+    expect(router.currentRoute.value.query.redirect).toBe("/dashboard/venue-staff/requests");
+  });
+});

@@ -64,6 +64,6 @@ test("TC-VSD-035 summary cards stay aligned when text wraps", async ({ page, sha
   const after = await pending.boundingBox();
   expect(after.height).toBe(before.height);
   await pending.press("Enter");
-  await expect(page).toHaveURL(/#pending-requests$/);
+  await expect(page).toHaveURL(/\/dashboard\/venue-staff\/requests$/);
   expect(errors).toEqual([]);
 });

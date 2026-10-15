@@ -112,11 +112,10 @@ class TestServicePartitioning:
         assert [b.id for b in result.re_review_bookings] == ["d-5"]
         assert "d-5" not in [h.id for h in result.pending_holds]
 
-    def test_it_asks_for_held_and_re_review_only(self, queue):
-        """`approved` is settled work; it belongs on §6.9's per-venue calendar."""
+    def test_it_asks_for_all_history_statuses(self, queue):
         service.venue_staff_dashboard(now=NOW)
         _, statuses = queue["bookings"][0]
-        assert statuses == {"held", "re_review"}
+        assert statuses == {"held", "re_review", "approved", "rejected", "expired"}
 
     def test_a_settled_status_that_slips_through_lands_in_neither_queue(self, monkeypatch):
         """Defence in depth: the filter is the query's job, but partitioning

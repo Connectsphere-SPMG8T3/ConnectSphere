@@ -128,80 +128,6 @@ describe("VenueStaffDashboard", () => {
     expect(tileValues).toEqual(["2", "1", "1", "3"]);
   });
 
-  it("lists pending requests soonest expiry first, each linking to its own page", async () => {
-    // CR-99 (W7 CR-04): expiry, not age, orders the queue.
-    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
-
-    const el = await mountDashboard();
-
-    const links = [...el.querySelectorAll('a[href^="/bookings/"]')];
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/bookings/d-2", "/bookings/d-4"]);
-    expect(links[0].textContent).toContain("Grand Ballroom");
-  });
-
-  it("shows each hold's expiry in Singapore time", async () => {
-    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
-
-    const el = await mountDashboard();
-
-    expect(el.querySelector('[data-testid="hold-expiry-d-2"]').textContent).toContain("Expires 20 Sep 2026, 09:00");
-  });
-
-  it("closes the expiry form on Cancel without saving", async () => {
-    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
-    const el = await mountDashboard();
-
-    el.querySelector('[data-testid="hold-expiry-d-2"]').parentElement.querySelector("button").click();
-    await nextTick();
-    [...el.querySelectorAll("form button")].find((b) => b.textContent.includes("Cancel")).click();
-    await nextTick();
-
-    expect(el.querySelector("form")).toBeNull();
-    expect(venueBookingsApi.changeExpiry).not.toHaveBeenCalled();
-  });
-
-  it("changes a hold's expiry from its row (CR-99 AC2)", async () => {
-    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
-    venueBookingsApi.changeExpiry.mockResolvedValue({ id: "d-2", status: "held", expires_at: "2026-09-23T10:30:00Z" });
-    const el = await mountDashboard();
-
-    el.querySelector('[data-testid="hold-expiry-d-2"]').parentElement.querySelector("button").click();
-    await nextTick();
-    const input = el.querySelector('input[type="datetime-local"]');
-    expect(input.getAttribute("max")).toBe("2026-10-10T13:00");
-    input.value = "2026-09-23T18:30";
-    input.dispatchEvent(new Event("input"));
-    el.querySelector("form").dispatchEvent(new Event("submit"));
-    for (let i = 0; i < 10; i += 1) {
-      await Promise.resolve();
-      await nextTick();
-    }
-
-    expect(venueBookingsApi.changeExpiry).toHaveBeenCalledWith(
-      "d-2", { expires_at: "2026-09-23T18:30:00+08:00" }, "access",
-    );
-    expect(el.querySelector("form")).toBeNull();
-  });
-
-  it("states how long a request has waited without dressing it as overdue", async () => {
-    // BR-R4 sanctions showing the age; LC-R4 rules out deadline pressure.
-    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
-
-    const el = await mountDashboard();
-
-    const oldest = el.querySelector('a[href="/bookings/d-4"]');
-    expect(oldest.textContent).toContain("Waiting 21 days");
-    expect(oldest.innerHTML).not.toContain("bauhaus-red");
-  });
-
-  it("falls back to a short event id rather than inventing a name", async () => {
-    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
-
-    const el = await mountDashboard();
-
-    expect(el.textContent).toContain("Event E0000000");
-  });
-
   it("lists every venue with its status, linking to the venue page", async () => {
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
 
@@ -295,31 +221,21 @@ describe("VenueStaffDashboard", () => {
     expect(labels).toEqual(["All 1", "Active 1"]);
   });
 
-  it("scrolls both list panels rather than letting them run off the page", async () => {
+  it("scrolls the venue list rather than letting it run off the page", async () => {
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
 
     const el = await mountDashboard();
     const venues = el.querySelector("#all-venues-list");
-    const requests = el.querySelector("#pending-requests-list");
 
-    // A capped height is what makes `overflow-y-auto` engage; without it the
-    // panel just grows and the scrollbar never appears.
-    for (const list of [venues, requests]) {
-      expect(list.className).toContain("overflow-y-auto");
-      expect(list.className).toMatch(/max-h-/);
-    }
-
-    // The two sit side by side, so they cap at the same height or the columns
-    // fall out of step as soon as one of them fills up.
-    const capOf = (list) => list.className.match(/max-h-\[[^\]]+\]/)[0];
-    expect(capOf(requests)).toBe(capOf(venues));
+    expect(venues.className).toContain("overflow-y-auto");
+    expect(venues.className).toMatch(/max-h-/);
   });
 
-  it("jumps from the pending requests tile to the list further down the page", async () => {
+  it("opens the dedicated booking requests page from the summary tile", async () => {
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
 
     const el = await mountDashboard();
-    const jump = el.querySelector('a[href="#pending-requests"]');
+    const jump = el.querySelector('a[href="/dashboard/venue-staff/requests"]');
 
     expect(jump).not.toBeNull();
     expect(jump.textContent).toContain("Pending requests");
@@ -330,11 +246,6 @@ describe("VenueStaffDashboard", () => {
     expect(cue.className).toContain("opacity-0");
     expect(cue.className).toContain("group-hover:opacity-100");
     expect(jump.className).toContain("group");
-    // The anchor is worthless without its target, and the target must clear
-    // the sticky top bar once jumped to.
-    const target = el.querySelector("#pending-requests");
-    expect(target).not.toBeNull();
-    expect(target.closest("section").className).toMatch(/scroll-mt-/);
   });
 
   it("opens the calendar on the month that actually has something in it", async () => {
@@ -567,7 +478,7 @@ describe("VenueStaffDashboard", () => {
     const el = await mountDashboard();
 
     expect(el.textContent).toContain("—");
-    expect(el.textContent).toContain("Loading your queue");
+    expect(el.textContent).toContain("Checking for updates");
   });
 
   it("shows an outage rather than an empty queue", async () => {
@@ -579,7 +490,7 @@ describe("VenueStaffDashboard", () => {
     expect(el.textContent).not.toContain("Nothing is waiting on your decision");
   });
 
-  it("says plainly when there is genuinely nothing to do", async () => {
+  it("says plainly when there are genuinely no venues", async () => {
     venuesApi.venueStaffDashboard.mockResolvedValue({
       generated_at: "2026-09-19T04:00:00Z",
       venues: [],
@@ -590,6 +501,6 @@ describe("VenueStaffDashboard", () => {
 
     const el = await mountDashboard();
 
-    expect(el.textContent).toContain("Nothing is waiting on your decision right now.");
+    expect(el.textContent).toContain("No venues in the catalogue");
   });
 });

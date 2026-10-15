@@ -15,19 +15,15 @@
 import { computed, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 
-import BauhausButton from "@/components/common/BauhausButton.vue";
-import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import VenueCalendar from "@/components/venues/VenueCalendar.vue";
 import {
+  ALL_BOOKING_STATUSES,
   ALL_VENUE_STATUSES,
   blockReasonLabel,
-  expiryInputBounds,
-  expiryInputToIso,
   filterVenueStatuses,
   formatEventReference,
-  formatHoldExpiry,
   venueStatusFilterOptions,
   venueStatusMeta,
   waitingDays,
@@ -57,7 +53,7 @@ const tiles = computed(() => [
     // The tile counts a list that is further down the same page, so it takes
     // you there. A plain fragment link, not a scroll handler: it works from
     // the keyboard, survives a middle-click, and needs no JavaScript.
-    href: "#pending-requests",
+    href: "/dashboard/venue-staff/requests",
     background: "yellow",
     accent: "circle",
     accentColor: "bauhaus-red",
@@ -91,32 +87,6 @@ const tiles = computed(() => [
     accent: "none",
   },
 ]);
-
-const holds = computed(() => dashboard.soonestExpiryHolds);
-
-// CR-99 AC2: one hold's expiry is edited at a time, inline under its row.
-const editingHoldId = ref(null);
-const expiryDraft = ref("");
-const expiryBounds = ref({ min: undefined, max: undefined });
-
-function startExpiryChange(hold) {
-  const bounds = expiryInputBounds(hold);
-  expiryBounds.value = bounds;
-  expiryDraft.value = bounds.value;
-  dashboard.expiryError = null;
-  editingHoldId.value = hold.id;
-}
-
-function cancelExpiryChange() {
-  editingHoldId.value = null;
-  dashboard.expiryError = null;
-}
-
-async function saveExpiry(hold) {
-  if (await dashboard.changeHoldExpiry(hold.id, expiryInputToIso(expiryDraft.value))) {
-    editingHoldId.value = null;
-  }
-}
 
 // AC2 asks for every venue's status at a glance; with the whole catalogue in
 // one panel, "at a glance" needs a way to ask for just the venues in one
@@ -265,98 +235,7 @@ function emptyDetail(clearText) {
       <VenueCalendar :items="dashboard.calendarItems" :has-settled="dashboard.hasSettled" />
     </div>
 
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <!-- `scroll-mt` keeps the heading clear of the sticky top bar when the
-           tile above jumps here. -->
-      <section class="scroll-mt-24" aria-labelledby="pending-requests">
-        <h2
-          id="pending-requests"
-          class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl"
-        >
-          Pending requests
-        </h2>
-        <p class="mb-4 text-xs font-medium text-ink/60">
-          Soonest to expire first. A hold you haven't approved by its expiry is released.
-        </p>
-
-        <!-- Capped and scrolling, like the venue list beside it: a busy queue
-             would otherwise push the whole page down, and the two columns have
-             to agree on a height or they fall out of step. `pr-1`/`pb-1` leave
-             room for the rows' hard shadows, which the scroll container would
-             otherwise clip. -->
-        <ol
-          v-if="holds.length"
-          id="pending-requests-list"
-          class="flex max-h-[28rem] flex-col gap-3 overflow-y-auto pb-1 pr-1"
-        >
-          <li v-for="hold in holds" :key="hold.id">
-            <RouterLink
-              :to="{ name: 'booking-request', params: { id: hold.id } }"
-              class="flex flex-col gap-2 border-2 border-ink bg-canvas p-4 shadow-hard active-press sm:border-4"
-            >
-              <div class="flex flex-wrap items-baseline justify-between gap-2">
-                <span class="text-base font-black uppercase leading-tight tracking-tighter">
-                  {{ hold.venue_name }}
-                </span>
-                <span class="text-[10px] font-bold uppercase tracking-widest text-ink/55">
-                  {{ waitedFor(hold) }}
-                </span>
-              </div>
-              <span class="text-sm font-medium text-ink/75">{{ formatEventReference(hold) }}</span>
-              <span class="text-xs font-bold uppercase tracking-widest text-ink/55">
-                {{ formatPeriod(hold.period) }}
-              </span>
-            </RouterLink>
-            <!-- Outside the link: a control inside it would also open the request. -->
-            <div class="flex flex-wrap items-center justify-between gap-2 border-2 border-t-0 border-ink bg-white px-4 py-2 sm:border-4 sm:border-t-0">
-              <span class="text-xs font-bold uppercase tracking-widest" :data-testid="`hold-expiry-${hold.id}`">
-                Expires {{ formatHoldExpiry(hold.expires_at) ?? "—" }}
-              </span>
-              <button
-                v-if="editingHoldId !== hold.id"
-                type="button"
-                class="text-xs font-black uppercase tracking-widest underline decoration-2 underline-offset-4"
-                @click="startExpiryChange(hold)"
-              >
-                Change
-              </button>
-            </div>
-            <form
-              v-if="editingHoldId === hold.id"
-              class="flex flex-col gap-3 border-2 border-t-0 border-ink bg-white p-4 sm:border-4 sm:border-t-0"
-              @submit.prevent="saveExpiry(hold)"
-            >
-              <BauhausInput
-                v-model="expiryDraft"
-                type="datetime-local"
-                label="New expiry (Singapore time)"
-                :min="expiryBounds.min"
-                :max="expiryBounds.max"
-                :error="dashboard.expiryError ?? ''"
-                compact
-                required
-              />
-              <p class="text-xs font-medium text-ink/60">Any time before the event starts.</p>
-              <div class="flex flex-wrap gap-3">
-                <BauhausButton type="submit" variant="secondary" :disabled="dashboard.isChangingExpiry">
-                  {{ dashboard.isChangingExpiry ? "Saving…" : "Save expiry" }}
-                </BauhausButton>
-                <BauhausButton variant="outline" :disabled="dashboard.isChangingExpiry" @click="cancelExpiryChange">
-                  Cancel
-                </BauhausButton>
-              </div>
-            </form>
-          </li>
-        </ol>
-
-        <BauhausEmptyState
-          v-else
-          :title="dashboard.hasSettled ? 'No requests waiting' : 'Loading your queue'"
-          :detail="emptyDetail('Nothing is waiting on your decision right now.')"
-        />
-      </section>
-
-      <section aria-labelledby="all-venues">
+    <section aria-labelledby="all-venues">
         <h2 id="all-venues" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
           All venues
         </h2>
@@ -418,7 +297,6 @@ function emptyDetail(clearText) {
           :title="dashboard.hasSettled ? 'No venues in the catalogue' : 'Loading the catalogue'"
           :detail="emptyDetail('No venues have been added yet.')"
         />
-      </section>
-    </div>
+    </section>
   </main>
 </template>

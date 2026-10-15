@@ -132,12 +132,12 @@ class BookingSummary(BaseModel):
     event_id: str
     period: Period
     status: str
-    # Resolved through `events.service.names_by_id`, because `venue_bookings`
-    # has no foreign key to `events` and so cannot embed the name in one query.
-    # Null when the event row has gone: a booking with no name is still a
-    # booking staff must plan around, so it is shown with a short id rather
-    # than dropped.
     event_name: str | None = None
+    coordinator_name: str | None = None
+    requested_by_name: str | None = None
+    decision_reason: str | None = None
+    suggestion: str | None = None
+    decided_at: datetime | None = None
 
 
 class Editor(BaseModel):
@@ -219,9 +219,9 @@ class VenueStaffBooking(BookingSummary):
     # When a hold expires unless approved (CR-99). The dashboard sorts pending
     # holds on it, soonest first. Null on a booking that was never held.
     expires_at: datetime | None = None
-    # `event_name` is inherited from `BookingSummary`. The dashboard does not
-    # resolve it yet, so it stays null here and the SPA falls back to a short
-    # id; `venues.service.get_venue` shows how to fill it (SCRUM-67).
+    # `event_name`, `coordinator_name` and decision metadata are resolved by
+    # the complete dashboard history query; the SPA only falls back to an id
+    # when an event row is genuinely unavailable.
 
 
 class VenueStaffDashboard(BaseModel):
@@ -235,6 +235,7 @@ class VenueStaffDashboard(BaseModel):
 
     generated_at: datetime
     venues: list[VenueSummary] = []
+    booking_requests: list[VenueStaffBooking] = []
     pending_holds: list[VenueStaffBooking] = []
     re_review_bookings: list[VenueStaffBooking] = []
     blocks: list[VenueStaffBlock] = []
