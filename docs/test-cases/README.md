@@ -36,7 +36,7 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 
 **Historical deployment check (9 Oct 2026):** at that point, local migration files were missing from the linked inventory and safety-decision verification was blocked. This state was superseded when the CR-98 and CR-103/104 migration files were integrated and applied.
 
-**Current migration status (13 Oct 2026):** the linked ledger includes remote-only versions through `20261012140000`. The CR-98 D26 privilege-revocation migration `20261013100000_revoke_event_space_trigger_execution.sql` is pending merge and deployment. The live database currently still grants direct execution on the two trigger functions; see [the D26 run](runs/2026-10-12-1433-api-db-d234eb1.md).
+**Current migration status (13 Oct 2026):** the linked ledger includes remote-only versions through `20261012140000`. The CR-98 D32 privilege-revocation migration `20261013100000_revoke_event_space_trigger_execution.sql` is pending merge and deployment. The live database currently still grants direct execution on the two trigger functions; see [the historical run, recorded as D26](runs/2026-10-12-1433-api-db-d234eb1.md).
 
 The [recorded API/database run](runs/2026-10-09-1433-api-db-ab6a851.md) has **67 passed, 3 failed, 1 blocked**. TC-SDEC-001/002 passed. TC-SAFE-002/003 and TC-BOOK-001 failed because eligible Planning event reads depend on the missing decision table; the safety-decision SQL preflight correctly recorded Blocked without executing its script.
 

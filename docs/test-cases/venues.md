@@ -258,3 +258,11 @@ Venue selection and booking for each proposed space are downstream of CR-98's co
 | A coordinator selects a venue for one proposed space at a time | TC-SPACE-008 | `test_venue_booking_request_api.py::TestRequest::test_a_space_request_can_hold_a_venue_independently`; `venueBookingStore.spec.js`; `venueSearch.spec.js` selected-space flow |
 | One active booking per space; legacy single-space/event-scoped requests remain readable | TC-SPACE-005, TC-BOOK-004 | `20261008100000_event_space_requests.sql`; booking-request SQL checks and API tests |
 | Search criteria and booking request use the selected space's effective period (its explicit window, or the event period when it inherits) | TC-SPACE-008 | `bookingRequest.js` tests; `VenueSearchView` and booking API/store tests |
+
+### Overdue space holds (D31; CR-99 / CR-98 integration)
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|---|---|---|---|---|---|---|---|---|---|
+| TC-HOLD-009 | Overdue holds do not block space bookings before cron runs | Integration | Corrective migration `20261014200000` available; seeded identities and venue available | Run `supabase/verification/event_space_checks.sql` in its rollback transaction | Overdue same-space hold; overdue overlapping hold on another event; unexpired holds; unassigned actor | Both overdue cases permit a new hold immediately; the old hold becomes expired with one history entry. New expiry remains trigger-managed. Unexpired same-space and overlapping holds remain refused; an unassigned actor cannot book or expire the hold. RPC grants remain service-role-only. | High | 2026-10-14 | Red on live function; Pass with migration simulated and rolled back ([run](runs/2026-10-14-2126-api-db-ce64ce2.md)) |
+
+`verify_live.py --record` includes this SQL check after the migration is deployed. The simulated pass is not a deployed-system pass.

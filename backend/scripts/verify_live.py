@@ -98,6 +98,7 @@ DB_SCRIPTS = [
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
     ("hold_expiry_checks.sql", "TC-HOLD-001–003 (database half: bounds, job, notices, approval race)"),
+    ("event_space_checks.sql", "TC-SPACE-003, 005, 009; TC-HOLD-009 (overdue space holds)"),
     ("equipment_request_checks.sql", "TC-EQR-002, 003, 006, 007, 008, 009 (database half)"),
     ("venue_edit_checks.sql", "TC-VENUE-058, 059, 061 (database half)"),
     ("venue_booking_reject_checks.sql", "TC-BOOK-023"),

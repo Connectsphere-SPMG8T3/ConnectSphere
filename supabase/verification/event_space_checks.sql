@@ -1,4 +1,4 @@
--- CR-98 / QA3-23 / D26: verify legacy backfill, inherited and explicit space
+-- CR-98 / QA3-23 / D32: verify legacy backfill, inherited and explicit space
 -- windows, booking linkage, removed period synchronization, and trigger grants.
 -- Run with: supabase db query --linked --file supabase/verification/event_space_checks.sql
 -- All behavioral writes run inside a transaction that is rolled back below.
@@ -149,6 +149,87 @@ begin
      if v_effective_start is distinct from '2030-03-01 01:00:00+00'::timestamptz
          or v_effective_end is distinct from '2030-03-01 07:00:00+00'::timestamptz then
         raise exception 'CR-98 FAIL: inherited period did not resolve to the updated event schedule';
+    end if;
+end;
+$$;
+
+do $$
+declare
+    v_owner uuid := 'a0000000-0000-4000-8000-000000000001';
+    v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
+    v_other_actor uuid := 'a0000000-0000-4000-8000-000000000003';
+    v_venue uuid := 'b0000000-0000-4000-8000-000000000006';
+    v_event_id uuid;
+    v_rival_event_id uuid;
+    v_space_id uuid;
+    v_rival_space_id uuid;
+    v_old_booking_id uuid;
+    v_start timestamptz;
+    v_result record;
+    v_scenario integer;
+begin
+    for v_scenario in 1..2 loop
+        v_event_id := gen_random_uuid();
+        v_rival_event_id := gen_random_uuid();
+        v_start := '2090-03-01 02:00+00'::timestamptz + v_scenario * interval '1 day';
+        insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at)
+        values
+            (v_event_id, v_owner, v_coordinator, 'planning', 'Space hold expiry check (rolled back)', v_start, v_start + interval '2 hours'),
+            (v_rival_event_id, v_owner, v_coordinator, 'planning', 'Space hold rival check (rolled back)', v_start, v_start + interval '2 hours');
+        insert into public.event_space_requests (event_id, label, expected_pax, layout_preference)
+        values (v_event_id, 'Requested space', 10, 'classroom') returning id into v_space_id;
+        insert into public.event_space_requests (event_id, label, expected_pax, layout_preference)
+        values (v_rival_event_id, 'Rival space', 10, 'classroom') returning id into v_rival_space_id;
+        insert into public.venue_bookings (event_id, event_space_request_id, venue_id, occupied_period, status, expires_at)
+        values (
+            case when v_scenario = 1 then v_event_id else v_rival_event_id end,
+            case when v_scenario = 1 then v_space_id else v_rival_space_id end,
+            v_venue, tstzrange(v_start, v_start + interval '2 hours', '[)'), 'held', now() - interval '1 second'
+        ) returning id into v_old_booking_id;
+
+        select * into v_result from public.request_venue_booking_for_space(
+            v_space_id, v_venue, v_other_actor, null, 'Space expiry check');
+        if v_result.outcome is distinct from 'not_assigned'
+           or (select status from public.venue_bookings where id = v_old_booking_id) is distinct from 'held' then
+            raise exception 'SPACE EXPIRY FAIL: denied request changed booking state';
+        end if;
+
+        select * into v_result from public.request_venue_booking_for_space(
+            v_space_id, v_venue, v_coordinator, null, 'Space expiry check');
+        if v_result.outcome is distinct from 'ok' then
+            raise exception 'SPACE EXPIRY FAIL: scenario % returned %, expected ok before cron', v_scenario, v_result.outcome;
+        end if;
+        if (select status from public.venue_bookings where id = v_old_booking_id) is distinct from 'expired' then
+            raise exception 'SPACE EXPIRY FAIL: overdue hold was not expired';
+        end if;
+        if (select count(*) from public.venue_booking_history
+            where booking_id = v_old_booking_id and action = 'expired') <> 1 then
+            raise exception 'SPACE EXPIRY FAIL: expiry history must be written exactly once';
+        end if;
+        if not exists (
+            select 1 from public.venue_bookings
+            where id = v_result.booking_id and event_space_request_id = v_space_id
+              and status = 'held' and expires_at = now() + interval '7 days'
+              and occupied_period = tstzrange(v_start, v_start + interval '2 hours', '[)')
+        ) then
+            raise exception 'SPACE EXPIRY FAIL: new hold lost its space, period or trigger default expiry';
+        end if;
+
+        select * into v_result from public.request_venue_booking_for_space(
+            v_space_id, v_venue, v_coordinator, null, 'Space expiry check');
+        if v_result.outcome is distinct from 'already_booked' then
+            raise exception 'SPACE EXPIRY FAIL: an unexpired same-space hold was not refused';
+        end if;
+        select * into v_result from public.request_venue_booking_for_space(
+            v_rival_space_id, v_venue, v_coordinator, null, 'Space expiry check');
+        if v_result.outcome is distinct from 'held_by_other' then
+            raise exception 'SPACE EXPIRY FAIL: an unexpired overlapping hold was not refused';
+        end if;
+    end loop;
+    if has_function_privilege('anon', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text)', 'EXECUTE')
+       or has_function_privilege('authenticated', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text)', 'EXECUTE')
+       or not has_function_privilege('service_role', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text)', 'EXECUTE') then
+        raise exception 'SPACE EXPIRY FAIL: booking RPC grants changed';
     end if;
 end;
 $$;
