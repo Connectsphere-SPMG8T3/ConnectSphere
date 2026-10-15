@@ -20,7 +20,7 @@ When a story is completed, copy the template below, fill it in from the PBI's ro
 
 | Field | Value |
 |---|---|
-| ID | `SCRUM-XX`, `CR-XX` or the sheet's plain number |
+| ID | `SCRUM-XX` or `CR-XX` |
 | Title | <copy from the Product backlog> |
 | Type | US: Core feature / US: Non-core feature / Bug fix / Enhancement |
 | Status | <status at time of writing this entry> |
@@ -2026,3 +2026,19 @@ SCRUM-70-R reopens the completed Venue Staff dashboard story. The confirmed esti
 - Frontend focused dashboard slice after the compatibility fix: **71 passed**.
 - Full frontend Vitest run was started before the compatibility fix and exposed two legacy-fixture expectations; those were repaired and the focused slice passed. A final full frontend run and production build remain to be recorded after the last edit.
 - Live Supabase/API verification and the manual browser pass remain outstanding for TC-VENUE-070–075. No backlog sheet edit or commit was made.
+
+### 4.48. D31 - Expire overdue holds before space-scoped bookings
+
+CR-99's expiry helper was called by the event-booking RPC but not `request_venue_booking_for_space`. An overdue same-space hold returned `already_booked`; an overdue rival hold returned `held_by_other` until cron ran.
+
+On `fix/space-booking-expired-holds`, migration `20261014200000_space_booking_expire_overdue_holds.sql` replaces the space RPC with an expiry call after validation and before the active-booking and overlap checks. The signature, insert, expiry trigger and service-role-only grants remain unchanged. The existing deployed migration files were not edited.
+
+TC-HOLD-009 extends `event_space_checks.sql` and is registered in the live-check runner. Both defect scenarios were reproduced first against the live RPC; applying the corrective migration inside the rollback transaction made the full script pass, including valid conflict refusals, caller denial without expiry side effects, history and default expiry. The live function is unchanged and no throwaway records remain. Evidence: [regression run](test-cases/runs/2026-10-14-2126-api-db-ce64ce2.md).
+
+The correction is not deployed. Full recorded API/browser regressions and a concurrent request against a separately locked hold remain unverified.
+
+Full backend verification: **1,164 tests passed**, **95.85%** application line coverage (92% gate passed). Live-check tooling tests: **9 passed**. No application Python or frontend source changed; migrations are verified by SQL rather than Python line coverage.
+
+### 4.49. Chore - Disambiguate duplicate D26 identifiers
+
+On 2026-10-15, renamed CR-98's trigger-function permissions defect to D32, the next unused identifier. D26 remains CR-95's migration-history defect; D31 remains the overdue space-hold fix. Current defect, implementation-map, test-case and verification-header references use D32. Earlier build-log entries and run records retain D26 as originally recorded; their CR-98 permissions references refer to D32. No deployed migration filename, SQL behavior, test-case ID or recorded result changed.
