@@ -867,7 +867,12 @@ class TestVenueEdit:
             )
 
             notifications = booking_at_risk["update_venue"][0]["notifications"]
-            assert [n["recipient_id"] for n in notifications].count(other) == 1
+            [staff] = [n for n in notifications if n["recipient_id"] == other]
+            # Both bookings fail for the same reason; the message says it once.
+            assert staff["message"] == (
+                'Venue "Hall A" was edited and "Annual Gala" is now Unsuitable: '
+                "Capacity 100 is below the expected attendance of 120."
+            )
 
         def test_a_warning_only_edit_tells_venue_staff_it_needs_a_check(
             self, client, auth_headers, authenticate_as, booking_at_risk, monkeypatch
@@ -970,6 +975,60 @@ class TestVenueEdit:
 
             warnings = response.json()["warnings"]
             assert [d["code"] for d in warnings[0]["details"]] == ["missing_facility"]
+
+        def test_the_space_layout_is_used_instead_of_the_event_layout(
+            self, client, auth_headers, authenticate_as, space_booking, monkeypatch
+        ):
+            """The event prefers theatre but this space wants boardroom, so
+            dropping boardroom affects the booking and dropping theatre doesn't."""
+            monkeypatch.setattr(
+                events_repository,
+                "list_planning_context",
+                lambda ids: [{"id": EVENT_ID, "name": "Annual Gala", "status": "planning",
+                              "coordinator_id": COORDINATOR_ID, "layout_preference": "theatre"}],
+            )
+            self._spaces(monkeypatch, layout_preference="boardroom")
+            authenticate_as("venue_staff")
+            both = [{"layout": "theatre", "capacity_for_layout": None}, {"layout": "boardroom", "capacity_for_layout": None}]
+            monkeypatch.setattr(
+                repository, "get_venue",
+                lambda venue_id: make_venue_profile(HALL_A_ID, "Hall A", version=3, layouts=[
+                    LayoutOption(layout=VenueLayout.theatre), LayoutOption(layout=VenueLayout.boardroom)]),
+            )
+
+            drop_boardroom = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "layouts": both[:1]}, headers=auth_headers
+            ).json()
+            drop_theatre = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "layouts": both[1:]}, headers=auth_headers
+            ).json()
+
+            assert [d["code"] for d in drop_boardroom["warnings"][0]["details"]] == ["layout_not_supported"]
+            assert drop_theatre["warnings"] == []
+
+        def test_the_space_facilities_are_used_instead_of_the_event_facilities(
+            self, client, auth_headers, authenticate_as, space_booking, monkeypatch
+        ):
+            """The event needs a projector but this space needs a microphone, so
+            removing the projector doesn't affect the booking; removing the
+            microphone does."""
+            self._spaces(monkeypatch, facilities_required=["microphone"])
+            authenticate_as("venue_staff")
+            monkeypatch.setattr(
+                repository, "get_venue",
+                lambda venue_id: make_venue_profile(HALL_A_ID, "Hall A", version=3,
+                                                    facilities=[Facility.projector, Facility.microphone]),
+            )
+
+            drop_projector = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "facilities": ["microphone"]}, headers=auth_headers
+            ).json()
+            drop_microphone = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "facilities": ["projector"]}, headers=auth_headers
+            ).json()
+
+            assert drop_projector["warnings"] == []
+            assert drop_microphone["warnings"][0]["reasons"] == ["Missing facilities this event needs: microphone."]
 
         def test_an_empty_space_facility_list_falls_back_to_the_event(
             self, client, auth_headers, authenticate_as, space_booking, monkeypatch

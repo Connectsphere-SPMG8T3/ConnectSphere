@@ -92,6 +92,16 @@ class TestFacilities:
         assert result.reasons[0].severity == SuitabilitySeverity.unsuitable
         assert result.reasons[0].message == "Missing facilities this event needs: projector, sound system."
 
+    def test_missing_facilities_are_listed_alphabetically(self):
+        """Five of them, so a set's arbitrary order can't pass for sorted by luck."""
+        required = [Facility.wifi, Facility.stage, Facility.catering_space, Facility.whiteboard, Facility.sound_system]
+
+        result = check(make_venue(facilities=[]), VenueRequirements(facilities_required=required))
+
+        assert result.reasons[0].message == (
+            "Missing facilities this event needs: catering space, sound system, stage, whiteboard, wifi."
+        )
+
     def test_every_required_facility_present_is_suitable(self):
         venue = make_venue(facilities=[Facility.projector, Facility.microphone, Facility.stage])
 
@@ -146,6 +156,15 @@ class TestOperatingHours:
         )
 
         assert check(venue, VenueRequirements(period=period)).reasons == []
+
+    def test_the_end_is_read_on_the_singapore_wall_clock_too(self):
+        """12:00–15:00 UTC is 20:00–23:00 SGT: only the end, read in SGT, is past 22:00."""
+        venue = make_venue(opens_at=time(8, 0), closes_at=time(22, 0))
+        period = Period(
+            starts_at=datetime(2026, 10, 10, 12, tzinfo=timezone.utc), ends_at=datetime(2026, 10, 10, 15, tzinfo=timezone.utc)
+        )
+
+        assert codes(check(venue, VenueRequirements(period=period))) == {SuitabilityCode.outside_operating_hours}
 
     def test_no_period_never_checks_hours(self):
         venue = make_venue(opens_at=time(8, 0), closes_at=time(9, 0))
