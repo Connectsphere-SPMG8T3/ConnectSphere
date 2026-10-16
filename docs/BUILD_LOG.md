@@ -2062,6 +2062,9 @@ AC1–AC4, AC7 and AC8 were already delivered by CR-98; CR-97 pins them with SQL
 
 - Every booked event has a space: `populate_booking_space_request` creates a "Main space" for a space-less event. Moving bookings onto space cards therefore changed what TC-BOOK-008, TC-BOOK-022 and TC-HOLD-005 read, and CR-99 AC7's expired-hold explanation had to move to the space card (red test first). The developer chose this over keeping the old panel.
 - The seeded planning event's held booking is on its backfilled "Main space", so TC-SAFE-002–004 now expect "Main space: awaiting venue staff approval." The first recorded live run (98/100) caught this.
+- The manual pass found that the event read sent each space only its occupying booking, with no expiry. On real data, a held space couldn't say when its hold runs out, and an expired one had no CR-99 AC7 explanation. The view tests had passed on data the API never sent, because an autouse `conftest.py` stub replaced the service function itself. `venue_bookings` now gives each space its occupying booking or else its latest expired hold, with `expires_at`. The stub now sits at the repository, so API tests run the real per-space choice.
+- Also from the manual pass: the space count read "1 spaces", and a trigger-created "Main space" read "pax ·". Both fixed ("1 space"; "Requirements not specified").
+- A coordinator can't add a space; only the organiser can, in draft or returned. No live planning event had two spaces until a throwaway one was made (REQUIREMENTS §9 item 50).
 - A backend on a spare port needs `BACKEND_CORS_ORIGINS` to include the spare frontend origin, or every e2e API call fails with "Unable to reach the server".
 
 #### Verification
@@ -2069,5 +2072,6 @@ AC1–AC4, AC7 and AC8 were already delivered by CR-98; CR-97 pins them with SQL
 - Backend: **1,200 passed**, 96% line coverage (92% gate). Frontend: **871 passed**, 95.92% lines (94% gate); build passes.
 - Uncovered new lines are thin adapters outside the agreed test seams: `events/repository.set_primary_space`, `eventsApi.setPrimarySpace`/`clearPrimarySpace`, and the changed select in `venues/repository.list_booking_statuses`. The live checks exercise all of them.
 - Live: [API/DB run](test-cases/runs/2026-10-16-1910-api-db-6eee8f4.md) **100/100**; [e2e run](test-cases/runs/2026-10-16-1916-e2e-6eee8f4.md) **63/63**. The earlier [98/100 run](test-cases/runs/2026-10-16-1904-api-db-10a6c32.md) records the readiness-wording failures before their fix. Advisors after the push: unchanged (10 warnings, none new).
-- Manual TC-BOOK-035–036 (layout at desktop and 375 px, wording) pending the developer's pass.
+- Manual pass ([run](test-cases/runs/2026-10-16-1949-manual-9c4b74f.md)): **Make primary** passes on a real multi-space event; the three display bugs above were found and fixed. Layout at 375 px, the over-capacity and readiness wording, and the toasts are not yet checked.
+- TC-BOOK-021 twice failed with `fetch failed … ECONNRESET` in the e2e sign-in fixture when only the booking specs ran; it passed in the full recorded run (DEFECTS D34).
 - Follow-up: the coordinator dashboard's aggregate `_venue_readiness` is still per event, not per space (DEFECTS D33).

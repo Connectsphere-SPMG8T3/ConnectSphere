@@ -1377,6 +1377,7 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 47. **[Assumption]** Designating a primary venue is optional: a multi-venue event with no primary can still be sent for its safety check, and attendees then see no single location (BR-R17). QA3-26 says the coordinator *may* designate one. Should a primary be required before the event is confirmed?
 48. **[Team decision]** The primary venue can be changed only while the event is in `planning`, the stage where venues are arranged. Once it is with the Safety Officer or confirmed, it is frozen with the other arrangements.
 49. **[Team decision]** A booking request that names only the event, not a space, books the event's first space (oldest first), so it gets the same per-space rules. The coordinator UI always names the space.
+50. **[Open]** Only the organiser can add event spaces, and only in `draft` or `returned` (CR-98). If the organiser proposes one space, the coordinator can never book a second venue for that event. Should the coordinator be able to add a space during `planning`, or must the event be returned for amendment?
 
 **Story 112 addition:**
 46. **[Open]** If the organiser tells the coordinator about a significant change offline (QA2-27), can the coordinator raise the change request on the organiser's behalf, or must the organiser submit it themselves? Until answered, only the organiser raises change requests (§6.19); the coordinator's direct edits cover ordinary fields only (§6.7, 112).
