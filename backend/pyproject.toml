@@ -1,0 +1,7 @@
+# Mutation testing (docs/MUTATION_TESTING.md). Run from backend/, one module at a time:
+#   no_proxy='*' mutmut run "app.modules.venues.*"
+# Not a CI gate: survivors are triaged by hand. macOS/Linux/WSL only (mutmut forks).
+[tool.mutmut]
+source_paths = ["app/"]
+also_copy = ["tests/", "scripts/", "pytest.ini"]
+pytest_add_cli_args_test_selection = ["tests/"]

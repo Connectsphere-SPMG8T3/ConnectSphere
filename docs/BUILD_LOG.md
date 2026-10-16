@@ -2089,3 +2089,34 @@ What was actually built:
 - **Not done here:** CR-98's space-scoped booking path still accepts an inactive venue (D33). CR-97 is redefining that function, so its owner adds the check (team decision, 2026-10-16).
 - **Uncovered by unit tests, by convention:** the Supabase wrappers in `venues/repository.py` and the `venuesApi.deactivate`/`reactivate` request wrappers (`docs/CI.md` §4). The live checks and e2e exercise them.
 - **Follow-up:** tell Xuan Wei about the flag contract (IMPLEMENTATION_MAP §5); CR-95 owns clearing flags and the "Needs alternative venue" alert.
+
+### 4.53. Chore - Mutation testing tooling and first baselines
+
+**[Team decision] 2026-10-16:** the team adopts mutation testing as a recommended practice, not a CI gate or DoD item (`REQUIREMENTS.md` NFR-Q2). It is run on the changed module before a PR that changes logic, and on everything at the end of each sprint. The reason for using it is in `MUTATION_TESTING.md` §1: on the venues module it found about 100 unchecked behaviours in a file with full line coverage, and led to defect D33 (`chore/venues-mutation-test-gaps`).
+
+What this branch adds:
+
+- **Backend:** `mutmut==3.8.0` in `requirements.txt`, configured in the new `backend/pyproject.toml` to mutate `app/` and run `tests/`. `pytest.ini` now sets `testpaths = tests`; without it, a plain `pytest` after a mutation run also collects the copy of the suite in `backend/mutants/` and fails on import.
+- **Frontend:** `@stryker-mutator/core` and `@stryker-mutator/vitest-runner` 9.6.1 as dev dependencies, `frontend/stryker.config.mjs`, and `npm run test:mutation`. 9.x because StrykerJS 10 requires Node 22, and CI and docker-compose run Node 20. The lockfile also moves `@babel/parser` from 7.29.8 to 7.29.9, which Stryker requires. Only `.js` modules are mutated: Stryker's instrumentation breaks `defineProps()` in `<script setup>`.
+- **Ignored output:** `backend/mutants/`, `frontend/reports/mutation/`, `frontend/.stryker-tmp/`.
+- **Docs:**
+  - `docs/MUTATION_TESTING.md`: why, when, how to run, how to triage survivors, known limits, baselines, and how it supports the rubric.
+  - Pointers in `DEVELOPMENT_WORKFLOW.md` (§2, End of sprint), `DEFINITION_OF_DONE.md` (Testing), `CI.md` (§3, why it isn't in CI), `AGENTS.md` (run commands), `docs/README.md` and `REQUIREMENTS.md` (NFR-Q2).
+
+**Two platform problems found and documented:**
+- **macOS:** a forked mutmut worker that reaches an HTTP client crashes in CoreFoundation's proxy lookup. `no_proxy='*'` prevents it.
+- **Windows:** mutmut needs `fork()`, so Windows users run it under WSL.
+
+**Baselines on `main` (`d059dbb`):**
+- **Backend:** 4,079 of 5,874 mutants killed (69%; 76% of mutants a test reaches), 2 min 11 s.
+- **Frontend:** 2,967 of 4,091 (73%; 79%), 35 min 24 s.
+
+Per-file tables are in `MUTATION_TESTING.md` §6.
+
+**Verification:**
+- Backend suite: 1,165 passed, 95.83% coverage, with and without a `mutants/` folder present.
+- A module-scoped run (`mutmut run "app.modules.events.readiness.*"`) checked only that module's 37 mutants.
+- Both full mutation runs completed without crashes.
+- Frontend: 860 Vitest tests passed and `npm run build` succeeded with Stryker installed.
+
+Not verified: CI on this branch, which runs when the PR is opened; and the WSL instructions, since no Windows machine was available.
