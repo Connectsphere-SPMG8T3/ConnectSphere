@@ -127,6 +127,10 @@ export const useEventReviewStore = defineStore("eventReview", {
       return this.act((token) => eventsApi.setPrimarySpace(this.event.id, spaceId, token));
     },
 
+    async clearPrimarySpace() {
+      return this.act((token) => eventsApi.clearPrimarySpace(this.event.id, token));
+    },
+
     async approve() {
       return this.act((token) => eventsApi.approve(this.event.id, token));
     },
