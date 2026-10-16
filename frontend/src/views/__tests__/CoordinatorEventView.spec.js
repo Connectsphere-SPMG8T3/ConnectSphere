@@ -267,6 +267,18 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(el.querySelector('[data-testid="event-spaces"] button')).toBeNull();
   });
 
+  it("CR-97 leaves bookings to the space cards when the event has spaces, keeping rejections in the Venue panel", async () => {
+    const booking = { id: "b1", event_space_request_id: "space-a", venue_id: "v1", venue_name: "Innovation Lab", status: "approved" };
+    const el = await mountView(eventResponse({
+      status: "planning", spaces: TWO_SPACES, venue_booking: booking, venue_bookings: [booking],
+      rejected_bookings: [{ id: "b9", venue_id: "v3", venue_name: "Auditorium A", reason: "Closed for works", suggestion: null, decided_at: null }],
+    }));
+    const panel = el.querySelector('[data-testid="venue-panel"]');
+    expect(panel.textContent).toContain("Auditorium A");
+    expect(panel.textContent).not.toContain("Innovation Lab");
+    expect(panel.textContent).not.toContain("Find a venue");
+  });
+
   it("does not offer space venue search before planning", async () => {
     const el = await mountView(eventResponse({
       status: "under_review",
