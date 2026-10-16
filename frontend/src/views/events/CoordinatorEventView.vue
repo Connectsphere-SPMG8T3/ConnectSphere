@@ -288,6 +288,10 @@ watch(
                     Hold expires {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} unless approved.
                   </span>
                 </div>
+                <p v-if="spacePanels[space.id].kind === 'expired'" class="mt-2 text-sm font-medium" data-testid="hold-expired">
+                  The hold expired on {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} before venue staff approved it.
+                  <template v-if="spacePanels[space.id].canRequest">You can request this venue again if it's still free, or find another.</template>
+                </p>
               </article>
             </div>
           </section>
