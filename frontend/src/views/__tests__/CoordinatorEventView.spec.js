@@ -298,6 +298,11 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(breakout.textContent).toContain("You can request this venue again if it's still free, or find another.");
   });
 
+  it.each([[1, "1 space"], [2, "2 spaces"]])("counts %i space(s) as \"%s\"", async (count, label) => {
+    const el = await mountView(eventResponse({ status: "planning", spaces: TWO_SPACES.slice(0, count) }));
+    expect(el.querySelector('[data-testid="space-count"]').textContent.trim()).toBe(label);
+  });
+
   it("does not offer space venue search before planning", async () => {
     const el = await mountView(eventResponse({
       status: "under_review",
