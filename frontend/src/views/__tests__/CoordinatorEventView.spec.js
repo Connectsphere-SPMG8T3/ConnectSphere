@@ -259,6 +259,14 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(eventsApi.clearPrimarySpace).toHaveBeenCalledWith("event-1", "access");
   });
 
+  it.each([
+    ["an event with one space", { status: "planning", spaces: [{ ...TWO_SPACES[0], is_primary: true }] }],
+    ["an event outside planning", { status: "safety_review", spaces: TWO_SPACES }],
+  ])("CR-97 AC9 offers no primary choice for %s", async (_, overrides) => {
+    const el = await mountView(eventResponse(overrides));
+    expect(el.querySelector('[data-testid="event-spaces"] button')).toBeNull();
+  });
+
   it("does not offer space venue search before planning", async () => {
     const el = await mountView(eventResponse({
       status: "under_review",
