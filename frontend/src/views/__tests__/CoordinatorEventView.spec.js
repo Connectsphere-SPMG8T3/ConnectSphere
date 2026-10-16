@@ -195,6 +195,30 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     ]);
   });
 
+  // CR-97 AC5: the event page lists every space's booking and its status.
+  const TWO_SPACES = [
+    { id: "space-a", label: "Main hall", expected_pax: 50, layout_preference: "theatre", facilities_required: [], is_primary: false },
+    { id: "space-b", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: [], is_primary: false },
+  ];
+  const spaceCards = (el) => [...el.querySelectorAll('[data-testid="event-spaces"] article')];
+
+  it("CR-97 AC5 shows each space's own booking and status", async () => {
+    const el = await mountView(eventResponse({
+      status: "planning", spaces: TWO_SPACES,
+      venue_bookings: [
+        { id: "b1", event_space_request_id: "space-a", venue_id: "v1", venue_name: "Innovation Lab", status: "approved" },
+        { id: "b2", event_space_request_id: "space-b", venue_id: "v2", venue_name: "Heritage Hall", status: "held",
+          expires_at: "2026-11-01T02:00:00Z" },
+      ],
+    }));
+    const [main, breakout] = spaceCards(el);
+    expect(main.textContent).toContain("Innovation Lab");
+    expect(main.textContent).toContain("Approved");
+    expect(breakout.textContent).toContain("Heritage Hall");
+    expect(breakout.textContent).toContain("Tentative hold");
+    expect(breakout.textContent).toContain("Hold expires");
+  });
+
   it("does not offer space venue search before planning", async () => {
     const el = await mountView(eventResponse({
       status: "under_review",
