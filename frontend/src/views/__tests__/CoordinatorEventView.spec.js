@@ -219,6 +219,19 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(breakout.textContent).toContain("Hold expires");
   });
 
+  it("CR-97 offers Find venue only for a space without an occupying booking", async () => {
+    const el = await mountView(eventResponse({
+      status: "planning", spaces: [...TWO_SPACES, { id: "space-c", label: "Foyer", expected_pax: 30, facilities_required: [] }],
+      venue_bookings: [
+        { id: "b1", event_space_request_id: "space-a", venue_id: "v1", venue_name: "Innovation Lab", status: "held" },
+        { id: "b2", event_space_request_id: "space-b", venue_id: "v2", venue_name: "Heritage Hall", status: "expired",
+          expires_at: "2026-10-01T02:00:00Z" },
+      ],
+    }));
+    const findVenue = (card) => [...card.querySelectorAll("a")].some((link) => link.textContent.trim() === "Find venue");
+    expect(spaceCards(el).map(findVenue)).toEqual([false, true, true]);
+  });
+
   it("does not offer space venue search before planning", async () => {
     const el = await mountView(eventResponse({
       status: "under_review",
