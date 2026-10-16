@@ -274,6 +274,12 @@ def _safety_readiness_for(row: dict) -> SafetyReadiness:
     return safety_readiness([BookingReadiness(status=s) for s in statuses], technical_status(row))
 
 
+def set_primary_space(event_id: str, space_id: str | None, coordinator_id: str) -> EventResponse:
+    """CR-97 AC9: the assigned coordinator marks one event space as the primary venue."""
+    repository.set_primary_space(event_id, space_id, coordinator_id)
+    return read(event_id, coordinator_id, "event_coordinator")
+
+
 def send_for_safety_check(event_id: str, coordinator_id: str) -> EventResponse:
     row = _assigned_event(event_id, coordinator_id)
     destination = lifecycle.target("send_to_safety", row["status"])

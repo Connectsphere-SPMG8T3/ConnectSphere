@@ -10,7 +10,7 @@ _EVENT_COLUMNS = (
     "registration_opens_at, registration_closes_at, technical_readiness, submitted_at, "
     "version, created_at, updated_at"
 )
-_SPACE_COLUMNS = "id, event_id, label, expected_pax, layout_preference, facilities_required, starts_at, ends_at, version"
+_SPACE_COLUMNS = "id, event_id, label, expected_pax, layout_preference, facilities_required, starts_at, ends_at, version, is_primary"
 
 
 def list_event_spaces(event_id: str) -> list[dict]:
@@ -429,6 +429,16 @@ def return_to_planning(event_id: str, expected_version: int, *, from_status: str
         "p_reason_code": reason_code, "p_coordinator_message": coordinator_message,
         "p_officer_message": officer_message,
     }).execute())
+
+
+def set_primary_space(event_id: str, space_id: str | None, actor_id: str) -> str:
+    """CR-97 AC9: mark the event's primary space (or clear it with None) under the
+    event's lock. Answers ok / event_not_found / not_planning / not_assigned /
+    space_not_found."""
+    response = get_supabase_admin_client().rpc("set_primary_space", {
+        "p_event_id": event_id, "p_space_id": space_id, "p_actor_id": actor_id,
+    }).execute()
+    return response.data
 
 
 def list_safety_decisions(event_id: str) -> list[dict]:

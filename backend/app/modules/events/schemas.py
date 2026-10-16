@@ -122,6 +122,7 @@ class EventSpaceRequestResponse(BaseModel):
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     version: int = 1
+    is_primary: bool = False  # CR-97 AC9
 
 
 class TechnicalReadiness(str, Enum):

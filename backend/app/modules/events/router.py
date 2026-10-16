@@ -142,6 +142,11 @@ def submit_event(
     return service.submit(str(event_id), current_user.id, body)
 
 
+@router.put("/{event_id}/spaces/{space_id}/primary", response_model=EventResponse)
+def set_primary_space(event_id: UUID, space_id: UUID, current_user: EventCoordinator) -> EventResponse:
+    return service.set_primary_space(str(event_id), str(space_id), current_user.id)
+
+
 @router.post("/{event_id}/send-for-safety-check", response_model=EventResponse)
 def send_for_safety_check(event_id: UUID, current_user: EventCoordinator) -> EventResponse:
     return service.send_for_safety_check(str(event_id), current_user.id)
