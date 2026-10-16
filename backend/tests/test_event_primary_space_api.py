@@ -11,7 +11,8 @@ import pytest
 
 from app.modules.events import repository
 from app.modules.venues import repository as venues_repository
-from tests.test_event_review_api import event_row, EVENT_ID, COORDINATOR_ID
+from tests.test_event_comments_api import acting_as_another_role
+from tests.test_event_review_api import event_row, EVENT_ID, COORDINATOR_ID, ORGANISER_ID
 
 MAIN = "f0000000-0000-4000-8000-000000000001"
 BREAKOUT = "f0000000-0000-4000-8000-000000000002"
@@ -90,4 +91,20 @@ def test_the_event_relationship_is_checked_before_the_database(client, auth_head
     authenticate_as("event_coordinator", COORDINATOR_ID)
     assert client.put(f"/api/v1/events/{EVENT_ID}/spaces/{MAIN}/primary", headers=auth_headers).status_code == code
     assert client.delete(f"/api/v1/events/{EVENT_ID}/spaces/primary", headers=auth_headers).status_code == code
+    assert state["calls"] == []
+
+
+@pytest.mark.parametrize("role", ["event_organiser", "venue_staff", "tech_support", "attendee",
+                                  "event_coordinator_lead", "safety_officer"])
+def test_other_roles_are_forbidden(client, auth_headers, authenticate_as, state, role):
+    authenticate_as(role, ORGANISER_ID if role == "event_organiser" else COORDINATOR_ID)
+    assert client.put(f"/api/v1/events/{EVENT_ID}/spaces/{MAIN}/primary", headers=auth_headers).status_code == 403
+    assert client.delete(f"/api/v1/events/{EVENT_ID}/spaces/primary", headers=auth_headers).status_code == 403
+    assert state["calls"] == []
+
+
+def test_the_assigned_coordinator_acting_as_another_role_is_forbidden(client, auth_headers, monkeypatch, state):  # SCRUM-76
+    acting_as_another_role(monkeypatch, COORDINATOR_ID, "event_coordinator", "venue_staff")
+    assert client.put(f"/api/v1/events/{EVENT_ID}/spaces/{MAIN}/primary", headers=auth_headers).status_code == 403
+    assert client.delete(f"/api/v1/events/{EVENT_ID}/spaces/primary", headers=auth_headers).status_code == 403
     assert state["calls"] == []
