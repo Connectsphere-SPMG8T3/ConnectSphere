@@ -219,7 +219,7 @@ watch(
                     <p class="mt-1 text-sm font-medium">{{ spaceSchedule(space) }}</p>
                   </div>
                   <RouterLink
-                    v-if="event.status === 'planning'"
+                    v-if="spacePanels[space.id].kind === 'can-request' || (spacePanels[space.id].kind === 'expired' && spacePanels[space.id].canRequest)"
                     :to="{ name: 'venue-search', query: { event: event.id, space: space.id } }"
                     class="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard"
                   >
