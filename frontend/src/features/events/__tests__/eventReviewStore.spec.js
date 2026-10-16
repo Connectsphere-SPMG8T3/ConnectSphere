@@ -76,6 +76,15 @@ describe("useEventReviewStore", () => {
     expect(eventsApi.setPrimarySpace).toHaveBeenCalledWith("event-1", "s1", "access-token");
     expect(store.event).toEqual(updated);
   });
+  it("CR-97 clears the primary venue", async () => {
+    const store = useEventReviewStore(); store.event = {...EVENT, status: "planning"}; store.historyEventId = EVENT.id;
+    const updated = {...EVENT, status: "planning", spaces: [{id: "s1", is_primary: false}, {id: "s2", is_primary: false}]};
+    eventsApi.clearPrimarySpace.mockResolvedValue(updated);
+    eventsApi.history.mockResolvedValue({entries: []});
+    await store.clearPrimarySpace();
+    expect(eventsApi.clearPrimarySpace).toHaveBeenCalledWith("event-1", "access-token");
+    expect(store.event).toEqual(updated);
+  });
   it("SCRUM-82 reloads stale readiness while preserving the refusal", async () => {
     const store = useEventReviewStore(); store.event = {...EVENT, status: "planning"}; store.historyEventId = EVENT.id;
     eventsApi.sendForSafetyCheck.mockRejectedValue(new ApiError("Not ready", 409));
