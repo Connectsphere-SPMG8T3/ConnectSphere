@@ -352,6 +352,15 @@ class EventResponse(EventFields):
     created_at: datetime
     updated_at: datetime
     spaces: list[EventSpaceRequestResponse] = []
+
+    @field_validator("spaces")
+    @classmethod
+    def _only_space_is_primary(cls, spaces: list[EventSpaceRequestResponse]) -> list[EventSpaceRequestResponse]:
+        # CR-97 Q11: an event's only space is its primary venue without being marked.
+        if len(spaces) == 1:
+            spaces[0].is_primary = True
+        return spaces
+
     # The open amendment while the event is returned (SCRUM-33); null otherwise
     # and on list responses.
     amendment: AmendmentRequest | None = None
