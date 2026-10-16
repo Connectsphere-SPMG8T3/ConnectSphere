@@ -2064,7 +2064,7 @@ AC1–AC3 and AC8 were already delivered by CR-98; CR-97 pins them with SQL chec
 - The seeded planning event's held booking is on its backfilled "Main space", so TC-SAFE-002–004 now expect "Main space: awaiting venue staff approval." The first recorded live run (98/100) caught this.
 - The manual pass found that the event read sent each space only its occupying booking, with no expiry. On real data, a held space couldn't say when its hold runs out, and an expired one had no CR-99 AC7 explanation. The view tests had passed on data the API never sent, because an autouse `conftest.py` stub replaced the service function itself. `venue_bookings` now gives each space its occupying booking or else its latest expired hold, with `expires_at`. The stub now sits at the repository, so API tests run the real per-space choice.
 - Also from the manual pass: the space count read "1 spaces", and a trigger-created "Main space" read "pax ·". Both fixed ("1 space"; "Requirements not specified").
-- A coordinator can't add a space; only the organiser can, in draft or returned. No live planning event had two spaces until a throwaway one was made (REQUIREMENTS §9 item 50).
+- A coordinator can't add a space; only the organiser can, in draft or returned. No live planning event had two spaces until a throwaway one was made (REQUIREMENTS §9 item 54).
 - A backend on a spare port needs `BACKEND_CORS_ORIGINS` to include the spare frontend origin, or every e2e API call fails with "Unable to reach the server".
 
 #### Verification
