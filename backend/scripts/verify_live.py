@@ -268,14 +268,15 @@ def _(ctx: Context) -> None:
     session, _ = safety_fixture(ctx)
     response = ctx.client.post(f"{ctx.api}/events/{SAFE_EVENT}/send-for-safety-check", headers=session.headers)
     expect_status(response, 409)
-    expect("A venue booking is awaiting venue staff approval." in response.json()["detail"], "Missing booking reason")
+    # CR-97: the seeded event's booking is on its backfilled "Main space", so the reason names it.
+    expect("Main space: awaiting venue staff approval." in response.json()["detail"], "Missing booking reason")
 
 
 @check("TC-SAFE-003", "The coordinator read carries the same missing booking reason")
 def _(ctx: Context) -> None:
     _, event = safety_fixture(ctx)
     expect(event["safety_readiness"]["ready"] is False, "Fixture must not be ready")
-    expect("A venue booking is awaiting venue staff approval." in event["safety_readiness"]["missing"], "Missing booking reason")
+    expect("Main space: awaiting venue staff approval." in event["safety_readiness"]["missing"], "Missing booking reason")
 
 
 # --- Login -----------------------------------------------------------------
