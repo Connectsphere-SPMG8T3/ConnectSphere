@@ -35,8 +35,12 @@ const statusLabel = computed(() => STATUS_LABELS[event.value?.status] ?? event.v
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
-// CR-97: with spaces, each space card shows its own booking; the panel keeps rejections only.
-const venuePanel = computed(() => (event.value?.spaces?.length ? { kind: "none" } : venuePanelState(event.value)));
+// CR-97: with spaces, each space card shows its own booking; the panel keeps
+// rejections and the reason no venue can be requested yet.
+const venuePanel = computed(() => {
+  const state = venuePanelState(event.value);
+  return eventSpaces.value.length && state.kind !== "unavailable" ? { kind: "none" } : state;
+});
 // SCRUM-38 AC6, AC7: why venue staff said no, shown above the way to try another venue.
 const rejectedBookings = computed(() => event.value?.rejected_bookings ?? []);
 const eventSpaces = computed(() => event.value?.spaces ?? []);
