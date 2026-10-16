@@ -327,6 +327,13 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
             notify_message=f'A venue booking was requested for "{event["name"]}".',
         )
     outcome = result["outcome"]
+    if outcome == "over_capacity":
+        # CR-97 AC10: the function refused on the space's expected pax; say by how much.
+        seats = search.effective_capacity(repository.get_venue(venue_id), space.get("layout_preference"))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{repository.get_venue(venue_id).name} seats {seats}; this space needs {space['expected_pax']}.",
+        )
     if outcome in BOOKING_REFUSALS:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=BOOKING_REFUSALS[outcome])
     if outcome == "not_planning":
