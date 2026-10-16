@@ -634,6 +634,7 @@ class TestVenueEdit:
         monkeypatch.setattr(repository, "list_upcoming_bookings", lambda venue_id, since: [])
         monkeypatch.setattr(repository, "list_upcoming_blocks", lambda venue_id, since: [])
         monkeypatch.setattr(events_repository, "list_planning_context", lambda ids: [])
+        monkeypatch.setattr(repository, "list_venue_staff_ids", lambda: set())
         calls = {"update_venue": []}
 
         def _update_venue(venue_id, actor_id, expected_version, **kwargs):
@@ -792,6 +793,221 @@ class TestVenueEdit:
             body = response.json()
             assert body["saved"] is True
             assert body["warnings"] == []
+
+        @pytest.mark.parametrize("event_status", ["completed", "cancelled"])
+        def test_a_completed_or_cancelled_event_is_not_rechecked(
+            self, client, auth_headers, authenticate_as, booking_at_risk, monkeypatch, event_status
+        ):
+            """CR-94 AC7: only bookings whose event can still happen are re-checked."""
+            monkeypatch.setattr(
+                events_repository,
+                "list_planning_context",
+                lambda ids: [
+                    {"id": EVENT_ID, "name": "Annual Gala", "status": event_status, "coordinator_id": COORDINATOR_ID,
+                     "expected_attendance": 120}
+                ],
+            )
+            authenticate_as("venue_staff")
+
+            response = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "capacity": 100}, headers=auth_headers
+            )
+
+            body = response.json()
+            assert body["saved"] is True
+            assert body["warnings"] == []
+            assert booking_at_risk["update_venue"][0]["notifications"] == []
+
+
+        def test_confirming_also_notifies_every_other_venue_staff_member(
+            self, client, auth_headers, authenticate_as, booking_at_risk, monkeypatch
+        ):
+            """CR-94 AC5: the rest of the venue staff pool hears about it too;
+            the editor already saw the warning, so is not notified."""
+            actor = authenticate_as("venue_staff")
+            others = ["a0000000-0000-4000-8000-000000000031", "a0000000-0000-4000-8000-000000000032"]
+            monkeypatch.setattr(repository, "list_venue_staff_ids", lambda: {actor["id"], *others})
+
+            client.patch(
+                f"/api/v1/venues/{HALL_A_ID}",
+                json={**VALID_EDIT_PAYLOAD, "capacity": 100, "confirm": True},
+                headers=auth_headers,
+            )
+
+            notifications = booking_at_risk["update_venue"][0]["notifications"]
+            staff = sorted((n for n in notifications if n["recipient_id"] != COORDINATOR_ID), key=lambda n: n["recipient_id"])
+            assert [n["recipient_id"] for n in staff] == others
+            assert all(n["event_id"] == EVENT_ID for n in staff)
+            assert staff[0]["message"] == (
+                'Venue "Hall A" was edited and "Annual Gala" is now Unsuitable: '
+                "Capacity 100 is below the expected attendance of 120."
+            )
+
+        def test_venue_staff_get_one_notification_per_event_not_per_booking(
+            self, client, auth_headers, authenticate_as, booking_at_risk, monkeypatch
+        ):
+            authenticate_as("venue_staff")
+            other = "a0000000-0000-4000-8000-000000000031"
+            monkeypatch.setattr(repository, "list_venue_staff_ids", lambda: {other})
+            period = Period(starts_at=datetime(2026, 10, 11, 9, tzinfo=SGT), ends_at=datetime(2026, 10, 11, 12, tzinfo=SGT))
+            monkeypatch.setattr(
+                repository,
+                "list_upcoming_bookings",
+                lambda venue_id, since: [
+                    BookingSummary(id=f"d0000000-0000-4000-8000-00000000007{i}", event_id=EVENT_ID, period=period,
+                                   status="held")
+                    for i in range(2)
+                ],
+            )
+
+            client.patch(
+                f"/api/v1/venues/{HALL_A_ID}",
+                json={**VALID_EDIT_PAYLOAD, "capacity": 100, "confirm": True},
+                headers=auth_headers,
+            )
+
+            notifications = booking_at_risk["update_venue"][0]["notifications"]
+            assert [n["recipient_id"] for n in notifications].count(other) == 1
+
+        def test_a_warning_only_edit_tells_venue_staff_it_needs_a_check(
+            self, client, auth_headers, authenticate_as, booking_at_risk, monkeypatch
+        ):
+            authenticate_as("venue_staff")
+            other = "a0000000-0000-4000-8000-000000000031"
+            monkeypatch.setattr(repository, "list_venue_staff_ids", lambda: {other})
+
+            client.patch(
+                f"/api/v1/venues/{HALL_A_ID}",
+                json={**VALID_EDIT_PAYLOAD, "layouts": [{"layout": "boardroom", "capacity_for_layout": None}],
+                      "confirm": True},
+                headers=auth_headers,
+            )
+
+            notifications = booking_at_risk["update_venue"][0]["notifications"]
+            message = next(n["message"] for n in notifications if n["recipient_id"] == other)
+            assert message == (
+                'Venue "Hall A" was edited and "Annual Gala" needs a check: '
+                "The theatre layout this event needs is not supported."
+            )
+
+        def test_without_confirming_no_one_is_notified(
+            self, client, auth_headers, authenticate_as, booking_at_risk, monkeypatch
+        ):
+            authenticate_as("venue_staff")
+            monkeypatch.setattr(repository, "list_venue_staff_ids", lambda: {"a0000000-0000-4000-8000-000000000031"})
+
+            client.patch(f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "capacity": 100}, headers=auth_headers)
+
+            assert booking_at_risk["update_venue"] == []
+
+    class TestSpaceRequirements:
+        """CR-94: a booking for one of the event's spaces is judged on that
+        space's requirements, falling back to the event's per field."""
+
+        SPACE_ID = "f0000000-0000-4000-8000-000000000301"
+
+        @pytest.fixture()
+        def space_booking(self, monkeypatch, profile):
+            booking = BookingSummary(
+                id="d0000000-0000-4000-8000-000000000060",
+                event_id=EVENT_ID,
+                event_space_request_id=self.SPACE_ID,
+                period=Period(starts_at=datetime(2026, 10, 10, 9, tzinfo=SGT), ends_at=datetime(2026, 10, 10, 12, tzinfo=SGT)),
+                status="held",
+            )
+            monkeypatch.setattr(repository, "list_upcoming_bookings", lambda venue_id, since: [booking])
+            monkeypatch.setattr(
+                events_repository,
+                "list_planning_context",
+                lambda ids: [
+                    {"id": EVENT_ID, "name": "Annual Gala", "status": "planning", "coordinator_id": COORDINATOR_ID,
+                     "expected_attendance": 120, "facilities_required": ["projector"]}
+                ],
+            )
+            return profile
+
+        def _spaces(self, monkeypatch, **space):
+            calls = []
+
+            def _list(ids):
+                calls.append(sorted(ids))
+                return [{"id": self.SPACE_ID, "expected_pax": None, "layout_preference": None,
+                         "facilities_required": None, **space}]
+
+            monkeypatch.setattr(events_repository, "list_spaces_by_ids", _list)
+            return calls
+
+        def test_the_space_attendance_is_used_instead_of_the_event_total(
+            self, client, auth_headers, authenticate_as, space_booking, monkeypatch
+        ):
+            calls = self._spaces(monkeypatch, expected_pax=140)
+            authenticate_as("venue_staff")
+
+            response = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "capacity": 130}, headers=auth_headers
+            )
+
+            warnings = response.json()["warnings"]
+            assert len(warnings) == 1
+            assert warnings[0]["outcome"] == "unsuitable"
+            assert "140" in warnings[0]["reasons"][0]
+            assert calls == [[self.SPACE_ID]]
+
+        def test_a_field_the_space_leaves_empty_falls_back_to_the_event(
+            self, client, auth_headers, authenticate_as, space_booking, monkeypatch
+        ):
+            """The space states no attendance and no facilities, so the event's
+            120 pax and projector apply: dropping the projector is Unsuitable,
+            cutting capacity to 130 is not."""
+            self._spaces(monkeypatch, layout_preference="theatre")
+            authenticate_as("venue_staff")
+
+            response = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}",
+                json={**VALID_EDIT_PAYLOAD, "capacity": 130, "facilities": []},
+                headers=auth_headers,
+            )
+
+            warnings = response.json()["warnings"]
+            assert [d["code"] for d in warnings[0]["details"]] == ["missing_facility"]
+
+        def test_an_empty_space_facility_list_falls_back_to_the_event(
+            self, client, auth_headers, authenticate_as, space_booking, monkeypatch
+        ):
+            """`event_space_requests.facilities_required` is never null: the
+            space a booking request creates automatically stores `{}`. An empty
+            list therefore means the space didn't say, not "needs nothing"."""
+            self._spaces(monkeypatch, facilities_required=[])
+            authenticate_as("venue_staff")
+
+            response = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "facilities": []}, headers=auth_headers
+            )
+
+            warnings = response.json()["warnings"]
+            assert [d["code"] for d in warnings[0]["details"]] == ["missing_facility"]
+
+        def test_the_event_accessibility_needs_reach_the_check(
+            self, client, auth_headers, authenticate_as, space_booking, monkeypatch
+        ):
+            self._spaces(monkeypatch)
+            monkeypatch.setattr(
+                events_repository,
+                "list_planning_context",
+                lambda ids: [{"id": EVENT_ID, "name": "Annual Gala", "status": "planning",
+                              "coordinator_id": COORDINATOR_ID, "accessibility_needs": "Two wheelchair users"}],
+            )
+            authenticate_as("venue_staff")
+
+            response = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}",
+                json={**VALID_EDIT_PAYLOAD, "accessibility_features": []},
+                headers=auth_headers,
+            )
+
+            warnings = response.json()["warnings"]
+            assert warnings[0]["outcome"] == "warning"
+            assert [d["code"] for d in warnings[0]["details"]] == ["accessibility_changed"]
 
 
 class TestVenueEditHistory:

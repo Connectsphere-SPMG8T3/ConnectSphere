@@ -342,14 +342,18 @@ def list_upcoming_bookings(venue_id: str, since: datetime) -> list[BookingSummar
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_id, occupied_period, status")
+        .select("id, event_id, event_space_request_id, occupied_period, status")
         .eq("venue_id", venue_id)
         .in_("status", sorted(OCCUPYING_STATUSES))
         .execute()
     )
     bookings = [
         BookingSummary(
-            id=row["id"], event_id=row["event_id"], period=_parse_range(row["occupied_period"]), status=row["status"]
+            id=row["id"],
+            event_id=row["event_id"],
+            event_space_request_id=row.get("event_space_request_id"),
+            period=_parse_range(row["occupied_period"]),
+            status=row["status"],
         )
         for row in response.data or []
     ]
@@ -695,3 +699,16 @@ def list_active_bookings(event_id: str) -> list[dict]:
             return []
         raise
     return response.data or []
+
+
+def list_venue_staff_ids() -> set[str]:
+    """Profiles holding the venue staff role. Used only to address the
+    notifications a venue edit sends (CR-94), never to authorise a caller."""
+    response = (
+        get_supabase_admin_client()
+        .table("user_roles")
+        .select("profile_id")
+        .eq("role", "venue_staff")
+        .execute()
+    )
+    return {row["profile_id"] for row in response.data or []}

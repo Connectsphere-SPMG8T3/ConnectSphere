@@ -149,6 +149,7 @@ class BlockSummary(BaseModel):
 class BookingSummary(BaseModel):
     id: str
     event_id: str
+    event_space_request_id: str | None = None
     period: Period
     status: str
     event_name: str | None = None
@@ -296,6 +297,48 @@ class Reason(BaseModel):
     message: str
 
 
+class VenueRequirements(BaseModel):
+    """What one event (or one of its spaces) needs from a venue, as
+    `suitability.check` judges it. Every field is optional: a requirement the
+    event did not state is never held against a venue."""
+
+    expected_attendance: int | None = None
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] = []
+    period: Period | None = None
+
+
+class SuitabilityVerdict(str, Enum):
+    suitable = "suitable"
+    suitable_with_warnings = "suitable_with_warnings"
+    unsuitable = "unsuitable"
+
+
+class SuitabilitySeverity(str, Enum):
+    unsuitable = "unsuitable"
+    warning = "warning"
+
+
+class SuitabilityCode(str, Enum):
+    capacity = "capacity"
+    missing_facility = "missing_facility"
+    layout_not_supported = "layout_not_supported"
+    outside_operating_hours = "outside_operating_hours"
+    # Edit-only (CR-94): set by `venues.impact`, never by `suitability.check`.
+    accessibility_changed = "accessibility_changed"
+
+
+class SuitabilityReason(BaseModel):
+    code: SuitabilityCode
+    severity: SuitabilitySeverity
+    message: str
+
+
+class SuitabilityResult(BaseModel):
+    verdict: SuitabilityVerdict
+    reasons: list[SuitabilityReason] = []
+
+
 class BookingImpactContext(BaseModel):
     """One occupying booking plus the event fields needed to judge whether an
     edit to the venue (VC-R2) newly breaks something that booking relies on.
@@ -313,15 +356,23 @@ class BookingImpactContext(BaseModel):
     expected_attendance: int | None = None
     layout_preference: VenueLayout | None = None
     facilities_required: list[Facility] = []
+    accessibility_needs: str | None = None
 
 
 class AffectedBooking(BaseModel):
-    """A booking whose event has a new problem because of this edit (VC-R2)."""
+    """A booking whose event has a new problem because of this edit (VC-R2).
+
+    `outcome` is `unsuitable` when any newly broken rule is a hard one
+    (capacity, a required facility), otherwise `warning` (CR-94). `reasons`
+    repeats the `details` messages for callers that only show text.
+    """
 
     booking_id: str
     event_id: str
     event_name: str | None = None
     period: Period
+    outcome: Literal["unsuitable", "warning"]
+    details: list[SuitabilityReason] = []
     reasons: list[str]
 
 

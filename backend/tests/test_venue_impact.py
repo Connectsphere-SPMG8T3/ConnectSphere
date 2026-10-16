@@ -8,7 +8,17 @@ not cause must never surface as a warning about this edit.
 from datetime import datetime, time, timedelta, timezone
 
 from app.modules.venues.impact import affected_bookings
-from app.modules.venues.schemas import AccessibilityFeature, BookingImpactContext, Facility, LayoutOption, Period, VenueLayout, VenueSummary
+from app.modules.venues.schemas import (
+    AccessibilityFeature,
+    BookingImpactContext,
+    Facility,
+    LayoutOption,
+    Period,
+    SuitabilityCode,
+    SuitabilitySeverity,
+    VenueLayout,
+    VenueSummary,
+)
 
 SGT = timezone(timedelta(hours=8))
 
@@ -173,3 +183,81 @@ class TestMultipleBookings:
 
         assert len(result) == 1
         assert len(result[0].reasons) == 2
+
+
+class TestOutcome:
+    """CR-94: a booking the edit makes Unsuitable (capacity or a required
+    facility) is told apart from one that only gets a warning."""
+
+    def test_a_newly_broken_hard_rule_makes_the_booking_unsuitable(self):
+        result = affected_bookings(make_venue(capacity=150), make_venue(capacity=100), [make_booking(expected_attendance=120)])
+
+        assert result[0].outcome == "unsuitable"
+        assert [d.code for d in result[0].details] == [SuitabilityCode.capacity]
+        assert result[0].details[0].severity == SuitabilitySeverity.unsuitable
+        assert result[0].reasons == [result[0].details[0].message]
+
+    def test_a_newly_broken_layout_only_warns(self):
+        before = make_venue(layouts=[LayoutOption(layout=VenueLayout.theatre)])
+        after = make_venue(layouts=[LayoutOption(layout=VenueLayout.boardroom)])
+
+        result = affected_bookings(before, after, [make_booking(layout_preference=VenueLayout.theatre)])
+
+        assert result[0].outcome == "warning"
+        assert [d.code for d in result[0].details] == [SuitabilityCode.layout_not_supported]
+
+    def test_a_hard_rule_and_a_warning_together_make_it_unsuitable(self):
+        before = make_venue(capacity=150, closes_at=time(22, 0))
+        after = make_venue(capacity=100, closes_at=time(11, 0))
+
+        result = affected_bookings(before, after, [make_booking(expected_attendance=120)])
+
+        assert result[0].outcome == "unsuitable"
+        assert {d.code for d in result[0].details} == {SuitabilityCode.capacity, SuitabilityCode.outside_operating_hours}
+
+    def test_a_pre_existing_hard_failure_does_not_make_a_new_warning_unsuitable(self):
+        """Capacity was already short; only the hours are this edit's doing."""
+        before = make_venue(capacity=100, closes_at=time(22, 0))
+        after = make_venue(capacity=100, closes_at=time(11, 0))
+
+        result = affected_bookings(before, after, [make_booking(expected_attendance=120)])
+
+        assert result[0].outcome == "warning"
+        assert [d.code for d in result[0].details] == [SuitabilityCode.outside_operating_hours]
+
+
+class TestAccessibilityChanged:
+    def test_changed_features_warn_an_event_that_lists_accessibility_needs(self):
+        before = make_venue(accessibility_features=[AccessibilityFeature.wheelchair_access])
+        after = make_venue(accessibility_features=[AccessibilityFeature.hearing_loop])
+
+        result = affected_bookings(before, after, [make_booking(accessibility_needs="Two wheelchair users")])
+
+        assert result[0].outcome == "warning"
+        assert [d.code for d in result[0].details] == [SuitabilityCode.accessibility_changed]
+        assert result[0].details[0].message == (
+            "The venue's accessibility features changed (now: hearing loop). "
+            "Check they still meet this event's needs: Two wheelchair users."
+        )
+
+    def test_changed_features_do_not_warn_an_event_with_no_accessibility_needs(self):
+        before = make_venue(accessibility_features=[AccessibilityFeature.wheelchair_access])
+        after = make_venue(accessibility_features=[])
+
+        assert affected_bookings(before, after, [make_booking(accessibility_needs="  ")]) == []
+        assert affected_bookings(before, after, [make_booking(accessibility_needs=None)]) == []
+
+    def test_reordered_but_unchanged_features_do_not_warn(self):
+        features = [AccessibilityFeature.wheelchair_access, AccessibilityFeature.lift_access]
+        before = make_venue(accessibility_features=features)
+        after = make_venue(accessibility_features=list(reversed(features)))
+
+        assert affected_bookings(before, after, [make_booking(accessibility_needs="Lift needed")]) == []
+
+    def test_all_features_removed_reads_as_none(self):
+        before = make_venue(accessibility_features=[AccessibilityFeature.wheelchair_access])
+        after = make_venue(accessibility_features=[])
+
+        result = affected_bookings(before, after, [make_booking(accessibility_needs="Ramp")])
+
+        assert result[0].details[0].message.startswith("The venue's accessibility features changed (now: none).")

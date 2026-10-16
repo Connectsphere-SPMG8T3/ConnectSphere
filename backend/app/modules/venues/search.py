@@ -17,26 +17,15 @@ from app.modules.venues.schemas import (
     Period,
     Reason,
     ReasonCode,
-    VenueLayout,
     VenueSearchCriteria,
     VenueSearchResult,
     VenueSummary,
     label,
 )
+from app.modules.venues.suitability import effective_capacity
 
 # Booking statuses that occupy the venue (§6.14); anything else is ignored.
 OCCUPYING_STATUSES = frozenset({"held", "approved", "re_review"})
-
-
-def effective_capacity(venue: VenueSummary, layout: VenueLayout | None) -> int:
-    """The capacity rule shared by search (VS-R6) and edit-impact checking
-    (VC-R2): the per-layout figure when the venue records one for the
-    requested layout, otherwise the venue-wide capacity."""
-    if layout is not None:
-        for option in venue.layouts:
-            if option.layout == layout and option.capacity_for_layout is not None:
-                return option.capacity_for_layout
-    return venue.capacity
 
 
 def _format_period(period: Period, tz: tzinfo) -> str:

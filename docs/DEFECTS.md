@@ -7,7 +7,7 @@
 
 > **Numbering note:** two different defects were both filed as **D8** (migration drift, and fabricated dashboard metrics). Both are kept as written rather than renumbered, since they are cited by those names elsewhere in the docs; tell them apart by name ("D8, migration drift" / "D8, fabricated metrics").
 
-> **Numbering correction (2026-10-15):** CR-98's trigger-function permissions defect was also filed as D26. It is now **D32**; **D26** remains CR-95's migration-history defect. Historical build-log entries and run records retain the original identifier. The deployed migration filename and version are unchanged.
+> **Numbering correction (2026-10-15):** CR-98's trigger-function permissions defect was also filed as D26. It is now **D32**; **D26** remains the booking-flag migration-history defect (SCRUM-64's, not CR-95's: corrected 2026-10-16). Historical build-log entries and run records retain the original identifier. The deployed migration filename and version are unchanged.
 
 > **Status (13 Sep 2026):** D1–D6 are **fixed** on branch `fix/auth-security-bugs`. The database migration `20260913120749` is already applied to the live project. Reproduction, root cause, and verification for each defect are in `docs/BUILD_LOG.md` §4.2. D1 turned out to be broader than first described: the shared client also silently auto-refreshed (and so rotated) the last signed-in user's token. Still open: **D7** (SCRUM-50 `communication_preferences` column, left to the story owner) and the leaked-password-protection dashboard toggle.
 

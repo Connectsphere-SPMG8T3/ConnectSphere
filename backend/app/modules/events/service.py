@@ -49,6 +49,7 @@ from app.modules.events.schemas import (
     EventHistoryEntry,
     EventHistoryResponse,
     EventPlanningContext,
+    SpaceRequirements,
     EventResponse,
     EventSpaceVenueBooking,
     EventSpaceRequest,
@@ -146,6 +147,23 @@ def planning_context_by_id(event_ids: Iterable[str]) -> dict[str, EventPlanningC
             accessibility_needs=row.get("accessibility_needs"),
         )
         for row in repository.list_planning_context(event_ids)
+    }
+
+
+def space_requirements_by_id(space_ids: Iterable[str]) -> dict[str, SpaceRequirements]:
+    """`{space_id: SpaceRequirements}` for the ids given — the events module's
+    answer to "what does this requested space need?" for a module that only
+    holds an `event_space_request_id` (CR-94: `venues.service` judges a venue
+    edit on each booked space's own requirements). No ownership check, for the
+    same reason as `names_by_id`.
+    """
+    return {
+        row["id"]: SpaceRequirements(
+            expected_pax=row.get("expected_pax"),
+            layout_preference=row.get("layout_preference"),
+            facilities_required=row.get("facilities_required"),
+        )
+        for row in repository.list_spaces_by_ids(space_ids)
     }
 
 

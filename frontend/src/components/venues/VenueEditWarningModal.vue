@@ -9,6 +9,14 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["confirm", "cancel"]);
+
+// CR-94: Unsuitable (capacity or a required facility) vs warning-only.
+// Static class names: Tailwind's scanner can't see built strings.
+const OUTCOMES = {
+  unsuitable: { label: "Unsuitable", badge: "bg-bauhaus-red text-canvas", card: "bg-bauhaus-red/10" },
+  warning: { label: "Warning", badge: "bg-bauhaus-yellow text-ink", card: "bg-bauhaus-yellow/30" },
+};
+const outcomeOf = (warning) => OUTCOMES[warning.outcome] || OUTCOMES.warning;
 </script>
 
 <template>
@@ -36,9 +44,18 @@ const emit = defineEmits(["confirm", "cancel"]);
           <li
             v-for="warning in props.warnings"
             :key="warning.booking_id"
-            class="border-2 border-ink bg-bauhaus-yellow/30 p-3"
+            data-testid="affected-booking"
+            :class="['border-2 border-ink p-3', outcomeOf(warning).card]"
           >
-            <p class="text-sm font-bold uppercase tracking-wide">{{ warning.event_name || `Event ${warning.event_id.slice(0, 8)}` }}</p>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="text-sm font-bold uppercase tracking-wide">{{ warning.event_name || `Event ${warning.event_id.slice(0, 8)}` }}</p>
+              <span
+                data-testid="outcome-badge"
+                :class="['border-2 border-ink px-2 py-0.5 text-xs font-black uppercase tracking-widest', outcomeOf(warning).badge]"
+              >
+                {{ outcomeOf(warning).label }}
+              </span>
+            </div>
             <ul class="mt-1 list-inside list-disc text-sm font-medium">
               <li v-for="(reason, index) in warning.reasons" :key="index">{{ reason }}</li>
             </ul>
