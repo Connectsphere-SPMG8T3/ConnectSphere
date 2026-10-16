@@ -232,6 +232,15 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(spaceCards(el).map(findVenue)).toEqual([false, true, true]);
   });
 
+  it("CR-97 AC9 badges the primary space only", async () => {
+    const el = await mountView(eventResponse({
+      status: "planning", spaces: [TWO_SPACES[0], { ...TWO_SPACES[1], is_primary: true }],
+    }));
+    const badged = (card) => card.querySelector('[data-testid="primary-badge"]') !== null;
+    expect(spaceCards(el).map(badged)).toEqual([false, true]);
+    expect(spaceCards(el)[1].querySelector('[data-testid="primary-badge"]').textContent.trim()).toBe("Primary venue");
+  });
+
   it("does not offer space venue search before planning", async () => {
     const el = await mountView(eventResponse({
       status: "under_review",
