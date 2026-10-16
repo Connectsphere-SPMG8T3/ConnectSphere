@@ -52,3 +52,12 @@ def test_the_assigned_coordinator_makes_a_space_primary(client, auth_headers, au
     assert response.status_code == 200
     assert primaries(response) == ["Breakout room"]
     assert state["calls"] == [(EVENT_ID, BREAKOUT, COORDINATOR_ID)]
+
+
+def test_the_assigned_coordinator_clears_the_primary_space(client, auth_headers, authenticate_as, state):
+    state["event"]["spaces"][0]["is_primary"] = True
+    authenticate_as("event_coordinator", COORDINATOR_ID)
+    response = client.delete(f"/api/v1/events/{EVENT_ID}/spaces/primary", headers=auth_headers)
+    assert response.status_code == 200
+    assert primaries(response) == []
+    assert state["calls"] == [(EVENT_ID, None, COORDINATOR_ID)]
