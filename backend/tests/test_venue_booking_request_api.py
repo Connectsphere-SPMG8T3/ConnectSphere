@@ -18,6 +18,8 @@ from app.modules.events import repository as events_repository
 from app.modules.events import service as events_service
 from app.modules.venues import repository as venues_repository
 from app.modules.venues import service as venues_service
+from app.modules.venues.schemas import LayoutOption
+from tests.test_venues_api import make_venue_profile
 
 COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
 OTHER_COORDINATOR_ID = "a0000000-0000-4000-8000-000000000009"
@@ -96,6 +98,28 @@ class TestRequest:
         assert response.status_code == 201
         assert response.json()["event_space_request_id"] == SPACE_ID
         assert calls[0][0] == SPACE_ID
+
+    # CR-97 AC10 / BR-R16: the database refuses a venue too small for the space
+    # (event_space_checks.sql); the API says how far short it falls.
+    @pytest.mark.parametrize("layout,seats", [("classroom", 60), ("theatre", 80)])
+    def test_a_venue_too_small_for_the_space_is_refused_with_its_capacity(
+        self, client, auth_headers, authenticate_as, booking, monkeypatch, layout, seats
+    ):
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+        space = {"id": SPACE_ID, "event_id": EVENT_ID, "label": "Breakout room",
+                 "expected_pax": 90, "layout_preference": layout}
+        monkeypatch.setattr(events_service, "assigned_space",
+                            lambda space_id, coordinator_id: (deepcopy(booking["event"]), space))
+        monkeypatch.setattr(venues_repository, "request_booking_for_space",
+                            lambda *args, **kwargs: {"outcome": "over_capacity", "booking_id": None})
+        monkeypatch.setattr(venues_repository, "get_venue", lambda venue_id: make_venue_profile(
+            VENUE_ID, "Innovation Lab", capacity=80,
+            layouts=[LayoutOption(layout="classroom", capacity_for_layout=60)]))
+
+        response = post_for_space(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == f"Innovation Lab seats {seats}; this space needs 90."
 
     def test_the_assigned_coordinator_holds_a_venue_and_venue_staff_are_told(
         self, client, auth_headers, authenticate_as, booking
