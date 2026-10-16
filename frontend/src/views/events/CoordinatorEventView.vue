@@ -42,6 +42,11 @@ const eventSpaces = computed(() => event.value?.spaces ?? []);
 // CR-97 AC5: each space's own booking, as the Venue panel reads it.
 const spacePanels = computed(() => Object.fromEntries(eventSpaces.value.map((space) => [space.id, venuePanelState(event.value, space)])));
 
+function canFindVenue(space) {
+  const panel = spacePanels.value[space.id];
+  return panel.kind === "can-request" || (panel.kind === "expired" && panel.canRequest);
+}
+
 function displayDateTime(value, timeZone) {
   if (!value) return "Not provided";
   return new Intl.DateTimeFormat("en-SG", { dateStyle: "full", timeStyle: "short", timeZone }).format(new Date(value));
@@ -219,7 +224,7 @@ watch(
                     <p class="mt-1 text-sm font-medium">{{ spaceSchedule(space) }}</p>
                   </div>
                   <RouterLink
-                    v-if="spacePanels[space.id].kind === 'can-request' || (spacePanels[space.id].kind === 'expired' && spacePanels[space.id].canRequest)"
+                    v-if="canFindVenue(space)"
                     :to="{ name: 'venue-search', query: { event: event.id, space: space.id } }"
                     class="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard"
                   >
