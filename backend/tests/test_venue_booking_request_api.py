@@ -132,8 +132,6 @@ class TestRequest:
             {"id": "f0000000-0000-4000-8000-000000000002", "event_id": EVENT_ID, "label": "Breakout room",
              "expected_pax": 10, "layout_preference": None},
         ]
-        monkeypatch.setattr(events_repository, "get_space",
-                            lambda space_id: next((dict(s) for s in booking["event"]["spaces"] if s["id"] == space_id), None))
         space_calls = []
 
         def request_booking_for_space(space_id, venue_id, actor_id, note, *, notify_message):

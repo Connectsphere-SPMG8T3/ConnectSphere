@@ -311,29 +311,22 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
     locks, so two coordinators racing for one slot can't both win (QA2-23).
     """
     venue_id = str(body.venue_id)
-    space_id = str(body.event_space_request_id) if body.event_space_request_id else None
+    if body.event_space_request_id:
+        event, space = events_service.assigned_space(str(body.event_space_request_id), coordinator_id)
+    else:
+        event = events_service.assigned_event(str(body.event_id), coordinator_id)
+        # CR-97: an event-only request books the event's first space.
+        space = event["spaces"][0] if event.get("spaces") else None
+    event_id = event["id"]
+    space_id = space["id"] if space else None
+    notify_message = f'A venue booking was requested for "{event["name"]}".'
     if space_id:
-        event, space = events_service.assigned_space(space_id, coordinator_id)
-        event_id = event["id"]
         result = repository.request_booking_for_space(
-            space_id, venue_id, coordinator_id, body.note,
-            notify_message=f'A venue booking was requested for "{event["name"]}".',
+            space_id, venue_id, coordinator_id, body.note, notify_message=notify_message,
         )
     else:
-        event_id = str(body.event_id)
-        event = events_service.assigned_event(event_id, coordinator_id)
-    if not space_id and event.get("spaces"):
-        # CR-97: an event-only request books the event's first space.
-        space = event["spaces"][0]
-        space_id = space["id"]
-        result = repository.request_booking_for_space(
-            space_id, venue_id, coordinator_id, body.note,
-            notify_message=f'A venue booking was requested for "{event["name"]}".',
-        )
-    elif not space_id:
         result = repository.request_booking(
-            event_id, venue_id, coordinator_id, body.note,
-            notify_message=f'A venue booking was requested for "{event["name"]}".',
+            event_id, venue_id, coordinator_id, body.note, notify_message=notify_message,
         )
     outcome = result["outcome"]
     if outcome == "over_capacity":
