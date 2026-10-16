@@ -98,7 +98,7 @@ DB_SCRIPTS = [
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
     ("hold_expiry_checks.sql", "TC-HOLD-001–003 (database half: bounds, job, notices, approval race)"),
-    ("event_space_checks.sql", "TC-SPACE-003, 005, 009; TC-HOLD-009 (overdue space holds)"),
+    ("event_space_checks.sql", "TC-SPACE-003, 005, 009; TC-HOLD-009 (overdue space holds); TC-BOOK-031–033 (CR-97 database half)"),
     ("equipment_request_checks.sql", "TC-EQR-002, 003, 006, 007, 008, 009 (database half)"),
     ("venue_edit_checks.sql", "TC-VENUE-058, 059, 061 (database half)"),
     ("venue_booking_reject_checks.sql", "TC-BOOK-023"),
@@ -1046,6 +1046,108 @@ def _(ctx: Context) -> None:
     expect(seen.json().get("rejected_bookings") == [] and "Under repair" not in seen.text,
            "the organiser's event read shows the rejection")
     expect_status(ctx.client.get(f"{ctx.api}{BOOKINGS}/{booking_id}", headers=organiser.headers), 403)
+
+
+# --- Several venues per event (CR-97) --------------------------------------
+
+def throwaway_space(event_id: str, label: str, *, pax: int | None = None, layout: str | None = None,
+                    starts: str | None = None, ends: str | None = None) -> str:
+    """A space on a throwaway event; it goes when the event is deleted (cascade)."""
+    def literal(value):
+        return "null" if value is None else f"'{value}'"
+    rows = db_query(
+        "insert into public.event_space_requests (event_id, label, expected_pax, layout_preference, starts_at, ends_at) "
+        f"values ('{event_id}', '{label}', {'null' if pax is None else pax}, {literal(layout)}, "
+        f"{literal(starts)}, {literal(ends)}) returning id"
+    )
+    return rows[0]["id"]
+
+
+def request_space(ctx: Context, session: Session, space_id: str, venue_id: str):
+    return ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=session.headers,
+                           json={"event_space_request_id": space_id, "venue_id": venue_id})
+
+
+@check("TC-BOOK-027", "A venue too small for the space's layout is refused with its capacity", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "027", "2031-06-10 09:00+08", "2031-06-10 12:00+08")
+    space_id = throwaway_space(event_id, "Workshop", pax=61, layout="classroom")
+
+    response = request_space(ctx, ctx.shared("event_coordinator"), space_id, INNOVATION_LAB)
+    expect_status(response, 409)
+    expect_detail(response, "Innovation Lab seats 60; this space needs 61.")
+    expect(not db_query(f"select 1 from public.venue_bookings where event_id = '{event_id}'"),
+           "a refused request left a booking behind")
+
+
+@check("TC-BOOK-028", "Two spaces hold two venues; the event lists both and readiness names each space",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "028", "2031-06-11 09:00+08", "2031-06-11 13:00+08")
+    main = throwaway_space(event_id, "Main hall", pax=50)
+    breakout = throwaway_space(event_id, "Breakout room", pax=20,
+                               starts="2031-06-11 10:00+08", ends="2031-06-11 11:00+08")
+    coordinator = ctx.shared("event_coordinator")
+
+    expect_status(request_space(ctx, coordinator, main, INNOVATION_LAB), 201)
+    refused = request_space(ctx, coordinator, breakout, INNOVATION_LAB)  # AC3: same venue, overlapping
+    expect_status(refused, 409)
+    expect_detail(refused, "Venue already held for this time by another event.")
+    expect_status(request_space(ctx, coordinator, breakout, HERITAGE_HALL), 201)
+
+    event = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=coordinator.headers).json()
+    booked = sorted((b["event_space_request_id"], b["venue_id"], b["status"]) for b in event.get("venue_bookings", []))
+    expect(booked == sorted([(main, INNOVATION_LAB, "held"), (breakout, HERITAGE_HALL, "held")]),
+           f"event lists {event.get('venue_bookings')}")
+    expect(event["safety_readiness"]["missing"] == [
+        "Main hall: awaiting venue staff approval.", "Breakout room: awaiting venue staff approval.",
+    ], f"readiness reads {event['safety_readiness']}")
+
+
+@check("TC-BOOK-029", "The assigned coordinator sets, swaps and clears the primary venue; others can't",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "029", "2031-06-12 09:00+08", "2031-06-12 12:00+08")
+    main = throwaway_space(event_id, "Main hall")
+    breakout = throwaway_space(event_id, "Breakout room")
+    coordinator = ctx.shared("event_coordinator")
+    url = f"{ctx.api}/events/{event_id}/spaces"
+
+    def primaries(response):
+        expect_status(response, 200)
+        return [s["id"] for s in response.json()["spaces"] if s["is_primary"]]
+
+    expect(primaries(ctx.client.get(f"{ctx.api}/events/{event_id}", headers=coordinator.headers)) == [],
+           "a two-space event starts with a primary")
+    expect(primaries(ctx.client.put(f"{url}/{main}/primary", headers=coordinator.headers)) == [main], "set failed")
+    expect(primaries(ctx.client.put(f"{url}/{breakout}/primary", headers=coordinator.headers)) == [breakout],
+           "swap failed")
+    expect(primaries(ctx.client.delete(f"{url}/primary", headers=coordinator.headers)) == [], "clear failed")
+
+    for role in ("event_organiser", "venue_staff", "tech_support", "attendee"):
+        expect_status(ctx.client.put(f"{url}/{main}/primary", headers=ctx.shared(role).headers), 403)
+    session = ctx.login("event_coordinator")  # SCRUM-76: holds venue_staff too
+    expect_status(ctx.client.post(f"{ctx.api}/auth/active-role", json={"role": "venue_staff"},
+                                  headers=session.headers), 200)
+    expect_status(ctx.client.put(f"{url}/{main}/primary", headers=session.headers), 403)
+    expect(not db_query(f"select 1 from public.event_space_requests where event_id = '{event_id}' and is_primary"),
+           "a refused call set a primary")
+
+    db_query(f"update public.events set status = 'safety_review' where id = '{event_id}'")
+    refused = ctx.client.put(f"{url}/{main}/primary", headers=coordinator.headers)
+    expect_status(refused, 409)
+    expect_detail(refused, "The primary venue can only be changed while the event is in planning.")
+
+
+@check("TC-BOOK-030", "An event-only request books the event's first space", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "030", "2031-06-13 09:00+08", "2031-06-13 12:00+08")
+    first = throwaway_space(event_id, "Main hall", pax=40)
+    throwaway_space(event_id, "Breakout room", pax=10)
+
+    response = request_venue(ctx, ctx.shared("event_coordinator"), event_id, HERITAGE_HALL)
+    expect_status(response, 201)
+    expect(response.json()["event_space_request_id"] == first, f"booked {response.json()}")
 
 
 # --- Equipment requests (SCRUM-45) ----------------------------------------
