@@ -2072,6 +2072,6 @@ AC1–AC4, AC7 and AC8 were already delivered by CR-98; CR-97 pins them with SQL
 - Backend: **1,200 passed**, 96% line coverage (92% gate). Frontend: **871 passed**, 95.92% lines (94% gate); build passes.
 - Uncovered new lines are thin adapters outside the agreed test seams: `events/repository.set_primary_space`, `eventsApi.setPrimarySpace`/`clearPrimarySpace`, and the changed select in `venues/repository.list_booking_statuses`. The live checks exercise all of them.
 - Live: [API/DB run](test-cases/runs/2026-10-16-1910-api-db-6eee8f4.md) **100/100**; [e2e run](test-cases/runs/2026-10-16-1916-e2e-6eee8f4.md) **63/63**. The earlier [98/100 run](test-cases/runs/2026-10-16-1904-api-db-10a6c32.md) records the readiness-wording failures before their fix. Advisors after the push: unchanged (10 warnings, none new).
-- Manual pass ([run](test-cases/runs/2026-10-16-1949-manual-9c4b74f.md)): **Make primary** passes on a real multi-space event; the three display bugs above were found and fixed. Layout at 375 px, the over-capacity and readiness wording, and the toasts are not yet checked.
+- Manual pass ([run](test-cases/runs/2026-10-16-1949-manual-9c4b74f.md)): TC-BOOK-035–036 **pass** on a real multi-space event, after the three display bugs above were found and fixed.
 - TC-BOOK-021 twice failed with `fetch failed … ECONNRESET` in the e2e sign-in fixture when only the booking specs ran; it passed in the full recorded run (DEFECTS D34).
 - Follow-up: the coordinator dashboard's aggregate `_venue_readiness` is still per event, not per space (DEFECTS D33).
