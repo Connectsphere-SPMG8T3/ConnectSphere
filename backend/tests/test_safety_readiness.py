@@ -1,7 +1,7 @@
 """SCRUM-82: which events are ready for the Operational Safety Check. Pure rules, no I/O."""
 import pytest
 from app.modules.events.readiness import safety_readiness
-from app.modules.events.schemas import BookingReadiness as B, ReadinessState as T
+from app.modules.events.schemas import BookingReadiness as B, ReadinessState as T, SpaceReadiness as S
 
 NO_BOOKING = "No venue booking is approved."
 HELD = "A venue booking is awaiting venue staff approval."
@@ -59,3 +59,41 @@ def test_every_missing_item_is_listed_in_order():
 
 def test_conflict_and_duplicate_status_reasons_are_reported_once():
     assert safety_readiness([B(status="held", flags=["conflict"]), B(status="held", flags=["conflict"])], T.ready).missing == [HELD, "A venue booking is flagged Conflict."]
+
+
+# CR-97 AC10: an event with event spaces needs every space's own booking approved,
+# and the readiness list names the space that is holding it back.
+def test_an_event_space_without_a_booking_is_named():
+    spaces = [S(label="Main hall", bookings=[B(status="approved")]), S(label="Breakout room")]
+    assert safety_readiness([B(status="approved")], T.ready, spaces).missing == [
+        "Breakout room: no approved venue booking.",
+    ]
+
+def test_an_event_space_whose_booking_is_held_is_named():
+    spaces = [S(label="Main hall", bookings=[B(status="approved")]), S(label="Breakout room", bookings=[B(status="held")])]
+    bookings = [booking for space in spaces for booking in space.bookings]
+    assert safety_readiness(bookings, T.ready, spaces).missing == ["Breakout room: awaiting venue staff approval."]
+
+def test_an_event_space_whose_booking_is_under_re_review_is_named():
+    spaces = [S(label="Main hall", bookings=[B(status="re_review")]), S(label="Breakout room", bookings=[B(status="approved")])]
+    bookings = [booking for space in spaces for booking in space.bookings]
+    assert safety_readiness(bookings, T.ready, spaces).missing == ["Main hall: under re-review."]
+
+def test_a_flagged_event_space_booking_is_named_with_its_flag():
+    spaces = [S(label="Main hall", bookings=[B(status="approved", flags=["unsuitable", "affected"])]), S(label="Breakout room", bookings=[B(status="approved")])]
+    bookings = [booking for space in spaces for booking in space.bookings]
+    assert safety_readiness(bookings, T.ready, spaces).missing == [
+        "Main hall: flagged Affected.",
+        "Main hall: flagged Unsuitable.",
+    ]
+
+def test_every_event_space_approved_is_ready():
+    spaces = [S(label="Main hall", bookings=[B(status="approved")]), S(label="Breakout room", bookings=[B(status="rejected"), B(status="approved")])]
+    bookings = [booking for space in spaces for booking in space.bookings]
+    assert safety_readiness(bookings, T.ready, spaces).ready is True
+
+@pytest.mark.parametrize("closed", ["rejected", "cancelled", "released", "expired"])
+def test_an_event_space_with_only_a_closed_booking_has_none(closed):  # CR-97 AC4
+    spaces = [S(label="Main hall", bookings=[B(status="approved")]), S(label="Breakout room", bookings=[B(status=closed, flags=["affected"])])]
+    bookings = [booking for space in spaces for booking in space.bookings]
+    assert safety_readiness(bookings, T.issue, spaces).missing == ["Breakout room: no approved venue booking.", TECH]

@@ -255,6 +255,12 @@ class BookingReadiness(BaseModel):
     flags: list[str] = []
 
 
+class SpaceReadiness(BaseModel):
+    """One event space and the bookings made for it (CR-97 AC10)."""
+    label: str
+    bookings: list[BookingReadiness] = []
+
+
 class SafetyReadiness(BaseModel):
     ready: bool
     missing: list[str]
