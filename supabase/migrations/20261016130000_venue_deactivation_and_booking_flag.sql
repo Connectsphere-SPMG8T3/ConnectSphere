@@ -18,6 +18,11 @@
 -- request_venue_booking and safety_approve_event are recreated from their live
 -- definitions (the former includes CR-99's expiry call), changed only where
 -- marked SCRUM-64.
+--
+-- Version: first applied to the live project on 2026-10-12 as 20261012130000,
+-- which CR-99's prune migration also used (DEFECTS D26). Renumbered here; the
+-- live project records it with `supabase migration repair --status applied
+-- 20261016130000` rather than running it again, since every object exists.
 -- =============================================================================
 
 create type public.venue_inactive_reason as enum ('permanently_closed', 'long_term_renovation', 'other');
