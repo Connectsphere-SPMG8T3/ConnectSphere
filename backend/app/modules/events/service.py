@@ -276,7 +276,15 @@ def _safety_readiness_for(row: dict) -> SafetyReadiness:
 
 def set_primary_space(event_id: str, space_id: str | None, coordinator_id: str) -> EventResponse:
     """CR-97 AC9: the assigned coordinator marks one event space as the primary venue."""
-    repository.set_primary_space(event_id, space_id, coordinator_id)
+    outcome = repository.set_primary_space(event_id, space_id, coordinator_id)
+    if outcome == "not_planning":
+        raise EventConflictError("The primary venue can only be changed while the event is in planning.")
+    if outcome == "space_not_found":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event space not found.")
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "event_not_found":
+        raise EventNotFoundError()
     return read(event_id, coordinator_id, "event_coordinator")
 
 

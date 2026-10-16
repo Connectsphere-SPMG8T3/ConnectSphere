@@ -67,7 +67,7 @@ def test_the_assigned_coordinator_clears_the_primary_space(client, auth_headers,
 # the event is with the Safety Officer its arrangements are frozen.
 @pytest.mark.parametrize("outcome,code,detail", [
     ("not_planning", 409, "The primary venue can only be changed while the event is in planning."),
-    ("space_not_found", 404, "Event space not found"),
+    ("space_not_found", 404, "Event space not found."),
     ("not_assigned", 403, None),
     ("event_not_found", 404, None),
 ])
