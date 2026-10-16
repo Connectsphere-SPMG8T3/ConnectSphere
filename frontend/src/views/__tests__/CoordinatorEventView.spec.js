@@ -303,6 +303,16 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(el.querySelector('[data-testid="space-count"]').textContent.trim()).toBe(label);
   });
 
+  // A space the booking trigger created ("Main space") has a label only.
+  it("shows only the requirements a space has, and says when it has none", async () => {
+    const el = await mountView(eventResponse({ status: "planning", spaces: [
+      { id: "space-a", label: "Main space", expected_pax: null, layout_preference: null, facilities_required: [] },
+      { id: "space-b", label: "Breakout room", expected_pax: 20, layout_preference: null, facilities_required: [] },
+    ] }));
+    const requirements = spaceCards(el).map((card) => card.querySelector('[data-testid="space-requirements"]').textContent.trim());
+    expect(requirements).toEqual(["Requirements not specified", "20 pax"]);
+  });
+
   it("does not offer space venue search before planning", async () => {
     const el = await mountView(eventResponse({
       status: "under_review",

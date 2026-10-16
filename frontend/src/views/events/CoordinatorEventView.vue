@@ -65,6 +65,12 @@ function spaceSchedule(space) {
   return `${prefix}: ${displayDateTime(startsAt, event.value.event_timezone)} – ${displayDateTime(endsAt, event.value.event_timezone)}`;
 }
 
+// A space the booking trigger created has a label only; show what is set.
+function spaceRequirements(space) {
+  const parts = [space.expected_pax ? `${space.expected_pax} pax` : null, space.layout_preference].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "Requirements not specified";
+}
+
 function displayValue(value) {
   return value || "Not provided";
 }
@@ -249,7 +255,7 @@ watch(
                         data-testid="primary-badge"
                       >Primary venue</span>
                     </div>
-                    <p class="mt-1 text-sm font-medium">{{ space.expected_pax }} pax · {{ space.layout_preference }}</p>
+                    <p class="mt-1 text-sm font-medium" data-testid="space-requirements">{{ spaceRequirements(space) }}</p>
                     <p class="mt-1 text-sm font-medium">{{ spaceSchedule(space) }}</p>
                   </div>
                   <RouterLink
