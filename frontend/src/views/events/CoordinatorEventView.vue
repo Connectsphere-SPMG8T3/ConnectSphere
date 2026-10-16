@@ -87,6 +87,15 @@ async function makePrimary(space) {
   }
 }
 
+async function unsetPrimary(space) {
+  try {
+    await review.clearPrimarySpace();
+    showToast(`${space.label} is no longer the primary venue`);
+  } catch {
+    // review.error is shown in the page's alert.
+  }
+}
+
 async function confirmApprove() {
   isApproveOpen.value = false;
   try {
@@ -259,6 +268,16 @@ watch(
                   @click="makePrimary(space)"
                 >
                   Make primary
+                </BauhausButton>
+                <BauhausButton
+                  v-if="canChoosePrimary && space.is_primary"
+                  class="mt-3"
+                  variant="outline"
+                  :aria-label="`Unset ${space.label} as the primary venue`"
+                  :disabled="review.isActing"
+                  @click="unsetPrimary(space)"
+                >
+                  Unset primary
                 </BauhausButton>
                 <p class="mt-2 text-xs font-bold uppercase tracking-wide text-ink/70">{{ space.facilities_required?.length ? space.facilities_required.join(", ") : "No facilities specified" }}</p>
                 <div v-if="spacePanels[space.id].booking" class="mt-3 flex flex-wrap items-center gap-3" data-testid="space-booking">
