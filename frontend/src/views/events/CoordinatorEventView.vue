@@ -219,7 +219,14 @@ watch(
               <article v-for="space in eventSpaces" :key="space.id" class="border-2 border-ink bg-canvas p-4">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h4 class="text-lg font-black uppercase tracking-tight">{{ space.label }}</h4>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <h4 class="text-lg font-black uppercase tracking-tight">{{ space.label }}</h4>
+                      <span
+                        v-if="space.is_primary"
+                        class="border-2 border-ink bg-bauhaus-red px-2 py-0.5 text-xs font-black uppercase tracking-widest text-canvas"
+                        data-testid="primary-badge"
+                      >Primary venue</span>
+                    </div>
                     <p class="mt-1 text-sm font-medium">{{ space.expected_pax }} pax · {{ space.layout_preference }}</p>
                     <p class="mt-1 text-sm font-medium">{{ spaceSchedule(space) }}</p>
                   </div>
