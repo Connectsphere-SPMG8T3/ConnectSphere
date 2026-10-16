@@ -19,6 +19,9 @@ def list_event_spaces(event_id: str) -> list[dict]:
         .table("event_space_requests")
         .select(_SPACE_COLUMNS)
         .eq("event_id", event_id)
+        # First space first, the same order populate_booking_space_request uses.
+        .order("created_at")
+        .order("id")
         .execute()
     )
     return response.data or []
