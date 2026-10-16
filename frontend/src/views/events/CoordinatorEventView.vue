@@ -78,19 +78,15 @@ async function confirmSafety() {
 // CR-97 AC9: which space is the primary venue, while the event is in planning.
 const canChoosePrimary = computed(() => event.value?.status === "planning" && eventSpaces.value.length > 1);
 
-async function makePrimary(space) {
+async function togglePrimary(space) {
   try {
-    await review.setPrimarySpace(space.id);
-    showToast(`${space.label} is now the primary venue`);
-  } catch {
-    // review.error is shown in the page's alert.
-  }
-}
-
-async function unsetPrimary(space) {
-  try {
-    await review.clearPrimarySpace();
-    showToast(`${space.label} is no longer the primary venue`);
+    if (space.is_primary) {
+      await review.clearPrimarySpace();
+      showToast(`${space.label} is no longer the primary venue`);
+    } else {
+      await review.setPrimarySpace(space.id);
+      showToast(`${space.label} is now the primary venue`);
+    }
   } catch {
     // review.error is shown in the page's alert.
   }
@@ -260,24 +256,14 @@ watch(
                   </RouterLink>
                 </div>
                 <BauhausButton
-                  v-if="canChoosePrimary && !space.is_primary"
+                  v-if="canChoosePrimary"
                   class="mt-3"
                   variant="outline"
-                  :aria-label="`Make ${space.label} the primary venue`"
+                  :aria-label="space.is_primary ? `Unset ${space.label} as the primary venue` : `Make ${space.label} the primary venue`"
                   :disabled="review.isActing"
-                  @click="makePrimary(space)"
+                  @click="togglePrimary(space)"
                 >
-                  Make primary
-                </BauhausButton>
-                <BauhausButton
-                  v-if="canChoosePrimary && space.is_primary"
-                  class="mt-3"
-                  variant="outline"
-                  :aria-label="`Unset ${space.label} as the primary venue`"
-                  :disabled="review.isActing"
-                  @click="unsetPrimary(space)"
-                >
-                  Unset primary
+                  {{ space.is_primary ? "Unset primary" : "Make primary" }}
                 </BauhausButton>
                 <p class="mt-2 text-xs font-bold uppercase tracking-wide text-ink/70">{{ space.facilities_required?.length ? space.facilities_required.join(", ") : "No facilities specified" }}</p>
                 <div v-if="spacePanels[space.id].booking" class="mt-3 flex flex-wrap items-center gap-3" data-testid="space-booking">
