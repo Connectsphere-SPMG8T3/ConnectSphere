@@ -251,6 +251,14 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(eventsApi.setPrimarySpace).toHaveBeenCalledWith("event-1", "space-b", "access");
   });
 
+  it("CR-97 AC9 unsets the primary venue", async () => {
+    const el = await mountView(eventResponse({ status: "planning", spaces: [{ ...TWO_SPACES[0], is_primary: true }, TWO_SPACES[1]] }));
+    eventsApi.clearPrimarySpace.mockResolvedValue(eventResponse({ status: "planning", spaces: TWO_SPACES }));
+    spaceCards(el)[0].querySelector('button[aria-label="Unset Main hall as the primary venue"]').click();
+    await vi.waitFor(() => expect(el.querySelector('[data-testid="primary-badge"]')).toBeNull());
+    expect(eventsApi.clearPrimarySpace).toHaveBeenCalledWith("event-1", "access");
+  });
+
   it("does not offer space venue search before planning", async () => {
     const el = await mountView(eventResponse({
       status: "under_review",
