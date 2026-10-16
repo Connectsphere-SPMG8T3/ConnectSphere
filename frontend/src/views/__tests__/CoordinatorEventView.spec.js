@@ -285,6 +285,19 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
       .toContain("A venue can be requested once the request is approved for planning.");
   });
 
+  it("CR-97 keeps CR-99 AC7's expired-hold explanation on the space card", async () => {
+    const el = await mountView(eventResponse({
+      status: "planning", spaces: TWO_SPACES,
+      venue_bookings: [{ id: "b2", event_space_request_id: "space-b", venue_id: "v2", venue_name: "Heritage Hall",
+        status: "expired", expires_at: "2031-06-01T04:00:00Z" }],
+    }));
+    const breakout = spaceCards(el)[1];
+    expect(breakout.querySelector('[data-testid="hold-expired"]').textContent).toContain(
+      "The hold expired on 1 Jun 2031, 12:00 before venue staff approved it.",
+    );
+    expect(breakout.textContent).toContain("You can request this venue again if it's still free, or find another.");
+  });
+
   it("does not offer space venue search before planning", async () => {
     const el = await mountView(eventResponse({
       status: "under_review",
