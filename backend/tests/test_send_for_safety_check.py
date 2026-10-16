@@ -104,3 +104,22 @@ def test_coordinator_read_shows_missing_and_other_reads_do_not_query_bookings(cl
     state["event"]["status"] = "planning"
     authenticate_as("event_organiser", ORGANISER_ID)
     assert client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers).json()["safety_readiness"] is None
+
+
+def _space(space_id, label):
+    return {"id": space_id, "event_id": EVENT_ID, "label": label, "expected_pax": None, "layout_preference": None,
+            "facilities_required": [], "starts_at": None, "ends_at": None, "version": 1}
+
+
+# CR-97 AC10: every event space needs its own approved booking.
+def test_an_event_space_without_an_approved_booking_blocks_and_is_named(client, auth_headers, authenticate_as, state, monkeypatch):
+    state["event"]["spaces"] = [_space("s1", "Main hall"), _space("s2", "Breakout room")]
+    monkeypatch.setattr(venues_repository, "list_booking_statuses", lambda ids: [
+        {"event_id": EVENT_ID, "event_space_request_id": "s1", "status": "approved"},
+        {"event_id": EVENT_ID, "event_space_request_id": "s2", "status": "rejected"},
+    ])
+    authenticate_as("event_coordinator", COORDINATOR_ID)
+    response = client.post(URL, headers=auth_headers)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Not ready for safety check: Breakout room: no approved venue booking."
+    assert not state["calls"]
