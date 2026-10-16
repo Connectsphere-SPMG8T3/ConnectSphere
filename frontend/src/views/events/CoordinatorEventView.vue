@@ -235,7 +235,7 @@ watch(
           <section v-if="eventSpaces.length" class="mt-8 border-t-4 border-ink pt-6" data-testid="event-spaces">
             <div class="flex items-center justify-between gap-3">
               <h3 class="text-xl font-black uppercase tracking-tight">Space requests</h3>
-              <span class="text-xs font-bold uppercase tracking-widest text-ink/70">{{ eventSpaces.length }} spaces</span>
+              <span class="text-xs font-bold uppercase tracking-widest text-ink/70" data-testid="space-count">{{ eventSpaces.length }} {{ eventSpaces.length === 1 ? "space" : "spaces" }}</span>
             </div>
             <div class="mt-4 grid gap-4">
               <article v-for="space in eventSpaces" :key="space.id" class="border-2 border-ink bg-canvas p-4">
