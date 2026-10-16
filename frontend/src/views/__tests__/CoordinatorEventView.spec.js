@@ -279,6 +279,12 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(panel.textContent).not.toContain("Find a venue");
   });
 
+  it("CR-97 still explains why no venue can be requested yet when the event has spaces", async () => {
+    const el = await mountView(eventResponse({ status: "under_review", spaces: TWO_SPACES }));
+    expect(el.querySelector('[data-testid="venue-panel"]').textContent)
+      .toContain("A venue can be requested once the request is approved for planning.");
+  });
+
   it("does not offer space venue search before planning", async () => {
     const el = await mountView(eventResponse({
       status: "under_review",
