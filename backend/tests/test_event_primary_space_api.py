@@ -108,3 +108,17 @@ def test_the_assigned_coordinator_acting_as_another_role_is_forbidden(client, au
     assert client.put(f"/api/v1/events/{EVENT_ID}/spaces/{MAIN}/primary", headers=auth_headers).status_code == 403
     assert client.delete(f"/api/v1/events/{EVENT_ID}/spaces/primary", headers=auth_headers).status_code == 403
     assert state["calls"] == []
+
+
+# Q11: an event's only space is its primary venue without anyone marking it.
+def test_an_events_only_space_reads_as_primary(client, auth_headers, authenticate_as, state):
+    state["event"]["spaces"] = [space(MAIN, "Main hall")]
+    authenticate_as("event_organiser", ORGANISER_ID)
+    response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+    assert response.status_code == 200
+    assert primaries(response) == ["Main hall"]
+
+
+def test_with_several_spaces_none_is_primary_until_one_is_marked(client, auth_headers, authenticate_as, state):
+    authenticate_as("event_organiser", ORGANISER_ID)
+    assert primaries(client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)) == []
