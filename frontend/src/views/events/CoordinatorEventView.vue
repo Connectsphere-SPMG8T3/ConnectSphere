@@ -39,6 +39,8 @@ const venuePanel = computed(() => venuePanelState(event.value));
 // SCRUM-38 AC6, AC7: why venue staff said no, shown above the way to try another venue.
 const rejectedBookings = computed(() => event.value?.rejected_bookings ?? []);
 const eventSpaces = computed(() => event.value?.spaces ?? []);
+// CR-97 AC5: each space's own booking, as the Venue panel reads it.
+const spacePanels = computed(() => Object.fromEntries(eventSpaces.value.map((space) => [space.id, venuePanelState(event.value, space)])));
 
 function displayDateTime(value, timeZone) {
   if (!value) return "Not provided";
@@ -225,6 +227,23 @@ watch(
                   </RouterLink>
                 </div>
                 <p class="mt-2 text-xs font-bold uppercase tracking-wide text-ink/70">{{ space.facilities_required?.length ? space.facilities_required.join(", ") : "No facilities specified" }}</p>
+                <div v-if="spacePanels[space.id].booking" class="mt-3 flex flex-wrap items-center gap-3" data-testid="space-booking">
+                  <RouterLink
+                    :to="{ name: 'venue-detail', params: { id: spacePanels[space.id].booking.venue_id } }"
+                    class="font-black uppercase tracking-tight underline decoration-2 underline-offset-4"
+                  >
+                    {{ spacePanels[space.id].booking.venue_name ?? "Venue" }}
+                  </RouterLink>
+                  <span
+                    class="border-2 border-ink px-2 py-0.5 text-xs font-black uppercase tracking-widest"
+                    :class="spacePanels[space.id].booking.status === 'approved' ? 'bg-bauhaus-blue text-canvas' : 'bg-bauhaus-yellow'"
+                  >
+                    {{ BOOKING_STATUS_LABELS[spacePanels[space.id].booking.status] ?? spacePanels[space.id].booking.status }}
+                  </span>
+                  <span v-if="spacePanels[space.id].booking.status === 'held' && spacePanels[space.id].booking.expires_at" class="text-sm font-bold">
+                    Hold expires {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} unless approved.
+                  </span>
+                </div>
               </article>
             </div>
           </section>
