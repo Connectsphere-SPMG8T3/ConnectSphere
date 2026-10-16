@@ -122,6 +122,11 @@ export const useEventReviewStore = defineStore("eventReview", {
       }
     },
 
+    // CR-97 AC9: the coordinator marks which space is the event's primary venue.
+    async setPrimarySpace(spaceId) {
+      return this.act((token) => eventsApi.setPrimarySpace(this.event.id, spaceId, token));
+    },
+
     async approve() {
       return this.act((token) => eventsApi.approve(this.event.id, token));
     },
