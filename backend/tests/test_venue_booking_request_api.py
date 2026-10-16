@@ -121,6 +121,34 @@ class TestRequest:
         assert response.status_code == 409
         assert response.json()["detail"] == f"Innovation Lab seats {seats}; this space needs 90."
 
+    # CR-97: an event-only request (the pre-CR-98 shape) books the event's first
+    # space, so it gets the same per-space rules as a space request.
+    def test_an_event_only_request_books_the_events_first_space(
+        self, client, auth_headers, authenticate_as, booking, monkeypatch
+    ):
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+        booking["event"]["spaces"] = [
+            {"id": SPACE_ID, "event_id": EVENT_ID, "label": "Main space", "expected_pax": 40, "layout_preference": "classroom"},
+            {"id": "f0000000-0000-4000-8000-000000000002", "event_id": EVENT_ID, "label": "Breakout room",
+             "expected_pax": 10, "layout_preference": None},
+        ]
+        monkeypatch.setattr(events_repository, "get_space",
+                            lambda space_id: next((dict(s) for s in booking["event"]["spaces"] if s["id"] == space_id), None))
+        space_calls = []
+
+        def request_booking_for_space(space_id, venue_id, actor_id, note, *, notify_message):
+            space_calls.append((space_id, venue_id, actor_id, note))
+            return {"outcome": "ok", "booking_id": BOOKING_ID}
+
+        monkeypatch.setattr(venues_repository, "request_booking_for_space", request_booking_for_space)
+
+        response = post(client, auth_headers, note="Main room")
+
+        assert response.status_code == 201
+        assert response.json()["event_space_request_id"] == SPACE_ID
+        assert space_calls == [(SPACE_ID, VENUE_ID, COORDINATOR_ID, "Main room")]
+        assert booking["calls"] == []
+
     def test_the_assigned_coordinator_holds_a_venue_and_venue_staff_are_told(
         self, client, auth_headers, authenticate_as, booking
     ):
