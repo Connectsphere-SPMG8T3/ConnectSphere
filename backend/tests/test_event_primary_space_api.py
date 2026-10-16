@@ -78,3 +78,16 @@ def test_refusals_from_the_database(client, auth_headers, authenticate_as, state
     assert response.status_code == code
     if detail:
         assert response.json()["detail"] == detail
+
+
+# Like every coordinator action: a draft is 404 to every coordinator, a
+# coordinator who isn't assigned is 403, checked before the database is asked.
+@pytest.mark.parametrize("condition,code", [("draft", 404), ("missing", 404), ("unassigned", 403)])
+def test_the_event_relationship_is_checked_before_the_database(client, auth_headers, authenticate_as, state, condition, code):
+    if condition == "draft": state["event"]["status"] = "draft"
+    if condition == "missing": state["event"] = None
+    if condition == "unassigned": state["event"]["coordinator_id"] = "a0000000-0000-4000-8000-000000000009"
+    authenticate_as("event_coordinator", COORDINATOR_ID)
+    assert client.put(f"/api/v1/events/{EVENT_ID}/spaces/{MAIN}/primary", headers=auth_headers).status_code == code
+    assert client.delete(f"/api/v1/events/{EVENT_ID}/spaces/primary", headers=auth_headers).status_code == code
+    assert state["calls"] == []
