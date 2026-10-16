@@ -234,4 +234,51 @@ begin
 end;
 $$;
 
+-- CR-97 AC10 / BR-R16: a space is refused a venue too small for its expected
+-- pax. Capacity is the venue's figure for the space's layout when it has one,
+-- else the venue's overall capacity (the same rule as venue search).
+do $$
+declare
+    v_owner uuid := 'a0000000-0000-4000-8000-000000000001';
+    v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
+    v_venue uuid := 'b0000000-0000-4000-8000-000000000006'; -- 80 seats; classroom 60, reception no layout figure
+    v_case record;
+    v_event_id uuid;
+    v_space_id uuid;
+    v_start timestamptz;
+    v_result record;
+    v_day integer := 0;
+begin
+    for v_case in
+        select * from (values
+            (61, 'classroom'::public.venue_layout, 'over_capacity'),  -- layout figure used, though under 80
+            (60, 'classroom'::public.venue_layout, 'ok'),             -- exactly the layout capacity
+            (81, 'reception'::public.venue_layout, 'over_capacity'),  -- no layout figure: venue capacity
+            (80, null::public.venue_layout, 'ok'),                    -- no layout preference: venue capacity
+            (null, 'classroom'::public.venue_layout, 'ok')            -- no expected pax: not checked
+        ) as t(pax, layout, expected)
+    loop
+        v_day := v_day + 1;
+        v_event_id := gen_random_uuid();
+        v_start := '2091-03-01 02:00+00'::timestamptz + v_day * interval '1 day';
+        insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at)
+        values (v_event_id, v_owner, v_coordinator, 'planning', 'CR-97 capacity check (rolled back)', v_start, v_start + interval '2 hours');
+        insert into public.event_space_requests (event_id, label, expected_pax, layout_preference)
+        values (v_event_id, 'Capacity space', v_case.pax, v_case.layout) returning id into v_space_id;
+
+        select * into v_result from public.request_venue_booking_for_space(
+            v_space_id, v_venue, v_coordinator, null, 'CR-97 capacity check');
+        if v_result.outcome is distinct from v_case.expected then
+            raise exception 'CR-97 CAPACITY FAIL: % pax, layout %: got %, expected %',
+                v_case.pax, v_case.layout, v_result.outcome, v_case.expected;
+        end if;
+        if v_case.expected = 'over_capacity' and exists (
+            select 1 from public.venue_bookings where event_space_request_id = v_space_id
+        ) then
+            raise exception 'CR-97 CAPACITY FAIL: a refused request still created a booking';
+        end if;
+    end loop;
+end;
+$$;
+
 rollback;
