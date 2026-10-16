@@ -61,3 +61,20 @@ def test_the_assigned_coordinator_clears_the_primary_space(client, auth_headers,
     assert response.status_code == 200
     assert primaries(response) == []
     assert state["calls"] == [(EVENT_ID, None, COORDINATOR_ID)]
+
+
+# The database's refusals, as the coordinator reads them. Planning only: once
+# the event is with the Safety Officer its arrangements are frozen.
+@pytest.mark.parametrize("outcome,code,detail", [
+    ("not_planning", 409, "The primary venue can only be changed while the event is in planning."),
+    ("space_not_found", 404, "Event space not found"),
+    ("not_assigned", 403, None),
+    ("event_not_found", 404, None),
+])
+def test_refusals_from_the_database(client, auth_headers, authenticate_as, state, outcome, code, detail):
+    state["outcome"] = outcome
+    authenticate_as("event_coordinator", COORDINATOR_ID)
+    response = client.put(f"/api/v1/events/{EVENT_ID}/spaces/{MAIN}/primary", headers=auth_headers)
+    assert response.status_code == code
+    if detail:
+        assert response.json()["detail"] == detail
