@@ -35,7 +35,8 @@ const statusLabel = computed(() => STATUS_LABELS[event.value?.status] ?? event.v
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
-const venuePanel = computed(() => venuePanelState(event.value));
+// CR-97: with spaces, each space card shows its own booking; the panel keeps rejections only.
+const venuePanel = computed(() => (event.value?.spaces?.length ? { kind: "none" } : venuePanelState(event.value)));
 // SCRUM-38 AC6, AC7: why venue staff said no, shown above the way to try another venue.
 const rejectedBookings = computed(() => event.value?.rejected_bookings ?? []);
 const eventSpaces = computed(() => event.value?.spaces ?? []);
@@ -371,7 +372,7 @@ watch(
               Find a venue
             </BauhausButton>
           </template>
-          <p v-else class="mt-4 text-sm font-medium">{{ venuePanel.reason }}</p>
+          <p v-else-if="venuePanel.reason" class="mt-4 text-sm font-medium">{{ venuePanel.reason }}</p>
         </BauhausCard>
 
         <BauhausCard background="white" accent="none">
