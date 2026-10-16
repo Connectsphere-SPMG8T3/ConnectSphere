@@ -344,6 +344,7 @@ def test_active_bookings_for_event_maps_each_space_booking(monkeypatch):
         "venue_id": VENUE_ID,
         "venue_name": "Innovation Lab",
         "status": "held",
+        "expires_at": None,
     }]
 
     @pytest.mark.parametrize("event_id", [EVENT_ID, "e0000000-0000-4000-8000-0000000000ff"])
@@ -467,6 +468,37 @@ class TestEventShowsItsBooking:
         assert response.json()["venue_booking"]["status"] == "expired"
         assert response.json()["venue_booking"]["expires_at"] == "2026-10-01T04:00:00Z"
         assert response.json()["venue_booking"]["event_space_request_id"] == SPACE_ID
+
+    def test_each_space_shows_its_occupying_booking_or_else_its_latest_expired_hold(
+        self, client, auth_headers, authenticate_as, monkeypatch, booking
+    ):
+        # CR-97 AC5 with CR-99 AC3/AC7: each space card needs its own hold's
+        # expiry, and an expired hold's explanation, on a multi-space event.
+        other, third = "f0000000-0000-4000-8000-000000000002", "f0000000-0000-4000-8000-000000000003"
+
+        def row(booking_id, space_id, status, expires_at):
+            return {"id": booking_id, "event_id": EVENT_ID, "event_space_request_id": space_id, "venue_id": VENUE_ID,
+                    "status": status, "expires_at": expires_at, "venues": {"name": "Innovation Lab"}}
+
+        rows = [  # oldest first, as the query orders them
+            row("b1", SPACE_ID, "held", "2026-11-01T04:00:00+00:00"),
+            row("b2", other, "expired", "2026-10-01T04:00:00+00:00"),
+            row("b3", third, "expired", "2026-10-02T04:00:00+00:00"),
+            row("b4", third, "approved", None),
+            row("b5", SPACE_ID, "expired", "2026-10-03T04:00:00+00:00"),  # an occupying booking still wins
+        ]
+        monkeypatch.setattr(venues_repository, "list_active_bookings", lambda event_id: deepcopy(rows))
+        monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        shown = {(b["event_space_request_id"], b["id"], b["status"], b["expires_at"]) for b in response.json()["venue_bookings"]}
+        assert shown == {
+            (SPACE_ID, "b1", "held", "2026-11-01T04:00:00Z"),
+            (other, "b2", "expired", "2026-10-01T04:00:00Z"),
+            (third, "b4", "approved", None),
+        }
 
     def test_an_expired_space_hold_keeps_its_space_id(self, monkeypatch):
         row = {

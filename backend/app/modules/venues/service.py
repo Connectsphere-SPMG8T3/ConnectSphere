@@ -16,6 +16,7 @@ from app.core.exceptions import (
 from app.modules.events import service as events_service
 from app.modules.events.schemas import EventPlanningContext
 from app.modules.venues import impact, repository, search
+from app.modules.venues.search import OCCUPYING_STATUSES
 from app.modules.venues.schemas import (
     BookingDecision,
     BookingEventRequirements,
@@ -505,6 +506,14 @@ def rejected_bookings_for_event(event_id: str) -> list[dict]:
 
 
 def active_bookings_for_event(event_id: str) -> list[dict]:
+    """Each space's booking for the event page (CR-97 AC5): its occupying booking,
+    or else its latest expired hold so the page can say it ran out (CR-99 AC7)."""
+    shown: dict[str, dict] = {}
+    for row in repository.list_active_bookings(event_id):  # oldest first
+        key = row.get("event_space_request_id") or row["id"]
+        current = shown.get(key)
+        if current is None or current["status"] == "expired" or row["status"] in OCCUPYING_STATUSES:
+            shown[key] = row
     return [
         {
             "id": row["id"],
@@ -513,6 +522,7 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
             "venue_id": row["venue_id"],
             "venue_name": (row.get("venues") or {}).get("name"),
             "status": row["status"],
+            "expires_at": row.get("expires_at"),
         }
-        for row in repository.list_active_bookings(event_id)
+        for row in shown.values()
     ]
