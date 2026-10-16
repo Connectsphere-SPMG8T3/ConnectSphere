@@ -2042,3 +2042,32 @@ Full backend verification: **1,164 tests passed**, **95.85%** application line c
 ### 4.49. Chore - Disambiguate duplicate D26 identifiers
 
 On 2026-10-15, renamed CR-98's trigger-function permissions defect to D32, the next unused identifier. D26 remains CR-95's migration-history defect; D31 remains the overdue space-hold fix. Current defect, implementation-map, test-case and verification-header references use D32. Earlier build-log entries and run records retain D26 as originally recorded; their CR-98 permissions references refer to D32. No deployed migration filename, SQL behavior, test-case ID or recorded result changed.
+
+### 4.50. CR-97 — Book more than one venue for an event
+
+CR-97 (P1, Sprint 3) lets the coordinator book a venue per event space (W7 CR-03, QA3-23 to QA3-27). CR-98 had already built the data model: a booking per space, one active booking per space, each space's own window. CR-97 fills the remaining gaps on `feature/cr-97-multi-venue-booking`. It was built test-first in red → green → refactor slices, each phase committed separately so the history shows the order.
+
+#### What was built
+
+1. **Per-space readiness (AC10).** `readiness.safety_readiness` takes the event's spaces and checks each one's own bookings, naming the space in every blocker ("Breakout room: no approved venue booking."). `venues.service.booking_statuses_by_space` feeds it. The event read, send-for-safety and CR-104's approval check all use it. Events without spaces keep the event-wide wording.
+2. **Capacity at request (AC10, BR-R16).** `request_venue_booking_for_space` refuses `over_capacity` when the space's expected pax exceeds the venue's capacity for the space's layout, or its overall capacity when it records none for that layout (venue search's rule). The API answers 409 "<venue> seats <n>; this space needs <pax>."
+3. **Event-only requests book the first space.** A request naming only the event goes through the space function for the event's first space (`created_at, id`, the trigger's order). It is held to the same rules.
+4. **Primary venue (AC9, BR-R17).** `event_space_requests.is_primary`, at most one per event by a partial unique index. `set_primary_space` locks the spaces, then the event (the space-booking function's order). `PUT /events/{id}/spaces/{space_id}/primary` and `DELETE /events/{id}/spaces/primary` serve the assigned coordinator by active role, in planning only. An event's only space reads as primary.
+5. **Coordinator event page (AC5, AC9).** Each space card shows its booking's venue, status and hold expiry, or why an expired hold ended. **Find venue** appears only where the space can be booked. The **Primary venue** badge and a Make/Unset primary toggle appear in planning when there is more than one space. The Venue panel keeps rejections and the not-yet-requestable reason.
+6. **Migration** `20261016120000_cr97_primary_space_and_capacity.sql`, applied to the live project on 2026-10-16 after its checks passed in a rolled-back transaction.
+
+AC1–AC4, AC7 and AC8 were already delivered by CR-98; CR-97 pins them with SQL checks (TC-BOOK-032) and live checks (TC-BOOK-028). AC6 (each booking's own setup and turnaround) is **not met** here: CR-100 and story 21 deliver it.
+
+#### Found during verification
+
+- Every booked event has a space: `populate_booking_space_request` creates a "Main space" for a space-less event. Moving bookings onto space cards therefore changed what TC-BOOK-008, TC-BOOK-022 and TC-HOLD-005 read, and CR-99 AC7's expired-hold explanation had to move to the space card (red test first). The developer chose this over keeping the old panel.
+- The seeded planning event's held booking is on its backfilled "Main space", so TC-SAFE-002–004 now expect "Main space: awaiting venue staff approval." The first recorded live run (98/100) caught this.
+- A backend on a spare port needs `BACKEND_CORS_ORIGINS` to include the spare frontend origin, or every e2e API call fails with "Unable to reach the server".
+
+#### Verification
+
+- Backend: **1,200 passed**, 96% line coverage (92% gate). Frontend: **871 passed**, 95.92% lines (94% gate); build passes.
+- Uncovered new lines are thin adapters outside the agreed test seams: `events/repository.set_primary_space`, `eventsApi.setPrimarySpace`/`clearPrimarySpace`, and the changed select in `venues/repository.list_booking_statuses`. The live checks exercise all of them.
+- Live: [API/DB run](test-cases/runs/2026-10-16-1910-api-db-6eee8f4.md) **100/100**; [e2e run](test-cases/runs/2026-10-16-1916-e2e-6eee8f4.md) **63/63**. The earlier [98/100 run](test-cases/runs/2026-10-16-1904-api-db-10a6c32.md) records the readiness-wording failures before their fix. Advisors after the push: unchanged (10 warnings, none new).
+- Manual TC-BOOK-035–036 (layout at desktop and 375 px, wording) pending the developer's pass.
+- Follow-up: the coordinator dashboard's aggregate `_venue_readiness` is still per event, not per space (DEFECTS D33).
