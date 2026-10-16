@@ -281,6 +281,17 @@ def booking_statuses_by_event(event_ids: Iterable[str]) -> dict[str, list[str]]:
     return statuses
 
 
+def booking_statuses_by_space(event_id: str) -> dict[str, list[str]]:
+    """`{event_space_request_id: [booking status, ...]}` for one event (CR-97 AC10):
+    whether each of its event spaces has its venue settled. Spaces with no
+    booking are absent."""
+    statuses: dict[str, list[str]] = {}
+    for row in repository.list_booking_statuses([event_id]):
+        if row.get("event_space_request_id"):
+            statuses.setdefault(row["event_space_request_id"], []).append(row["status"])
+    return statuses
+
+
 # What `public.request_venue_booking` refuses with, as the coordinator reads it
 # (REQUIREMENTS §6.12, §6.14, §6.4). Wording of the first and fourth is the spec's.
 BOOKING_REFUSALS = {

@@ -35,6 +35,7 @@ from app.modules.events.schemas import (
     ReturnReason,
     COMMENTABLE_STATUSES,
     BookingReadiness,
+    SpaceReadiness,
     SafetyReadiness,
     AmendmentRequest,
     CoordinatorActionItem,
@@ -260,6 +261,15 @@ def _transition(row: dict, actor_id: str, action: str, *, reason: str | None,
 
 
 def _safety_readiness_for(row: dict) -> SafetyReadiness:
+    # CR-97 AC10: an event with event spaces is ready only when each space's own
+    # booking is; one without any keeps the event-wide rule (Q15).
+    if row.get("spaces"):
+        by_space = venues_service.booking_statuses_by_space(row["id"])
+        spaces = [
+            SpaceReadiness(label=space["label"], bookings=[BookingReadiness(status=s) for s in by_space.get(space["id"], [])])
+            for space in row["spaces"]
+        ]
+        return safety_readiness([], technical_status(row), spaces)
     statuses = venues_service.booking_statuses_by_event([row["id"]]).get(row["id"], [])
     return safety_readiness([BookingReadiness(status=s) for s in statuses], technical_status(row))
 
