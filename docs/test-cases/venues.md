@@ -285,10 +285,10 @@ Venue selection and booking for each proposed space are downstream of CR-98's co
 | AC1 More than one venue booking for one event | TC-BOOK-028, TC-BOOK-032, TC-BOOK-034 |
 | AC2 Each booking checked for conflicts independently | TC-BOOK-028, TC-BOOK-032; SQL checks |
 | AC3 The same venue twice for overlapping times is refused | TC-BOOK-028, TC-BOOK-032 |
-| AC4 Cancelling one booking doesn't affect the others | TC-BOOK-032 (a rejection; cancellation itself is story 85); `pytest` `test_safety_readiness.py::test_an_event_space_with_only_a_closed_booking_has_none` |
+| AC4 Cancelling one booking doesn't affect the others | **Not met yet:** no cancel action exists (story 85). The same independence is verified with a rejected and an expired booking: TC-BOOK-032; `pytest` `test_safety_readiness.py::test_an_event_space_with_only_a_closed_booking_has_none` |
 | AC5 The event page lists every booking and its status | TC-BOOK-028, TC-BOOK-034, TC-BOOK-035; Vitest `CoordinatorEventView.spec.js` (CR-97 cases) |
 | AC6 Each booking's own setup and turnaround | **Not met by CR-97:** delivered by CR-100 and story 21 |
-| AC7 Each booking's own window within the event's schedule | TC-BOOK-028, TC-BOOK-032 (BR-R15; built by CR-98) |
+| AC7 Each booking's own window within the event's schedule | **Partly met:** own window and availability per window, TC-BOOK-028, TC-BOOK-032 (BR-R15; built by CR-98). Suitability (18) and setup/turnaround (CR-100, 21) per window are still to come. |
 | AC8 Venues at different locations | TC-BOOK-028, TC-BOOK-032 |
 | AC9 One venue designated primary | TC-BOOK-029, TC-BOOK-033, TC-BOOK-034, TC-BOOK-035, TC-BOOK-036; `pytest` `test_event_primary_space_api.py`; Vitest `eventReviewStore.spec.js`, `CoordinatorEventView.spec.js` |
 | AC10 Capacity respected and every required booking approved before the safety check | TC-BOOK-027, TC-BOOK-028, TC-BOOK-031, TC-BOOK-036; `pytest` `test_safety_readiness.py`, `test_send_for_safety_check.py`, `test_venue_booking_request_api.py` (over-capacity) |

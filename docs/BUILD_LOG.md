@@ -2056,7 +2056,7 @@ CR-97 (P1, Sprint 3) lets the coordinator book a venue per event space (W7 CR-03
 5. **Coordinator event page (AC5, AC9).** Each space card shows its booking's venue, status and hold expiry, or why an expired hold ended. **Find venue** appears only where the space can be booked. The **Primary venue** badge and a Make/Unset primary toggle appear in planning when there is more than one space. The Venue panel keeps rejections and the not-yet-requestable reason.
 6. **Migration** `20261016120000_cr97_primary_space_and_capacity.sql`, applied to the live project on 2026-10-16 after its checks passed in a rolled-back transaction.
 
-AC1–AC4, AC7 and AC8 were already delivered by CR-98; CR-97 pins them with SQL checks (TC-BOOK-032) and live checks (TC-BOOK-028). AC6 (each booking's own setup and turnaround) is **not met** here: CR-100 and story 21 deliver it.
+AC1–AC3 and AC8 were already delivered by CR-98; CR-97 pins them with SQL checks (TC-BOOK-032) and live checks (TC-BOOK-028). Three ACs are not met: **AC4** needs a cancel action (story 85), though independence is verified with rejected and expired bookings; **AC6** (each booking's own setup and turnaround) needs CR-100 and story 21; **AC7** is partly met, since suitability (18) and setup/turnaround (CR-100, 21) per window don't exist yet.
 
 #### Found during verification
 
