@@ -342,4 +342,78 @@ begin
 end;
 $$;
 
+-- CR-97 AC9 / BR-R17: the assigned coordinator marks at most one event space
+-- as the primary venue, while the event is in planning.
+do $$
+declare
+    v_owner uuid := 'a0000000-0000-4000-8000-000000000001';
+    v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
+    v_other_actor uuid := 'a0000000-0000-4000-8000-000000000003';
+    v_event_id uuid := gen_random_uuid();
+    v_other_event_id uuid := gen_random_uuid();
+    v_main uuid;
+    v_breakout uuid;
+    v_foreign uuid;
+    v_outcome text;
+    v_start timestamptz := '2093-05-01 02:00+00';
+begin
+    insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at)
+    values
+        (v_event_id, v_owner, v_coordinator, 'planning', 'CR-97 primary check (rolled back)', v_start, v_start + interval '2 hours'),
+        (v_other_event_id, v_owner, v_coordinator, 'planning', 'CR-97 primary other (rolled back)', v_start, v_start + interval '2 hours');
+    insert into public.event_space_requests (event_id, label) values (v_event_id, 'Main hall') returning id into v_main;
+    insert into public.event_space_requests (event_id, label) values (v_event_id, 'Breakout room') returning id into v_breakout;
+    insert into public.event_space_requests (event_id, label) values (v_other_event_id, 'Elsewhere') returning id into v_foreign;
+
+    v_outcome := public.set_primary_space(v_event_id, v_main, v_coordinator);
+    if v_outcome is distinct from 'ok'
+       or not (select is_primary from public.event_space_requests where id = v_main) then
+        raise exception 'CR-97 PRIMARY FAIL: set returned % or did not mark the space', v_outcome;
+    end if;
+
+    v_outcome := public.set_primary_space(v_event_id, v_breakout, v_coordinator);
+    if v_outcome is distinct from 'ok'
+       or (select is_primary from public.event_space_requests where id = v_main)
+       or not (select is_primary from public.event_space_requests where id = v_breakout) then
+        raise exception 'CR-97 PRIMARY FAIL: swap did not move the primary';
+    end if;
+
+    begin
+        update public.event_space_requests set is_primary = true where id = v_main;
+        raise exception 'CR-97 PRIMARY FAIL: a second primary space was allowed';
+    exception when unique_violation then
+        null;
+    end;
+
+    v_outcome := public.set_primary_space(v_event_id, null, v_coordinator);
+    if v_outcome is distinct from 'ok'
+       or exists (select 1 from public.event_space_requests where event_id = v_event_id and is_primary) then
+        raise exception 'CR-97 PRIMARY FAIL: unset left a primary space';
+    end if;
+
+    if public.set_primary_space(v_event_id, v_main, v_other_actor) is distinct from 'not_assigned' then
+        raise exception 'CR-97 PRIMARY FAIL: an unassigned actor was not refused';
+    end if;
+    if public.set_primary_space(v_event_id, v_foreign, v_coordinator) is distinct from 'space_not_found' then
+        raise exception 'CR-97 PRIMARY FAIL: another event''s space was not refused';
+    end if;
+    if public.set_primary_space(gen_random_uuid(), v_main, v_coordinator) is distinct from 'event_not_found' then
+        raise exception 'CR-97 PRIMARY FAIL: a missing event was not refused';
+    end if;
+    update public.events set status = 'safety_review' where id = v_event_id;
+    if public.set_primary_space(v_event_id, v_main, v_coordinator) is distinct from 'not_planning' then
+        raise exception 'CR-97 PRIMARY FAIL: a non-planning event was not refused';
+    end if;
+    if exists (select 1 from public.event_space_requests where event_id = v_event_id and is_primary) then
+        raise exception 'CR-97 PRIMARY FAIL: a refused call changed the primary';
+    end if;
+
+    if has_function_privilege('anon', 'public.set_primary_space(uuid,uuid,uuid)', 'EXECUTE')
+       or has_function_privilege('authenticated', 'public.set_primary_space(uuid,uuid,uuid)', 'EXECUTE')
+       or not has_function_privilege('service_role', 'public.set_primary_space(uuid,uuid,uuid)', 'EXECUTE') then
+        raise exception 'CR-97 PRIMARY FAIL: set_primary_space grants are wrong';
+    end if;
+end;
+$$;
+
 rollback;
