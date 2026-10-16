@@ -276,6 +276,7 @@ def _safety_readiness_for(row: dict) -> SafetyReadiness:
 
 def set_primary_space(event_id: str, space_id: str | None, coordinator_id: str) -> EventResponse:
     """CR-97 AC9: the assigned coordinator marks one event space as the primary venue."""
+    _assigned_event(event_id, coordinator_id)
     outcome = repository.set_primary_space(event_id, space_id, coordinator_id)
     if outcome == "not_planning":
         raise EventConflictError("The primary venue can only be changed while the event is in planning.")
