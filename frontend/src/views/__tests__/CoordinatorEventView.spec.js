@@ -9,7 +9,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), listComments: vi.fn(), addComment: vi.fn() },
+  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), listComments: vi.fn(), addComment: vi.fn(), setPrimarySpace: vi.fn(), clearPrimarySpace: vi.fn() },
 }));
 
 function eventResponse(overrides = {}) {
@@ -239,6 +239,16 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     const badged = (card) => card.querySelector('[data-testid="primary-badge"]') !== null;
     expect(spaceCards(el).map(badged)).toEqual([false, true]);
     expect(spaceCards(el)[1].querySelector('[data-testid="primary-badge"]').textContent.trim()).toBe("Primary venue");
+  });
+
+  it("CR-97 AC9 makes a space the primary venue", async () => {
+    const el = await mountView(eventResponse({ status: "planning", spaces: TWO_SPACES }));
+    eventsApi.setPrimarySpace.mockResolvedValue(eventResponse({
+      status: "planning", spaces: [TWO_SPACES[0], { ...TWO_SPACES[1], is_primary: true }],
+    }));
+    spaceCards(el)[1].querySelector('button[aria-label="Make Breakout room the primary venue"]').click();
+    await vi.waitFor(() => expect(spaceCards(el)[1].querySelector('[data-testid="primary-badge"]')).not.toBeNull());
+    expect(eventsApi.setPrimarySpace).toHaveBeenCalledWith("event-1", "space-b", "access");
   });
 
   it("does not offer space venue search before planning", async () => {
