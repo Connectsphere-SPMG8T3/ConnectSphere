@@ -281,4 +281,65 @@ begin
 end;
 $$;
 
+-- CR-97 AC1, AC2, AC3, AC4, AC8: one event books a venue per space, in
+-- different locations; the same venue for two overlapping spaces is refused;
+-- a booking that stops occupying one space leaves the other untouched.
+do $$
+declare
+    v_owner uuid := 'a0000000-0000-4000-8000-000000000001';
+    v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
+    v_lab uuid := 'b0000000-0000-4000-8000-000000000006';      -- Innovation Lab, Jurong East
+    v_heritage uuid := 'b0000000-0000-4000-8000-000000000007'; -- Heritage Hall, Chinatown
+    v_event_id uuid := gen_random_uuid();
+    v_main uuid;
+    v_breakout uuid;
+    v_main_booking uuid;
+    v_breakout_booking uuid;
+    v_start timestamptz := '2092-04-01 02:00+00';
+    v_result record;
+begin
+    insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at)
+    values (v_event_id, v_owner, v_coordinator, 'planning', 'CR-97 multi-venue check (rolled back)', v_start, v_start + interval '4 hours');
+    insert into public.event_space_requests (event_id, label, expected_pax)
+    values (v_event_id, 'Main hall', 50) returning id into v_main;
+    insert into public.event_space_requests (event_id, label, expected_pax, starts_at, ends_at)
+    values (v_event_id, 'Breakout room', 20, v_start + interval '1 hour', v_start + interval '2 hours')
+    returning id into v_breakout;
+
+    select * into v_result from public.request_venue_booking_for_space(v_main, v_lab, v_coordinator, null, 'CR-97 check');
+    if v_result.outcome is distinct from 'ok' then
+        raise exception 'CR-97 MULTI FAIL: first space got %', v_result.outcome;
+    end if;
+    v_main_booking := v_result.booking_id;
+
+    -- AC3: the same venue for an overlapping space of the same event is refused.
+    select * into v_result from public.request_venue_booking_for_space(v_breakout, v_lab, v_coordinator, null, 'CR-97 check');
+    if v_result.outcome is distinct from 'held_by_other' then
+        raise exception 'CR-97 MULTI FAIL: same venue twice returned %, expected held_by_other', v_result.outcome;
+    end if;
+
+    -- AC1, AC2, AC8: a second venue elsewhere, checked on the space's own window.
+    select * into v_result from public.request_venue_booking_for_space(v_breakout, v_heritage, v_coordinator, null, 'CR-97 check');
+    if v_result.outcome is distinct from 'ok' then
+        raise exception 'CR-97 MULTI FAIL: second venue got %', v_result.outcome;
+    end if;
+    v_breakout_booking := v_result.booking_id;
+    if (select occupied_period from public.venue_bookings where id = v_breakout_booking)
+       is distinct from tstzrange(v_start + interval '1 hour', v_start + interval '2 hours', '[)') then
+        raise exception 'CR-97 MULTI FAIL: second booking does not occupy its space''s own window';
+    end if;
+
+    -- AC4: one booking stops occupying; the other space keeps its booking, and
+    -- the freed space can be booked again.
+    update public.venue_bookings set status = 'rejected' where id = v_main_booking;
+    if (select status from public.venue_bookings where id = v_breakout_booking) is distinct from 'held' then
+        raise exception 'CR-97 MULTI FAIL: ending one space''s booking changed another''s';
+    end if;
+    select * into v_result from public.request_venue_booking_for_space(v_main, v_lab, v_coordinator, null, 'CR-97 check');
+    if v_result.outcome is distinct from 'ok' then
+        raise exception 'CR-97 MULTI FAIL: freed space could not be booked again: %', v_result.outcome;
+    end if;
+end;
+$$;
+
 rollback;
