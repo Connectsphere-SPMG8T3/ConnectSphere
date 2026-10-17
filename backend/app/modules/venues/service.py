@@ -690,6 +690,7 @@ def _booking_detail(booking: dict) -> VenueBookingDetail:
         id=booking["id"], status=booking["status"], venue_id=booking["venue_id"],
         venue_name=booking.get("venue_name"), period=booking["period"], request_note=booking.get("request_note"),
         requested_at=booking["requested_at"], requested_by_name=booking.get("requested_by_name"),
+        flag=booking.get("flag"), flag_reason=booking.get("flag_reason"),
         event=BookingEventRequirements(
             id=event_id, name=context.name, status=context.status,
             expected_attendance=context.expected_attendance, layout_preference=context.layout_preference,
@@ -724,6 +725,32 @@ _NOT_HELD_LABELS = {
     "released": "released",
     "re_review": "under re-review",
 }
+
+
+# What `public.restore_affected_booking` refuses with, as venue staff read it (CR-95 AC9).
+RESTORE_REFUSALS = {
+    "not_affected": "This booking isn't waiting on an unavailable venue.",
+    "replacement_approved": "A replacement has already been approved, so the original can't be restored.",
+    "venue_inactive": "This venue is inactive, so the booking can't be restored.",
+    "still_blocked": "The venue is still blocked for part of this booking's time.",
+    "held_by_other": "The venue is taken for part of this booking's time.",
+}
+
+
+def restore_booking(booking_id: str, actor_id: str) -> VenueBookingDetail:
+    """Venue staff confirm an affected booking is restored (CR-95 AC9, QA3-9).
+
+    Whether the venue is free for the booking's full occupied window, and what
+    restoring changes (flag cleared, pending replacement cancelled, history,
+    notices), is the database function's, under a lock on the booking row.
+    Venue staff work as a pool (AUTH-R5), so any of them may restore any booking.
+    """
+    outcome = repository.restore_affected_booking(booking_id, actor_id)["outcome"]
+    if outcome == "booking_not_found":
+        raise BookingNotFoundError()
+    if outcome in RESTORE_REFUSALS:
+        raise BookingDecisionConflictError(RESTORE_REFUSALS[outcome])
+    return _booking_detail(repository.get_booking(booking_id))
 
 
 def reject_booking(booking_id: str, actor_id: str, body: VenueBookingReject) -> VenueBookingDetail:

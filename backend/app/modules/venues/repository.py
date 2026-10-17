@@ -549,7 +549,7 @@ def set_hold_expiry(booking_id: str, actor_id: str, expires_at: datetime) -> dic
 # `profiles` (requester and decider), so every embed names its constraint.
 _BOOKING_DETAIL_COLUMNS = (
     "id, event_id, venue_id, occupied_period, status, request_note, created_at, "
-    "decision_reason, suggestion_note, decided_at, "
+    "decision_reason, suggestion_note, decided_at, flag, flag_reason, "
     "venue:venues!venue_bookings_venue_id_fkey(name), "
     "requester:profiles!venue_bookings_requested_by_fkey(full_name), "
     "decider:profiles!venue_bookings_decided_by_fkey(full_name)"
@@ -596,6 +596,8 @@ def get_booking(booking_id: str) -> dict | None:
         "request_note": row.get("request_note"),
         "requested_at": datetime.fromisoformat(row["created_at"]),
         "requested_by_name": _embedded_name(row, "requester", "full_name"),
+        "flag": row.get("flag"),
+        "flag_reason": row.get("flag_reason"),
         "decision_reason": row.get("decision_reason"),
         "suggestion_note": row.get("suggestion_note"),
         "decided_by_name": _embedded_name(row, "decider", "full_name"),
@@ -646,6 +648,18 @@ def reject_booking(booking_id: str, actor_id: str, reason: str, suggestion: str 
                 "p_notify_message": notify_message,
             },
         )
+        .execute()
+    )
+    return (response.data or [])[0]
+
+
+def restore_affected_booking(booking_id: str, actor_id: str) -> dict:
+    """Run `public.restore_affected_booking` (CR-95 AC9): the flag cleared, a
+    pending replacement cancelled, history and notices in one transaction.
+    Returns `{outcome, cancelled_booking_ids}`; every refusal is an outcome code."""
+    response = (
+        get_supabase_admin_client()
+        .rpc("restore_affected_booking", {"p_booking_id": booking_id, "p_actor_id": actor_id})
         .execute()
     )
     return (response.data or [])[0]

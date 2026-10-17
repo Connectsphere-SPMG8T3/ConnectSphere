@@ -572,6 +572,10 @@ class VenueBookingDetail(BaseModel):
     request_note: str | None = None
     requested_at: datetime
     requested_by_name: str | None = None
+    # CR-95: `affected` when the venue became unavailable, with why; venue staff
+    # may restore the booking once the venue is free again (AC9).
+    flag: str | None = None
+    flag_reason: str | None = None
     event: BookingEventRequirements
     decision: BookingDecision | None = None
     history: list[BookingHistoryEntry] = []
