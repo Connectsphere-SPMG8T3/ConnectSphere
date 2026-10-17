@@ -899,7 +899,7 @@ def _(ctx: Context) -> None:
 
     response = request_venue(ctx, ctx.shared("event_coordinator"), event_id, HERITAGE_HALL)
     expect_status(response, 409)
-    expect_detail(response, "Venue blocked for this time.")
+    expect_detail(response, "Venue blocked for this timing.")
 
 
 @check("TC-BOOK-004", "An event that already holds a venue can't request another")
@@ -1555,7 +1555,7 @@ def _(ctx: Context) -> None:
     refused = request_space(ctx, ctx.shared("event_coordinator"), space_id, HERITAGE_HALL)
     expect_status(refused, 409)
     expect(refused.json() == {
-        "detail": "Venue blocked for this time.",
+        "detail": "Venue blocked for this timing.",
         "conflict": {"kind": "block", "event_name": None, "block_reason": "maintenance",
                      "starts_at": "2031-06-17T02:00:00Z", "ends_at": "2031-06-17T04:00:00Z"},
     }, f"refusal was {refused.json()}")

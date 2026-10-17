@@ -180,7 +180,7 @@ class TestRequest:
             # AC2, BR-R2 (QA-6, QA-10): first come, first served, no override.
             ("held_by_other", 409, "Venue already held for this time by another event."),
             # AC2, §6.14.
-            ("blocked", 409, "Venue blocked for this time."),
+            ("blocked", 409, "Venue blocked for this timing."),
             # SCRUM-64 AC2: an inactive venue takes no new requests.
             ("venue_inactive", 409, "This venue is inactive."),
             # AC4, BR-R1 (QA-116, QA-135).
