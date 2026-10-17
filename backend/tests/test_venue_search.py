@@ -175,6 +175,14 @@ class TestAttributeRules:
         result = search.evaluate(make_venue(is_active=False), make_criteria(), [])
         assert codes(result) == [ReasonCode.inactive]
 
+    def test_a_deactivated_venue_is_excluded_and_returns_once_reactivated(self):
+        # SCRUM-64 AC2/AC4: the reason is for people; is_active alone decides search.
+        deactivated = make_venue(is_active=False, inactive_reason="long_term_renovation", inactive_note="Roof works")
+        assert codes(search.evaluate(deactivated, make_criteria(), [])) == [ReasonCode.inactive]
+
+        reactivated = make_venue(is_active=True, inactive_reason=None, inactive_note=None)
+        assert search.evaluate(reactivated, make_criteria(), []).excluded is False
+
     def test_reasons_accumulate(self):
         criteria = make_criteria(min_capacity=500, layout=VenueLayout.banquet, facilities=[Facility.stage])
         result = search.evaluate(make_venue(is_active=False), criteria, [])

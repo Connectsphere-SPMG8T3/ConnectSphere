@@ -40,6 +40,22 @@ class AccessibilityFeature(str, Enum):
     lift_access = "lift_access"
 
 
+class VenueInactiveReason(str, Enum):
+    """Why venue staff deactivated a venue (SCRUM-64 AC1). Mirrors
+    `public.venue_inactive_reason`."""
+
+    permanently_closed = "permanently_closed"
+    long_term_renovation = "long_term_renovation"
+    other = "other"
+
+
+INACTIVE_REASON_LABELS = {
+    VenueInactiveReason.permanently_closed: "Permanently closed",
+    VenueInactiveReason.long_term_renovation: "Long-term renovation",
+    VenueInactiveReason.other: "Other",
+}
+
+
 class Availability(str, Enum):
     available = "available"
     unavailable = "unavailable"
@@ -109,6 +125,9 @@ class VenueSummary(BaseModel):
     closes_at: time
     is_active: bool
     description: str | None = None
+    # Set exactly when the venue is inactive (SCRUM-64 AC1).
+    inactive_reason: VenueInactiveReason | None = None
+    inactive_note: str | None = None
 
 
 class Occupant(BaseModel):
@@ -491,3 +510,43 @@ class VenueBookingDetail(BaseModel):
     event: BookingEventRequirements
     decision: BookingDecision | None = None
     history: list[BookingHistoryEntry] = []
+
+
+class VenueDeactivateRequest(BaseModel):
+    """Deactivate a venue (SCRUM-64 AC1). `version` is the one the page
+    loaded, so staff never deactivate a venue someone else just changed."""
+
+    reason: VenueInactiveReason
+    note: str | None = Field(default=None, max_length=500)
+    version: int
+    confirm: bool = False
+
+    @model_validator(mode="after")
+    def _note_rules(self):
+        self.note = (self.note or "").strip() or None
+        if self.reason is VenueInactiveReason.other and self.note is None:
+            raise ValueError("A note is required when the reason is Other.")
+        return self
+
+
+class FlaggableBooking(BaseModel):
+    """A future booking that deactivating the venue would flag Affected (AC3)."""
+
+    booking_id: str
+    event_id: str
+    event_name: str | None = None
+    period: Period
+    status: Literal["held", "approved"]
+
+
+class VenueDeactivateResponse(BaseModel):
+    """`saved=False` means nothing was written: `affected` lists the bookings
+    that would be flagged and the caller had not yet set `confirm=true`."""
+
+    saved: bool
+    venue: VenueDetail | None = None
+    affected: list[FlaggableBooking] = []
+
+
+class VenueReactivateRequest(BaseModel):
+    version: int

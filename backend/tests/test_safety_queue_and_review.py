@@ -3,6 +3,7 @@ from copy import deepcopy
 import pytest
 import httpx
 from app.modules.events import repository
+from app.modules.events.schemas import BookingReadiness
 from app.modules.venues import service as venues
 from app.modules.equipment import service as equipment
 from tests.test_event_review_api import event_row,EVENT_ID,COORDINATOR_ID,ORGANISER_ID
@@ -24,7 +25,7 @@ def state(monkeypatch):
     monkeypatch.setattr(repository,'list_events',lambda _:[deepcopy(state['event'])])
     monkeypatch.setattr(repository,'list_comments',lambda _:[])
     monkeypatch.setattr(venues,'active_booking_for_event',lambda _:None)
-    monkeypatch.setattr(venues,'booking_statuses_by_event',lambda _:{EVENT_ID:['approved']})
+    monkeypatch.setattr(venues,'booking_readiness_by_event',lambda _:{EVENT_ID:[BookingReadiness(status='approved')]})
     monkeypatch.setattr(venues,'event_bookings_with_venues',lambda _:[dict(booking_id=BOOKING,venue_id=LINE,venue_name='Hall',booking_status='approved',capacity=24,layouts=['boardroom'],accessibility_features=['ramp'])],raising=False)
     monkeypatch.setattr(equipment,'event_lines',lambda _:[dict(id=LINE,equipment_name='Mic',quantity=2,status='pending')],raising=False)
     return state

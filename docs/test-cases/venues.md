@@ -2,7 +2,7 @@
 
 Shared environment, seeded accounts and the priority key are in [README.md](README.md).
 
-**In scope:** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, `POST /api/v1/venue-bookings`, the `/venues` search page, the `/venues/:id` profile page and the Venue panel on the coordinator's event page.
+**In scope:** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, `POST /api/v1/venues/{id}/deactivate` and `/reactivate`, `POST /api/v1/venue-bookings`, the `/venues` search page, the `/venues/:id` profile page and the Venue panel on the coordinator's event page.
 
 ## Venue Staff request history (SCRUM-70-R)
 
@@ -147,6 +147,34 @@ For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cove
 | Reducing capacity below the expected attendance of an existing tentative/confirmed booking triggers a warning | TC-VENUE-058, TC-VENUE-059, TC-VENUE-060; `pytest` `backend/tests/test_venue_impact.py` (`TestCapacity`, and `TestFacilities`/`TestLayout`/`TestOperatingHours` for VC-R2's broader rule), `TestVenueEdit::TestWarnings` |
 | Previous values remain visible in the venue's change history | TC-VENUE-061; `pytest` `TestVenueEditHistory`; Vitest `venueProfile.spec.js` (`summariseEditHistoryEntry`) |
 | Authorisation and concurrency (not in the given AC, but required by the root security baseline and DB-5) | TC-VENUE-062, TC-VENUE-063; `pytest` `test_active_role_access.py` (auto-covers the new routes), `TestVenueEdit::test_coordinator_cannot_edit`, `::test_a_lost_concurrency_race_is_409` |
+
+## Deactivate a venue from the catalogue (SCRUM-64)
+
+**Preconditions for every case in this section:** migration `20261016130000_venue_deactivation_and_booking_flag.sql` applied (first applied as `20261012130000`, DEFECTS D26). The automated cases run on a throwaway venue named `live-check venue …`, which the run creates and deletes; seeded venues are never changed. For the manual cases, sign in as **Venue Staff** (`venue.staff@connectsphere.dev` / `Cs1234`) and use a throwaway venue: create one with `insert into public.venues (name, location, capacity, opens_at, closes_at) values ('live-check venue manual', 'Live check', 50, '08:00', '22:00') returning id;`, give it a held booking from a throwaway 2031 event for TC-VENUE-071/073, and delete it afterwards as `verify_live.py`'s `delete_throwaway_venues` does.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-VENUE-065 | Venue staff deactivate a venue with a reason; search stops showing it (AC1, AC2) | E2E | An active venue with no bookings | Open the venue's profile, click **Deactivate venue**, choose a reason, add a note, confirm | Long-term renovation, "Roof works" | The dialog closes without a preview; the profile shows "Inactive: Long-term renovation" and the note. The venue is no longer in a coordinator's venue search. `verify_live.py` checks the stored reason and note. | 🔴 | 2026-10-12 | Pass ([run](runs/2026-10-12-2119-e2e-7b6cc49.md); API/DB [run](runs/2026-10-12-2111-api-db-7b6cc49.md)) |
+| TC-VENUE-066 | A booked venue previews the bookings, then flags them Affected and notifies their coordinators (AC3) | Integration | The venue holds a future held booking | Deactivate without confirming, then confirm | Long-term renovation | First call: `saved: false`, `affected` names the event, nothing written. Second call: the booking stays `held` with flag `affected` and reason "Venue deactivated: long-term renovation — …"; the event's coordinator has one `venue_booking_affected` notification. | 🔴 | 2026-10-12 | Pass ([run](runs/2026-10-12-2111-api-db-7b6cc49.md)) |
+| TC-VENUE-067 | A booking request for an inactive venue is refused (AC2) | Integration | The venue is inactive; a planning event assigned to the coordinator | As the coordinator, `POST /api/v1/venue-bookings` for that venue | — | 409 "This venue is inactive." | 🔴 | 2026-10-12 | Pass ([run](runs/2026-10-12-2111-api-db-7b6cc49.md)) |
+| TC-VENUE-068 | Reactivating restores search and leaves Affected flags in place (AC4) | Integration | TC-VENUE-066's state | As venue staff, `POST /api/v1/venues/{id}/reactivate` with the current version | — | 200 with `is_active: true`; the booking's flag is still `affected`; the venue is back in venue search. | 🔴 | 2026-10-12 | Pass ([run](runs/2026-10-12-2111-api-db-7b6cc49.md)) |
+| TC-VENUE-069 | Only venue staff acting as venue staff can deactivate or reactivate | Integration | Signed in as the coordinator (who also holds venue staff) acting as coordinator | `POST …/deactivate` and `POST …/reactivate` | — | 403 for both; the venue is unchanged. `pytest` covers every other role and the held-but-not-active matrix. | 🔴 | 2026-10-12 | Pass ([run](runs/2026-10-12-2111-api-db-7b6cc49.md)) |
+| TC-VENUE-070 | Database rules for deactivation and the booking flag | Integration | — | Run `supabase/verification/venue_deactivation_checks.sql` (rolled back) | — | Prints VENUE DEACTIVATION CHECKS PASSED: only future, unflagged held/approved bookings are flagged; one notification per event; refusals change nothing; reactivation keeps flags; reason and flag constraints hold; inactive venues refuse requests; approval refuses a flagged booking; only the service role runs the new functions. | 🔴 | 2026-10-12 | Pass ([run](runs/2026-10-12-2111-api-db-7b6cc49.md)) |
+| TC-VENUE-071 | The deactivate dialog and its preview list fit a phone | Manual | A throwaway venue with one held booking; browser at 375 px wide | Open the profile, **Deactivate venue**, choose a reason, submit to reach the preview | — | The reason select, note box, counter, the yellow preview panel with the booking (event, Singapore-time period, "Tentative") and both buttons fit without horizontal scrolling; buttons stack with the primary one on top. | 🟢 | 2026-10-12 | Pass ([run](runs/2026-10-16-2157-manual-4ec5db0.md)) |
+| TC-VENUE-072 | Banner and button wording read clearly | Manual | A venue deactivated with reason Other and a note | Open its profile as venue staff, then as a coordinator | Other, "Lease ended" | The banner reads "Inactive: Other" with "Lease ended" beneath; venue staff see **Reactivate venue**, the coordinator sees no action buttons. The reactivate confirm reads "Reactivate {name}? It will appear in venue search again. Bookings flagged Affected stay flagged." | 🟠 | 2026-10-12 | Pass ([run](runs/2026-10-16-2157-manual-4ec5db0.md)) |
+| TC-VENUE-073 | The coordinator's notification explains what happened | Manual | TC-VENUE-071's booking, then confirm the deactivation | Read the coordinator's newest `venue_booking_affected` notification (`select message from public.notifications where type = 'venue_booking_affected' order by created_at desc limit 1`). The in-app notifications panel is still a placeholder, so the wording is judged from the stored message | — | One notification: 'Venue "{name}" has been deactivated ({reason}). Your booking is flagged Affected and needs a replacement venue.' | 🟠 | 2026-10-12 | Pass ([run](runs/2026-10-16-2157-manual-4ec5db0.md)) |
+
+`backend/scripts/verify_live.py` runs TC-VENUE-065 to 070; `frontend/e2e/venue-deactivation.e2e.js` runs TC-VENUE-065 in the browser. TC-VENUE-071 to 073 are manual.
+
+### Traceability — SCRUM-64
+
+| Acceptance criterion (as given) | Covered by |
+|---|---|
+| AC1 Mark a venue inactive with a reason | TC-VENUE-065, TC-VENUE-070; `pytest` `test_venue_deactivation_api.py::TestDeactivate`; Vitest `DeactivateVenueModal.spec.js`, `VenueDetailView.spec.js`, `venueEditStore.spec.js` |
+| AC2 Inactive venues leave search and suitability checks | TC-VENUE-065, TC-VENUE-067, TC-VENUE-070; `pytest` `test_venue_search.py::…test_a_deactivated_venue_is_excluded_and_returns_once_reactivated`, `test_venue_booking_request_api.py[venue_inactive]` |
+| AC3 Future held or approved bookings flagged Affected for coordinator follow-up | TC-VENUE-066, TC-VENUE-070, TC-VENUE-073; `pytest` `TestDeactivate::test_confirm_flags_and_returns_flagged_events_to_planning`, `test_send_for_safety_check.py::test_a_flagged_booking_blocks_sending` |
+| AC4 Reactivation restores visibility | TC-VENUE-065, TC-VENUE-068; `pytest` `TestReactivate` |
+| Authorisation (root security baseline) | TC-VENUE-069; `pytest` `TestDeactivate::test_other_roles_are_forbidden`, `test_active_role_access.py` (auto-covers both routes) |
 
 ## Venue booking request (SCRUM-19)
 

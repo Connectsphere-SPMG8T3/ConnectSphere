@@ -9,6 +9,9 @@ import {
   groupUpcomingBookings,
   lastEditorName,
   stepIndex,
+  INACTIVE_REASONS,
+  formatVenuePeriod,
+  inactiveReasonLabel,
   summariseEditHistoryEntry,
   venueProfileTabs,
   venueSlides,
@@ -316,5 +319,34 @@ describe("summariseEditHistoryEntry (SCRUM-63, VC-R3)", () => {
   it("reports nothing when nothing changed", () => {
     const entry = { before: { capacity: 150 }, after: { capacity: 150 } };
     expect(summariseEditHistoryEntry(entry)).toEqual([]);
+  });
+});
+
+describe("summariseEditHistoryEntry: deactivation (SCRUM-64)", () => {
+  it("summarises a deactivation entry", () => {
+    const diff = summariseEditHistoryEntry({
+      before: { is_active: true, inactive_reason: null, inactive_note: null },
+      after: { is_active: false, inactive_reason: "long_term_renovation", inactive_note: "Roof works" },
+    });
+    expect(diff).toEqual([
+      { field: "is_active", label: "Status", before: "Active", after: "Inactive" },
+      { field: "inactive_reason", label: "Inactive reason", before: "None recorded", after: "Long-term renovation" },
+      { field: "inactive_note", label: "Inactive note", before: "None recorded", after: "Roof works" },
+    ]);
+  });
+});
+
+describe("inactiveReasonLabel (SCRUM-64)", () => {
+  it("labels known reasons and passes unknown ones through", () => {
+    expect(INACTIVE_REASONS.map((r) => inactiveReasonLabel(r.value))).toEqual(["Permanently closed", "Long-term renovation", "Other"]);
+    expect(inactiveReasonLabel("mystery")).toBe("mystery");
+  });
+});
+
+describe("formatVenuePeriod", () => {
+  it("formats both ends in Singapore time", () => {
+    expect(
+      formatVenuePeriod({ starts_at: "2031-05-20T06:00:00Z", ends_at: "2031-05-20T09:00:00Z" }),
+    ).toBe("20 May 2031, 14:00 – 20 May 2031, 17:00");
   });
 });
