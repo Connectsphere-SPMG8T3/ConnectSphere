@@ -473,6 +473,17 @@ def booking_statuses_by_event(event_ids: Iterable[str]) -> dict[str, list[str]]:
     return statuses
 
 
+def affected_event_ids(event_ids: Iterable[str]) -> set[str]:
+    """The events with a held or approved booking flagged Affected (CR-95 AC3): the
+    ones whose coordinator has to find an alternative venue. A released or
+    cancelled booking no longer needs one, whatever flag it kept."""
+    return {
+        row["event_id"]
+        for row in repository.list_booking_statuses(event_ids)
+        if row.get("flag") == "affected" and row["status"] in ("held", "approved")
+    }
+
+
 def booking_readiness_by_space(event_id: str) -> dict[str, list[BookingReadiness]]:
     """`{event_space_request_id: [BookingReadiness, ...]}` for one event (CR-97
     AC10): each of its event spaces' bookings, with status and open flag, so a

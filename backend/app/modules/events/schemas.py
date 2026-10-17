@@ -473,6 +473,7 @@ class CoordinatorActionKind(str, Enum):
     decisions, re-review outcomes); those arrive with the stories that build
     their data, and until then their widgets stay empty (REQUIREMENTS §6.21)."""
 
+    needs_alternative_venue = "needs_alternative_venue"
     arrangement_issue = "arrangement_issue"
     resubmitted = "resubmitted"
     awaiting_review = "awaiting_review"

@@ -583,7 +583,10 @@ def submit(event_id: str, organiser_id: str, body: EventUpdateRequest | None = N
     return _to_response(updated)
 
 
-def _venue_readiness(booking_statuses: list[str]) -> ReadinessState:
+def _venue_readiness(booking_statuses: list[str], affected: bool = False) -> ReadinessState:
+    # An Affected booking (CR-95) is not ready, even one that was approved.
+    if affected:
+        return ReadinessState.issue
     # REQUIREMENTS §6.6: the venue is ready once a booking is approved.
     return ReadinessState.ready if "approved" in booking_statuses else ReadinessState.pending
 
@@ -601,8 +604,12 @@ def technical_status(row: dict) -> ReadinessState:
     return ReadinessState(row["technical_readiness"])
 
 
-def _action_kind(row: dict, resubmitted_at: str | None) -> CoordinatorActionKind | None:
+def _action_kind(row: dict, resubmitted_at: str | None, venue_affected: bool = False) -> CoordinatorActionKind | None:
     status = row["status"]
+    # CR-95 AC3: a venue that became unavailable is the most urgent thing a
+    # coordinator can have; the event's status is not changed by it (AC7).
+    if venue_affected and status in ("planning", "safety_review", "confirmed"):
+        return CoordinatorActionKind.needs_alternative_venue
     if status == "under_review":
         # A resubmission is the organiser's answer to a return (QA-22, QA-77):
         # SCRUM-72's "clarification response", not a first review.
@@ -630,13 +637,14 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
 
     resubmissions = repository.list_latest_resubmissions(under_review_ids)
     bookings = venues_service.booking_statuses_by_event(event_ids) if event_ids else {}
+    affected = venues_service.affected_event_ids(event_ids) if event_ids else set()
     reserved = equipment_service.reserved_event_ids(event_ids) if event_ids else set()
 
     action_items: list[CoordinatorActionItem] = []
     active_events: list[CoordinatorActiveEvent] = []
     for row in rows:
         resubmitted_at = resubmissions.get(row["id"])
-        kind = _action_kind(row, resubmitted_at)
+        kind = _action_kind(row, resubmitted_at, row["id"] in affected)
         if kind is not None:
             action_items.append(
                 CoordinatorActionItem(
@@ -656,9 +664,10 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
                 event_name=row["name"],
                 status=row["status"],
                 starts_at=row.get("starts_at"),
-                flags=["technical_issue"] if technical is ReadinessState.issue else [],
+                flags=(["technical_issue"] if technical is ReadinessState.issue else [])
+                + (["venue_affected"] if row["id"] in affected else []),
                 readiness=Readiness(
-                    venue=_venue_readiness(bookings.get(row["id"], [])),
+                    venue=_venue_readiness(bookings.get(row["id"], []), row["id"] in affected),
                     equipment=_equipment_readiness(row, reserved),
                     technical=technical,
                 ),
