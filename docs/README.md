@@ -16,6 +16,7 @@ Every file here has one job, and its name says which. Start with the question yo
 | [`DEVELOPMENT_WORKFLOW.md`](DEVELOPMENT_WORKFLOW.md) | How does an item get from Ready to Done, and who does each step? | Edited when the team changes how it works |
 | [`SETUP.md`](SETUP.md) | How do I run everything locally? | Edited when setup changes |
 | [`CI.md`](CI.md) | What does CI check, and what doesn't it? | Edited when the workflow changes |
+| [`MUTATION_TESTING.md`](MUTATION_TESTING.md) | Would our tests catch a bug? How to run mutation testing, what to fix, and the sprint-by-sprint scores | A baseline row each sprint; edited when the practice changes |
 | [`adr/`](adr/) | Why did we make architecture decision X? One numbered record per decision | A new file per decision; accepted ones aren't rewritten |
 | [`test-cases/`](test-cases/README.md) | How do I test feature X by hand? One file per area, `TC-*` IDs | New cases per story |
 | [`test-cases/runs/`](test-cases/runs/README.md) | When was it last tested, and what passed? One file per run | A new file per run |

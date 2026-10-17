@@ -44,3 +44,8 @@ frontend/reports/
 backend/.coverage
 backend/htmlcov/
 frontend/coverage/
+
+# Mutation testing working copies and reports (docs/MUTATION_TESTING.md)
+backend/mutants/
+frontend/reports/mutation/
+frontend/.stryker-tmp/

@@ -2122,3 +2122,42 @@ AC1–AC3 and AC8 were already delivered by CR-98; CR-97 pins them with SQL chec
 - Manual pass ([run](test-cases/runs/2026-10-16-1949-manual-9c4b74f.md)): TC-BOOK-035–036 **pass** on a real multi-space event, after the three display bugs above were found and fixed.
 - TC-BOOK-021 twice failed with `fetch failed … ECONNRESET` in the e2e sign-in fixture when only the booking specs ran; it passed in the full recorded run (DEFECTS D36).
 - Follow-up: the coordinator dashboard's aggregate `_venue_readiness` is still per event, not per space (DEFECTS D35).
+### 4.53. Chore - Mutation testing tooling and first baselines
+
+**[Team decision] 2026-10-16:** the team adopts mutation testing as a recommended practice, not a CI gate or DoD item (`REQUIREMENTS.md` NFR-Q2). It is run on the changed module before a PR that changes logic, and on everything at the end of each sprint. The reason for using it is in `MUTATION_TESTING.md` §1: on the venues module it found about 100 unchecked behaviours in a file with full line coverage, and led to defect D37 (`chore/venues-mutation-test-gaps`).
+
+What this branch adds:
+
+- **Backend:** `mutmut==3.8.0` in `requirements.txt`, configured in the new `backend/pyproject.toml` to mutate `app/` and run `tests/`. `pytest.ini` now sets `testpaths = tests`; without it, a plain `pytest` after a mutation run also collects the copy of the suite in `backend/mutants/` and fails on import.
+- **Frontend:** `@stryker-mutator/core` and `@stryker-mutator/vitest-runner` 9.6.1 as dev dependencies, `frontend/stryker.config.mjs`, and `npm run test:mutation`. 9.x because StrykerJS 10 requires Node 22, and CI and docker-compose run Node 20. The lockfile also moves `@babel/parser` from 7.29.8 to 7.29.9, which Stryker requires. Only `.js` modules are mutated: Stryker's instrumentation breaks `defineProps()` in `<script setup>`.
+- **Ignored output:** `backend/mutants/`, `frontend/reports/mutation/`, `frontend/.stryker-tmp/`.
+- **Docs:**
+  - `docs/MUTATION_TESTING.md`: why, when, how to run, how to triage survivors, known limits, baselines, and how it supports the rubric.
+  - Pointers in `DEVELOPMENT_WORKFLOW.md` (§2, End of sprint), `DEFINITION_OF_DONE.md` (Testing), `CI.md` (§3, why it isn't in CI), `AGENTS.md` (run commands), `docs/README.md` and `REQUIREMENTS.md` (NFR-Q2).
+
+**Two platform problems found and documented:**
+- **macOS:** a forked mutmut worker that reaches an HTTP client crashes in CoreFoundation's proxy lookup. `no_proxy='*'` prevents it.
+- **Windows:** mutmut needs `fork()`, which Windows lacks. Most of the team is on Windows, so the backend half also runs as a **manual GitHub workflow**, `.github/workflows/mutation.yml`:
+  - started from the Actions tab with a branch and a module to choose;
+  - shows the per-file table on its summary page and uploads every survivor's diff as the `mutation-report` artifact;
+  - never triggered by a PR or a push.
+
+  The table comes from `backend/scripts/mutation_report.py` (test-first: `tests/test_mutation_report.py`), which also works locally.
+
+**Baselines on `main` (`d059dbb`):**
+- **Backend:** 4,079 of 5,874 mutants killed (69%; 76% of mutants a test reaches), 2 min 11 s.
+- **Frontend:** 2,967 of 4,091 (73%; 79%), 35 min 24 s.
+
+Per-file tables are in `MUTATION_TESTING.md` §6.
+
+**Verification:**
+- Backend suite: 1,165 passed, 95.83% coverage, with and without a `mutants/` folder present.
+- A module-scoped run (`mutmut run "app.modules.events.readiness.*"`) checked only that module's 37 mutants.
+- Both full mutation runs completed without crashes.
+- Frontend: 860 Vitest tests passed and `npm run build` succeeded with Stryker installed.
+- The workflow passes `actionlint`. Its shell steps were run locally on Python 3.11 (the runner's version) for `core`. The summary table matched the baseline (212 of 328 killed), and `survivors.diff` held all 116 survivors.
+
+Not verified:
+- CI on this branch, which runs when the PR is opened.
+- The workflow on GitHub itself: a manual workflow can only be started once it is on `main`, so its first real run is after merge.
+- The WSL instructions, since no Windows machine was available.
