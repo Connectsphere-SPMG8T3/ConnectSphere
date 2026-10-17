@@ -28,6 +28,7 @@ from app.modules.venues.search import OCCUPYING_STATUSES
 
 _VENUE_COLUMNS = (
     "id, name, location, capacity, accessibility_features, opens_at, closes_at, is_active, description, "
+    "inactive_reason, inactive_note, "
     "venue_layouts(layout, capacity_for_layout), venue_facilities(facility)"
 )
 
@@ -112,6 +113,8 @@ def _to_venue(row: dict) -> VenueSummary:
         closes_at=row["closes_at"],
         is_active=row["is_active"],
         description=row.get("description"),
+        inactive_reason=row.get("inactive_reason"),
+        inactive_note=row.get("inactive_note"),
     )
 
 
@@ -195,6 +198,75 @@ def update_venue(
     if not rows:
         return None
     return get_venue(venue_id)
+
+
+def list_flaggable_bookings(venue_id: str, since: datetime) -> list[BookingSummary]:
+    """Held or approved bookings on the venue that end after `since` and carry
+    no flag yet: exactly what `flag_venue_bookings` would flag (SCRUM-64 AC3),
+    soonest first."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_bookings")
+        .select("id, event_id, occupied_period, status")
+        .eq("venue_id", venue_id)
+        .in_("status", ["approved", "held"])
+        .is_("flag", "null")
+        .overlaps("occupied_period", _open_ended_literal(since))
+        .execute()
+    )
+    bookings = [
+        BookingSummary(
+            id=row["id"], event_id=row["event_id"], period=_parse_range(row["occupied_period"]), status=row["status"]
+        )
+        for row in response.data or []
+    ]
+    return sorted(bookings, key=lambda b: b.period.starts_at)
+
+
+def deactivate_venue(venue_id: str, actor_id: str, expected_version: int, *, reason: str, note: str | None,
+                     before: dict, after: dict, flag_reason: str, message: str) -> dict:
+    """Run `public.deactivate_venue` (SCRUM-64): the version-checked update,
+    the history row and the booking flags in one transaction. Returns
+    `{outcome, event_ids}`; refusals are outcome codes, never raised."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "deactivate_venue",
+            {
+                "p_venue_id": venue_id,
+                "p_actor_id": actor_id,
+                "p_expected_version": expected_version,
+                "p_reason": reason,
+                "p_note": note,
+                "p_before": before,
+                "p_after": after,
+                "p_flag_reason": flag_reason,
+                "p_message": message,
+            },
+        )
+        .execute()
+    )
+    row = (response.data or [])[0]
+    return {"outcome": row["outcome"], "event_ids": [str(e) for e in row.get("event_ids") or []]}
+
+
+def reactivate_venue(venue_id: str, actor_id: str, expected_version: int, *, before: dict, after: dict) -> str:
+    """Run `public.reactivate_venue` (SCRUM-64 AC4). Returns its outcome code."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "reactivate_venue",
+            {
+                "p_venue_id": venue_id,
+                "p_actor_id": actor_id,
+                "p_expected_version": expected_version,
+                "p_before": before,
+                "p_after": after,
+            },
+        )
+        .execute()
+    )
+    return response.data
 
 
 def list_edit_history(venue_id: str) -> list[dict]:
@@ -369,14 +441,14 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
 
 
 def list_booking_statuses(event_ids: Iterable[str]) -> list[dict]:
-    """`{event_id, event_space_request_id, status}` for every booking of these events, whatever its status."""
+    """`{event_id, event_space_request_id, status, flag}` for every booking of these events, whatever its status."""
     ids = list(event_ids)
     if not ids:
         return []
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("event_id, event_space_request_id, status")
+        .select("event_id, event_space_request_id, status, flag")
         .in_("event_id", ids)
         .execute()
     )

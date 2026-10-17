@@ -124,6 +124,20 @@ class BookingDecisionTextError(HTTPException):
         )
 
 
+class VenueAlreadyInactiveError(HTTPException):
+    """SCRUM-64: deactivating a venue that is already inactive."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail="This venue is already inactive.")
+
+
+class VenueAlreadyActiveError(HTTPException):
+    """SCRUM-64: reactivating a venue that is already active."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail="This venue is already active.")
+
+
 class NotAssignedCoordinatorError(HTTPException):
     def __init__(self) -> None:
         super().__init__(

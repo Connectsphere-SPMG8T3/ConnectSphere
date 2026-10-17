@@ -17,6 +17,8 @@ Venue booking checks (SCRUM-19) likewise create throwaway events named
 "live-check ..." (owned by the seeded organiser, assigned to the seeded
 coordinator, dated 2031) and throwaway venue blocks noted "live-check". Those
 events, their bookings and those blocks are deleted before and after the run.
+Venue deactivation checks (SCRUM-64) create throwaway venues named
+"live-check venue ...", deleted the same way; seeded venues are never changed.
 
 Usage, from backend/ with the virtualenv active and the backend running:
 
@@ -103,6 +105,7 @@ DB_SCRIPTS = [
     ("venue_edit_checks.sql", "TC-VENUE-058, 059, 061 (database half)"),
     ("venue_booking_reject_checks.sql", "TC-BOOK-023"),
     ("lead_assignment_checks.sql", "CR-101 (database half: assignment columns, reassign_event)"),
+    ("venue_deactivation_checks.sql", "TC-VENUE-070 (SCRUM-64 database half)"),
 ]
 
 
@@ -714,9 +717,128 @@ def delete_throwaway_bookings() -> int:
     return len(db_query(f"delete from public.events where name like {like} returning id"))
 
 
+THROWAWAY_VENUE_PREFIX = "live-check venue "
+
+
+def throwaway_venue(ctx: Context, case: str) -> str:
+    """A throwaway active venue (SCRUM-64), deleted with its bookings when the run ends."""
+    rows = db_query(
+        "insert into public.venues (name, location, capacity, opens_at, closes_at, is_active) values "
+        f"('{THROWAWAY_VENUE_PREFIX}{ctx.run_id} {case}', 'Live check', 50, '08:00', '22:00', true) returning id"
+    )
+    venue_id = rows[0]["id"]
+    db_query(f"insert into public.venue_layouts (venue_id, layout) values ('{venue_id}', 'theatre')")
+    return venue_id
+
+
+def delete_throwaway_venues() -> int:
+    """Deletes the deactivation checks' venues, their bookings first (that foreign
+    key restricts). Layouts, facilities and edit history cascade."""
+    like = f"'{THROWAWAY_VENUE_PREFIX}%'"
+    db_query(f"delete from public.venue_bookings where venue_id in (select id from public.venues where name like {like})")
+    return len(db_query(f"delete from public.venues where name like {like} returning id"))
+
+
+def venue_version(venue_id: str) -> int:
+    return db_query(f"select version from public.venues where id = '{venue_id}'")[0]["version"]
+
+
+def deactivate(ctx: Context, session: Session, venue_id: str, **body):
+    return ctx.client.post(f"{ctx.api}/venues/{venue_id}/deactivate", headers=session.headers,
+                           json={"reason": "long_term_renovation", "note": "live check",
+                                 "version": venue_version(venue_id), **body})
+
+
+def search_includes(ctx: Context, venue_id: str) -> bool:
+    found = ctx.client.get(f"{ctx.api}/venues", headers=ctx.shared("event_coordinator").headers)
+    expect_status(found, 200)
+    return any(r["venue"]["id"] == venue_id and not r["excluded"] for r in found.json()["results"])
+
+
 def request_venue(ctx: Context, session: Session, event_id: str, venue_id: str, note: str | None = None):
     return ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=session.headers,
                            json={"event_id": event_id, "venue_id": venue_id, "note": note})
+
+
+@check("TC-VENUE-065", "Venue staff deactivate a venue with a reason; search stops showing it", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "065")
+    expect(search_includes(ctx, venue_id), "the new venue is not in search before deactivation")
+
+    response = deactivate(ctx, ctx.shared("venue_staff"), venue_id)
+    expect_status(response, 200)
+    body = response.json()
+    expect(body["saved"] is True and body["venue"]["is_active"] is False, f"unexpected response {body}")
+    [stored] = db_query(f"select is_active, inactive_reason::text as reason, inactive_note from public.venues where id = '{venue_id}'")
+    expect(stored == {"is_active": False, "reason": "long_term_renovation", "inactive_note": "live check"},
+           f"stored venue is {stored}")
+    expect(not search_includes(ctx, venue_id), "the deactivated venue still appears in search")
+
+
+@check("TC-VENUE-066", "Deactivating a booked venue previews, then flags the booking Affected and notifies", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "066")
+    event_id = throwaway_event(ctx, "066", "2031-07-01 10:00+08", "2031-07-01 12:00+08")
+    expect_status(request_venue(ctx, ctx.shared("event_coordinator"), event_id, venue_id), 201)
+    staff = ctx.shared("venue_staff")
+
+    preview = deactivate(ctx, staff, venue_id)
+    expect_status(preview, 200)
+    body = preview.json()
+    expect(body["saved"] is False and [b["event_id"] for b in body["affected"]] == [event_id],
+           f"preview is {body}")
+    [still] = db_query(f"select is_active from public.venues where id = '{venue_id}'")
+    expect(still["is_active"] is True, "the preview deactivated the venue")
+
+    expect_status(deactivate(ctx, staff, venue_id, confirm=True), 200)
+    [booking] = db_query(f"select status::text as status, flag::text as flag, flag_reason from public.venue_bookings where event_id = '{event_id}'")
+    expect(booking["status"] == "held" and booking["flag"] == "affected"
+           and booking["flag_reason"] == "Venue deactivated: long-term renovation — live check",
+           f"booking is {booking}")
+    notified = db_query(
+        f"select recipient_id from public.notifications where event_id = '{event_id}' and type = 'venue_booking_affected'")
+    expect([row["recipient_id"] for row in notified] == ["a0000000-0000-4000-8000-000000000002"],
+           f"venue_booking_affected went to {notified} (want the coordinator once)")
+
+
+@check("TC-VENUE-067", "A booking request for an inactive venue is refused", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "067")
+    expect_status(deactivate(ctx, ctx.shared("venue_staff"), venue_id), 200)
+    event_id = throwaway_event(ctx, "067", "2031-07-02 10:00+08", "2031-07-02 12:00+08")
+    refused = request_venue(ctx, ctx.shared("event_coordinator"), event_id, venue_id)
+    expect_status(refused, 409)
+    expect_detail(refused, "This venue is inactive.")
+
+
+@check("TC-VENUE-068", "Reactivating restores search and leaves the Affected flag", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "068")
+    event_id = throwaway_event(ctx, "068", "2031-07-03 10:00+08", "2031-07-03 12:00+08")
+    expect_status(request_venue(ctx, ctx.shared("event_coordinator"), event_id, venue_id), 201)
+    staff = ctx.shared("venue_staff")
+    expect_status(deactivate(ctx, staff, venue_id, confirm=True), 200)
+
+    response = ctx.client.post(f"{ctx.api}/venues/{venue_id}/reactivate", headers=staff.headers,
+                               json={"version": venue_version(venue_id)})
+    expect_status(response, 200)
+    expect(response.json()["is_active"] is True, f"unexpected response {response.json()}")
+    [booking] = db_query(f"select flag::text as flag from public.venue_bookings where event_id = '{event_id}'")
+    expect(booking["flag"] == "affected", f"reactivation changed the flag to {booking['flag']}")
+    expect(search_includes(ctx, venue_id), "the reactivated venue is not back in search")
+
+
+@check("TC-VENUE-069", "Only venue staff can deactivate or reactivate; a coordinator gets 403", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "069")
+    # coordinator@ also holds venue_staff (SCRUM-74/75) but acts as coordinator here.
+    coordinator = ctx.shared("event_coordinator")
+    expect_status(deactivate(ctx, coordinator, venue_id), 403)
+    response = ctx.client.post(f"{ctx.api}/venues/{venue_id}/reactivate", headers=coordinator.headers,
+                               json={"version": venue_version(venue_id)})
+    expect_status(response, 403)
+    [stored] = db_query(f"select is_active from public.venues where id = '{venue_id}'")
+    expect(stored["is_active"] is True, "a refused call changed the venue")
 
 
 @check("TC-BOOK-001", "Requesting a free venue holds it for the event's period and notifies venue staff", needs_db=True)
@@ -1668,12 +1790,16 @@ def main() -> int:
                     left_over = delete_throwaway_bookings()
                     if left_over:
                         print(f"  (deleted {left_over} booking check event(s) left by an earlier run)")
+                    left_over = delete_throwaway_venues()
+                    if left_over:
+                        print(f"  (deleted {left_over} deactivation check venue(s) left by an earlier run)")
                 results += run_api_checks(ctx, args.keyword, skip_accounts=args.skip_db)
             finally:
                 ctx.logout_all()
                 if not args.skip_db:
                     delete_throwaway_accounts()
                     delete_throwaway_bookings()
+                    delete_throwaway_venues()
 
     if not args.skip_db:
         print(f"Database checks (rolled back) on Supabase project {PROJECT_REF}")

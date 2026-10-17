@@ -113,3 +113,22 @@ export function deleteThrowawayEvents() {
   query(`delete from public.venue_bookings where event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);
   query(`delete from public.events where name like '${EVENT_PREFIX}%'`);
 }
+
+// Same "live-check venue " prefix as backend/scripts/verify_live.py (SCRUM-64).
+const VENUE_PREFIX = "live-check venue ";
+
+/** An active venue for the deactivation spec; seeded venues are never changed. */
+export function createThrowawayVenue(tag) {
+  const [row] = query(
+    "insert into public.venues (name, location, capacity, opens_at, closes_at, is_active) values " +
+      `('${VENUE_PREFIX}e2e-${runId} ${tag}', 'Live check', 50, '08:00', '22:00', true) returning id, name`,
+  );
+  query(`insert into public.venue_layouts (venue_id, layout) values ('${row.id}', 'theatre')`);
+  return row;
+}
+
+/** Deletes the throwaway venues, their bookings first (that foreign key restricts). */
+export function deleteThrowawayVenues() {
+  query(`delete from public.venue_bookings where venue_id in (select id from public.venues where name like '${VENUE_PREFIX}%')`);
+  query(`delete from public.venues where name like '${VENUE_PREFIX}%'`);
+}

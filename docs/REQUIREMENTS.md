@@ -695,6 +695,9 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 
 **Rules**
 - **VC-R1:** Inactive venues are excluded from search and suitability but remain visible on historic bookings, labelled "Inactive".
+- **VC-R1a [Team decision, SCRUM-64]:** Deactivation records a **reason** from a controlled list (Permanently closed, Long-term renovation, Other) plus a note, required for Other. The reason is shown to everyone who opens the venue, as "Inactive: <reason>". Deactivating previews the venue's future held or approved bookings, then flags each **Affected** (as in CR-95) and notifies its coordinator; nothing is removed or cancelled. An event already in Safety review or Confirmed goes back to Planning (CR-104 AC10, CR-95 AC7). A deactivated venue refuses new booking requests, even by direct API call.
+- **VC-R1b [Team decision, SCRUM-64]:** **Reactivation only restores the venue.** Bookings flagged when it was deactivated stay flagged until their coordinator resolves them (CR-95), as with VC-R2's manual resolution: a coordinator may already be arranging a replacement.
+- **VC-R1c [Team decision, SCRUM-64]:** A booking carries **one open flag** (Affected, Conflict or Unsuitable). A second issue does not overwrite the first; the coordinator resolves the first. A flagged booking is not ready for the safety check (82 AC10), and the Safety Officer cannot approve an event with one.
 - **VC-R2:** Changing capacity, facilities, layouts, or operating hours does **not** automatically change existing bookings (QA-117). The system **lists upcoming bookings that may be affected** in a warning before saving, and after saving notifies those events' coordinators and venue staff. Resolution is manual.
 - **VC-R3:** Every edit is recorded in history (§6.7).
 - **VC-R4 [Team decision, SCRUM-67]:** The profile shows **when** it was last updated and **by whom**. "When" is `venues.updated_at`, maintained by the SCRUM-39 trigger. "By whom" is `venues.updated_by`, a **last-writer stamp, not an audit trail** — the per-field change history VC-R3 asks for is §6.7 / SCRUM-14 and needs its own table. `updated_by` is null for every venue edited before the column existed and for an editor whose account has since been removed; the UI says "Not recorded" in both cases rather than naming anyone. It is written by the venue edit path (SCRUM-63/64), not by a trigger: every API write uses the secret key, so the database cannot see which signed-in user it is acting for.
@@ -713,6 +716,9 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - **Given** no photos are on file, **when** I open a profile, **then** the carousel shows a schematic of each layout the venue supports, labelled as a schematic rather than a floor plan, and no stock imagery (VC-R8).
 - **Given** Hall A has an approved booking for 120 pax, **when** venue staff set its capacity to 100, **then** a warning names the affected event before save. After save, the booking is unchanged and the event's coordinator is notified.
 - **Given** I deactivate a venue, **then** it no longer appears in search results.
+- **Given** Hall A has a held booking next month, **when** I deactivate it, **then** I first see that booking listed; **when** I confirm, **then** the booking is flagged Affected, stays held, and its coordinator is notified (SCRUM-64 AC3).
+- **Given** Hall A is inactive, **when** a coordinator requests it by API, **then** the request is refused: "This venue is inactive." (SCRUM-64 AC2).
+- **Given** Hall A is inactive with a flagged booking, **when** I reactivate it, **then** it appears in search again and the booking stays flagged (SCRUM-64 AC4, VC-R1b).
 
 ### 6.9 Venue availability calendar *(SCRUM-16: 57, 51, 54)*
 
@@ -1381,6 +1387,9 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 
 **Story 112 addition:**
 46. **[Open]** If the organiser tells the coordinator about a significant change offline (QA2-27), can the coordinator raise the change request on the organiser's behalf, or must the organiser submit it themselves? Until answered, only the organiser raises change requests (§6.19); the coordinator's direct edits cover ordinary fields only (§6.7, 112).
+
+**SCRUM-64 addition:**
+47. **[Assumption]** SCRUM-64 AC3: deactivating a venue flags only its future **held and approved** bookings, as the AC names. A booking already under re-review is left alone, since venue staff are already reviewing it. Confirm with the PO if a `re_review` booking should also be flagged.
 
 ## 10. Non-functional requirements
 

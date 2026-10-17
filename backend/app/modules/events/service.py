@@ -34,7 +34,6 @@ from app.modules.events.schemas import (
     SafetyRejectRequest,
     ReturnReason,
     COMMENTABLE_STATUSES,
-    BookingReadiness,
     SpaceReadiness,
     SafetyReadiness,
     AmendmentRequest,
@@ -264,14 +263,14 @@ def _safety_readiness_for(row: dict) -> SafetyReadiness:
     # CR-97 AC10: an event with event spaces is ready only when each space's own
     # booking is; one without any keeps the event-wide rule (Q15).
     if row.get("spaces"):
-        by_space = venues_service.booking_statuses_by_space(row["id"])
+        by_space = venues_service.booking_readiness_by_space(row["id"])
         spaces = [
-            SpaceReadiness(label=space["label"], bookings=[BookingReadiness(status=s) for s in by_space.get(space["id"], [])])
+            SpaceReadiness(label=space["label"], bookings=by_space.get(space["id"], []))
             for space in row["spaces"]
         ]
         return safety_readiness([], technical_status(row), spaces)
-    statuses = venues_service.booking_statuses_by_event([row["id"]]).get(row["id"], [])
-    return safety_readiness([BookingReadiness(status=s) for s in statuses], technical_status(row))
+    bookings = venues_service.booking_readiness_by_event([row["id"]]).get(row["id"], [])
+    return safety_readiness(bookings, technical_status(row))
 
 
 def set_primary_space(event_id: str, space_id: str | None, coordinator_id: str) -> EventResponse:

@@ -254,6 +254,46 @@ class TestCrossModuleReads:
             "e-031": ["held"],
         }
 
+    def test_booking_readiness_carries_each_bookings_flag(self, monkeypatch):
+        # SCRUM-64: the safety readiness check sees flags; the dashboard's
+        # status lists stay as they were.
+        from app.modules.events.schemas import BookingReadiness
+        from app.modules.venues import repository as venues_repository
+
+        monkeypatch.setattr(
+            venues_repository,
+            "list_booking_statuses",
+            lambda ids: [
+                {"event_id": "e-1", "status": "approved", "flag": "affected"},
+                {"event_id": "e-1", "status": "held", "flag": None},
+            ],
+        )
+
+        assert venues_service.booking_readiness_by_event(["e-1"]) == {
+            "e-1": [BookingReadiness(status="approved", flags=["affected"]), BookingReadiness(status="held")],
+        }
+        assert venues_service.booking_statuses_by_event(["e-1"]) == {"e-1": ["approved", "held"]}
+
+    def test_booking_readiness_by_space_carries_each_bookings_flag(self, monkeypatch):
+        # CR-97 AC10 with SCRUM-64: a flagged booking blocks its own space.
+        from app.modules.events.schemas import BookingReadiness
+        from app.modules.venues import repository as venues_repository
+
+        monkeypatch.setattr(
+            venues_repository,
+            "list_booking_statuses",
+            lambda ids: [
+                {"event_id": "e-1", "event_space_request_id": "s-1", "status": "approved", "flag": "affected"},
+                {"event_id": "e-1", "event_space_request_id": "s-2", "status": "held", "flag": None},
+                {"event_id": "e-1", "event_space_request_id": None, "status": "approved", "flag": None},
+            ],
+        )
+
+        assert venues_service.booking_readiness_by_space("e-1") == {
+            "s-1": [BookingReadiness(status="approved", flags=["affected"])],
+            "s-2": [BookingReadiness(status="held")],
+        }
+
     def test_reserved_event_ids_are_those_with_a_live_or_finished_reservation(self, monkeypatch):
         from app.modules.equipment import repository as equipment_repository
 

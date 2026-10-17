@@ -176,6 +176,8 @@ class TestRequest:
             ("held_by_other", 409, "Venue already held for this time by another event."),
             # AC2, §6.14.
             ("blocked", 409, "Venue blocked for this time."),
+            # SCRUM-64 AC2: an inactive venue takes no new requests.
+            ("venue_inactive", 409, "This venue is inactive."),
             # AC4, BR-R1 (QA-116, QA-135).
             ("already_booked", 409, "This event already has a venue booking."),
             # AC5, BR-R6 (QA-22).

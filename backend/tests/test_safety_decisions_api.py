@@ -2,6 +2,7 @@
 from copy import deepcopy
 import pytest
 from app.modules.events import repository
+from app.modules.events.schemas import BookingReadiness
 from app.modules.venues import service as venues
 from app.modules.equipment import service as equipment
 from tests.test_event_review_api import event_row, EVENT_ID, COORDINATOR_ID
@@ -19,7 +20,7 @@ ROLES=['event_organiser','event_coordinator','venue_staff','tech_support','atten
 def state(monkeypatch):
     state={'event':event_row('safety_review'),'bookings':['approved'],'calls':[],'stale':False,'race':False}
     monkeypatch.setattr(repository,'get_event',lambda _:deepcopy(state['event']))
-    monkeypatch.setattr(venues,'booking_statuses_by_event',lambda ids:{EVENT_ID:state['bookings']})
+    monkeypatch.setattr(venues,'booking_readiness_by_event',lambda ids:{EVENT_ID:[BookingReadiness(status=s) for s in state['bookings']]})
     monkeypatch.setattr(venues,'event_booking_ids',lambda _: {BOOKING},raising=False)
     monkeypatch.setattr(equipment,'event_request_ids',lambda _: {LINE},raising=False)
     def rpc(*args,**kwargs):

@@ -16,6 +16,8 @@ export const useVenueEditStore = defineStore("venueEdit", {
     venue: null,
     history: [],
     warnings: [],
+    // SCRUM-64: bookings a deactivation would flag Affected, from the preview.
+    affected: [],
     isLoading: false,
     isSaving: false,
     error: null,
@@ -87,6 +89,42 @@ export const useVenueEditStore = defineStore("venueEdit", {
         throw error;
       } finally {
         if (this.venueId === venueId) this.isSaving = false;
+      }
+    },
+
+    /**
+     * Deactivate a venue (SCRUM-64). Takes the venue id explicitly because
+     * the profile page reads the venue through the search store, not `load()`.
+     * Returns `true` once saved; `false` when `affected` came back and the
+     * caller should show it and let staff confirm — nothing is written then.
+     */
+    async deactivate(venueId, { reason, note, version }, { confirm = false } = {}) {
+      return this._save(async (token) => {
+        const payload = { reason, note: note?.trim() || null, version, confirm };
+        const response = await venuesApi.deactivate(venueId, payload, token);
+        this.affected = response.saved ? [] : response.affected ?? [];
+        if (response.saved) this.venue = response.venue;
+        return response.saved;
+      });
+    },
+
+    async reactivate(venueId, version) {
+      return this._save(async (token) => {
+        this.venue = await venuesApi.reactivate(venueId, { version }, token);
+      });
+    },
+
+    async _save(send) {
+      const auth = useAuthStore();
+      this.isSaving = true;
+      this.error = null;
+      try {
+        return await auth.withSession(send);
+      } catch (error) {
+        this.error = error.message;
+        throw error;
+      } finally {
+        this.isSaving = false;
       }
     },
   },
