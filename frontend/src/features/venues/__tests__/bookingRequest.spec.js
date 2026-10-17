@@ -89,6 +89,14 @@ describe("describeConflict (SCRUM-21 AC2)", () => {
     );
   });
 
+  it("falls back to the reason as sent when it has no label", () => {
+    const conflict = {
+      kind: "block", event_name: null, block_reason: "Fire_Drill",
+      starts_at: "2031-04-08T02:00:00Z", ends_at: "2031-04-08T04:00:00Z",
+    };
+    expect(describeConflict(conflict, "Asia/Singapore")).toBe("Blocked for fire_drill 8 Apr 2031, 10:00 am – 12:00 pm.");
+  });
+
   it("writes out both dates when the window crosses midnight", () => {
     const conflict = {
       kind: "booking", event_name: "Night Market", block_reason: null,

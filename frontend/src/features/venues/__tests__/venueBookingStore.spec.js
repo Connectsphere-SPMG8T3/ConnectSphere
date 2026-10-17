@@ -83,6 +83,15 @@ describe("useVenueBookingStore.request (SCRUM-19)", () => {
     expect(store.error).toBeNull();
   });
 
+  it("has no conflict when the request failed without one", async () => {
+    const store = signedInCoordinator();
+    venueBookingsApi.request.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await expect(store.requestForSpace("space-1", "v1", "")).rejects.toThrow("Failed to fetch");
+    await expect(store.request("event-1", "v1", "")).rejects.toThrow("Failed to fetch");
+    expect(store.conflict).toBeNull();
+  });
+
   it("requests a venue for a selected space with a trimmed note", async () => {
     const store = signedInCoordinator();
     venueBookingsApi.request.mockResolvedValue({ ...BOOKING, event_space_request_id: "space-1" });
