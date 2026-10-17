@@ -1085,7 +1085,8 @@ def _(ctx: Context) -> None:
     expect(body["saved"] is True, f"saved={body['saved']}")
     rows = db_query(
         "select recipient_id::text as recipient_id, type, message from public.notifications "
-        f"where event_id = '{event_id}' order by type"
+        f"where event_id = '{event_id}' and type in ('venue_booking_affected', 'venue_updated_affects_booking') "
+        "order by type"
     )
     recipients = sorted((row["type"], row["recipient_id"]) for row in rows)
     # The seeded coordinator also holds venue_staff, so is notified once as the
