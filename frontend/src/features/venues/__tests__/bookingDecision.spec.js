@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   REJECTION_TEXT_MAX_LENGTH,
   canRejectBooking,
+  canRestoreBooking,
   formatBookingPeriod,
   formatDecisionTime,
   historyActionLabel,
@@ -53,6 +54,24 @@ describe("canRejectBooking (AC9, AC11)", () => {
       expect(canRejectBooking({ status }, "venue_staff")).toBe(false);
     }
     expect(canRejectBooking(null, "venue_staff")).toBe(false);
+  });
+});
+
+describe("canRestoreBooking (CR-95 AC9)", () => {
+  it("offers Restore to venue staff on a held or approved booking flagged affected", () => {
+    for (const status of ["held", "approved"]) {
+      expect(canRestoreBooking({ status, flag: "affected" }, "venue_staff")).toBe(true);
+    }
+  });
+
+  it("offers nothing to another role, for another flag or flagless, or once the booking is no longer live", () => {
+    expect(canRestoreBooking({ status: "approved", flag: "affected" }, "event_coordinator")).toBe(false);
+    expect(canRestoreBooking({ status: "approved", flag: "unsuitable" }, "venue_staff")).toBe(false);
+    expect(canRestoreBooking({ status: "approved", flag: null }, "venue_staff")).toBe(false);
+    for (const status of ["re_review", "rejected", "cancelled", "released", "expired"]) {
+      expect(canRestoreBooking({ status, flag: "affected" }, "venue_staff")).toBe(false);
+    }
+    expect(canRestoreBooking(null, "venue_staff")).toBe(false);
   });
 });
 

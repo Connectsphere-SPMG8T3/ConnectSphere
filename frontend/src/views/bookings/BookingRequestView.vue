@@ -16,6 +16,7 @@ import RejectBookingModal from "@/components/venues/RejectBookingModal.vue";
 import { showToast } from "@/composables/useToast";
 import {
   canRejectBooking,
+  canRestoreBooking,
   formatBookingPeriod,
   formatDecisionTime,
   historyActionLabel,
@@ -37,6 +38,10 @@ const FACILITY_LABELS = Object.fromEntries(FACILITIES.map((entry) => [entry.valu
 const booking = computed(() => store.booking);
 const event = computed(() => booking.value?.event ?? {});
 const showReject = computed(() => canRejectBooking(booking.value, auth.role));
+// CR-95: a booking flagged Affected shows why to everyone who can read the page;
+// only venue staff can confirm the venue is free again and restore it (AC9).
+const isAffected = computed(() => booking.value?.flag === "affected");
+const showRestore = computed(() => canRestoreBooking(booking.value, auth.role));
 const facilities = computed(() =>
   (event.value.facilities_required ?? []).map((value) => FACILITY_LABELS[value] ?? value).join(", "),
 );
@@ -56,6 +61,11 @@ function load() {
 
 onMounted(load);
 watch(() => route.params.id, (id) => id && load());
+
+async function restore() {
+  const ok = await store.restore(String(route.params.id));
+  if (ok) showToast("Booking restored. The coordinator and organiser have been told.");
+}
 
 function openReject() {
   store.error = null;
@@ -113,6 +123,25 @@ async function reject(form) {
           <p class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard">
             {{ bookingStatusLabel(booking.status) }}
           </p>
+        </div>
+        <div v-if="isAffected" class="mt-6 border-l-4 border-bauhaus-red bg-canvas px-4 py-3" data-testid="booking-affected">
+          <p class="text-xs font-black uppercase tracking-widest text-bauhaus-red">Affected: venue unavailable</p>
+          <p v-if="booking.flag_reason" class="mt-1 text-sm font-medium">{{ booking.flag_reason }}</p>
+          <template v-if="showRestore">
+            <p class="mt-2 text-sm font-medium">
+              If the venue is free again for the whole booking, restore it. The flag is cleared and any replacement
+              request is cancelled.
+            </p>
+            <BauhausButton
+              class="mt-3"
+              variant="secondary"
+              aria-label="Restore original booking"
+              :disabled="store.isRestoring"
+              @click="restore"
+            >
+              Restore original booking
+            </BauhausButton>
+          </template>
         </div>
         <div v-if="showReject" class="mt-6 flex flex-wrap gap-3">
           <BauhausButton variant="primary" aria-label="Reject request" :disabled="store.isRejecting" @click="openReject">

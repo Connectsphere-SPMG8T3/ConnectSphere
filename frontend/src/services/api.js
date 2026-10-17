@@ -116,6 +116,10 @@ export const venueBookingsApi = {
   reject(bookingId, payload, token) {
     return request(`/venue-bookings/${encodeURIComponent(bookingId)}/reject`, { method: "POST", body: payload, token });
   },
+  // CR-95 AC9: venue staff restore an affected booking; 409 says why the venue isn't free yet.
+  restore(bookingId, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/restore`, { method: "POST", token });
+  },
 };
 
 export const eventsApi = {
