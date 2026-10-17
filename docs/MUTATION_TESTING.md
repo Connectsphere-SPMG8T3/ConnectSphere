@@ -134,7 +134,7 @@ The score is killed ÷ all mutants. "Reached" leaves out mutants that no test ex
 | `venues/service.py` | 678 | 112 | 0 | 86% | 86% |
 | **Total** | **4,079** | **1,310** | **485** | **69%** | **76%** |
 
-`chore/venues-mutation-test-gaps` (on top of CR-94) raises `venues/service.py` to 848 of 860 killed and `venues/search.py` to 159 of 163.
+`chore/venues-mutation-test-gaps` (on top of CR-94) raises `venues/service.py` from 983 to 1,074 of 1,119 killed (CR-94 adds code, so the totals differ from the `main` row above) and `venues/search.py` to 159 of 163.
 
 **Where to look next:** `events/service.py` (376 survivors), `auth/service.py` and `core/security.py`. The last two are the authentication path, where an unchecked branch matters most.
 
