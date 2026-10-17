@@ -141,7 +141,8 @@ begin
     select count(*) into v_rows from public.venue_edit_history
      where venue_id = v_venue and actor_id = v_staff
        and before = jsonb_build_object('capacity', v_before.capacity)
-       and after = jsonb_build_object('capacity', 50);
+       and after = jsonb_build_object('capacity', 50)
+       and created_at = now();  -- this run's row only (D39)
     if v_rows <> 1 then raise exception 'VENUE EDIT FAIL: the edit was not recorded in venue_edit_history (VC-R3)'; end if;
 
     select count(*) into v_rows from public.notifications
@@ -225,8 +226,11 @@ do $$
 declare
     v_count int;
 begin
+    -- Only the two rows this run wrote: they share the transaction's now(),
+    -- and any real edit to Seminar Room 1 is older (D39).
     select count(*) into v_count from public.venue_edit_history
-     where venue_id = 'b0000000-0000-4000-8000-000000000003';
+     where venue_id = 'b0000000-0000-4000-8000-000000000003'
+       and created_at = now();
     if v_count <> 2 then
         raise exception 'RLS FAIL: coordinator sees % history rows, expected 2', v_count;
     end if;
