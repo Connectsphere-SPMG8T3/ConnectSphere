@@ -2,12 +2,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000
 
 class ApiError extends Error {
   // `detail` is the response's raw `detail`, so a form can place a 422's
-  // per-field errors (`detail[].loc`) under the fields they name.
-  constructor(message, status, detail = null) {
+  // per-field errors (`detail[].loc`) under the fields they name. `conflict`
+  // is what a refused booking request names as in the way (SCRUM-21).
+  constructor(message, status, detail = null, conflict = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.detail = detail;
+    this.conflict = conflict;
   }
 }
 
@@ -30,7 +32,7 @@ async function request(path, { method = "GET", body, token } = {}) {
     const message = Array.isArray(detail)
       ? detail.map((entry) => entry.msg).join(", ")
       : detail || "An unexpected error occurred. Please try again.";
-    throw new ApiError(message, response.status, detail ?? null);
+    throw new ApiError(message, response.status, detail ?? null, payload?.conflict ?? null);
   }
 
   return payload;

@@ -11,6 +11,8 @@ const props = defineProps({
   period: { type: String, required: true },
   busy: { type: Boolean, default: false },
   error: { type: String, default: null },
+  // What is in the way, as describeConflict words it (SCRUM-21 AC2).
+  conflict: { type: String, default: "" },
 });
 
 const emit = defineEmits(["confirm", "cancel"]);
@@ -66,6 +68,7 @@ function confirm() {
           class="mt-4 border-2 border-ink bg-bauhaus-red px-3 py-2 text-sm font-bold text-canvas"
         >
           {{ props.error }}
+          <span v-if="props.conflict" class="mt-1 block font-medium">{{ props.conflict }}</span>
         </p>
         <div class="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <BauhausButton type="button" variant="outline" aria-label="Cancel" @click="emit('cancel')">Cancel</BauhausButton>

@@ -8,7 +8,7 @@ import RequestVenueModal from "@/components/venues/RequestVenueModal.vue";
 import VenueCriteriaForm from "@/components/venues/VenueCriteriaForm.vue";
 import VenueResultCard from "@/components/venues/VenueResultCard.vue";
 import { showToast } from "@/composables/useToast";
-import { criteriaFromEvent, criteriaFromSpace, venuePanelState } from "@/features/venues/bookingRequest";
+import { criteriaFromEvent, criteriaFromSpace, describeConflict, venuePanelState } from "@/features/venues/bookingRequest";
 import { useVenueBookingStore } from "@/features/venues/venueBookingStore";
 import { useVenuesStore } from "@/features/venues/venueSearchStore";
 import { eventsApi } from "@/services/api";
@@ -214,6 +214,7 @@ async function confirmRequest(note) {
       :period="eventPeriod"
       :busy="bookingStore.isRequesting"
       :error="bookingStore.error"
+      :conflict="describeConflict(bookingStore.conflict, bookingEvent.event_timezone || 'Asia/Singapore')"
       @confirm="confirmRequest"
       @cancel="requestedVenue = null"
     />
