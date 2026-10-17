@@ -139,6 +139,18 @@ class Occupant(BaseModel):
     detail: str
 
 
+class BookingConflict(BaseModel):
+    """What refused a booking request (SCRUM-21 AC2): another event's booking,
+    named by the event only, or a block with its reason. The window is the one
+    it occupies, setup to turnaround."""
+
+    kind: Literal["booking", "block"]
+    event_name: str | None = None
+    block_reason: str | None = None
+    starts_at: AwareDatetime
+    ends_at: AwareDatetime
+
+
 class BlockSummary(BaseModel):
     id: str
     period: Period

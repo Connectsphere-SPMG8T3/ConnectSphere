@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BOOKING_STATUS_LABELS, criteriaFromSpace, venuePanelState } from "@/features/venues/bookingRequest";
+import { BOOKING_STATUS_LABELS, criteriaFromSpace, describeConflict, venuePanelState } from "@/features/venues/bookingRequest";
 
 const booking = (status) => ({
   id: "b1", venue_id: "v1", venue_name: "Innovation Lab", status, expires_at: "2026-11-01T04:00:00Z",
@@ -62,5 +62,52 @@ describe("space booking criteria", () => {
     });
 
     expect(criteria).toMatchObject({ date: "2026-10-20", startTime: "14:00", endTime: "20:00" });
+  });
+});
+
+describe("describeConflict (SCRUM-21 AC2)", () => {
+  it("names the other event and the window it occupies, in the event's timezone", () => {
+    const conflict = {
+      kind: "booking", event_name: "Alumni Night", block_reason: null,
+      starts_at: "2031-04-07T01:30:00Z", ends_at: "2031-04-07T04:45:00Z",
+    };
+    expect(describeConflict(conflict, "Asia/Singapore")).toBe(
+      "\"Alumni Night\" occupies it 7 Apr 2031, 9:30 am – 12:45 pm, including setup and turnaround.",
+    );
+    expect(describeConflict(conflict, "Europe/London")).toBe(
+      "\"Alumni Night\" occupies it 7 Apr 2031, 2:30 am – 5:45 am, including setup and turnaround.",
+    );
+  });
+
+  it("gives a block's reason instead of an event", () => {
+    const conflict = {
+      kind: "block", event_name: null, block_reason: "maintenance",
+      starts_at: "2031-04-08T02:00:00Z", ends_at: "2031-04-08T04:00:00Z",
+    };
+    expect(describeConflict(conflict, "Asia/Singapore")).toBe(
+      "Blocked for maintenance 8 Apr 2031, 10:00 am – 12:00 pm.",
+    );
+  });
+
+  it("falls back to the reason as sent when it has no label", () => {
+    const conflict = {
+      kind: "block", event_name: null, block_reason: "Fire_Drill",
+      starts_at: "2031-04-08T02:00:00Z", ends_at: "2031-04-08T04:00:00Z",
+    };
+    expect(describeConflict(conflict, "Asia/Singapore")).toBe("Blocked for fire_drill 8 Apr 2031, 10:00 am – 12:00 pm.");
+  });
+
+  it("writes out both dates when the window crosses midnight", () => {
+    const conflict = {
+      kind: "booking", event_name: "Night Market", block_reason: null,
+      starts_at: "2031-04-07T14:00:00Z", ends_at: "2031-04-07T17:00:00Z",
+    };
+    expect(describeConflict(conflict, "Asia/Singapore")).toBe(
+      "\"Night Market\" occupies it 7 Apr 2031, 10:00 pm – 8 Apr 2031, 1:00 am, including setup and turnaround.",
+    );
+  });
+
+  it("says nothing when the API named nothing", () => {
+    expect(describeConflict(null, "Asia/Singapore")).toBe("");
   });
 });

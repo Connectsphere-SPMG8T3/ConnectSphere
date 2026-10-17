@@ -149,6 +149,13 @@ begin
         'e0000000-0000-4000-8000-0000000064a7', v_venue, v_coordinator, null, 'requested');
     if v_outcome <> 'venue_inactive' then raise exception 'REQUEST FAIL: inactive venue gave %', v_outcome; end if;
 
+    -- D33: the per-space path (CR-97) refuses it too.
+    insert into public.event_space_requests (id, event_id, label)
+    values ('f0000000-0000-4000-8000-0000000064b1', 'e0000000-0000-4000-8000-0000000064a7', 'Requested space');
+    select outcome into v_outcome from public.request_venue_booking_for_space(
+        'f0000000-0000-4000-8000-0000000064b1', v_venue, v_coordinator, null, 'requested');
+    if v_outcome <> 'venue_inactive' then raise exception 'REQUEST FAIL: D33 inactive venue via a space gave %', v_outcome; end if;
+
     -- AC4: reactivate; flags stay.
     select outcome into v_outcome from (select public.reactivate_venue(
         v_venue, v_staff, v_after.version - 1, '{}'::jsonb, '{}'::jsonb) as outcome) r;

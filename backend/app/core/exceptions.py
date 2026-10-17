@@ -65,6 +65,16 @@ class VenueNotFoundError(HTTPException):
         )
 
 
+class BookingConflictError(HTTPException):
+    """409 for a booking request refused by what is already at the venue
+    (SCRUM-21 AC2). `conflict` names it and is sent beside `detail`; see the
+    handler in `app.main`."""
+
+    def __init__(self, detail: str, conflict: dict | None) -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+        self.conflict = conflict
+
+
 class InsufficientRoleError(HTTPException):
     def __init__(self, allowed_roles: list[str]) -> None:
         super().__init__(

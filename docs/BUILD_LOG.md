@@ -2224,3 +2224,53 @@ Not verified:
 - CI on this branch, which runs when the PR is opened.
 - The workflow on GitHub itself: a manual workflow can only be started once it is on `main`, so its first real run is after merge.
 - The WSL instructions, since no Windows machine was available.
+
+### 4.55. SCRUM-21 — Booking conflict detection
+
+| Field | Value |
+|---|---|
+| ID | `21` (SCRUM-21) |
+| Title | Booking Conflict Detection |
+| Type | US: Core feature |
+| Status | TO DO 😖 (In Progress on the board from this branch) |
+| Epic | Booking conflict detection |
+| Sprint | 3 (6 October - 20 October) |
+| Estimate | 3 story points |
+| Priority | 3 |
+| Customer clarification | W7 CR-01, CR-03, CR-04: 21 is the single conflict checker (agreed 08/10); other stories reference it instead of restating the rule. Old AC8 (simultaneous requests) removed as already delivered in 19 AC3. Split with CR-94: 21 checks new requests; CR-94 flags existing bookings after venue changes. Session 3 (13/10): QA3-5 (the venue is occupied from the start of setup to the end of turnaround; touching windows are allowed, AC3); QA3-23 and M3 (AC1 uses each booking's own window and its own setup and turnaround, not the venue's). |
+
+**User story (verbatim):**
+
+> As an Event coordinator, I want to be able to have a venue refused when it is already occupied for my event's time, including setup and turnaround, so that I don't double-book a venue
+
+**Acceptance criteria (verbatim from the Product backlog):**
+
+> AC1. [W7 CR-01] A booking's occupied window is its start minus its setup time to its end plus its turnaround time, using the booking's own window (CR-97) and its own setup and turnaround (36, CR-100) (e.g. 10:00–12:00 with 30 min setup and 45 min turnaround occupies 09:30–12:45).
+> AC2. [W7 CR-01] A booking is refused when its occupied window overlaps an approved booking, a booking under re-review, or an unexpired hold at the same venue, naming the conflicting event.
+> AC3. [W7 CR-01] Windows that only touch (one ends 12:45, the next starts 12:45) do not conflict.
+> AC4. [W7 CR-01] This single check is used by venue search availability, booking requests, booking approval, re-review after a date change, and the overlap check when a venue is blocked. It is enforced on the server, not only in the form.
+> AC5. [W7 CR-04] Expired holds and rejected, cancelled or released bookings are ignored.
+> AC6. [W7 CR-03] Each venue booking on a multi-venue event is checked separately.
+> AC7. Bookings at different venues never conflict.
+> AC8. [W7 CR-01] Flagging existing bookings that conflict after a venue change is handled in CR-94.
+
+#### How the implementation maps to the ticket
+
+On `feature/scrum-21-booking-conflict-detection`, branched from `main` after CR-97 (PR #67) and CR-94 part 1 (PR #65) merged. Planned with the developer on 2026-10-17 (grilling session); the decisions below are theirs.
+
+1. **Booked and occupied time** (AC1, migration `20261017130000`): `venue_bookings` gains `booked_period` (the booking's own time) and `setup_minutes` / `turnaround_minutes` (≥ 0, default 0). A trigger keeps `occupied_period = [booked start − setup, booked end + turnaround)`, so DB-1 is unchanged and still decides races. Postgres can't compute the range inside the exclusion constraint (`timestamptz ± interval` isn't immutable), hence the stored column. **[Team decision]** 21 adds the per-booking columns; CR-100 adds the venue defaults and copies them in, and 36 AC5 adjusts a held booking. Until then every new booking has zero setup and turnaround. Hold expiry counts to the booking's own start (`lower(booked_period)`), not the start of setup.
+2. **One check** (AC2, AC3, AC5, AC7, AC4): `public.venue_conflicts(period, venue?, exclude_booking?)` returns the clashing bookings (held and unexpired, approved, re-review) and blocks, at one venue or all. Service role only, since it returns other events' names. **[Team decision]** AC4 is met by providing the check; 36, 37 and 51 call it in their own stories (REQUIREMENTS §6.14). This needs the PO's agreement to reword AC4 on the backlog.
+3. **Request functions** (AC2, AC6): `request_venue_booking` and `request_venue_booking_for_space` are dropped and recreated with a third column, `conflict`, filled from the check. **[Team decision]** A refusal shows only the other event's name and its occupied window, or the block's reason; a lost race whose winner isn't visible yet carries the message alone.
+4. **API and search** (AC2, AC4): a refused request answers 409 `{detail, conflict}` through `BookingConflictError` and one handler in `app/main.py`. `repository.list_occupants` (venue search) reads from `venue_conflicts`, so search now counts setup and turnaround and ignores overdue holds; its reasons still don't name the other event (**[Team decision]**).
+5. **Frontend** (AC2): `ApiError.conflict`, `useVenueBookingStore.conflict` and `describeConflict` word the clash under the refusal in `RequestVenueModal`, in the event's timezone.
+6. **D33** (separate commit and migration `20261017125000`): the per-space request path now refuses an inactive venue under the same shared venue lock as the event path. 21 recreates that function, so the fix lives here rather than on a second branch redefining the same function.
+
+#### Verification and remaining work
+
+- **Test first:** every slice was seen failing before its code: the SQL checks (missing columns, expiry counted to setup start, missing `venue_conflicts`, missing `conflict`), D33 reproduced against `main`'s function on a local database (`ok` for an inactive venue), the pytest cases (no `conflict` key; search still querying the tables), and the Vitest cases.
+- **Local Supabase stack:** the migrations were developed against `supabase start` in Docker, built from the repository's migrations, so nothing touched the shared project. The seed had to be patched locally to load (D38, logged). On it: `booking_conflict_checks.sql` passes, as do all other verification scripts except CR-98's seed-backfill block (a D38 artefact; the rest of `event_space_checks.sql` passes). `verify_live.py` API checks 102/102 and the booking, multi-venue, deactivation and hold-expiry e2e specs pass against a backend and SPA running this branch on spare ports. `supabase db lint` reports one warning, in CR-104's `safety_return_event`, not in this change.
+- **Unit suites:** `pytest` 1321 passed; Vitest 917 passed; `npm run build` passes. New code is covered except v8's count of pre-existing `finally` branches in `venueBookingStore.js`.
+- **Live:** the developer pushed both migrations on 2026-10-17 after the live function bodies were confirmed to match the repository. Recorded runs against this branch on spare ports: API/DB 119/120 ([run](test-cases/runs/2026-10-17-1925-api-db-212e822.md)); the failure is `venue_edit_checks.sql` counting a real edit to Seminar Room 1 made during CR-94's manual pass (D39), not this change. D39 was fixed on this branch at the developer's request; the re-run is 120/120 ([run](test-cases/runs/2026-10-17-1939-api-db-58f605b.md)). E2E 65/65 ([run](test-cases/runs/2026-10-17-1933-e2e-212e822.md)). `supabase db advisors` shows nothing for the new or changed objects (the nine `auth_rls_initplan` warnings are D19's).
+- **Manual pass:** TC-BOOK-042 passed on the local stack after one wording change the developer asked for, "Venue blocked for this timing." ([run](test-cases/runs/2026-10-17-1924-manual-53abe35.md)). Playwright drove the refusals and took the screenshots; the developer judged them.
+- **Not verified:** the race path that names the winner after `exclusion_violation` was reasoned about, not reproduced.
+- **Remaining:** AC4's callers in 36, 37 and 51; CR-100 copying venue defaults into the new columns; the PO's agreement to AC4's rewording.

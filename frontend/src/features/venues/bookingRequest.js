@@ -2,6 +2,7 @@
  * Venue booking request helpers (SCRUM-19): what the coordinator's event page
  * offers, and how a search opened from an event is pre-filled.
  */
+import { BLOCK_REASON_LABELS } from "@/features/venues/dashboard";
 import { emptyCriteria } from "@/features/venues/venueSearchStore";
 import { SINGAPORE_OFFSET_MS, singaporeDayKey, toInstant } from "@/features/venues/singaporeTime";
 
@@ -71,4 +72,26 @@ export function venuePanelState(event, space = null) {
     return { kind: "unavailable", reason: "A venue can be requested once the request is approved for planning." };
   }
   return { kind: "none" };
+}
+
+/**
+ * What refused a venue request, as one line under the refusal (SCRUM-21 AC2):
+ * the other event's name and the window it occupies, setup to turnaround, or
+ * a block and its reason. Times are in the event's own timezone, like the
+ * request's period above it. Empty when the API named nothing.
+ */
+export function describeConflict(conflict, timeZone) {
+  if (!conflict) return "";
+  const dateTime = new Intl.DateTimeFormat("en-SG", { dateStyle: "medium", timeStyle: "short", timeZone });
+  const timeOnly = new Intl.DateTimeFormat("en-SG", { timeStyle: "short", timeZone });
+  const dayOnly = new Intl.DateTimeFormat("en-SG", { dateStyle: "medium", timeZone });
+  const starts = new Date(conflict.starts_at);
+  const ends = new Date(conflict.ends_at);
+  const end = dayOnly.format(starts) === dayOnly.format(ends) ? timeOnly.format(ends) : dateTime.format(ends);
+  const window = `${dateTime.format(starts)} – ${end}`;
+  if (conflict.kind === "block") {
+    const reason = (BLOCK_REASON_LABELS[conflict.block_reason] ?? conflict.block_reason).toLowerCase();
+    return `Blocked for ${reason} ${window}.`;
+  }
+  return `"${conflict.event_name}" occupies it ${window}, including setup and turnaround.`;
 }

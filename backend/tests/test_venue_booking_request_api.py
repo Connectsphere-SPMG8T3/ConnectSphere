@@ -180,7 +180,7 @@ class TestRequest:
             # AC2, BR-R2 (QA-6, QA-10): first come, first served, no override.
             ("held_by_other", 409, "Venue already held for this time by another event."),
             # AC2, §6.14.
-            ("blocked", 409, "Venue blocked for this time."),
+            ("blocked", 409, "Venue blocked for this timing."),
             # SCRUM-64 AC2: an inactive venue takes no new requests.
             ("venue_inactive", 409, "This venue is inactive."),
             # AC4, BR-R1 (QA-116, QA-135).
@@ -201,6 +201,52 @@ class TestRequest:
 
         assert response.status_code == status_code
         assert response.json()["detail"] == detail
+
+    # SCRUM-21 AC2: the refusal names what is in the way, as the database
+    # function reports it (booking_conflict_checks.sql): the other event's name
+    # and its occupied window, or the block's reason. Nothing else about it.
+    @pytest.mark.parametrize(
+        ("outcome", "conflict", "expected"),
+        [
+            ("held_by_other",
+             {"kind": "booking", "event_name": "Alumni Night", "block_reason": None,
+              "starts_at": "2031-04-07T01:30:00+00:00", "ends_at": "2031-04-07T04:45:00+00:00"},
+             {"kind": "booking", "event_name": "Alumni Night", "block_reason": None,
+              "starts_at": "2031-04-07T01:30:00Z", "ends_at": "2031-04-07T04:45:00Z"}),
+            ("blocked",
+             {"kind": "block", "event_name": None, "block_reason": "maintenance",
+              "starts_at": "2031-04-08T02:00:00+00:00", "ends_at": "2031-04-08T04:00:00+00:00"},
+             {"kind": "block", "event_name": None, "block_reason": "maintenance",
+              "starts_at": "2031-04-08T02:00:00Z", "ends_at": "2031-04-08T04:00:00Z"}),
+        ],
+    )
+    @pytest.mark.parametrize("path", ["event", "space"])
+    def test_a_conflict_refusal_names_what_is_in_the_way(
+        self, client, auth_headers, authenticate_as, booking, monkeypatch, outcome, conflict, expected, path
+    ):
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+        answer = {"outcome": outcome, "booking_id": None, "conflict": conflict}
+        monkeypatch.setattr(venues_repository, "request_booking", lambda *args, **kwargs: answer)
+        monkeypatch.setattr(venues_repository, "request_booking_for_space", lambda *args, **kwargs: answer)
+        monkeypatch.setattr(events_service, "assigned_space",
+                            lambda space_id, coordinator_id: (deepcopy(booking["event"]), {"id": space_id}))
+
+        response = post(client, auth_headers) if path == "event" else post_for_space(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json() == {"detail": venues_service.BOOKING_REFUSALS[outcome], "conflict": expected}
+
+    def test_a_refusal_with_nothing_in_the_way_carries_no_conflict(
+        self, client, auth_headers, authenticate_as, booking
+    ):
+        # A lost race whose winner is already gone (Q13), or any other refusal.
+        booking["outcome"] = "held_by_other"
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+
+        response = post(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json() == {"detail": "Venue already held for this time by another event."}
 
     @pytest.mark.parametrize("status", ["under_review", "confirmed", "rejected"])
     def test_an_event_outside_planning_is_refused_naming_its_status(

@@ -289,36 +289,19 @@ def list_edit_history(venue_id: str) -> list[dict]:
 def list_occupants(period: Period) -> dict[str, list[Occupant]]:
     """Occupying bookings and blocks that overlap `period`, keyed by venue id.
 
-    The overlap is evaluated in Postgres (`&&` on the GiST-indexed ranges),
-    so at most a handful of rows come back however large the tables grow.
+    Asks `public.venue_conflicts`, the single conflict check the request
+    functions use (SCRUM-21 AC4), for every venue at once. It compares
+    occupied windows (setup to turnaround) and leaves out overdue holds and
+    finished bookings. A booking's `detail` is its status, a block's its
+    reason; search never names the other event (REQUIREMENTS §6.14).
     """
-    client = get_supabase_admin_client()
-    literal = _range_literal(period)
+    response = get_supabase_admin_client().rpc("venue_conflicts", {"p_period": _range_literal(period)}).execute()
     occupants: dict[str, list[Occupant]] = {}
-
-    bookings = (
-        client.table("venue_bookings")
-        .select("venue_id, occupied_period, status")
-        .in_("status", sorted(OCCUPYING_STATUSES))
-        .overlaps("occupied_period", literal)
-        .execute()
-    )
-    for row in bookings.data or []:
+    for row in response.data or []:
+        detail = row["booking_status"] if row["kind"] == "booking" else row["block_reason"]
         occupants.setdefault(row["venue_id"], []).append(
-            Occupant(kind="booking", period=_parse_range(row["occupied_period"]), detail=row["status"])
+            Occupant(kind=row["kind"], period=_parse_range(row["occupied_period"]), detail=detail)
         )
-
-    blocks = (
-        client.table("venue_blocks")
-        .select("venue_id, blocked_period, reason")
-        .overlaps("blocked_period", literal)
-        .execute()
-    )
-    for row in blocks.data or []:
-        occupants.setdefault(row["venue_id"], []).append(
-            Occupant(kind="block", period=_parse_range(row["blocked_period"]), detail=row["reason"])
-        )
-
     return occupants
 
 

@@ -1,7 +1,7 @@
 // Venue booking request (SCRUM-19) and rejection (SCRUM-38) against real data.
 // Cases: docs/test-cases/venues.md.
 import { API_URL, expect, seedSession, test } from "./support/fixtures.js";
-import { createThrowawayEvent, createThrowawayRequest } from "./support/throwaway.js";
+import { createThrowawayEvent, createThrowawayRequest, setThrowawayBookingBuffers } from "./support/throwaway.js";
 
 const INNOVATION_LAB = "b0000000-0000-4000-8000-000000000006";
 
@@ -30,6 +30,25 @@ test("TC-BOOK-008 a coordinator finds a venue from the event and requests it", a
   const booking = page.getByTestId("event-spaces").locator("article").filter({ hasText: "Main space" }).getByTestId("space-booking");
   await expect(booking).toContainText("Innovation Lab");
   await expect(booking).toContainText("Tentative hold");
+});
+
+test("TC-BOOK-041 a refused request names the event in the way and its window", async ({ page, sharedSessions }) => {
+  // 19 Jun 2031. The coordinator's event is 12:30–14:00; another event takes
+  // Innovation Lab 10:00–12:00 with 45 min turnaround after the search loaded.
+  const event = createThrowawayEvent("041", "2031-06-19 12:30+08", "2031-06-19 14:00+08");
+  await seedSession(page, await sharedSessions("event_coordinator"));
+  await page.goto(`/venues?event=${event.id}`);
+  await expect(page.getByRole("button", { name: "Request Innovation Lab" })).toBeVisible();
+
+  const other = createThrowawayRequest("041-other", "2031-06-19 10:00+08", "2031-06-19 12:00+08", INNOVATION_LAB);
+  setThrowawayBookingBuffers(other.bookingId, 30, 45);
+  await page.getByRole("button", { name: "Request Innovation Lab" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Request venue" }).click();
+
+  const alert = dialog.getByRole("alert");
+  await expect(alert).toContainText("Venue already held for this time by another event.");
+  await expect(alert).toContainText(`"${other.event.name}" occupies it 19 Jun 2031, 9:30 am – 12:45 pm`);
 });
 
 test("TC-BOOK-021 venue staff read a held request and reject it with a reason", async ({ page, sharedSessions }) => {

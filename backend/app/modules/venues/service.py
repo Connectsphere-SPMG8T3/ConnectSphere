@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, status
 
 from app.core.exceptions import (
+    BookingConflictError,
     BookingDecisionConflictError,
     BookingDecisionTextError,
     BookingNotFoundError,
@@ -24,6 +25,7 @@ from app.modules.venues.search import OCCUPYING_STATUSES
 from app.modules.venues.schemas import (
     INACTIVE_REASON_LABELS,
     AffectedBooking,
+    BookingConflict,
     BookingDecision,
     BookingEventRequirements,
     BookingHistoryEntry,
@@ -501,7 +503,7 @@ def booking_readiness_by_event(event_ids: Iterable[str]) -> dict[str, list[Booki
 # (REQUIREMENTS §6.12, §6.14, §6.4). Wording of the first and fourth is the spec's.
 BOOKING_REFUSALS = {
     "held_by_other": "Venue already held for this time by another event.",
-    "blocked": "Venue blocked for this time.",
+    "blocked": "Venue blocked for this timing.",
     "already_booked": "This event already has a venue booking.",
     "returned": "Requirements are still being amended.",
     "no_period": "This event has no start and end time to hold a venue for.",
@@ -545,7 +547,12 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
             detail=f"{venue.name} seats {seats}; this space needs {space['expected_pax']}.",
         )
     if outcome in BOOKING_REFUSALS:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=BOOKING_REFUSALS[outcome])
+        # SCRUM-21 AC2: an overlap or a block comes with what is in the way.
+        conflict = result.get("conflict")
+        raise BookingConflictError(
+            BOOKING_REFUSALS[outcome],
+            BookingConflict.model_validate(conflict).model_dump(mode="json") if conflict else None,
+        )
     if outcome == "not_planning":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
