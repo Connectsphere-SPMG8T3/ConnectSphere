@@ -2105,7 +2105,12 @@ What this branch adds:
 
 **Two platform problems found and documented:**
 - **macOS:** a forked mutmut worker that reaches an HTTP client crashes in CoreFoundation's proxy lookup. `no_proxy='*'` prevents it.
-- **Windows:** mutmut needs `fork()`, so Windows users run it under WSL.
+- **Windows:** mutmut needs `fork()`, which Windows lacks. Most of the team is on Windows, so the backend half also runs as a **manual GitHub workflow**, `.github/workflows/mutation.yml`:
+  - started from the Actions tab with a branch and a module to choose;
+  - shows the per-file table on its summary page and uploads every survivor's diff as the `mutation-report` artifact;
+  - never triggered by a PR or a push.
+
+  The table comes from `backend/scripts/mutation_report.py` (test-first: `tests/test_mutation_report.py`), which also works locally.
 
 **Baselines on `main` (`d059dbb`):**
 - **Backend:** 4,079 of 5,874 mutants killed (69%; 76% of mutants a test reaches), 2 min 11 s.
@@ -2118,5 +2123,9 @@ Per-file tables are in `MUTATION_TESTING.md` §6.
 - A module-scoped run (`mutmut run "app.modules.events.readiness.*"`) checked only that module's 37 mutants.
 - Both full mutation runs completed without crashes.
 - Frontend: 860 Vitest tests passed and `npm run build` succeeded with Stryker installed.
+- The workflow passes `actionlint`. Its shell steps were run locally on Python 3.11 (the runner's version) for `core`. The summary table matched the baseline (212 of 328 killed), and `survivors.diff` held all 116 survivors.
 
-Not verified: CI on this branch, which runs when the PR is opened; and the WSL instructions, since no Windows machine was available.
+Not verified:
+- CI on this branch, which runs when the PR is opened.
+- The workflow on GitHub itself: a manual workflow can only be started once it is on `main`, so its first real run is after merge.
+- The WSL instructions, since no Windows machine was available.

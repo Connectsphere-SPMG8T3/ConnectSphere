@@ -4,7 +4,7 @@
 
 Coverage says a line *ran* during the tests. Mutation testing changes the code on purpose (`<` to `<=`, `and` to `or`, an argument to `None`, a `continue` to a `break`) and runs the tests again. If they still pass, that change is a **surviving mutant**: a bug of that shape would ship with the suite green. The share of mutants the tests catch (**killed**) is the mutation score.
 
-_Last updated: 2026-10-16 — first version: mutmut and StrykerJS added, team decision on how they are used, first baselines (`chore/mutation-testing`)._
+_Last updated: 2026-10-17 — §3: the manual **Mutation testing** GitHub workflow, the way to run the backend half from Windows. 2026-10-16 — first version: mutmut and StrykerJS added, team decision on how they are used, first baselines (`chore/mutation-testing`)._
 
 ---
 
@@ -34,7 +34,27 @@ Both were fixed on `chore/venues-mutation-test-gaps`; `BUILD_LOG.md` has the det
 
 ## 3. How to run it
 
-### Backend (mutmut)
+### From GitHub: any computer, including Windows
+
+The **Mutation testing** workflow runs the backend half on GitHub's Linux machines. Nothing to install, and it works from Windows, where mutmut can't run.
+
+1. Open the repository on GitHub and go to the **Actions** tab.
+2. In the left sidebar, click **Mutation testing**.
+3. Click **Run workflow** (on the right). Choose:
+   - **Branch:** the branch to test, usually your feature branch;
+   - **Backend code to mutate:** `venues`, `events`, `equipment`, `auth`, `core` (`app/core` and `app/db`) or `all`.
+4. Click **Run workflow** again. The run appears in the list within a few seconds.
+5. When it finishes (about 3–5 minutes):
+   - the run's **Summary** page shows the score per file;
+   - the **mutation-report** artifact at the bottom holds `survivors.diff`, every surviving mutant's change, to triage with §4.
+
+**Things to know:**
+- The workflow only appears in the sidebar once `.github/workflows/mutation.yml` is on `main`.
+- It never runs on its own and never blocks a PR.
+- Each run uses about 3–5 of the repository's 2,000 free Actions minutes a month.
+- It covers the backend only. Run the frontend locally: StrykerJS works on Windows.
+
+### Backend (mutmut), locally on macOS, Linux or WSL
 
 From `backend/`, with the virtualenv active (`mutmut` is in `requirements.txt`; config in `backend/pyproject.toml`):
 
@@ -47,10 +67,11 @@ mutmut browse                                      # interactive viewer
 ```
 
 - **`no_proxy='*'` matters on macOS.** mutmut runs each mutant in a forked process. A mutant that reaches a real HTTP client makes httpx look up the system proxy, which crashes a forked process on macOS. You get a "Python quit unexpectedly" dialog, and a mutant reported as `segfault`. Setting `no_proxy` skips that lookup.
-- **Windows needs WSL.** mutmut relies on `fork()`, which Windows does not have. Run it from the WSL setup in `SETUP.md`.
+- **On Windows, use the GitHub workflow above** (or WSL). mutmut relies on `fork()`, which Windows does not have.
+- `mutmut results --all true | python scripts/mutation_report.py` prints the same per-file table the workflow shows.
 - The working copy goes to `backend/mutants/`. That folder is gitignored; delete it whenever you like.
 
-### Frontend (StrykerJS)
+### Frontend (StrykerJS), locally on any OS
 
 From `frontend/` (config in `frontend/stryker.config.mjs`):
 
