@@ -520,7 +520,30 @@ BOOKING_REFUSALS = {
     "no_period": "This event has no start and end time to hold a venue for.",
     # SCRUM-64 AC2: a deactivated venue takes no new requests.
     "venue_inactive": "This venue is inactive.",
+    # CR-95 AC4: only the event's own affected booking can be replaced.
+    "replaced_booking_invalid": "That booking is not waiting for a replacement.",
 }
+
+
+def _prepare_replacement(replaces_id: str, event: dict, space_id: str | None) -> None:
+    """Refuse before changing anything unless `replaces_id` is this event's (or
+    space's) own affected booking that is still held or approved, then return a
+    Confirmed or Safety-review event to planning, which the booking functions
+    require (CR-95 AC4, AC7). The coordinator has decided to replace the venue
+    by asking, so the event stays in planning even if the venue they pick is
+    taken; if the return fails, nothing has been requested."""
+    row = repository.get_replaceable_booking(replaces_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
+    if (
+        row["event_id"] != event["id"]
+        or row.get("event_space_request_id") != space_id
+        or row.get("flag") != "affected"
+        or row["status"] not in ("held", "approved")
+    ):
+        raise BookingConflictError(BOOKING_REFUSALS["replaced_booking_invalid"], None)
+    if event["status"] in ("safety_review", "confirmed"):
+        events_service.return_to_planning(event["id"], reason_code="arrangement_flagged")
 
 
 def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooking:
@@ -540,13 +563,17 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
     event_id = event["id"]
     space_id = space["id"] if space else None
     notify_message = f'A venue booking was requested for "{event["name"]}".'
+    replaces_id = str(body.replaces_booking_id) if body.replaces_booking_id else None
+    extra = {"replaces_booking_id": replaces_id} if replaces_id else {}
+    if replaces_id:
+        _prepare_replacement(replaces_id, event, space_id)
     if space_id:
         result = repository.request_booking_for_space(
-            space_id, venue_id, coordinator_id, body.note, notify_message=notify_message,
+            space_id, venue_id, coordinator_id, body.note, notify_message=notify_message, **extra,
         )
     else:
         result = repository.request_booking(
-            event_id, venue_id, coordinator_id, body.note, notify_message=notify_message,
+            event_id, venue_id, coordinator_id, body.note, notify_message=notify_message, **extra,
         )
     outcome = result["outcome"]
     if outcome == "over_capacity":

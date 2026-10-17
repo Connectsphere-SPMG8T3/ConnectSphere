@@ -468,6 +468,8 @@ class VenueBookingCreate(BaseModel):
     event_space_request_id: UUID | None = None
     venue_id: UUID
     note: str | None = Field(default=None, max_length=BOOKING_NOTE_MAX_LENGTH)
+    # CR-95 AC4: the affected booking this request replaces.
+    replaces_booking_id: UUID | None = None
 
     @field_validator("note", mode="before")
     @classmethod

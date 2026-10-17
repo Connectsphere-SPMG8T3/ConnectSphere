@@ -445,46 +445,56 @@ def list_booking_statuses(event_ids: Iterable[str]) -> list[dict]:
     return response.data or []
 
 
-def request_booking(event_id: str, venue_id: str, actor_id: str, note: str | None, *,
-                    notify_message: str) -> dict:
-    """Run `public.request_venue_booking` (SCRUM-19): the hold and venue staff's
-    notifications in one transaction. Returns `{outcome, booking_id}`; every
-    refusal is an outcome code, never a raised database error."""
+def get_replaceable_booking(booking_id: str) -> dict | None:
+    """`{id, event_id, event_space_request_id, status, flag}` for the booking a
+    replacement names (CR-95 AC4), or None. The database function decides again
+    under its lock; this read lets the caller refuse before it changes anything."""
     response = (
         get_supabase_admin_client()
-        .rpc(
-            "request_venue_booking",
-            {
-                "p_event_id": event_id,
-                "p_venue_id": venue_id,
-                "p_actor_id": actor_id,
-                "p_note": note,
-                "p_notify_message": notify_message,
-            },
-        )
+        .table("venue_bookings")
+        .select("id, event_id, event_space_request_id, status, flag")
+        .eq("id", booking_id)
+        .limit(1)
         .execute()
     )
+    rows = response.data or []
+    return rows[0] if rows else None
+
+
+def request_booking(event_id: str, venue_id: str, actor_id: str, note: str | None, *,
+                    notify_message: str, replaces_booking_id: str | None = None) -> dict:
+    """Run `public.request_venue_booking` (SCRUM-19): the hold and venue staff's
+    notifications in one transaction. Returns `{outcome, booking_id}`; every
+    refusal is an outcome code, never a raised database error. With
+    `replaces_booking_id` it replaces that affected booking (CR-95 AC4)."""
+    params = {
+        "p_event_id": event_id,
+        "p_venue_id": venue_id,
+        "p_actor_id": actor_id,
+        "p_note": note,
+        "p_notify_message": notify_message,
+    }
+    if replaces_booking_id:
+        params["p_replaces_booking_id"] = replaces_booking_id
+    response = get_supabase_admin_client().rpc("request_venue_booking", params).execute()
     rows = response.data or []
     return rows[0]
 
 
 def request_booking_for_space(space_id: str, venue_id: str, actor_id: str, note: str | None, *,
-                              notify_message: str) -> dict:
-    """Create a hold for one event-space request using its own period."""
-    response = (
-        get_supabase_admin_client()
-        .rpc(
-            "request_venue_booking_for_space",
-            {
-                "p_event_space_request_id": space_id,
-                "p_venue_id": venue_id,
-                "p_actor_id": actor_id,
-                "p_note": note,
-                "p_notify_message": notify_message,
-            },
-        )
-        .execute()
-    )
+                              notify_message: str, replaces_booking_id: str | None = None) -> dict:
+    """Create a hold for one event-space request using its own period. With
+    `replaces_booking_id` it replaces that space's affected booking (CR-95 AC4)."""
+    params = {
+        "p_event_space_request_id": space_id,
+        "p_venue_id": venue_id,
+        "p_actor_id": actor_id,
+        "p_note": note,
+        "p_notify_message": notify_message,
+    }
+    if replaces_booking_id:
+        params["p_replaces_booking_id"] = replaces_booking_id
+    response = get_supabase_admin_client().rpc("request_venue_booking_for_space", params).execute()
     rows = response.data or []
     return rows[0]
 
