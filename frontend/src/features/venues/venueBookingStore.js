@@ -16,13 +16,14 @@ export const useVenueBookingStore = defineStore("venueBooking", {
   state: () => ({ isRequesting: false, error: null, conflict: null }),
 
   actions: {
-    async request(eventId, venueId, note) {
+    async request(eventId, venueId, note, replacesBookingId = null) {
       const auth = useAuthStore();
       this.isRequesting = true;
       this.error = null;
       this.conflict = null;
       try {
         const payload = { event_id: eventId, venue_id: venueId, note: note?.trim() || null };
+        if (replacesBookingId) payload.replaces_booking_id = replacesBookingId;
         return await auth.withSession((token) => venueBookingsApi.request(payload, token));
       } catch (error) {
         this.error = error.message;
@@ -33,13 +34,14 @@ export const useVenueBookingStore = defineStore("venueBooking", {
       }
     },
 
-    async requestForSpace(spaceId, venueId, note) {
+    async requestForSpace(spaceId, venueId, note, replacesBookingId = null) {
       const auth = useAuthStore();
       this.isRequesting = true;
       this.error = null;
       this.conflict = null;
       try {
         const payload = { event_space_request_id: spaceId, venue_id: venueId, note: note?.trim() || null };
+        if (replacesBookingId) payload.replaces_booking_id = replacesBookingId;
         return await auth.withSession((token) => venueBookingsApi.request(payload, token));
       } catch (error) {
         this.error = error.message;

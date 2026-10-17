@@ -169,6 +169,77 @@ describe("VenueSearchView", () => {
     }, "access"));
   });
 
+  describe("replacing an affected booking (CR-95 AC4)", () => {
+    const AFFECTED = {
+      id: "booking-affected", event_space_request_id: null, venue_id: "old-venue", venue_name: "Seminar Room 1",
+      status: "approved", flag: "affected", flag_reason: "Venue unavailable: maintenance",
+    };
+    const affectedEvent = (status = "confirmed") => ({
+      id: "event-affected",
+      name: "Partner Summit",
+      status,
+      event_timezone: "Asia/Singapore",
+      starts_at: "2026-10-10T06:00:00Z",
+      ends_at: "2026-10-10T09:00:00Z",
+      expected_attendance: 80,
+      layout_preference: "theatre",
+      facilities_required: ["projector"],
+      venue_bookings: [AFFECTED],
+    });
+
+    it("requests a venue for the affected booking and says the event goes back to planning", async () => {
+      eventsApi.get.mockResolvedValue(affectedEvent());
+      venueBookingsApi.request.mockResolvedValue({ id: "new-booking" });
+      const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+      const { el } = await mountView(VenueSearchView, {
+        route: { name: "venue-search", query: { event: "event-affected", replaces: AFFECTED.id } },
+      });
+
+      await vi.waitFor(() => expect(el.textContent).toContain("Partner Summit"));
+      el.querySelector('[aria-label="Request Hall A"]').click();
+      await settle();
+
+      const dialog = document.querySelector('[role="dialog"]');
+      expect(dialog.textContent).toContain("replaces Seminar Room 1");
+      expect(dialog.textContent).toContain("back to Planning");
+      document.querySelector('[aria-label="Request venue"]').click();
+
+      await vi.waitFor(() => expect(venueBookingsApi.request).toHaveBeenCalledWith({
+        event_id: "event-affected", venue_id: HALL_A.id, note: null, replaces_booking_id: AFFECTED.id,
+      }, "access"));
+    });
+
+    it("does not say the event goes back to planning when it is already there", async () => {
+      eventsApi.get.mockResolvedValue(affectedEvent("planning"));
+      const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+      const { el } = await mountView(VenueSearchView, {
+        route: { name: "venue-search", query: { event: "event-affected", replaces: AFFECTED.id } },
+      });
+
+      await vi.waitFor(() => expect(el.textContent).toContain("Partner Summit"));
+      el.querySelector('[aria-label="Request Hall A"]').click();
+      await settle();
+
+      const dialog = document.querySelector('[role="dialog"]');
+      expect(dialog.textContent).toContain("replaces Seminar Room 1");
+      expect(dialog.textContent).not.toContain("back to Planning");
+    });
+
+    it.each([
+      ["no booking is named", {}],
+      ["the named booking is not the affected one", { replaces: "booking-other" }],
+    ])("offers no request when %s", async (_label, extra) => {
+      eventsApi.get.mockResolvedValue(affectedEvent());
+      const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+      const { el } = await mountView(VenueSearchView, {
+        route: { name: "venue-search", query: { event: "event-affected", ...extra } },
+      });
+
+      await vi.waitFor(() => expect(el.textContent).toContain("Partner Summit"));
+      expect(el.querySelector('[aria-label="Request Hall A"]')).toBeNull();
+    });
+  });
+
   it("keeps the selected-space request dialog open and shows a booking refusal", async () => {
     const event = {
       id: "event-1",

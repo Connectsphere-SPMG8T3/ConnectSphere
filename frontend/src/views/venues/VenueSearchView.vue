@@ -28,7 +28,20 @@ const eventCriteria = ref(null);
 const eventError = ref(null);
 const requestedVenue = ref(null);
 
-const canRequest = computed(() => venuePanelState(bookingEvent.value, bookingSpace.value).kind === "can-request");
+const panelState = computed(() => venuePanelState(bookingEvent.value, bookingSpace.value));
+
+// Opened to replace an affected booking (`&replaces=<booking id>`, CR-95 AC4):
+// requests are offered only while that booking is still the one affected.
+const replacesId = computed(() => (route.query.replaces ? String(route.query.replaces) : null));
+const replacedBooking = computed(() => {
+  const panel = panelState.value;
+  return panel.kind === "affected" && panel.canReplace && panel.booking.id === replacesId.value ? panel.booking : null;
+});
+const canRequest = computed(() => panelState.value.kind === "can-request" || Boolean(replacedBooking.value));
+// A Confirmed or Safety-review event returns to Planning as the request is made (AC7).
+const returnsToPlanning = computed(
+  () => Boolean(replacedBooking.value) && bookingEvent.value.status !== "planning",
+);
 
 // A venue is only offered while the search checks the selected space's
 // effective period; otherwise "Available" would describe a different interval.
@@ -104,8 +117,12 @@ function openRequest(venue) {
 
 async function confirmRequest(note) {
   try {
-    if (bookingSpace.value) await bookingStore.requestForSpace(bookingSpace.value.id, requestedVenue.value.id, note);
-    else await bookingStore.request(bookingEvent.value.id, requestedVenue.value.id, note);
+    const replaces = replacedBooking.value?.id ?? null;
+    if (bookingSpace.value) {
+      await bookingStore.requestForSpace(bookingSpace.value.id, requestedVenue.value.id, note, replaces);
+    } else {
+      await bookingStore.request(bookingEvent.value.id, requestedVenue.value.id, note, replaces);
+    }
     requestedVenue.value = null;
     showToast("Venue requested. It is held while venue staff decide.");
     router.push({ name: "coordinator-event", params: { id: bookingEvent.value.id } });
@@ -215,6 +232,8 @@ async function confirmRequest(note) {
       :busy="bookingStore.isRequesting"
       :error="bookingStore.error"
       :conflict="describeConflict(bookingStore.conflict, bookingEvent.event_timezone || 'Asia/Singapore')"
+      :replaces-venue-name="replacedBooking?.venue_name ?? ''"
+      :returns-to-planning="returnsToPlanning"
       @confirm="confirmRequest"
       @cancel="requestedVenue = null"
     />
