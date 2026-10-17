@@ -547,7 +547,9 @@ class TestVenueStaffDashboardPayload:
 
         body = client.get(VENUE_STAFF_DASHBOARD, headers=auth_headers).json()
 
-        assert set(body) == {"generated_at", "venues", "booking_requests", "pending_holds", "re_review_bookings", "blocks"}
+        assert set(body) == {
+            "generated_at", "venues", "booking_requests", "pending_holds", "re_review_bookings", "affected_bookings", "blocks",
+        }
         assert [v["name"] for v in body["venues"]] == ["Hall A", "Hall B"]
         assert len(body["pending_holds"]) == 2
         assert len(body["re_review_bookings"]) == 1

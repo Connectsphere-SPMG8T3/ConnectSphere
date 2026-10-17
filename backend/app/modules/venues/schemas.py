@@ -251,6 +251,9 @@ class VenueStaffBooking(BookingSummary):
     # When a hold expires unless approved (CR-99). The dashboard sorts pending
     # holds on it, soonest first. Null on a booking that was never held.
     expires_at: datetime | None = None
+    # `affected` when the venue became unavailable under it (CR-95); venue staff
+    # restore or leave it. Null on an unflagged booking.
+    flag: str | None = None
     # `event_name`, `coordinator_name` and decision metadata are resolved by
     # the complete dashboard history query; the SPA only falls back to an id
     # when an event row is genuinely unavailable.
@@ -270,6 +273,8 @@ class VenueStaffDashboard(BaseModel):
     booking_requests: list[VenueStaffBooking] = []
     pending_holds: list[VenueStaffBooking] = []
     re_review_bookings: list[VenueStaffBooking] = []
+    # Live bookings whose venue became unavailable and have not ended (CR-95 AC9).
+    affected_bookings: list[VenueStaffBooking] = []
     blocks: list[VenueStaffBlock] = []
 
 

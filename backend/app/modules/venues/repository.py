@@ -393,7 +393,7 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
         # Every relationship is named because bookings have multiple venue,
         # event and profile foreign keys.
         .select(
-            "id, event_id, venue_id, occupied_period, status, created_at, expires_at, "
+            "id, event_id, venue_id, occupied_period, status, created_at, expires_at, flag, "
             "decision_reason, suggestion_note, decided_at, "
             "venues!venue_bookings_venue_id_fkey(name), "
             "events!venue_bookings_event_id_fkey(name, coordinator:profiles!events_coordinator_id_fkey(full_name)), "
@@ -414,6 +414,7 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
             status=row["status"],
             requested_at=datetime.fromisoformat(row["created_at"]),
             expires_at=datetime.fromisoformat(row["expires_at"]) if row.get("expires_at") else None,
+            flag=row.get("flag"),
             event_name=_embedded_name(row, "events", "name"),
             coordinator_name=_embedded_name(
                 {"coordinator": (_embedded_relation(row, "events") or {}).get("coordinator")},

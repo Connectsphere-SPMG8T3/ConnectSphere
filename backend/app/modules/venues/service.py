@@ -457,6 +457,14 @@ def venue_staff_dashboard(now: datetime | None = None) -> VenueStaffDashboard:
             key=lambda b: (b.expires_at or b.period.starts_at, b.id),
         ),
         re_review_bookings=[b for b in bookings if b.status == "re_review"],
+        # Soonest event first. One that has ended has nothing left to restore.
+        affected_bookings=sorted(
+            (
+                b for b in bookings
+                if b.flag == "affected" and b.status in ("held", "approved") and b.period.ends_at > now
+            ),
+            key=lambda b: (b.period.starts_at, b.id),
+        ),
         blocks=repository.list_all_upcoming_blocks(now),
     )
 
