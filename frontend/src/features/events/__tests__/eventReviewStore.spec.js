@@ -7,7 +7,7 @@ import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn() },
+  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), setPrimarySpace: vi.fn(), clearPrimarySpace: vi.fn() },
 }));
 
 const EVENT = { id: "event-1", name: "Partner Summit", status: "under_review", version: 3 };
@@ -66,6 +66,24 @@ describe("useEventReviewStore", () => {
     await store.sendForSafetyCheck();
     expect(eventsApi.sendForSafetyCheck).toHaveBeenCalledWith("event-1", "access-token");
     expect(store.event.status).toBe("safety_review"); expect(store.history).toEqual([ENTRY]);
+  });
+  it("CR-97 makes a space the primary venue and shows the event the API returns", async () => {
+    const store = useEventReviewStore(); store.event = {...EVENT, status: "planning"}; store.historyEventId = EVENT.id;
+    const updated = {...EVENT, status: "planning", spaces: [{id: "s1", label: "Main hall", is_primary: true}]};
+    eventsApi.setPrimarySpace.mockResolvedValue(updated);
+    eventsApi.history.mockResolvedValue({entries: []});
+    await store.setPrimarySpace("s1");
+    expect(eventsApi.setPrimarySpace).toHaveBeenCalledWith("event-1", "s1", "access-token");
+    expect(store.event).toEqual(updated);
+  });
+  it("CR-97 clears the primary venue", async () => {
+    const store = useEventReviewStore(); store.event = {...EVENT, status: "planning"}; store.historyEventId = EVENT.id;
+    const updated = {...EVENT, status: "planning", spaces: [{id: "s1", is_primary: false}, {id: "s2", is_primary: false}]};
+    eventsApi.clearPrimarySpace.mockResolvedValue(updated);
+    eventsApi.history.mockResolvedValue({entries: []});
+    await store.clearPrimarySpace();
+    expect(eventsApi.clearPrimarySpace).toHaveBeenCalledWith("event-1", "access-token");
+    expect(store.event).toEqual(updated);
   });
   it("SCRUM-82 reloads stale readiness while preserving the refusal", async () => {
     const store = useEventReviewStore(); store.event = {...EVENT, status: "planning"}; store.historyEventId = EVENT.id;

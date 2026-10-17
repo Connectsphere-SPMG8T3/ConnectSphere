@@ -2090,6 +2090,38 @@ What was actually built:
 - **Uncovered by unit tests, by convention:** the Supabase wrappers in `venues/repository.py` and the `venuesApi.deactivate`/`reactivate` request wrappers (`docs/CI.md` §4). The live checks and e2e exercise them.
 - **Follow-up:** tell Xuan Wei about the flag contract (IMPLEMENTATION_MAP §5); CR-95 owns clearing flags and the "Needs alternative venue" alert.
 
+### 4.51. CR-97 — Book more than one venue for an event
+
+CR-97 (P1, Sprint 3) lets the coordinator book a venue per event space (W7 CR-03, QA3-23 to QA3-27). CR-98 had already built the data model: a booking per space, one active booking per space, each space's own window. CR-97 fills the remaining gaps on `feature/cr-97-multi-venue-booking`. It was built test-first in red → green → refactor slices, each phase committed separately so the history shows the order.
+
+#### What was built
+
+1. **Per-space readiness (AC10).** `readiness.safety_readiness` takes the event's spaces and checks each one's own bookings, naming the space in every blocker ("Breakout room: no approved venue booking."). `venues.service.booking_statuses_by_space` feeds it. The event read, send-for-safety and CR-104's approval check all use it. Events without spaces keep the event-wide wording.
+2. **Capacity at request (AC10, BR-R16).** `request_venue_booking_for_space` refuses `over_capacity` when the space's expected pax exceeds the venue's capacity for the space's layout, or its overall capacity when it records none for that layout (venue search's rule). The API answers 409 "<venue> seats <n>; this space needs <pax>."
+3. **Event-only requests book the first space.** A request naming only the event goes through the space function for the event's first space (`created_at, id`, the trigger's order). It is held to the same rules.
+4. **Primary venue (AC9, BR-R17).** `event_space_requests.is_primary`, at most one per event by a partial unique index. `set_primary_space` locks the spaces, then the event (the space-booking function's order). `PUT /events/{id}/spaces/{space_id}/primary` and `DELETE /events/{id}/spaces/primary` serve the assigned coordinator by active role, in planning only. An event's only space reads as primary.
+5. **Coordinator event page (AC5, AC9).** Each space card shows its booking's venue, status and hold expiry, or why an expired hold ended. **Find venue** appears only where the space can be booked. The **Primary venue** badge and a Make/Unset primary toggle appear in planning when there is more than one space. The Venue panel keeps rejections and the not-yet-requestable reason.
+6. **Migration** `20261016120000_cr97_primary_space_and_capacity.sql`, applied to the live project on 2026-10-16 after its checks passed in a rolled-back transaction.
+
+AC1–AC3 and AC8 were already delivered by CR-98; CR-97 pins them with SQL checks (TC-BOOK-032) and live checks (TC-BOOK-028). Three ACs are not met: **AC4** needs a cancel action (story 85), though independence is verified with rejected and expired bookings; **AC6** (each booking's own setup and turnaround) needs CR-100 and story 21; **AC7** is partly met, since suitability (18) and setup/turnaround (CR-100, 21) per window don't exist yet.
+
+#### Found during verification
+
+- Every booked event has a space: `populate_booking_space_request` creates a "Main space" for a space-less event. Moving bookings onto space cards therefore changed what TC-BOOK-008, TC-BOOK-022 and TC-HOLD-005 read, and CR-99 AC7's expired-hold explanation had to move to the space card (red test first). The developer chose this over keeping the old panel.
+- The seeded planning event's held booking is on its backfilled "Main space", so TC-SAFE-002–004 now expect "Main space: awaiting venue staff approval." The first recorded live run (98/100) caught this.
+- The manual pass found that the event read sent each space only its occupying booking, with no expiry. On real data, a held space couldn't say when its hold runs out, and an expired one had no CR-99 AC7 explanation. The view tests had passed on data the API never sent, because an autouse `conftest.py` stub replaced the service function itself. `venue_bookings` now gives each space its occupying booking or else its latest expired hold, with `expires_at`. The stub now sits at the repository, so API tests run the real per-space choice.
+- Also from the manual pass: the space count read "1 spaces", and a trigger-created "Main space" read "pax ·". Both fixed ("1 space"; "Requirements not specified").
+- A coordinator can't add a space; only the organiser can, in draft or returned. No live planning event had two spaces until a throwaway one was made (REQUIREMENTS §9 item 54).
+- A backend on a spare port needs `BACKEND_CORS_ORIGINS` to include the spare frontend origin, or every e2e API call fails with "Unable to reach the server".
+
+#### Verification
+
+- Backend: **1,200 passed**, 96% line coverage (92% gate). Frontend: **871 passed**, 95.92% lines (94% gate); build passes.
+- Uncovered new lines are thin adapters outside the agreed test seams: `events/repository.set_primary_space`, `eventsApi.setPrimarySpace`/`clearPrimarySpace`, and the changed select in `venues/repository.list_booking_statuses`. The live checks exercise all of them.
+- Live: [API/DB run](test-cases/runs/2026-10-16-1910-api-db-6eee8f4.md) **100/100**; [e2e run](test-cases/runs/2026-10-16-1916-e2e-6eee8f4.md) **63/63**. The earlier [98/100 run](test-cases/runs/2026-10-16-1904-api-db-10a6c32.md) records the readiness-wording failures before their fix. Advisors after the push: unchanged (10 warnings, none new).
+- Manual pass ([run](test-cases/runs/2026-10-16-1949-manual-9c4b74f.md)): TC-BOOK-035–036 **pass** on a real multi-space event, after the three display bugs above were found and fixed.
+- TC-BOOK-021 twice failed with `fetch failed … ECONNRESET` in the e2e sign-in fixture when only the booking specs ran; it passed in the full recorded run (DEFECTS D36).
+- Follow-up: the coordinator dashboard's aggregate `_venue_readiness` is still per event, not per space (DEFECTS D35).
 ### 4.53. Chore - Mutation testing tooling and first baselines
 
 **[Team decision] 2026-10-16:** the team adopts mutation testing as a recommended practice, not a CI gate or DoD item (`REQUIREMENTS.md` NFR-Q2). It is run on the changed module before a PR that changes logic, and on everything at the end of each sprint. The reason for using it is in `MUTATION_TESTING.md` §1: on the venues module it found about 100 unchecked behaviours in a file with full line coverage, and led to defect D37 (`chore/venues-mutation-test-gaps`).
