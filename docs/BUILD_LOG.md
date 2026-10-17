@@ -2092,7 +2092,7 @@ What was actually built:
 
 ### 4.53. Chore - Mutation testing tooling and first baselines
 
-**[Team decision] 2026-10-16:** the team adopts mutation testing as a recommended practice, not a CI gate or DoD item (`REQUIREMENTS.md` NFR-Q2). It is run on the changed module before a PR that changes logic, and on everything at the end of each sprint. The reason for using it is in `MUTATION_TESTING.md` §1: on the venues module it found about 100 unchecked behaviours in a file with full line coverage, and led to defect D33 (`chore/venues-mutation-test-gaps`).
+**[Team decision] 2026-10-16:** the team adopts mutation testing as a recommended practice, not a CI gate or DoD item (`REQUIREMENTS.md` NFR-Q2). It is run on the changed module before a PR that changes logic, and on everything at the end of each sprint. The reason for using it is in `MUTATION_TESTING.md` §1: on the venues module it found about 100 unchecked behaviours in a file with full line coverage, and led to defect D37 (`chore/venues-mutation-test-gaps`).
 
 What this branch adds:
 

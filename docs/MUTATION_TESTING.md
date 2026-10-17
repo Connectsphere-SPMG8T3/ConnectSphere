@@ -13,7 +13,7 @@ _Last updated: 2026-10-17 — §3: the manual **Mutation testing** GitHub workfl
 Line coverage was already above 95% when mutation testing was first tried on the venues module (2026-10-16). It still found:
 
 - **About 100 unchecked behaviours in `venues/service.py`.** Tests ran the code but didn't check what it saved, sent or read. For example, a venue edit could drop fields from its history snapshot, or read another venue's bookings, and no test failed. The fix was assertions, not new code.
-- **Eight authorisation tests that had never run.** While tracing why a mutant survived, four `TestWhoMayRequest` methods (including the SCRUM-76 active-role denial) turned out to be nested inside another function since CR-98, so pytest never collected them (defect D33). The suite stayed green throughout.
+- **Eight authorisation tests that had never run.** While tracing why a mutant survived, four `TestWhoMayRequest` methods (including the SCRUM-76 active-role denial) turned out to be nested inside another function since CR-98, so pytest never collected them (defect D37). The suite stayed green throughout.
 
 Both were fixed on `chore/venues-mutation-test-gaps`; `BUILD_LOG.md` has the details. Neither would have shown up in a coverage report.
 
@@ -167,7 +167,7 @@ The score is killed ÷ all mutants. "Reached" leaves out mutants that no test ex
 The course rubric rewards **"100% coverage unless not possible and stated why"** under testing, and **"quality practices are sustained"** under code quality ([`CI.md`](CI.md) §5). Mutation testing is not required by either, but it supports both:
 
 - **Coverage says the code ran; mutation testing shows the tests would catch it breaking.** The baselines above are measured evidence of how good the tests are, not just how many there are.
-- **It turns gaps into traceable fixes.** Each finding becomes a named test (and, for D33, a defect) recorded in `BUILD_LOG.md`.
+- **It turns gaps into traceable fixes.** Each finding becomes a named test (and, for D37, a defect) recorded in `BUILD_LOG.md`.
 - **The end-of-sprint baseline row is evidence that the practice is sustained.** Keep adding one each sprint.
 
 ## Related
