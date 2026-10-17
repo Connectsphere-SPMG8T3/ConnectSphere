@@ -635,6 +635,15 @@ def change_hold_expiry(booking_id: str, actor_id: str, expires_at: datetime) -> 
     return HoldExpiry(id=booking_id, status="held", expires_at=result["expires_at"])
 
 
+def _flag_fields(row: dict) -> dict:
+    """What marks a booking as affected, or as the replacement for one (CR-95)."""
+    return {
+        "flag": row.get("flag"),
+        "flag_reason": row.get("flag_reason"),
+        "replaces_booking_id": row.get("replaces_booking_id"),
+    }
+
+
 def active_booking_for_event(event_id: str) -> dict | None:
     """`{id, venue_id, venue_name, status, expires_at}` for the venue the event
     holds or has booked, or else its latest expired hold (CR-99 AC7), or None
@@ -649,6 +658,7 @@ def active_booking_for_event(event_id: str) -> dict | None:
         "venue_name": (row.get("venues") or {}).get("name"),
         "status": row["status"],
         "expires_at": row.get("expires_at"),
+        **_flag_fields(row),
     }
 
 
@@ -761,7 +771,10 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
     or else its latest expired hold so the page can say it ran out (CR-99 AC7)."""
     shown: dict[str, dict] = {}
     for row in repository.list_active_bookings(event_id):  # oldest first
-        key = row.get("event_space_request_id") or row["id"]
+        # An affected booking and the replacement asked for beside it (CR-95)
+        # are both shown: the coordinator works from the one and tracks the other.
+        own_row = row.get("flag") or row.get("replaces_booking_id")
+        key = row["id"] if own_row else row.get("event_space_request_id") or row["id"]
         current = shown.get(key)
         if current is None or current["status"] == "expired" or row["status"] in OCCUPYING_STATUSES:
             shown[key] = row
@@ -774,6 +787,7 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
             "venue_name": (row.get("venues") or {}).get("name"),
             "status": row["status"],
             "expires_at": row.get("expires_at"),
+            **_flag_fields(row),
         }
         for row in shown.values()
     ]

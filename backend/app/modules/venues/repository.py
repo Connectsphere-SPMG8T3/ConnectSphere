@@ -506,7 +506,7 @@ def get_active_booking(event_id: str) -> dict | None:
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_space_request_id, venue_id, status, expires_at, venues!venue_bookings_venue_id_fkey(name)")
+        .select("id, event_space_request_id, venue_id, status, expires_at, flag, flag_reason, replaces_booking_id, venues!venue_bookings_venue_id_fkey(name)")
         .eq("event_id", event_id)
         .in_("status", [*OCCUPYING_STATUSES, "expired"])
         .order("created_at", desc=True)
@@ -682,7 +682,7 @@ def list_active_bookings(event_id: str) -> list[dict]:
         response = (
             get_supabase_admin_client()
             .table("venue_bookings")
-            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, venues!venue_bookings_venue_id_fkey(name)")
+            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, flag, flag_reason, replaces_booking_id, venues!venue_bookings_venue_id_fkey(name)")
             .eq("event_id", event_id)
             # Expired too: a space whose hold ran out still shows it (CR-99 AC7, CR-97).
             .in_("status", [*OCCUPYING_STATUSES, "expired"])

@@ -430,7 +430,48 @@ def test_active_bookings_for_event_maps_each_space_booking(monkeypatch):
         "venue_name": "Innovation Lab",
         "status": "held",
         "expires_at": None,
+        "flag": None,
+        "flag_reason": None,
+        "replaces_booking_id": None,
     }]
+
+
+def test_an_affected_booking_and_its_replacement_are_both_listed(monkeypatch):
+    # CR-95 AC4: the coordinator sees the affected booking and the replacement
+    # asked for beside it, for the same space.
+    affected = {
+        "id": AFFECTED_BOOKING_ID, "event_id": EVENT_ID, "event_space_request_id": SPACE_ID, "venue_id": VENUE_ID,
+        "status": "approved", "venues": {"name": "Seminar Room 1"}, "flag": "affected",
+        "flag_reason": "Venue unavailable: maintenance", "replaces_booking_id": None,
+    }
+    replacement_row = {
+        "id": BOOKING_ID, "event_id": EVENT_ID, "event_space_request_id": SPACE_ID, "venue_id": VENUE_ID,
+        "status": "held", "venues": {"name": "Innovation Lab"}, "flag": None, "flag_reason": None,
+        "replaces_booking_id": AFFECTED_BOOKING_ID,
+    }
+    monkeypatch.setattr(venues_repository, "list_active_bookings", lambda event_id: [affected, replacement_row])
+
+    shown = venues_service.active_bookings_for_event(EVENT_ID)
+
+    assert [(b["id"], b["flag"], b["replaces_booking_id"]) for b in shown] == [
+        (AFFECTED_BOOKING_ID, "affected", None),
+        (BOOKING_ID, None, AFFECTED_BOOKING_ID),
+    ]
+    assert shown[0]["flag_reason"] == "Venue unavailable: maintenance"
+
+
+def test_the_events_single_booking_summary_carries_the_flag(monkeypatch):
+    row = {
+        "id": AFFECTED_BOOKING_ID, "event_space_request_id": None, "venue_id": VENUE_ID, "status": "approved",
+        "expires_at": None, "venues": {"name": "Seminar Room 1"}, "flag": "affected",
+        "flag_reason": "Venue unavailable: maintenance", "replaces_booking_id": None,
+    }
+    monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: row)
+
+    summary = venues_service.active_booking_for_event(EVENT_ID)
+
+    assert (summary["flag"], summary["flag_reason"], summary["replaces_booking_id"]) == (
+        "affected", "Venue unavailable: maintenance", None)
 
 class TestRequestBody:
     def test_the_note_is_optional(self, client, auth_headers, authenticate_as, booking):
@@ -498,6 +539,7 @@ class TestEventShowsItsBooking:
             "venue_name": "Innovation Lab", "status": "held",
             # CR-99 AC3: the coordinator sees when the hold runs out.
             "expires_at": "2026-11-01T04:00:00Z",
+            "flag": None, "flag_reason": None, "replaces_booking_id": None,
         }
 
     def test_an_expired_hold_is_shown_so_the_venue_can_be_requested_again(

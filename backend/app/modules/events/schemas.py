@@ -254,6 +254,11 @@ class EventVenueBooking(BaseModel):
     status: str
     # When a hold expires unless approved (CR-99); `expired` once it has.
     expires_at: datetime | None = None
+    # CR-95: `affected` when the venue became unavailable, with why, and the
+    # booking a replacement stands in for. Coordinator view only.
+    flag: str | None = None
+    flag_reason: str | None = None
+    replaces_booking_id: str | None = None
 
 
 class EventCoordinator(BaseModel):

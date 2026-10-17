@@ -495,6 +495,14 @@ def _visible_event(event_id: str, user_id: str, role: str) -> dict:
     return _owned_event(event_id, user_id)
 
 
+def _for_role(booking: dict, role: str) -> dict:
+    """The flag and the replacement link are the coordinator's follow-up (CR-95);
+    an organiser sees a confirmed event's venue, not what is wrong with it."""
+    if role == "event_coordinator":
+        return booking
+    return {**booking, "flag": None, "flag_reason": None, "replaces_booking_id": None}
+
+
 @_safety_service_available
 def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
     row = _visible_event(event_id, user_id, role)
@@ -504,9 +512,9 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
     if role == "event_coordinator" or row["status"] == "confirmed":
         booking = venues_service.active_booking_for_event(event_id)
         if booking:
-            response.venue_booking = EventVenueBooking(**booking)
+            response.venue_booking = EventVenueBooking(**_for_role(booking, role))
         response.venue_bookings = [
-            EventSpaceVenueBooking(**booking)
+            EventSpaceVenueBooking(**_for_role(booking, role))
             for booking in venues_service.active_bookings_for_event(event_id)
         ]
     if role == "event_coordinator":
