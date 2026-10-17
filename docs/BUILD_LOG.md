@@ -2090,6 +2090,69 @@ What was actually built:
 - **Uncovered by unit tests, by convention:** the Supabase wrappers in `venues/repository.py` and the `venuesApi.deactivate`/`reactivate` request wrappers (`docs/CI.md` §4). The live checks and e2e exercise them.
 - **Follow-up:** tell Xuan Wei about the flag contract (IMPLEMENTATION_MAP §5); CR-95 owns clearing flags and the "Needs alternative venue" alert.
 
+### 4.51. CR-94 — Flag bookings affected by venue changes
+
+| Field | Value |
+|---|---|
+| ID | `CR-94` |
+| Title | Flag bookings affected by venue changes |
+| Type | US: Core feature |
+| Status | IN PROGRESS 🥸 |
+| Epic | Booking conflict detection |
+| Sprint | 3 (6 October - 20 October) |
+| Estimate | 3 story points |
+| Priority | 1 |
+| Customer clarification | Week 7 change CR-01 (setup and turnaround time). Single owner of booking flagging after venue changes (21 AC9 and CR-100 refer here). Scope widened from setup/turnaround only to any venue change, so re-estimated 2 to 3; confirm in planning poker. Hard vs warning rules follow 18. Session 3 (13/10): QA3-6 and M3: bookings keep their own setup and turnaround, so a venue edit can't create a time conflict. AC2 removed; AC numbers kept so existing references stay valid. Re-estimate. |
+
+**User story (verbatim):**
+
+> As a Venue staff, I want to have existing bookings re-checked and flagged when a venue's details change, so that conflicts and unsuitable bookings are caught and resolved before the event, not discovered on the day
+
+**Acceptance criteria (verbatim from the Product backlog):**
+
+> AC1. [W7 CR-01] When Venue Staff save any change to a venue, its future held or approved bookings are re-checked.
+> AC2. (Removed 13/10: a venue edit can no longer move a booking's occupied window, because each booking keeps its own setup and turnaround; see CR-100 AC5.)
+> AC3. A booking is flagged Unsuitable if the venue's capacity is now below the event's expected attendance, or a facility the event requires was removed.
+> AC4. Changes that only cause a suitability warning (layout, accessibility, operating hours) show the warning but do not flag the booking.
+> AC5. Each flag shows its reason, and the assigned coordinator and venue staff are notified.
+> AC6. Flagged bookings are not cancelled or removed.
+> AC7. Past and completed events are not re-checked.
+
+#### How the implementation maps to the ticket
+
+On `feature/cr-94-flag-affected-bookings`, in two parts. Part 1 (2026-10-16) classified and notified; part 2 (2026-10-17) writes the flag. Part 2 waited for SCRUM-64's booking-flag schema, merged in PR #68. The branch was then rebased onto `main`, and CR-94's §9 items were renumbered 55–58 because SCRUM-64 had taken item 47 (CR-97's branch holds 51–54).
+
+1. **Suitability rules** (part 1): `venues/suitability.py` is the one rule set (story 18 extends it). Hard rules (capacity, a required facility) make a booking **Unsuitable**; layout, operating hours and the edit-only accessibility change only **warn** (AC3, AC4). `impact.affected_bookings` keeps only rules the edit *newly* breaks (§9 item 55). A space booking is judged on its space's requirements (§9 item 56). Completed and cancelled events are skipped (AC7, §9 item 58).
+2. **Notifications** (part 1, AC5): the coordinator per affected booking, and every venue staff member except the editor, once per event.
+3. **Flagging** (part 2, AC3, AC5, AC6): PR #68 says to flag through `flag_venue_bookings(venue, period, flag, reason, message)`. That function flags by venue and period, so each Unsuitable booking is flagged by its own `occupied_period`; DB-1 lets no other active booking at the venue overlap it. **[Team decision, developer, 2026-10-17]** the calls run inside `update_venue` (migration `20261017120000`), not from Python after the save. A failed call after the save could never be retried, because saving again finds nothing newly broken. The flag's reason names the hard rules; the coordinator's notification is the flag's. A booking already flagged (first flag wins, VC-R1c) or in `re_review` (§9 item 59) keeps its state, and its coordinator gets the ordinary edit notification. `update_venue` returns the newly flagged events, and the service calls `return_to_planning(..., "arrangement_flagged")` for each (CR-104 AC10), logging a failure as SCRUM-64 does.
+4. **No automatic clearing** (**[Team decision, developer, 2026-10-17]**, §9 item 60): a later edit that fixes the venue leaves the flag for the coordinator's follow-up. No clearing path exists yet.
+5. **Frontend:** `VenueEditWarningModal` shows an Unsuitable or Warning badge per booking. From part 2 it says "Bookings marked Unsuitable will be flagged for follow-up" only when one is Unsuitable.
+6. **Checks:** `pytest` `TestVenueEdit::TestFlagging` (9 tests), `test_venue_suitability.py`, `test_venue_impact.py`; Vitest `VenueEditWarningModal.spec.js`; `venue_edit_checks.sql` (CR-94 block: flagged with reason, neighbour untouched, first flag kept, re-review not flagged, fallback notices, stale call flags nothing, grants); `verify_live.py` TC-VENUE-076 to 080, 082, 085 to 088; manual cases TC-VENUE-081, 083, 084, 089, 090.
+
+#### Verification and remaining work
+
+- **Verified:** tests were seen failing first (the backend for the new `(profile, flagged_event_ids)` contract, the modal for its new wording). `pytest` 1247 passed; Vitest 893 passed. The migration plus `venue_edit_checks.sql` ran on the live project in one rolled-back transaction first, then was applied (`supabase db query -f`, recorded with `migration repair --status applied 20261017120000`); the live source matches the file, and `venue_edit_checks.sql` prints VENUE EDIT CHECKS PASSED. `supabase db lint` flagged an uncast `'{}'` array literal, which was fixed and re-applied. Advisors show nothing for the changed objects.
+- **Live runs:** the first API/DB run failed TC-VENUE-080 because the rewritten check also counted the booking request's `venue_booking_requested` notice; the edit sent the right notices. The filter was restored ([failed run](test-cases/runs/2026-10-17-1515-api-db-cb1c85f.md)), then 112/112 ([run](test-cases/runs/2026-10-17-1524-api-db-cb1c85f.md)); e2e 63/63 ([run](test-cases/runs/2026-10-17-1533-e2e-cb1c85f.md)).
+- **Manual pass (2026-10-17):** TC-VENUE-083, 089 and 090 passed ([run](test-cases/runs/2026-10-17-1545-manual-25add62.md)).
+- **Not verified:** a concurrent edit racing a booking change was reasoned about (row lock, DB-1), not reproduced.
+- **Remaining:** no page shows a flag's reason (the readiness list says "A venue booking is flagged Unsuitable."), and nothing clears an `unsuitable` flag (§9 item 60). `re_review` bookings aren't flagged pending PO confirmation (§9 item 59).
+- **Uncovered by unit tests, by convention:** the `update_venue` Supabase wrapper in `venues/repository.py` (`docs/CI.md` §4); the live checks exercise it.
+
+### 4.54. Chore - Close venue test gaps found by mutation testing (and D37)
+
+A mutmut 3.8 run over `backend/app/modules/venues/` (2,261 mutants, run from a scratch copy; mutmut is not a project dependency) showed that the unit tests executed most service code without checking what it wrote or whom it asked. This branch adds assertions and cases where a surviving mutant meant a real behaviour was unpinned:
+
+- **Venue edit (SCRUM-63, CR-94):** every submitted field reaches `repository.update_venue`, with the VC-R3 before/after snapshots; the coordinator notification's full text; event names on the saved response; bookings and blocks are read for this venue from now; a booking whose event has no planning context is still checked and saved, with no coordinator notification and venue staff told about "an event".
+- **Venue detail, history, dashboard:** reads use the requested venue; an unknown venue's history is 404; a PostgREST actor embedded as a list (or an empty list) is unwrapped; a hold with no expiry is ordered by its start.
+- **Booking reject and detail (SCRUM-38):** the database's text refusal names its field; an unlabelled status (`expired`) reads as itself; the notification falls back to "the venue" and "your event"; only a rejection with its reason shows a decision.
+- **Booking request (SCRUM-19, CR-98):** the space path passes the space, coordinator, venue, note and message through; the active-bookings mapper reads the event it was given.
+- **Search and impact:** a layout with no figure of its own reports "Capacity"; an earlier non-overlapping occupant doesn't hide a later conflict; occupant times follow the searcher's offset; several missing or changed accessibility features are listed with their separator.
+
+While doing this, D37 was found: four authorisation tests in `test_venue_booking_request_api.py` had not been collected since CR-98. They are moved back into their class and pass.
+
+Mutation results (killed / total, before → after, measured on CR-94 as rebased onto `main` at `90c7e6d`): `service.py` 983/1,119 → 1,074/1,119, `search.py` 152/163 → 159/163, `impact.py` 85/86 → 86/86. Untouched on purpose: `repository.py` (its query-building mutants can only be caught against real Supabase, i.e. `verify_live.py`), message-wording mutants, mutants equivalent to the original, and the `astimezone(SGT)` mutants in `suitability.py`, which survive only on a machine whose local zone is UTC+8. `BookingImpactContext.coordinator_id` is never read by `impact.py`; it is left in place and noted as a follow-up.
+
+Verification: full backend suite **1,273 passed** (1,247 collected before: 18 new cases and the 8 revived D37 cases; two existing cases were re-parametrised under new IDs), 95.67% total line coverage (application code is unchanged). Test files only; no application code changed, so no live check applies.
 ### 4.51. CR-97 — Book more than one venue for an event
 
 CR-97 (P1, Sprint 3) lets the coordinator book a venue per event space (W7 CR-03, QA3-23 to QA3-27). CR-98 had already built the data model: a booking per space, one active booking per space, each space's own window. CR-97 fills the remaining gaps on `feature/cr-97-multi-venue-booking`. It was built test-first in red → green → refactor slices, each phase committed separately so the history shows the order.

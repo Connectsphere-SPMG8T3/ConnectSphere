@@ -37,6 +37,16 @@ class EventPlanningContext(BaseModel):
     accessibility_needs: str | None = None
 
 
+class SpaceRequirements(BaseModel):
+    """What one requested space needs from a venue (CR-94). A null field (or,
+    for facilities, an empty list: the column is never null) means the space
+    did not say, and the caller falls back to the event's value."""
+
+    expected_pax: int | None = None
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] | None = None
+
+
 def _validate_space_window(starts_at: datetime | None, ends_at: datetime | None) -> None:
     if starts_at is None and ends_at is None:
         return

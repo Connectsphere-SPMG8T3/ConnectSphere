@@ -153,6 +153,22 @@ def list_event_names(event_ids: Iterable[str]) -> dict[str, str]:
     return {row["id"]: row["name"] for row in response.data or []}
 
 
+def list_spaces_by_ids(space_ids: Iterable[str]) -> list[dict]:
+    """The requirement fields of the spaces given (CR-94): expected pax,
+    preferred layout and required facilities. Skips any id that no longer exists."""
+    ids = sorted({str(space_id) for space_id in space_ids if space_id})
+    if not ids:
+        return []
+    response = (
+        get_supabase_admin_client()
+        .table("event_space_requests")
+        .select("id, expected_pax, layout_preference, facilities_required")
+        .in_("id", ids)
+        .execute()
+    )
+    return response.data or []
+
+
 def list_planning_context(event_ids: Iterable[str]) -> list[dict]:
     """The event fields another module needs to judge an event's requirements
     (SCRUM-63): name, status, assigned coordinator, expected attendance,

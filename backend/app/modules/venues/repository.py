@@ -163,12 +163,14 @@ def update_venue(
     before: dict,
     after: dict,
     notifications: list[dict],
-) -> VenueProfile | None:
+    flags: list[dict],
+) -> tuple[VenueProfile, list[str]] | None:
     """Run `public.update_venue`: the version-checked update, the layouts/
-    facilities replace, the history row, and any affected-booking
-    notifications, all in one transaction (SCRUM-63). Returns the saved
-    profile, or None when the venue had moved on (lost the race), which the
-    service reports as 409.
+    facilities replace, the history row, any affected-booking notifications,
+    and the Unsuitable flags (CR-94, through `flag_venue_bookings`), all in
+    one transaction (SCRUM-63). Returns the saved profile with the ids of the
+    events it newly flagged, or None when the venue had moved on (lost the
+    race), which the service reports as 409.
     """
     response = (
         get_supabase_admin_client()
@@ -190,14 +192,15 @@ def update_venue(
                 "p_before": before,
                 "p_after": after,
                 "p_notifications": notifications,
+                "p_flags": flags,
             },
         )
         .execute()
     )
-    rows = response.data or [] if response else []
-    if not rows:
+    result = response.data if response else None
+    if not result:
         return None
-    return get_venue(venue_id)
+    return get_venue(venue_id), result["flagged_event_ids"]
 
 
 def list_flaggable_bookings(venue_id: str, since: datetime) -> list[BookingSummary]:
@@ -342,14 +345,18 @@ def list_upcoming_bookings(venue_id: str, since: datetime) -> list[BookingSummar
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_id, occupied_period, status")
+        .select("id, event_id, event_space_request_id, occupied_period, status")
         .eq("venue_id", venue_id)
         .in_("status", sorted(OCCUPYING_STATUSES))
         .execute()
     )
     bookings = [
         BookingSummary(
-            id=row["id"], event_id=row["event_id"], period=_parse_range(row["occupied_period"]), status=row["status"]
+            id=row["id"],
+            event_id=row["event_id"],
+            event_space_request_id=row.get("event_space_request_id"),
+            period=_parse_range(row["occupied_period"]),
+            status=row["status"],
         )
         for row in response.data or []
     ]
@@ -696,3 +703,16 @@ def list_active_bookings(event_id: str) -> list[dict]:
             return []
         raise
     return response.data or []
+
+
+def list_venue_staff_ids() -> set[str]:
+    """Profiles holding the venue staff role. Used only to address the
+    notifications a venue edit sends (CR-94), never to authorise a caller."""
+    response = (
+        get_supabase_admin_client()
+        .table("user_roles")
+        .select("profile_id")
+        .eq("role", "venue_staff")
+        .execute()
+    )
+    return {row["profile_id"] for row in response.data or []}

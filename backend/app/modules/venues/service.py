@@ -18,11 +18,12 @@ from app.core.exceptions import (
     VenueNotFoundError,
 )
 from app.modules.events import service as events_service
-from app.modules.events.schemas import BookingReadiness, EventPlanningContext
+from app.modules.events.schemas import BookingReadiness, EventPlanningContext, SpaceRequirements
 from app.modules.venues import impact, repository, search
 from app.modules.venues.search import OCCUPYING_STATUSES
 from app.modules.venues.schemas import (
     INACTIVE_REASON_LABELS,
+    AffectedBooking,
     BookingDecision,
     BookingEventRequirements,
     BookingHistoryEntry,
@@ -30,6 +31,7 @@ from app.modules.venues.schemas import (
     Editor,
     FlaggableBooking,
     HoldExpiry,
+    SuitabilitySeverity,
     VenueBooking,
     VenueBookingCreate,
     VenueBookingDetail,
@@ -53,6 +55,9 @@ logger = logging.getLogger(__name__)
 # What the venue-staff dashboard can discover. The response retains the active
 # queue partitions below while also exposing resolved history for reference.
 DASHBOARD_BOOKING_STATUSES = frozenset({"held", "re_review", "approved", "rejected", "expired"})
+
+# Events a venue edit no longer affects: their bookings are not re-checked (CR-94 AC7).
+FINISHED_EVENT_STATUSES = frozenset({"completed", "cancelled"})
 
 
 def search_venues(criteria: VenueSearchCriteria) -> VenueSearchResponse:
@@ -98,17 +103,25 @@ def get_venue(venue_id: str) -> VenueDetail:
     )
 
 
-def _to_impact_context(booking, contexts: dict[str, EventPlanningContext]) -> BookingImpactContext:
+def _to_impact_context(
+    booking, contexts: dict[str, EventPlanningContext], spaces: dict[str, SpaceRequirements]
+) -> BookingImpactContext:
+    """A booking judged on its own space's requirements, each field falling
+    back to the event's when the space leaves it empty (CR-94). A space's
+    facility list is never null (the space a booking request creates
+    automatically stores `{}`), so an empty list also means "didn't say"."""
     context = contexts.get(booking.event_id) or EventPlanningContext()
+    space = spaces.get(booking.event_space_request_id) or SpaceRequirements()
     return BookingImpactContext(
         booking_id=booking.id,
         event_id=booking.event_id,
         period=booking.period,
         event_name=context.name,
         coordinator_id=context.coordinator_id,
-        expected_attendance=context.expected_attendance,
-        layout_preference=context.layout_preference,
-        facilities_required=context.facilities_required,
+        expected_attendance=space.expected_pax if space.expected_pax is not None else context.expected_attendance,
+        layout_preference=space.layout_preference or context.layout_preference,
+        facilities_required=space.facilities_required or context.facilities_required,
+        accessibility_needs=context.accessibility_needs,
     )
 
 
@@ -128,6 +141,53 @@ def _snapshot(venue: VenueSummary) -> dict:
         "is_active": venue.is_active,
         "inactive_reason": venue.inactive_reason.value if venue.inactive_reason else None,
         "inactive_note": venue.inactive_note,
+    }
+
+
+def _venue_staff_notifications(venue_name: str, actor_id: str, warnings: list[AffectedBooking]) -> list[dict]:
+    """One notification per affected event for every venue staff member but
+    the editor, who has just seen the warning (CR-94 AC5). Staff work as a
+    pool (AUTH-R5), so all of them hear about it."""
+    by_event: dict[str, list[AffectedBooking]] = {}
+    for w in warnings:
+        by_event.setdefault(w.event_id, []).append(w)
+    messages = {}
+    for event_id, affected in by_event.items():
+        unsuitable = any(w.outcome == "unsuitable" for w in affected)
+        reasons = list(dict.fromkeys(r for w in affected for r in w.reasons))
+        state = "is now Unsuitable" if unsuitable else "needs a check"
+        messages[event_id] = (
+            f'Venue "{venue_name}" was edited and "{affected[0].event_name or "an event"}" {state}: ' + " ".join(reasons)
+        )
+    recipients = sorted(repository.list_venue_staff_ids() - {actor_id})
+    return [
+        {"recipient_id": recipient, "event_id": event_id, "message": message}
+        for event_id, message in messages.items()
+        for recipient in recipients
+    ]
+
+
+def _coordinator_message(venue_name: str, warning: AffectedBooking) -> str:
+    return (f'Venue "{venue_name}" changed in a way that may affect '
+            f'"{warning.event_name or "your event"}": ' + " ".join(warning.reasons))
+
+
+def _unsuitable_flag(venue_name: str, warning: AffectedBooking, contexts: dict[str, EventPlanningContext]) -> dict:
+    """What `update_venue` needs to flag one Unsuitable booking (CR-94 AC3,
+    AC5). The reason names only the hard rules that make it Unsuitable; the
+    coordinator's message names everything the edit broke. A booking that
+    can't take the flag (already flagged, first flag wins, or in re-review)
+    gets `unflagged_message`, the part-1 notification, instead."""
+    hard = [d.message for d in warning.details if d.severity == SuitabilitySeverity.unsuitable]
+    context = contexts.get(warning.event_id) or EventPlanningContext()
+    return {
+        "booking_id": warning.booking_id,
+        "event_id": warning.event_id,
+        "coordinator_id": context.coordinator_id,
+        "reason": f'Venue "{venue_name}" was edited: ' + " ".join(hard),
+        "message": (f'Venue "{venue_name}" was edited and your booking for '
+                    f'"{warning.event_name or "your event"}" is flagged Unsuitable: ' + " ".join(warning.reasons)),
+        "unflagged_message": _coordinator_message(venue_name, warning),
     }
 
 
@@ -179,24 +239,30 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
     now = datetime.now(timezone.utc)
     bookings = repository.list_upcoming_bookings(venue_id, now)
     contexts_by_event = events_service.planning_context_by_id(b.event_id for b in bookings) if bookings else {}
-    impact_contexts = [_to_impact_context(b, contexts_by_event) for b in bookings]
+    live = [
+        b for b in bookings
+        if (contexts_by_event.get(b.event_id) or EventPlanningContext()).status not in FINISHED_EVENT_STATUSES
+    ]
+    space_ids = {b.event_space_request_id for b in live if b.event_space_request_id}
+    spaces = events_service.space_requirements_by_id(space_ids) if space_ids else {}
+    impact_contexts = [_to_impact_context(b, contexts_by_event, spaces) for b in live]
     warnings = impact.affected_bookings(before, after, impact_contexts)
 
     if warnings and not body.confirm:
         return VenueUpdateResponse(saved=False, venue=None, warnings=warnings)
 
+    flags = [_unsuitable_flag(after.name, w, contexts_by_event) for w in warnings if w.outcome == "unsuitable"]
     notifications = [
         {
             "recipient_id": contexts_by_event[w.event_id].coordinator_id,
             "event_id": w.event_id,
-            "message": (
-                f'Venue "{after.name}" changed in a way that may affect '
-                f'"{w.event_name or "your event"}": ' + " ".join(w.reasons)
-            ),
+            "message": _coordinator_message(after.name, w),
         }
         for w in warnings
-        if w.event_id in contexts_by_event and contexts_by_event[w.event_id].coordinator_id
+        if w.outcome != "unsuitable"
+        and w.event_id in contexts_by_event and contexts_by_event[w.event_id].coordinator_id
     ]
+    notifications += _venue_staff_notifications(after.name, actor_id, warnings) if warnings else []
 
     after_snapshot = _snapshot(after)
     updated = repository.update_venue(
@@ -215,9 +281,20 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
         before=_snapshot(before),
         after=after_snapshot,
         notifications=notifications,
+        flags=flags,
     )
     if updated is None:
         raise VenueConflictError()
+    updated, flagged_event_ids = updated
+
+    # The edit and its flags have committed together. A failed return leaves
+    # that event where it is, but its booking is flagged, so the Safety
+    # Officer cannot approve it: report the save, not a failure (as SCRUM-64).
+    for event_id in flagged_event_ids:
+        try:
+            events_service.return_to_planning(event_id, reason_code="arrangement_flagged")
+        except EventServiceUnavailableError:
+            logger.warning("Venue %s edited, but event %s could not be returned to planning", venue_id, event_id)
 
     for booking in bookings:
         booking.event_name = (contexts_by_event.get(booking.event_id) or EventPlanningContext()).name

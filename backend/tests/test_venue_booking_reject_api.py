@@ -84,7 +84,8 @@ def bookings(monkeypatch):
 
     monkeypatch.setattr(venues_repository, "get_booking", get_booking)
     monkeypatch.setattr(venues_repository, "reject_booking", reject_booking)
-    monkeypatch.setattr(venues_repository, "list_booking_history", lambda booking_id: deepcopy(state["history"]))
+    monkeypatch.setattr(venues_repository, "list_booking_history",
+                        lambda booking_id: deepcopy(state["history"]) if booking_id == BOOKING_ID else [])
     monkeypatch.setattr(events_repository, "get_event",
                         lambda event_id: deepcopy(state["event"]) if event_id == EVENT_ID else None)
     monkeypatch.setattr(events_repository, "list_planning_context",
@@ -123,6 +124,26 @@ class TestViewRequest:
         }
         assert body["decision"] is None
         assert body["history"] == []
+
+    @pytest.mark.parametrize(
+        "booking",
+        [
+            # An approval stamps decided_at but is not a rejection.
+            {"status": "approved", "decided_at": DECIDED_AT},
+            # A rejection with no stored reason has nothing to show.
+            {"status": "rejected", "decision_reason": None, "decided_at": DECIDED_AT},
+        ],
+    )
+    def test_only_a_rejection_with_its_reason_shows_a_decision(
+        self, client, auth_headers, authenticate_as, bookings, booking
+    ):
+        bookings["booking"].update(booking)
+        authenticate_as("venue_staff", user_id=VENUE_STAFF_ID)
+
+        response = client.get(URL, headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["decision"] is None
 
     def test_a_missing_booking_is_not_found(self, client, auth_headers, authenticate_as, bookings):
         bookings["booking"] = None
@@ -193,6 +214,17 @@ class TestReject:
         assert "maintenance" not in message
         assert "Heritage" not in message
 
+    def test_the_notification_reads_naturally_without_a_venue_or_event_name(
+        self, client, auth_headers, authenticate_as, bookings, monkeypatch
+    ):
+        bookings["booking"]["venue_name"] = None
+        monkeypatch.setattr(events_repository, "list_event_names", lambda event_ids: {})
+        authenticate_as("venue_staff", user_id=VENUE_STAFF_ID)
+
+        reject(client, auth_headers)
+
+        assert bookings["calls"][0]["notify_message"] == 'Venue staff rejected the booking of the venue for "your event".'
+
     def test_the_suggestion_is_optional_and_a_blank_one_is_none(self, client, auth_headers, authenticate_as, bookings):
         # AC3.
         authenticate_as("venue_staff", user_id=VENUE_STAFF_ID)
@@ -237,6 +269,8 @@ class TestReject:
             ("cancelled", "Only a held booking can be rejected. This one is cancelled."),
             ("released", "Only a held booking can be rejected. This one is released."),
             ("re_review", "Only a held booking can be rejected. This one is under re-review."),
+            # No label of its own: the status reads as itself.
+            ("expired", "Only a held booking can be rejected. This one is expired."),
         ],
     )
     def test_a_booking_that_is_no_longer_held_is_refused(
@@ -268,15 +302,18 @@ class TestReject:
 
         assert reject(client, auth_headers).status_code == 404
 
-    @pytest.mark.parametrize("outcome", ["invalid_reason", "invalid_suggestion"])
+    @pytest.mark.parametrize(("outcome", "field"), [("invalid_reason", "reason"), ("invalid_suggestion", "suggestion")])
     def test_text_the_database_refuses_is_still_unprocessable(
-        self, client, auth_headers, authenticate_as, bookings, outcome
+        self, client, auth_headers, authenticate_as, bookings, outcome, field
     ):
         # Defence in depth: the function re-checks the text it is given.
         bookings["outcome"] = outcome
         authenticate_as("venue_staff", user_id=VENUE_STAFF_ID)
 
-        assert reject(client, auth_headers).status_code == 422
+        response = reject(client, auth_headers)
+
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"] == ["body", field]
 
     def test_a_hold_past_its_expiry_is_refused_as_expired(self, client, auth_headers, authenticate_as, bookings):
         # AC9, AC10 (CR-99): the function expires a hold past its expiry instead
