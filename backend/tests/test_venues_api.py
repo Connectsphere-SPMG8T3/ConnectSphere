@@ -107,7 +107,11 @@ def catalogue(monkeypatch):
     monkeypatch.setattr(repository, "list_occupants", _list_occupants)
     profiles = {v.id: make_venue_profile(v.id, v.name, **({} if v.id == HALL_A_ID else {"updated_by": None})) for v in venues}
     monkeypatch.setattr(repository, "get_venue", lambda venue_id: profiles.get(str(venue_id)))
-    monkeypatch.setattr(events_repository, "list_event_names", lambda event_ids: {SEED_EVENT_ID: "Seed Auditorium Event"})
+    monkeypatch.setattr(
+        events_repository,
+        "list_event_names",
+        lambda event_ids: {SEED_EVENT_ID: "Seed Auditorium Event"} if SEED_EVENT_ID in event_ids else {},
+    )
     monkeypatch.setattr(
         repository,
         "list_upcoming_blocks",
@@ -192,7 +196,8 @@ class TestSearchResults:
         assert body["results"][0]["venue"]["facilities"] == ["projector"]
         assert body["results"][0]["venue"]["layouts"] == [{"layout": "theatre", "capacity_for_layout": None}]
         assert body["results"][0]["venue"]["opens_at"] == "08:00:00"
-        assert len(catalogue["list_occupants"]) == 1
+        [period] = catalogue["list_occupants"]
+        assert period.starts_at == datetime(2026, 10, 10, 14, tzinfo=SGT)
 
     def test_show_excluded_reveals_reasons(self, client, auth_headers, authenticate_as, catalogue):
         authenticate_as("event_coordinator")
@@ -254,6 +259,19 @@ class TestVenueDetail:
         assert body["upcoming_blocks"][0]["reason"] == "maintenance"
         assert body["upcoming_blocks"][0]["period"]["starts_at"] == "2026-10-10T13:00:00+08:00"
         assert body["upcoming_bookings"][0]["status"] == "held"
+
+    def test_bookings_and_blocks_are_read_for_this_venue_from_now(
+        self, client, auth_headers, authenticate_as, catalogue, monkeypatch
+    ):
+        reads = []
+        monkeypatch.setattr(repository, "list_upcoming_bookings", lambda venue_id, since: reads.append((venue_id, since)) or [])
+        monkeypatch.setattr(repository, "list_upcoming_blocks", lambda venue_id, since: reads.append((venue_id, since)) or [])
+        authenticate_as("venue_staff")
+
+        client.get(f"/api/v1/venues/{HALL_A_ID}", headers=auth_headers)
+
+        assert [venue_id for venue_id, _ in reads] == [HALL_A_ID, HALL_A_ID]
+        assert all(abs(since - datetime.now(timezone.utc)) < timedelta(minutes=1) for _, since in reads)
 
     def test_unknown_venue_is_404(self, client, auth_headers, authenticate_as, catalogue):
         authenticate_as("venue_staff")
@@ -544,6 +562,25 @@ class TestVenueStaffDashboardPayload:
             "2031-02-01T09:00:00+08:00",
         ]
 
+    def test_a_hold_without_an_expiry_is_ordered_by_its_start(
+        self, client, auth_headers, authenticate_as, staff_queue, monkeypatch
+    ):
+        no_expiry = make_staff_booking(
+            "d0000000-0000-4000-8000-000000000009", "held", datetime(2026, 9, 1, tzinfo=SGT),
+            period=Period(starts_at=datetime(2030, 6, 1, 9, tzinfo=SGT), ends_at=datetime(2030, 6, 1, 12, tzinfo=SGT)),
+        )
+        others = repository.list_all_upcoming_bookings(None, set())
+        monkeypatch.setattr(repository, "list_all_upcoming_bookings", lambda since, statuses: [*others, no_expiry])
+        authenticate_as("venue_staff")
+
+        body = client.get(VENUE_STAFF_DASHBOARD, headers=auth_headers).json()
+
+        assert [h["id"] for h in body["pending_holds"]] == [
+            "d0000000-0000-4000-8000-000000000009",
+            "d0000000-0000-4000-8000-000000000002",
+            "d0000000-0000-4000-8000-000000000004",
+        ]
+
     def test_all_dashboard_statuses_are_requested(self, client, auth_headers, authenticate_as, staff_queue):
         authenticate_as("venue_staff")
 
@@ -668,6 +705,64 @@ class TestVenueEdit:
         assert profile["update_venue"][0]["actor_id"] == actor["id"]
         assert profile["update_venue"][0]["version"] == 3
 
+    def test_every_submitted_field_is_saved_with_a_before_and_after_snapshot(
+        self, client, auth_headers, authenticate_as, profile, monkeypatch
+    ):
+        """VC-R3: the history row records each editable field before and after."""
+        current = make_venue_profile(HALL_A_ID, "Hall A", version=3, description="Main hall.")
+        monkeypatch.setattr(repository, "get_venue", lambda venue_id: current)
+        authenticate_as("venue_staff")
+        edit = {
+            "name": "Hall A2",
+            "location": "City Campus",
+            "capacity": 90,
+            "layouts": [{"layout": "boardroom", "capacity_for_layout": 20}],
+            "facilities": ["stage"],
+            "accessibility_features": ["hearing_loop"],
+            "opens_at": "09:30:00",
+            "closes_at": "21:00:00",
+            "description": "Renovated in 2026.",
+        }
+
+        client.patch(f"/api/v1/venues/{HALL_A_ID}", json=edit, headers=auth_headers)
+
+        call = profile["update_venue"][0]
+        assert {k: call[k] for k in ("name", "location", "capacity", "description")} == {
+            "name": "Hall A2", "location": "City Campus", "capacity": 90, "description": "Renovated in 2026.",
+        }
+        assert (call["opens_at"], call["closes_at"]) == (time(9, 30), time(21, 0))
+        assert call["layouts"] == edit["layouts"]
+        assert call["facilities"] == ["stage"]
+        assert call["accessibility_features"] == ["hearing_loop"]
+        assert call["after"] == {**edit, "is_active": True, "inactive_reason": None, "inactive_note": None}
+        assert call["before"] == {
+            "name": "Hall A",
+            "location": "Bukit Timah Campus",
+            "capacity": 150,
+            "layouts": [{"layout": "theatre", "capacity_for_layout": None}],
+            "facilities": ["projector"],
+            "accessibility_features": ["wheelchair_access"],
+            "opens_at": "08:00:00",
+            "closes_at": "22:00:00",
+            "description": "Main hall.",
+            "is_active": True,
+            "inactive_reason": None,
+            "inactive_note": None,
+        }
+
+    def test_bookings_and_blocks_are_read_for_this_venue_from_now(
+        self, client, auth_headers, authenticate_as, profile, monkeypatch
+    ):
+        reads = []
+        monkeypatch.setattr(repository, "list_upcoming_bookings", lambda venue_id, since: reads.append((venue_id, since)) or [])
+        monkeypatch.setattr(repository, "list_upcoming_blocks", lambda venue_id, since: reads.append((venue_id, since)) or [])
+        authenticate_as("venue_staff")
+
+        client.patch(f"/api/v1/venues/{HALL_A_ID}", json=VALID_EDIT_PAYLOAD, headers=auth_headers)
+
+        assert [venue_id for venue_id, _ in reads] == [HALL_A_ID, HALL_A_ID]
+        assert all(abs(since - datetime.now(timezone.utc)) < timedelta(minutes=1) for _, since in reads)
+
     def test_editing_an_inactive_venue_keeps_its_reason_in_the_history_snapshots(
         self, client, auth_headers, authenticate_as, profile, monkeypatch
     ):
@@ -740,7 +835,9 @@ class TestVenueEdit:
                         "layout_preference": "theatre",
                         "facilities_required": ["projector"],
                     }
-                ],
+                ]
+                if EVENT_ID in ids
+                else [],
             )
             return profile
 
@@ -777,6 +874,7 @@ class TestVenueEdit:
             body = response.json()
             assert body["saved"] is True
             assert body["venue"]["capacity"] == 100
+            assert body["venue"]["upcoming_bookings"][0]["event_name"] == "Annual Gala"
             assert len(body["warnings"]) == 1
 
             # An Unsuitable booking's coordinator hears through its flag (CR-94).
@@ -784,6 +882,38 @@ class TestVenueEdit:
             assert call["notifications"] == []
             [flag] = call["flags"]
             assert (flag["coordinator_id"], flag["event_id"]) == (COORDINATOR_ID, EVENT_ID)
+            assert flag["reason"] == 'Venue "Hall A" was edited: Capacity 100 is below the expected attendance of 120.'
+            assert flag["message"] == (
+                'Venue "Hall A" was edited and your booking for "Annual Gala" is flagged Unsuitable: '
+                "Capacity 100 is below the expected attendance of 120."
+            )
+            assert flag["unflagged_message"] == (
+                'Venue "Hall A" changed in a way that may affect "Annual Gala": '
+                "Capacity 100 is below the expected attendance of 120."
+            )
+
+        def test_a_booking_whose_event_has_no_planning_context_is_still_checked(
+            self, client, auth_headers, authenticate_as, booking_at_risk, monkeypatch
+        ):
+            """An event row the events module can't return has no coordinator to
+            notify, but the time-based check still applies and venue staff hear
+            about it under a generic name."""
+            monkeypatch.setattr(events_repository, "list_planning_context", lambda ids: [])
+            other = "a0000000-0000-4000-8000-000000000031"
+            monkeypatch.setattr(repository, "list_venue_staff_ids", lambda: {other})
+            authenticate_as("venue_staff")
+
+            response = client.patch(
+                f"/api/v1/venues/{HALL_A_ID}",
+                json={**VALID_EDIT_PAYLOAD, "opens_at": "10:00:00", "confirm": True},
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            assert response.json()["saved"] is True
+            [notification] = booking_at_risk["update_venue"][0]["notifications"]
+            assert notification["recipient_id"] == other
+            assert notification["message"].startswith('Venue "Hall A" was edited and "an event" needs a check: ')
 
         def test_a_reduction_that_still_covers_attendance_does_not_warn(
             self, client, auth_headers, authenticate_as, booking_at_risk
@@ -1231,7 +1361,9 @@ class TestVenueEdit:
 class TestVenueEditHistory:
     @pytest.fixture()
     def history(self, monkeypatch):
-        monkeypatch.setattr(repository, "get_venue", lambda venue_id: make_venue_profile(HALL_A_ID, "Hall A"))
+        monkeypatch.setattr(
+            repository, "get_venue", lambda venue_id: make_venue_profile(HALL_A_ID, "Hall A") if venue_id == HALL_A_ID else None
+        )
         entries = [
             {
                 "id": "h0000000-0000-4000-8000-000000000001",
@@ -1241,8 +1373,31 @@ class TestVenueEditHistory:
                 "actor": {"id": "a0000000-0000-4000-8000-000000000003", "full_name": "Val Staff"},
             }
         ]
-        monkeypatch.setattr(repository, "list_edit_history", lambda venue_id: entries)
+        monkeypatch.setattr(repository, "list_edit_history", lambda venue_id: entries if venue_id == HALL_A_ID else [])
         return entries
+
+    def test_an_unknown_venue_is_404(self, client, auth_headers, authenticate_as, history):
+        authenticate_as("venue_staff")
+
+        assert client.get(f"/api/v1/venues/{HALL_B_ID}/history", headers=auth_headers).status_code == 404
+
+    @pytest.mark.parametrize(
+        ("actor", "expected"),
+        [
+            # PostgREST may embed the to-one actor as a one-element list.
+            ([{"id": VENUE_STAFF_ID, "full_name": "Val Staff"}], {"id": VENUE_STAFF_ID, "full_name": "Val Staff"}),
+            ([], None),
+        ],
+    )
+    def test_an_actor_embedded_as_a_list_is_unwrapped(
+        self, client, auth_headers, authenticate_as, history, actor, expected
+    ):
+        history[0]["actor"] = actor
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venues/{HALL_A_ID}/history", headers=auth_headers).json()
+
+        assert body["entries"][0]["actor"] == expected
 
     def test_venue_staff_can_read_it(self, client, auth_headers, authenticate_as, history):
         authenticate_as("venue_staff")

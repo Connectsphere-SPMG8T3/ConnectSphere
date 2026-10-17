@@ -2137,3 +2137,19 @@ On `feature/cr-94-flag-affected-bookings`, in two parts. Part 1 (2026-10-16) cla
 - **Not verified:** a concurrent edit racing a booking change was reasoned about (row lock, DB-1), not reproduced.
 - **Remaining:** no page shows a flag's reason (the readiness list says "A venue booking is flagged Unsuitable."), and nothing clears an `unsuitable` flag (§9 item 60). `re_review` bookings aren't flagged pending PO confirmation (§9 item 59).
 - **Uncovered by unit tests, by convention:** the `update_venue` Supabase wrapper in `venues/repository.py` (`docs/CI.md` §4); the live checks exercise it.
+
+### 4.54. Chore - Close venue test gaps found by mutation testing (and D37)
+
+A mutmut 3.8 run over `backend/app/modules/venues/` (2,261 mutants, run from a scratch copy; mutmut is not a project dependency) showed that the unit tests executed most service code without checking what it wrote or whom it asked. This branch adds assertions and cases where a surviving mutant meant a real behaviour was unpinned:
+
+- **Venue edit (SCRUM-63, CR-94):** every submitted field reaches `repository.update_venue`, with the VC-R3 before/after snapshots; the coordinator notification's full text; event names on the saved response; bookings and blocks are read for this venue from now; a booking whose event has no planning context is still checked and saved, with no coordinator notification and venue staff told about "an event".
+- **Venue detail, history, dashboard:** reads use the requested venue; an unknown venue's history is 404; a PostgREST actor embedded as a list (or an empty list) is unwrapped; a hold with no expiry is ordered by its start.
+- **Booking reject and detail (SCRUM-38):** the database's text refusal names its field; an unlabelled status (`expired`) reads as itself; the notification falls back to "the venue" and "your event"; only a rejection with its reason shows a decision.
+- **Booking request (SCRUM-19, CR-98):** the space path passes the space, coordinator, venue, note and message through; the active-bookings mapper reads the event it was given.
+- **Search and impact:** a layout with no figure of its own reports "Capacity"; an earlier non-overlapping occupant doesn't hide a later conflict; occupant times follow the searcher's offset; several missing or changed accessibility features are listed with their separator.
+
+While doing this, D37 was found: four authorisation tests in `test_venue_booking_request_api.py` had not been collected since CR-98. They are moved back into their class and pass.
+
+Mutation results (killed / total, before → after): `service.py` 749/860 → 848/860, `search.py` 152/163 → 159/163, `impact.py` 85/86 → 86/86. Untouched on purpose: `repository.py` (its query-building mutants can only be caught against real Supabase, i.e. `verify_live.py`), message-wording mutants, mutants equivalent to the original, and the `astimezone(SGT)` mutants in `suitability.py`, which survive only on a machine whose local zone is UTC+8. `BookingImpactContext.coordinator_id` is never read by `impact.py`; it is left in place and noted as a follow-up.
+
+Verification: full backend suite **1,228 passed** (1,204 collected before: 18 new cases and the 8 revived D37 cases; two existing cases were re-parametrised under new IDs), 99.74% line coverage. Test files only; no application code changed, so no live check applies.
