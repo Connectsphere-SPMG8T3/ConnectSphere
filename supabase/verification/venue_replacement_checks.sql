@@ -8,7 +8,7 @@
 -- VENUE REPLACEMENT CHECKS PASSED otherwise. Everything runs inside
 -- `begin; ... rollback;`, so nothing here leaves a trace.
 -- Uses the seeded organiser (…0001), coordinator (…0002), Seminar Room 1
--- (b0000000-…0003, where the affected bookings are) and Innovation Lab
+-- (b0000000-…0003, where the affected bookings are) and Grand Ballroom
 -- (b0000000-…0001, the replacement venue).
 
 begin;

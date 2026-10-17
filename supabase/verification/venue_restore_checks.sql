@@ -9,7 +9,7 @@
 -- VENUE RESTORE CHECKS PASSED otherwise. Everything runs inside
 -- `begin; ... rollback;`, so nothing here leaves a trace.
 -- Uses the seeded organiser (…0001), coordinator (…0002), venue staff (…0003),
--- Seminar Room 1 (b0000000-…0003, the original venue) and Innovation Lab
+-- Seminar Room 1 (b0000000-…0003, the original venue) and Grand Ballroom
 -- (b0000000-…0001, the replacement venue).
 
 begin;
