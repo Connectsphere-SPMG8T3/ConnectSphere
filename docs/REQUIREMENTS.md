@@ -1399,6 +1399,7 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 | NFR-M1 | Rules can change without a rebuild | Single state machine; pluggable suitability rules; configurable field classification; domain events | W1 §8g, prof guidance |
 | NFR-SC1 | Supports three-year growth (unquantified) | Stateless API; indexed Postgres; paginated lists | W1 §8e, QA-88 |
 | NFR-Q1 | Quality gates (graded) | CI on every PR: lint, unit and integration tests, coverage (target 100% of `backend/app/` and `frontend/src/`, exclusions stated with their reason in `docs/CI.md` §4 item 2), frontend build. **[Team decision]** 2026-10-06: both layers, because the rubric's "100% coverage unless not possible and stated why" and the team DoD don't limit it to backend domain code | W4 rubric, team DoD |
+| NFR-Q2 | Tests catch bugs, not only run the code | Mutation testing with mutmut (backend) and StrykerJS (frontend `.js`), run per logic-changing PR and at the end of each sprint, with baselines kept in `docs/MUTATION_TESTING.md`. **[Team decision]** 2026-10-16: recommended practice, not a CI gate or DoD requirement, because some surviving mutants are harmless by nature (wording, equivalent mutants, query building only a real database can check) | W4 rubric (code quality: "quality practices are sustained") |
 
 ---
 

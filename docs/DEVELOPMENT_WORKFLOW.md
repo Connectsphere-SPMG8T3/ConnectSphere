@@ -17,7 +17,7 @@ Every item is tagged with who owns it:
 
 Agents never push, open PRs, or edit the team's Google Sheets unless the developer asks (root `AGENTS.md`, "Git workflow"). An agent's work ends after §3. The PBI is not Done until a person finishes §4 and §5.
 
-_Last updated: 2026-10-13 — the DoD (Sprint N) tabs are tracked in the sheet and checked before the PR (§4) and before the merge (§5); "Editing the backlog sheet" lists the Notes column (T) and explains the DoD tabs (`chore/backlog-notes-column`)._
+_Last updated: 2026-10-16 — §2 and End of sprint: when to run mutation testing (`chore/mutation-testing`). 2026-10-13 — the DoD (Sprint N) tabs are tracked in the sheet and checked before the PR (§4) and before the merge (§5); "Editing the backlog sheet" lists the Notes column (T) and explains the DoD tabs (`chore/backlog-notes-column`)._
 
 ---
 
@@ -75,6 +75,7 @@ An agent with the Google Sheets connector can read and write the sheet directly.
 - [ ] **[A]** Authorisation is checked as **role *and* relationship to the resource**, gated on the session's **active** role. A negative test proves that a user holding another role gets 403 (SCRUM-76).
 - [ ] **[A]** The **full** suite passes, not only the new tests: `pytest` from `backend/` and `npm test` from `frontend/`.
 - [ ] **[A]** New and changed code is fully covered, or each uncovered line is listed with its reason in the PR. Measure it with the full suite: `pytest --cov` from `backend/` and `npm run test:coverage` from `frontend/` ([`CI.md`](CI.md) §4 item 2).
+- *Recommended, not required:* when the PBI changes logic (a service, a rules module, a store or composable), run mutation testing on that module and add tests for the survivors that matter ([`MUTATION_TESTING.md`](MUTATION_TESTING.md) §2–4). On Windows, run the backend half from the Actions tab (**Mutation testing** workflow).
 - [ ] **[A]** Anything crossing an integration boundary (Supabase Auth, PostgREST, RLS, the browser) is verified against the **real system**, not only against mocks. "It imports" is not "it works".
 - [ ] **[A]** The live checks were run with recording on (`backend/scripts/verify_live.py --record`, `npm run test:e2e:record`). The story's new cases were automated wherever a request or a browser assertion can check their outcome (root `AGENTS.md`, "Live checks and the manual browser pass").
 - [ ] **[D]** When the agent asked, the developer ran the manual browser pass for the cases that need human judgement (layout, phone width, wording, feel). The results are recorded in `docs/test-cases/runs/`.
@@ -125,6 +126,7 @@ This section and §5 are human-owned. An agent does these steps only when the de
 
 - **[PO]** Any PBI that is not Done returns to the Product Backlog. Its remaining work is re-estimated and the PO reorders it. It earns no velocity.
 - **[A/D]** Both automated suites are run with recording on, as regression evidence for the sprint review ([`test-cases/runs/README.md`](test-cases/runs/README.md)). There is no sprint-wide manual pass.
+- **[A/D]** Mutation testing is run on both stacks and a baseline row is added to [`MUTATION_TESTING.md`](MUTATION_TESTING.md) §6, as evidence that test quality is tracked across sprints.
 - **[D]** The task board (the Status view) is screenshotted as evidence.
 
 ## Related
@@ -132,4 +134,5 @@ This section and §5 are human-owned. An agent does these steps only when the de
 - [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) — the checklist a PBI must clear.
 - Root `AGENTS.md` — the working rules behind each step.
 - [`CI.md`](CI.md) — what CI checks, and how coverage is measured.
+- [`MUTATION_TESTING.md`](MUTATION_TESTING.md) — how to check that tests would catch a bug, and the sprint baselines.
 - [`test-cases/README.md`](test-cases/README.md) and [`test-cases/runs/README.md`](test-cases/runs/README.md) — how to write test cases and how to record their runs.
