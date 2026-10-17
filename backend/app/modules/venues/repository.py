@@ -448,14 +448,14 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
 
 
 def list_booking_statuses(event_ids: Iterable[str]) -> list[dict]:
-    """`{event_id, status, flag}` for every booking of these events, whatever its status."""
+    """`{event_id, event_space_request_id, status, flag}` for every booking of these events, whatever its status."""
     ids = list(event_ids)
     if not ids:
         return []
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("event_id, status, flag")
+        .select("event_id, event_space_request_id, status, flag")
         .in_("event_id", ids)
         .execute()
     )
@@ -689,9 +689,10 @@ def list_active_bookings(event_id: str) -> list[dict]:
         response = (
             get_supabase_admin_client()
             .table("venue_bookings")
-            .select("id, event_id, event_space_request_id, venue_id, status, venues!venue_bookings_venue_id_fkey(name)")
+            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, venues!venue_bookings_venue_id_fkey(name)")
             .eq("event_id", event_id)
-            .in_("status", list(OCCUPYING_STATUSES))
+            # Expired too: a space whose hold ran out still shows it (CR-99 AC7, CR-97).
+            .in_("status", [*OCCUPYING_STATUSES, "expired"])
             .order("created_at")
             .execute()
         )

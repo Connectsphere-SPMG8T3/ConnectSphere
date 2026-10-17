@@ -4,5 +4,5 @@ test("TC-SAFE-004 a held booking disables send and names the missing arrangement
  await seedSession(page, await sharedSessions("event_coordinator"));
  await page.goto("/coordinator/events/e0000000-0000-4000-8000-000000000202");
  await expect(page.getByRole("button", {name: "Send for safety check"})).toBeDisabled();
- await expect(page.locator("#safety-missing")).toContainText("A venue booking is awaiting venue staff approval.");
+ await expect(page.locator("#safety-missing")).toContainText("Main space: awaiting venue staff approval.");
 });

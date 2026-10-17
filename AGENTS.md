@@ -155,6 +155,7 @@ Commit the run logs with the story, since they are the evidence that it was test
 | Start frontend | `npm run dev` | from `frontend/` |
 | Run tests | `pytest` | from `backend/` |
 | Coverage | `pytest --cov` / `npm run test:coverage` | from `backend/` / `frontend/`; full suite only, fails below the floor in `docs/CI.md` §4 item 2 |
+| Mutation testing | `no_proxy='*' mutmut run "app.modules.<module>.*"` / `npm run test:mutation -- --mutate "src/<area>/**/*.js,!src/**/__tests__/**"` | from `backend/` / `frontend/`; recommended before a PR that changes logic, not a gate; on Windows run the backend half from the Actions tab (**Mutation testing** workflow); triage rules in `docs/MUTATION_TESTING.md` §4 |
 | Live API + database checks | `python scripts/verify_live.py --record` | from `backend/`; backend running, `supabase login` done |
 | Live browser checks | `npm run test:e2e:record` | from `frontend/`; both servers running; first time `npx playwright install chromium` |
 

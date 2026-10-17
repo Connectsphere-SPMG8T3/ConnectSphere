@@ -18,6 +18,8 @@ from app.modules.events import repository as events_repository
 from app.modules.events import service as events_service
 from app.modules.venues import repository as venues_repository
 from app.modules.venues import service as venues_service
+from app.modules.venues.schemas import LayoutOption
+from tests.test_venues_api import make_venue_profile
 
 COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
 OTHER_COORDINATOR_ID = "a0000000-0000-4000-8000-000000000009"
@@ -101,6 +103,54 @@ class TestRequest:
         assert calls == [
             (SPACE_ID, VENUE_ID, COORDINATOR_ID, "Breakout room", 'A venue booking was requested for "Partner Summit".')
         ]
+
+    # CR-97 AC10 / BR-R16: the database refuses a venue too small for the space
+    # (event_space_checks.sql); the API says how far short it falls.
+    @pytest.mark.parametrize("layout,seats", [("classroom", 60), ("theatre", 80)])
+    def test_a_venue_too_small_for_the_space_is_refused_with_its_capacity(
+        self, client, auth_headers, authenticate_as, booking, monkeypatch, layout, seats
+    ):
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+        space = {"id": SPACE_ID, "event_id": EVENT_ID, "label": "Breakout room",
+                 "expected_pax": 90, "layout_preference": layout}
+        monkeypatch.setattr(events_service, "assigned_space",
+                            lambda space_id, coordinator_id: (deepcopy(booking["event"]), space))
+        monkeypatch.setattr(venues_repository, "request_booking_for_space",
+                            lambda *args, **kwargs: {"outcome": "over_capacity", "booking_id": None})
+        monkeypatch.setattr(venues_repository, "get_venue", lambda venue_id: make_venue_profile(
+            VENUE_ID, "Innovation Lab", capacity=80,
+            layouts=[LayoutOption(layout="classroom", capacity_for_layout=60)]))
+
+        response = post_for_space(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == f"Innovation Lab seats {seats}; this space needs 90."
+
+    # CR-97: an event-only request (the pre-CR-98 shape) books the event's first
+    # space, so it gets the same per-space rules as a space request.
+    def test_an_event_only_request_books_the_events_first_space(
+        self, client, auth_headers, authenticate_as, booking, monkeypatch
+    ):
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+        booking["event"]["spaces"] = [
+            {"id": SPACE_ID, "event_id": EVENT_ID, "label": "Main space", "expected_pax": 40, "layout_preference": "classroom"},
+            {"id": "f0000000-0000-4000-8000-000000000002", "event_id": EVENT_ID, "label": "Breakout room",
+             "expected_pax": 10, "layout_preference": None},
+        ]
+        space_calls = []
+
+        def request_booking_for_space(space_id, venue_id, actor_id, note, *, notify_message):
+            space_calls.append((space_id, venue_id, actor_id, note))
+            return {"outcome": "ok", "booking_id": BOOKING_ID}
+
+        monkeypatch.setattr(venues_repository, "request_booking_for_space", request_booking_for_space)
+
+        response = post(client, auth_headers, note="Main room")
+
+        assert response.status_code == 201
+        assert response.json()["event_space_request_id"] == SPACE_ID
+        assert space_calls == [(SPACE_ID, VENUE_ID, COORDINATOR_ID, "Main room")]
+        assert booking["calls"] == []
 
     def test_the_assigned_coordinator_holds_a_venue_and_venue_staff_are_told(
         self, client, auth_headers, authenticate_as, booking
@@ -333,6 +383,7 @@ def test_active_bookings_for_event_maps_each_space_booking(monkeypatch):
         "venue_id": VENUE_ID,
         "venue_name": "Innovation Lab",
         "status": "held",
+        "expires_at": None,
     }]
 
 class TestRequestBody:
@@ -424,6 +475,37 @@ class TestEventShowsItsBooking:
         assert response.json()["venue_booking"]["status"] == "expired"
         assert response.json()["venue_booking"]["expires_at"] == "2026-10-01T04:00:00Z"
         assert response.json()["venue_booking"]["event_space_request_id"] == SPACE_ID
+
+    def test_each_space_shows_its_occupying_booking_or_else_its_latest_expired_hold(
+        self, client, auth_headers, authenticate_as, monkeypatch, booking
+    ):
+        # CR-97 AC5 with CR-99 AC3/AC7: each space card needs its own hold's
+        # expiry, and an expired hold's explanation, on a multi-space event.
+        other, third = "f0000000-0000-4000-8000-000000000002", "f0000000-0000-4000-8000-000000000003"
+
+        def row(booking_id, space_id, status, expires_at):
+            return {"id": booking_id, "event_id": EVENT_ID, "event_space_request_id": space_id, "venue_id": VENUE_ID,
+                    "status": status, "expires_at": expires_at, "venues": {"name": "Innovation Lab"}}
+
+        rows = [  # oldest first, as the query orders them
+            row("b1", SPACE_ID, "held", "2026-11-01T04:00:00+00:00"),
+            row("b2", other, "expired", "2026-10-01T04:00:00+00:00"),
+            row("b3", third, "expired", "2026-10-02T04:00:00+00:00"),
+            row("b4", third, "approved", None),
+            row("b5", SPACE_ID, "expired", "2026-10-03T04:00:00+00:00"),  # an occupying booking still wins
+        ]
+        monkeypatch.setattr(venues_repository, "list_active_bookings", lambda event_id: deepcopy(rows))
+        monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        shown = {(b["event_space_request_id"], b["id"], b["status"], b["expires_at"]) for b in response.json()["venue_bookings"]}
+        assert shown == {
+            (SPACE_ID, "b1", "held", "2026-11-01T04:00:00Z"),
+            (other, "b2", "expired", "2026-10-01T04:00:00Z"),
+            (third, "b4", "approved", None),
+        }
 
     def test_an_expired_space_hold_keeps_its_space_id(self, monkeypatch):
         row = {

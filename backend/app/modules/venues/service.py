@@ -20,6 +20,7 @@ from app.core.exceptions import (
 from app.modules.events import service as events_service
 from app.modules.events.schemas import BookingReadiness, EventPlanningContext, SpaceRequirements
 from app.modules.venues import impact, repository, search
+from app.modules.venues.search import OCCUPYING_STATUSES
 from app.modules.venues.schemas import (
     INACTIVE_REASON_LABELS,
     AffectedBooking,
@@ -470,6 +471,20 @@ def booking_statuses_by_event(event_ids: Iterable[str]) -> dict[str, list[str]]:
     return statuses
 
 
+def booking_readiness_by_space(event_id: str) -> dict[str, list[BookingReadiness]]:
+    """`{event_space_request_id: [BookingReadiness, ...]}` for one event (CR-97
+    AC10): each of its event spaces' bookings, with status and open flag, so a
+    flagged booking blocks its own space. Spaces with no booking are absent."""
+    readiness: dict[str, list[BookingReadiness]] = {}
+    for row in repository.list_booking_statuses([event_id]):
+        if row.get("event_space_request_id"):
+            flags = [row["flag"]] if row.get("flag") else []
+            readiness.setdefault(row["event_space_request_id"], []).append(
+                BookingReadiness(status=row["status"], flags=flags)
+            )
+    return readiness
+
+
 def booking_readiness_by_event(event_ids: Iterable[str]) -> dict[str, list[BookingReadiness]]:
     """`{event_id: [BookingReadiness, ...]}`: each booking's status and its
     open flag, for the safety readiness check (82 AC10). A flagged booking
@@ -503,22 +518,32 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
     locks, so two coordinators racing for one slot can't both win (QA2-23).
     """
     venue_id = str(body.venue_id)
-    space_id = str(body.event_space_request_id) if body.event_space_request_id else None
+    if body.event_space_request_id:
+        event, space = events_service.assigned_space(str(body.event_space_request_id), coordinator_id)
+    else:
+        event = events_service.assigned_event(str(body.event_id), coordinator_id)
+        # CR-97: an event-only request books the event's first space.
+        space = event["spaces"][0] if event.get("spaces") else None
+    event_id = event["id"]
+    space_id = space["id"] if space else None
+    notify_message = f'A venue booking was requested for "{event["name"]}".'
     if space_id:
-        event, space = events_service.assigned_space(space_id, coordinator_id)
-        event_id = event["id"]
         result = repository.request_booking_for_space(
-            space_id, venue_id, coordinator_id, body.note,
-            notify_message=f'A venue booking was requested for "{event["name"]}".',
+            space_id, venue_id, coordinator_id, body.note, notify_message=notify_message,
         )
     else:
-        event_id = str(body.event_id)
-        event = events_service.assigned_event(event_id, coordinator_id)
         result = repository.request_booking(
-            event_id, venue_id, coordinator_id, body.note,
-            notify_message=f'A venue booking was requested for "{event["name"]}".',
+            event_id, venue_id, coordinator_id, body.note, notify_message=notify_message,
         )
     outcome = result["outcome"]
+    if outcome == "over_capacity":
+        # CR-97 AC10: the function refused on the space's expected pax; say by how much.
+        venue = repository.get_venue(venue_id)
+        seats = search.effective_capacity(venue, space.get("layout_preference"))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{venue.name} seats {seats}; this space needs {space['expected_pax']}.",
+        )
     if outcome in BOOKING_REFUSALS:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=BOOKING_REFUSALS[outcome])
     if outcome == "not_planning":
@@ -687,6 +712,14 @@ def rejected_bookings_for_event(event_id: str) -> list[dict]:
 
 
 def active_bookings_for_event(event_id: str) -> list[dict]:
+    """Each space's booking for the event page (CR-97 AC5): its occupying booking,
+    or else its latest expired hold so the page can say it ran out (CR-99 AC7)."""
+    shown: dict[str, dict] = {}
+    for row in repository.list_active_bookings(event_id):  # oldest first
+        key = row.get("event_space_request_id") or row["id"]
+        current = shown.get(key)
+        if current is None or current["status"] == "expired" or row["status"] in OCCUPYING_STATUSES:
+            shown[key] = row
     return [
         {
             "id": row["id"],
@@ -695,6 +728,7 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
             "venue_id": row["venue_id"],
             "venue_name": (row.get("venues") or {}).get("name"),
             "status": row["status"],
+            "expires_at": row.get("expires_at"),
         }
-        for row in repository.list_active_bookings(event_id)
+        for row in shown.values()
     ]

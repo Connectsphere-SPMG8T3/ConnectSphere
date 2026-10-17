@@ -24,10 +24,12 @@ test("TC-BOOK-008 a coordinator finds a venue from the event and requests it", a
   await dialog.getByLabel("Note for venue staff (optional)").fill("Early access at 09:30 please");
   await dialog.getByRole("button", { name: "Request venue" }).click();
 
-  // Back on the event, which now shows the tentative hold.
+  // Back on the event, which now shows the tentative hold on the space the
+  // booking was made for (CR-97: the database gives a space-less event its "Main space").
   await expect(page).toHaveURL(`/coordinator/events/${event.id}`);
-  await expect(page.getByTestId("venue-panel")).toContainText("Innovation Lab");
-  await expect(page.getByTestId("venue-panel")).toContainText("Tentative hold");
+  const booking = page.getByTestId("event-spaces").locator("article").filter({ hasText: "Main space" }).getByTestId("space-booking");
+  await expect(booking).toContainText("Innovation Lab");
+  await expect(booking).toContainText("Tentative hold");
 });
 
 test("TC-BOOK-021 venue staff read a held request and reject it with a reason", async ({ page, sharedSessions }) => {
@@ -84,8 +86,8 @@ test("TC-BOOK-022 the coordinator sees why a booking was rejected and can look a
   await expect(panel).toContainText("Rejected by venue staff");
   await expect(panel).toContainText("Closed for maintenance that week");
   await expect(panel).toContainText("Try the week after");
-  // AC7: they can still look for another venue.
-  await expect(panel.getByRole("button", { name: "Find a venue" })).toBeVisible();
+  // AC7: they can still look for another venue, from the space the booking was for (CR-97).
+  await expect(page.getByTestId("event-spaces").getByRole("link", { name: "Find venue" })).toBeVisible();
 });
 
 test("TC-BOOK-022 the organiser's event page never shows the rejection", async ({ page, sharedSessions }) => {

@@ -72,10 +72,20 @@ export function createThrowawayEvent(tag, startsAt, endsAt) {
 
 /** A booking on a throwaway event with a chosen status and expiry (CR-99), for
  * states a request alone can't reach. Deleted with the event's bookings. */
-export function createThrowawayHold(event, venueId, startsAt, endsAt, status, expiresAt) {
+export function createThrowawayHold(event, venueId, startsAt, endsAt, status, expiresAt, spaceId = null) {
+  const space = spaceId ? `'${spaceId}'` : "null"; // null: the trigger links the event's first space
   const [row] = query(
-    "insert into public.venue_bookings (event_id, venue_id, occupied_period, status, expires_at) values " +
-      `('${event.id}', '${venueId}', tstzrange('${startsAt}', '${endsAt}', '[)'), '${status}', '${expiresAt}') returning id`,
+    "insert into public.venue_bookings (event_id, event_space_request_id, venue_id, occupied_period, status, expires_at) values " +
+      `('${event.id}', ${space}, '${venueId}', tstzrange('${startsAt}', '${endsAt}', '[)'), '${status}', '${expiresAt}') returning id`,
+  );
+  return row;
+}
+
+/** A space on a throwaway event (CR-97); it goes when the event is deleted (cascade). */
+export function createThrowawaySpace(event, label, expectedPax) {
+  const [row] = query(
+    "insert into public.event_space_requests (event_id, label, expected_pax) values " +
+      `('${event.id}', '${label}', ${expectedPax}) returning id`,
   );
   return row;
 }

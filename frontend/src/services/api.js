@@ -190,6 +190,13 @@ export const eventsApi = {
   approve(eventId, token) {
     return request(`/events/${encodeURIComponent(eventId)}/approve`, { method: "POST", token });
   },
+  // CR-97 AC9: the assigned coordinator's primary venue.
+  setPrimarySpace(eventId, spaceId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/spaces/${encodeURIComponent(spaceId)}/primary`, { method: "PUT", token });
+  },
+  clearPrimarySpace(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/spaces/primary`, { method: "DELETE", token });
+  },
   reject(eventId, reason, token) {
     return request(`/events/${encodeURIComponent(eventId)}/reject`, { method: "POST", body: { reason }, token });
   },

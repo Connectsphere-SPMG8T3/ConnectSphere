@@ -34,6 +34,7 @@ from app.modules.events.schemas import (
     SafetyRejectRequest,
     ReturnReason,
     COMMENTABLE_STATUSES,
+    SpaceReadiness,
     SafetyReadiness,
     AmendmentRequest,
     CoordinatorActionItem,
@@ -277,8 +278,32 @@ def _transition(row: dict, actor_id: str, action: str, *, reason: str | None,
 
 
 def _safety_readiness_for(row: dict) -> SafetyReadiness:
+    # CR-97 AC10: an event with event spaces is ready only when each space's own
+    # booking is; one without any keeps the event-wide rule (Q15).
+    if row.get("spaces"):
+        by_space = venues_service.booking_readiness_by_space(row["id"])
+        spaces = [
+            SpaceReadiness(label=space["label"], bookings=by_space.get(space["id"], []))
+            for space in row["spaces"]
+        ]
+        return safety_readiness([], technical_status(row), spaces)
     bookings = venues_service.booking_readiness_by_event([row["id"]]).get(row["id"], [])
     return safety_readiness(bookings, technical_status(row))
+
+
+def set_primary_space(event_id: str, space_id: str | None, coordinator_id: str) -> EventResponse:
+    """CR-97 AC9: the assigned coordinator marks one event space as the primary venue."""
+    _assigned_event(event_id, coordinator_id)
+    outcome = repository.set_primary_space(event_id, space_id, coordinator_id)
+    if outcome == "not_planning":
+        raise EventConflictError("The primary venue can only be changed while the event is in planning.")
+    if outcome == "space_not_found":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event space not found.")
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "event_not_found":
+        raise EventNotFoundError()
+    return read(event_id, coordinator_id, "event_coordinator")
 
 
 def send_for_safety_check(event_id: str, coordinator_id: str) -> EventResponse:
