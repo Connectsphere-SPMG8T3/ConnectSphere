@@ -108,6 +108,15 @@ export function createThrowawayRequest(tag, startsAt, endsAt, venueId) {
   return { event, bookingId: booking.id };
 }
 
+/** Gives a throwaway booking its own setup and turnaround (SCRUM-21), as CR-100
+ * will copy them in from the venue; its occupied window widens to match. */
+export function setThrowawayBookingBuffers(bookingId, setupMinutes, turnaroundMinutes) {
+  query(
+    `update public.venue_bookings set setup_minutes = ${setupMinutes}, turnaround_minutes = ${turnaroundMinutes} ` +
+      `where id = '${bookingId}'`,
+  );
+}
+
 /** Deletes the throwaway events and their bookings (that foreign key restricts). */
 export function deleteThrowawayEvents() {
   query(`delete from public.venue_bookings where event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);

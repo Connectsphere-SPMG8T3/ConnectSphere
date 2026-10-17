@@ -105,7 +105,8 @@ DB_SCRIPTS = [
     ("venue_edit_checks.sql", "TC-VENUE-058, 059, 061 (database half)"),
     ("venue_booking_reject_checks.sql", "TC-BOOK-023"),
     ("lead_assignment_checks.sql", "CR-101 (database half: assignment columns, reassign_event)"),
-    ("venue_deactivation_checks.sql", "TC-VENUE-070 (SCRUM-64 database half)"),
+    ("venue_deactivation_checks.sql", "TC-VENUE-070 (SCRUM-64 database half); D33"),
+    ("booking_conflict_checks.sql", "TC-BOOK-040 (SCRUM-21 database half: occupied window, venue_conflicts)"),
 ]
 
 
@@ -1507,6 +1508,73 @@ def _(ctx: Context) -> None:
     response = request_venue(ctx, ctx.shared("event_coordinator"), event_id, HERITAGE_HALL)
     expect_status(response, 201)
     expect(response.json()["event_space_request_id"] == first, f"booked {response.json()}")
+
+
+# --- Booking conflict detection (SCRUM-21) ---------------------------------
+
+def hold_with_buffers(ctx: Context, case: str, starts: str, ends: str, venue_id: str) -> str:
+    """A throwaway event holding `venue_id`, its hold given 30 min setup and
+    45 min turnaround the way CR-100 will copy them in. Returns the event id."""
+    event_id = throwaway_event(ctx, case, starts, ends)
+    expect_status(request_venue(ctx, ctx.shared("event_coordinator"), event_id, venue_id), 201)
+    db_query("update public.venue_bookings set setup_minutes = 30, turnaround_minutes = 45 "
+             f"where event_id = '{event_id}'")
+    return event_id
+
+
+@check("TC-BOOK-037", "A request in another booking's turnaround is refused, naming that event and its window",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    hold_with_buffers(ctx, "037-a", "2031-06-16 10:00+08", "2031-06-16 12:00+08", INNOVATION_LAB)
+    later = throwaway_event(ctx, "037-b", "2031-06-16 12:30+08", "2031-06-16 14:00+08")
+    after_turnaround = throwaway_event(ctx, "037-c", "2031-06-16 12:45+08", "2031-06-16 14:00+08")
+    coordinator = ctx.shared("event_coordinator")
+
+    refused = request_venue(ctx, coordinator, later, INNOVATION_LAB)
+    expect_status(refused, 409)
+    expect(refused.json() == {
+        "detail": "Venue already held for this time by another event.",
+        "conflict": {"kind": "booking", "event_name": f"{THROWAWAY_EVENT_PREFIX}{ctx.run_id} 037-a",
+                     "block_reason": None,
+                     "starts_at": "2031-06-16T01:30:00Z", "ends_at": "2031-06-16T04:45:00Z"},
+    }, f"refusal was {refused.json()}")
+    # AC3: starting exactly as the turnaround ends is allowed.
+    expect_status(request_venue(ctx, coordinator, after_turnaround, INNOVATION_LAB), 201)
+
+
+@check("TC-BOOK-038", "A space request during a block is refused with the block's reason and period", needs_db=True)
+def _(ctx: Context) -> None:
+    db_query(
+        "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values "
+        f"('{HERITAGE_HALL}', tstzrange('2031-06-17 10:00+08', '2031-06-17 12:00+08', '[)'), "
+        f"'maintenance', '{THROWAWAY_BLOCK_NOTE}')"
+    )
+    event_id = throwaway_event(ctx, "038", "2031-06-17 09:00+08", "2031-06-17 18:00+08")
+    space_id = throwaway_space(event_id, "Morning room", starts="2031-06-17 11:00+08", ends="2031-06-17 13:00+08")
+
+    refused = request_space(ctx, ctx.shared("event_coordinator"), space_id, HERITAGE_HALL)
+    expect_status(refused, 409)
+    expect(refused.json() == {
+        "detail": "Venue blocked for this time.",
+        "conflict": {"kind": "block", "event_name": None, "block_reason": "maintenance",
+                     "starts_at": "2031-06-17T02:00:00Z", "ends_at": "2031-06-17T04:00:00Z"},
+    }, f"refusal was {refused.json()}")
+
+
+@check("TC-BOOK-039", "Search rules a venue out during another booking's turnaround, without naming the event",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    hold_with_buffers(ctx, "039", "2031-06-18 10:00+08", "2031-06-18 12:00+08", INNOVATION_LAB)
+
+    found = ctx.client.get(f"{ctx.api}/venues", headers=ctx.shared("event_coordinator").headers, params={
+        "starts_at": "2031-06-18T12:30:00+08:00", "ends_at": "2031-06-18T14:00:00+08:00", "include_excluded": "true",
+    })
+    expect_status(found, 200)
+    [lab] = [r for r in found.json()["results"] if r["venue"]["id"] == INNOVATION_LAB]
+    messages = [reason["message"] for reason in lab["reasons"]]
+    expect(lab["excluded"] and "Held by another event 18 Jun 09:30–12:45" in messages,
+           f"Innovation Lab was {lab['excluded'] and 'excluded' or 'listed'} with {messages}")
+    expect(not any(ctx.run_id in message for message in messages), f"search named the event: {messages}")
 
 
 # --- Equipment requests (SCRUM-45) ----------------------------------------
