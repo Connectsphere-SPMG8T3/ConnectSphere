@@ -1024,7 +1024,7 @@ available(type, W) = total_quantity
 
 ### 6.20 Notification system *(SCRUM-27: 69, 53)*
 
-The delivery channel and delivery preferences are a team choice (QA-11, QA-39, QA2-21). **[Team decision]** Release 1 is **in-app**: a bell with an unread count (polling every 30 seconds), a list, mark-read and mark-all-read, and deep links. Email is P3, delivered by a second subscriber on the same domain events. The `communication_preferences` profile field (SCRUM-50) records the preferred channel for when email is added (QA-46).
+The delivery channel and delivery preferences are a team choice (QA-11, QA-39, QA2-21). **[Team decision]** Release 1 is **in-app**: a bell with an unread count (polling the API every 10 seconds while the tab is visible; why not a broker or Supabase Realtime: [ADR-0004](adr/0004-notification-delivery.md)), a list, mark-read and mark-all-read, and deep links. Email is P3, delivered by a second subscriber on the same domain events. The `communication_preferences` profile field (SCRUM-50) records the preferred channel for when email is added (QA-46).
 
 | Domain event | Recipients | Source |
 |---|---|---|
@@ -1059,7 +1059,7 @@ The delivery channel and delivery preferences are a team choice (QA-11, QA-39, Q
 - **NT-R4:** In-app notifications **cannot be switched off** in release 1, so critical notices (cancellation, confirmation, date or venue changes) always reach the user. `communication_preferences` applies only to the future email channel (QA2-21).
 
 **Acceptance criteria**
-- **Given** a coordinator approves an event, **then** the organiser's unread count increases within 30 seconds, and clicking the notification opens the event.
+- **Given** a coordinator approves an event, **then** the organiser's unread count increases within 10 seconds while their page is open, and clicking the notification opens the event.
 - **Given** I perform an action myself, **then** I receive no notification for it.
 
 ### 6.21 Role dashboards *(P2; SCRUM-70–73 in Sprint 1; QA-51)*

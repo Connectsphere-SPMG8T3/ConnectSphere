@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted |
+| **Status** | Accepted. Its "Scope" section is narrowed by [ADR-0007](0007-postgres-functions-own-multi-table-writes.md) (2026-10-16) |
 | **Decided** | 2026-09-22, at stand-up, when the divergence below was brought to the team |
 | **Recorded** | 2026-09-22 — the reasoning is lifted from commit `3d4110d`, where it was written at the time |
 | **Deciders** | The team (stand-up); implemented by Eileen Tan in `3d4110d` |
@@ -55,6 +55,8 @@ This rule governs *application* data access. It does not push business rules int
 - **The named escape hatch is untested.** "Revisit with a view or RPC" assumes calling Postgres functions from the app — and no module calls `.rpc()` anywhere yet.
 
 ## Scope: this is not "no SQL"
+
+> **Narrowed by [ADR-0007](0007-postgres-functions-own-multi-table-writes.md).** The line drawn below ("business rules in Python, transactional integrity primitives in SQL") no longer matches what was built: every multi-table write is now one Postgres function, which also holds its status guards, history writes and notification recipients. The rest of this ADR (one client library, no ORM, no direct connection) still stands.
 
 The integrity guarantees in `REQUIREMENTS.md` §4 live in the database **by design**, and this ADR does not disturb them:
 

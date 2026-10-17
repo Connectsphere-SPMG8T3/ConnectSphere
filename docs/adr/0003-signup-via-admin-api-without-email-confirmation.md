@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposed — for team review on the SCRUM-80 pull request |
+| **Status** | Accepted — SCRUM-80 merged with this design |
 | **Decided** | 2026-09-27, while designing SCRUM-80 (Event organiser signup) |
 | **Deciders** | Ng Xuan Wei (SCRUM-80 assignee) |
 | **Applies to** | SCRUM-80, and SCRUM-83 (Attendee signup), which reuses the same endpoint |
