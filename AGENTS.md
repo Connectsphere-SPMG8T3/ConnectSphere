@@ -127,13 +127,13 @@ Run the full test suite (`pytest` from `backend/`) before declaring done, not on
 
 Every run of the test cases against the real system is recorded in `docs/test-cases/runs/` (its `README.md` has the commands and the manual template). When a story or fix reaches verification:
 
-1. **Run the automated live checks with recording on**, against a backend and frontend running this branch: `python scripts/verify_live.py --record` from `backend/`, then `npm run test:e2e:record` from `frontend/`. If the developer's own servers are on 8000/5173, start yours on spare ports and pass `--api` / `E2E_BASE_URL` / `E2E_API_URL`. A failure is a finding to fix or report, never something to re-run until it passes.
+1. **Run the automated live checks with recording on**, against a backend and frontend running this branch: `python scripts/verify_live.py --record` from `backend/`, then `npm run test:e2e:record` from `frontend/`. If the developer's own servers are on 8000/5173, start yours on spare ports and pass `--api` / `E2E_BASE_URL` / `E2E_API_URL`. A failure is a finding to fix or report, never something to re-run until it passes. Record once per verification: run without `--record` while iterating, delete a log that failed only because of setup (port, CORS, rate limit) and record again, and put the trigger in each log's title (`SCRUM-45 verification — …`), as `docs/test-cases/runs/README.md` "When to record a run" describes.
 2. **Automate the story's new cases where you can.** A case whose outcome is a status code, a redirect, a stored value, a field's text, or whether a request was sent gets a check in `backend/scripts/verify_live.py` or `frontend/e2e/`, named with its case ID first. Never change seeded or shared data. A check may create its own throwaway records only if the run deletes them, as the sign-up checks do with `live-check+…` accounts. Otherwise it stays manual.
 3. **Then stop and ask the developer to do the manual pass.** List the story's cases that still need a person: design and layout (including phone width), wording, anything that must not flash or jump, anything outside the app, and cases that change shared data. For each one, give the case ID, the page to open, and exactly what to look at. Keep it a short checklist grouped by page. Don't mark these as passed yourself. If you drive a browser, it can confirm that something works, but only the developer can judge how it looks and reads.
 4. **Record what the developer reports** as a manual run file (template in `docs/test-cases/runs/README.md`). A failure also becomes a defect in `docs/DEFECTS.md`.
 5. If the developer defers the manual pass, the final report lists those cases under "not verified".
 
-At the end of a sprint, if the developer asks, run both suites with recording on as regression evidence. There is no sprint-wide manual pass.
+At the end of a sprint, if the developer asks, run both suites with recording on as regression evidence, titled `Sprint <n> regression — …`. There is no sprint-wide manual pass.
 
 Commit the run logs with the story, since they are the evidence that it was tested.
 

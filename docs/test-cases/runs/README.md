@@ -4,7 +4,7 @@
 
 The mocked unit suites (pytest, Vitest) keep their own record: every CI run on a pull request uploads a JUnit report per job (`backend-test-report`, `frontend-test-report`), kept for 90 days under the run's **Artifacts** in GitHub Actions.
 
-One file per run, named `<date>-<time>-<method>-<commit>.md` (Singapore time), so runs from different branches never conflict and the folder lists them in order. Never edit a past run. A re-run is a new file.
+One file per run, named `<date>-<time>-<method>-<commit>.md` (Singapore time), so runs from different branches never conflict and the folder lists them in order. Never edit a run once it is committed. A re-run after a real failure is a new file (see "When to record a run").
 
 ## Three ways a case gets run
 
@@ -20,9 +20,28 @@ Automated checks sign in as the seeded accounts, never change seeded or shared d
 
 ## When to record a run
 
-- **At story or fix verification** ([`DEVELOPMENT_WORKFLOW.md`](../../DEVELOPMENT_WORKFLOW.md) §2): both automated runs with recording on, plus a manual log for the story's cases that need human judgement.
-- **At the end of each sprint**: both automated runs with recording on, as regression evidence for the sprint review. No full manual pass. Re-check a story by hand only if its area changed after it was verified.
-- Not while you're writing code. Run the checks without recording as often as you like.
+A run is recorded for one of two triggers, and each trigger gets one log per method:
+
+- **Story or fix verification** ([`DEVELOPMENT_WORKFLOW.md`](../../DEVELOPMENT_WORKFLOW.md) §2): one API + database log, one Playwright log, and one manual log for the story's cases that need human judgement. A fix also counts its "fails before, passes after" evidence here.
+- **End of sprint**: one API + database log and one Playwright log, as regression evidence for the sprint review. No full manual pass. Re-check a story by hand only if its area changed after it was verified.
+
+Everything else is run without `--record`, as often as you like: while writing code, and while iterating on a fix commit by commit. Record once, when the branch is ready for verification.
+
+**Setup failures are not runs.** If a run fails because of the environment rather than the product (a server on the wrong port, CORS, a backend that isn't running, `supabase login` not done, the sign-in rate limit), delete the log, fix the setup, and record again. Only the clean run is committed.
+
+**Product failures are kept.** If a check fails because the product is wrong, commit that log, fix the code, and record the re-run as a new file. The failing log and the passing one together are the evidence. Never re-run, unchanged, until a check passes.
+
+**Name the trigger in the title.** The recorders write a generic heading (`# Automated live checks — <date> <time> SGT`). Before committing, replace it with the trigger, so the folder can be read without opening each file:
+
+```markdown
+# SCRUM-45 verification — automated live checks — 2026-10-05 22:50 SGT
+# Sprint 3 regression — automated live checks — 2026-10-20 17:00 SGT
+# D31 fix — API and database checks — 2026-10-14 21:26 SGT
+```
+
+Changing the heading of a log you are about to commit is finishing it, not editing a past run.
+
+**Keep a log to its tables.** The header table, the case table, and a few lines on what was not run. How the story or fix was built belongs in its [`BUILD_LOG.md`](../../BUILD_LOG.md) entry, not here.
 
 ## Running the automated checks
 
@@ -70,7 +89,7 @@ A person has to look at:
 Copy into `<date>-<time>-manual-<commit>.md`:
 
 ```markdown
-# Manual browser checks — 2026-10-01 14:30 SGT
+# SCRUM-80 verification — manual browser checks — 2026-10-01 14:30 SGT
 
 | | |
 |---|---|
