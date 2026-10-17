@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, status
 
 from app.core.exceptions import (
+    BookingConflictError,
     BookingDecisionConflictError,
     BookingDecisionTextError,
     BookingNotFoundError,
@@ -24,6 +25,7 @@ from app.modules.venues.search import OCCUPYING_STATUSES
 from app.modules.venues.schemas import (
     INACTIVE_REASON_LABELS,
     AffectedBooking,
+    BookingConflict,
     BookingDecision,
     BookingEventRequirements,
     BookingHistoryEntry,
@@ -545,7 +547,12 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
             detail=f"{venue.name} seats {seats}; this space needs {space['expected_pax']}.",
         )
     if outcome in BOOKING_REFUSALS:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=BOOKING_REFUSALS[outcome])
+        # SCRUM-21 AC2: an overlap or a block comes with what is in the way.
+        conflict = result.get("conflict")
+        raise BookingConflictError(
+            BOOKING_REFUSALS[outcome],
+            BookingConflict.model_validate(conflict).model_dump(mode="json") if conflict else None,
+        )
     if outcome == "not_planning":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

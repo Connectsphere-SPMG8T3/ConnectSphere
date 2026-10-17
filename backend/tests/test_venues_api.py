@@ -5,6 +5,7 @@ covered in test_venue_search.py.
 """
 
 from datetime import datetime, time, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -1417,3 +1418,44 @@ class TestVenueEditHistory:
         authenticate_as("event_organiser")
         response = client.get(f"/api/v1/venues/{HALL_A_ID}/history", headers=auth_headers)
         assert response.status_code == 403
+
+
+def test_search_takes_its_occupants_from_the_single_conflict_check(monkeypatch):
+    """SCRUM-21 AC4: search asks public.venue_conflicts, the same check the
+    request functions use, for every venue at once. The function leaves out
+    overdue holds and finished bookings (booking_conflict_checks.sql); here
+    each row becomes the occupant search turns into a reason, keyed by venue."""
+    calls = []
+    rows = [
+        {"venue_id": HALL_A_ID, "kind": "booking", "booking_id": "d1", "event_id": "e1",
+         "event_name": "Alumni Night", "booking_status": "held", "block_reason": None,
+         "occupied_period": '["2026-10-10 05:30:00+00","2026-10-10 08:45:00+00")'},
+        {"venue_id": HALL_A_ID, "kind": "block", "booking_id": None, "event_id": None,
+         "event_name": None, "booking_status": None, "block_reason": "maintenance",
+         "occupied_period": '["2026-10-10 09:00:00+00","2026-10-10 10:00:00+00")'},
+    ]
+
+    class Rpc:
+        def execute(self):
+            return SimpleNamespace(data=rows)
+
+    class AdminClient:
+        def rpc(self, name, params):
+            calls.append((name, params))
+            return Rpc()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+    period = Period(starts_at=datetime(2026, 10, 10, 6, tzinfo=timezone.utc),
+                    ends_at=datetime(2026, 10, 10, 9, tzinfo=timezone.utc))
+
+    occupants = repository.list_occupants(period)
+
+    assert calls == [("venue_conflicts", {"p_period": "[2026-10-10T06:00:00+00:00,2026-10-10T09:00:00+00:00)"})]
+    assert occupants == {HALL_A_ID: [
+        Occupant(kind="booking", detail="held", period=Period(
+            starts_at=datetime(2026, 10, 10, 5, 30, tzinfo=timezone.utc),
+            ends_at=datetime(2026, 10, 10, 8, 45, tzinfo=timezone.utc))),
+        Occupant(kind="block", detail="maintenance", period=Period(
+            starts_at=datetime(2026, 10, 10, 9, tzinfo=timezone.utc),
+            ends_at=datetime(2026, 10, 10, 10, tzinfo=timezone.utc))),
+    ]}
