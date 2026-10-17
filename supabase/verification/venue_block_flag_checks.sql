@@ -130,6 +130,77 @@ begin
     if v_rows <> 2 then raise exception 'BLOCK FLAG FAIL: expected 2 affected bookings, got %', v_rows; end if;
 end $$;
 
+-- Editing and deleting a block (Q1, REQUIREMENTS §9): widening it flags the
+-- bookings it newly overlaps and nothing it already flagged; shortening or
+-- deleting it clears nothing, because only the coordinator's follow-up does.
+insert into public.events (id, organiser_id, coordinator_id, status, name, expected_attendance, starts_at, ends_at)
+values
+    ('e0000000-0000-4000-8000-0000000095c1', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002',
+     'planning', 'Block edit check first day (rolled back)', 20, '2031-08-01 10:00+08', '2031-08-01 12:00+08'),
+    ('e0000000-0000-4000-8000-0000000095c2', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002',
+     'planning', 'Block edit check second day (rolled back)', 20, '2031-08-02 10:00+08', '2031-08-02 12:00+08'),
+    ('e0000000-0000-4000-8000-0000000095c3', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002',
+     'planning', 'Block edit check third day (rolled back)', 20, '2031-08-03 10:00+08', '2031-08-03 12:00+08');
+
+insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status)
+values
+    ('d0000000-0000-4000-8000-0000000095d1', 'e0000000-0000-4000-8000-0000000095c1', 'b0000000-0000-4000-8000-000000000003',
+     tstzrange('2031-08-01 10:00+08', '2031-08-01 12:00+08', '[)'), 'held'),
+    ('d0000000-0000-4000-8000-0000000095d2', 'e0000000-0000-4000-8000-0000000095c2', 'b0000000-0000-4000-8000-000000000003',
+     tstzrange('2031-08-02 10:00+08', '2031-08-02 12:00+08', '[)'), 'approved'),
+    ('d0000000-0000-4000-8000-0000000095d3', 'e0000000-0000-4000-8000-0000000095c3', 'b0000000-0000-4000-8000-000000000003',
+     tstzrange('2031-08-03 10:00+08', '2031-08-03 12:00+08', '[)'), 'held');
+
+insert into public.venue_blocks (id, venue_id, blocked_period, reason)
+values ('f0000000-0000-4000-8000-0000000095e1', 'b0000000-0000-4000-8000-000000000003',
+        tstzrange('2031-08-01 00:00+08', '2031-08-01 23:00+08', '[)'), 'renovation');
+
+do $$
+begin
+    if (select flag from public.venue_bookings where id = 'd0000000-0000-4000-8000-0000000095d1') is distinct from 'affected'
+       or (select flag from public.venue_bookings where id = 'd0000000-0000-4000-8000-0000000095d2') is not null then
+        raise exception 'BLOCK EDIT FAIL: the new block should flag the first day only';
+    end if;
+end $$;
+
+-- Widen the block over the second day.
+update public.venue_blocks
+   set blocked_period = tstzrange('2031-08-01 00:00+08', '2031-08-02 23:00+08', '[)')
+ where id = 'f0000000-0000-4000-8000-0000000095e1';
+
+do $$
+declare
+    v_notices integer;
+begin
+    if (select flag from public.venue_bookings where id = 'd0000000-0000-4000-8000-0000000095d2') is distinct from 'affected' then
+        raise exception 'BLOCK EDIT FAIL: widening the block did not flag the newly overlapped booking';
+    end if;
+    if (select flag from public.venue_bookings where id = 'd0000000-0000-4000-8000-0000000095d3') is not null then
+        raise exception 'BLOCK EDIT FAIL: widening the block flagged a booking it does not overlap';
+    end if;
+    -- The first day was flagged already: one flag, one notice, not a second.
+    select count(*) into v_notices from public.notifications
+     where type = 'venue_booking_affected' and event_id = 'e0000000-0000-4000-8000-0000000095c1';
+    if v_notices <> 1 then
+        raise exception 'BLOCK EDIT FAIL: widening re-notified an already flagged booking (% notices)', v_notices;
+    end if;
+end $$;
+
+-- Shorten the block back to the first day, then delete it: no flag is cleared.
+update public.venue_blocks
+   set blocked_period = tstzrange('2031-08-01 00:00+08', '2031-08-01 23:00+08', '[)')
+ where id = 'f0000000-0000-4000-8000-0000000095e1';
+delete from public.venue_blocks where id = 'f0000000-0000-4000-8000-0000000095e1';
+
+do $$
+begin
+    if (select count(*) from public.venue_bookings
+         where id in ('d0000000-0000-4000-8000-0000000095d1', 'd0000000-0000-4000-8000-0000000095d2')
+           and flag = 'affected' and status in ('held', 'approved')) <> 2 then
+        raise exception 'BLOCK EDIT FAIL: shortening or deleting the block cleared or changed a flag';
+    end if;
+end $$;
+
 select 'VENUE BLOCK FLAG CHECKS PASSED' as result;
 
 rollback;
