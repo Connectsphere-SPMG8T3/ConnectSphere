@@ -9,7 +9,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  venueBookingsApi: { request: vi.fn(), get: vi.fn(), reject: vi.fn() },
+  venueBookingsApi: { request: vi.fn(), get: vi.fn(), reject: vi.fn(), restore: vi.fn() },
 }));
 
 function booking(overrides = {}) {
@@ -220,5 +220,60 @@ describe("BookingRequestView (SCRUM-38)", () => {
 
     expect(el.textContent).toContain("Booking not found.");
     expect(button("Reject request")).toBeNull();
+  });
+});
+
+describe("BookingRequestView, an affected booking (CR-95 AC9)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+    toastState.value = null;
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  const AFFECTED = booking({ status: "approved", flag: "affected", flag_reason: "Venue unavailable: maintenance" });
+
+  it("tells venue staff why the booking is affected and offers to restore it", async () => {
+    const { el } = await mountView(AFFECTED);
+
+    expect(el.querySelector('[data-testid="booking-affected"]').textContent).toContain("Venue unavailable: maintenance");
+    expect(button("Restore original booking")).not.toBeNull();
+  });
+
+  it("restores the booking and tells staff the coordinator has been told", async () => {
+    const { el } = await mountView(AFFECTED);
+    venueBookingsApi.restore.mockResolvedValue({ ...AFFECTED, flag: null, flag_reason: null });
+
+    button("Restore original booking").click();
+
+    await vi.waitFor(() => expect(venueBookingsApi.restore).toHaveBeenCalledWith("b1", "access"));
+    await vi.waitFor(() => expect(el.querySelector('[data-testid="booking-affected"]')).toBeNull());
+    expect(toastState.value.message).toContain("restored");
+  });
+
+  it("shows the refusal when the venue isn't free yet", async () => {
+    const { el } = await mountView(AFFECTED);
+    venueBookingsApi.restore.mockRejectedValue(new ApiError("The venue is still blocked for part of this booking's time.", 409));
+
+    button("Restore original booking").click();
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent).toContain("still blocked"));
+  });
+
+  it("offers a coordinator the reason but not the restore", async () => {
+    const { el } = await mountView(AFFECTED, "event_coordinator");
+
+    expect(el.querySelector('[data-testid="booking-affected"]')).not.toBeNull();
+    expect(button("Restore original booking")).toBeNull();
+  });
+
+  it("shows nothing about a booking that is not affected", async () => {
+    const { el } = await mountView(booking({ status: "approved" }));
+
+    expect(el.querySelector('[data-testid="booking-affected"]')).toBeNull();
+    expect(button("Restore original booking")).toBeNull();
   });
 });

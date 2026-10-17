@@ -136,6 +136,33 @@ function emptyDetail(clearText) {
       Pending requests appear first. Resolved requests remain available for reference.
     </p>
 
+    <!-- CR-95 AC9: a booking whose venue became unavailable stays in the list
+         below under its own status, so it is also shown here, where staff can
+         find it and restore it once the venue is free again. -->
+    <div
+      v-if="dashboard.affectedBookings?.length"
+      class="mb-6 border-4 border-ink bg-canvas p-4 shadow-hard"
+      data-testid="affected-bookings"
+    >
+      <h3 class="text-sm font-black uppercase tracking-widest text-bauhaus-red">Venue unavailable</h3>
+      <p class="mt-1 text-xs font-medium text-ink/70">
+        These bookings are flagged because their venue became unavailable. Open one to restore it once the venue is free.
+      </p>
+      <ul class="mt-3 space-y-2">
+        <li v-for="booking in dashboard.affectedBookings" :key="booking.id">
+          <RouterLink
+            :to="{ name: 'booking-request', params: { id: booking.id } }"
+            class="flex flex-wrap items-baseline justify-between gap-2 border-l-4 border-bauhaus-red bg-surface py-2 pl-3 pr-2 active-press"
+          >
+            <span class="font-black uppercase tracking-tight">{{ booking.event_name || formatEventReference(booking) }}</span>
+            <span class="text-xs font-bold uppercase tracking-widest text-ink/70">
+              {{ booking.venue_name }} · {{ formatPeriod(booking.period) }}
+            </span>
+          </RouterLink>
+        </li>
+      </ul>
+    </div>
+
     <div class="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
       <BauhausSelect v-model="requestStatus" label="Status" :options="requestStatusOptions" :show-placeholder="false" compact />
       <BauhausSelect v-model="requestVenueId" label="Venue" :options="requestVenueOptions" :show-placeholder="false" compact />

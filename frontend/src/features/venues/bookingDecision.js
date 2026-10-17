@@ -29,6 +29,13 @@ export function canRejectBooking(booking, role) {
   return role === "venue_staff" && booking?.status === "held";
 }
 
+/** Only a live booking flagged Affected can be restored (CR-95 AC9), and only by a session acting as venue staff. UX only: the API decides. */
+export function canRestoreBooking(booking, role) {
+  return (
+    role === "venue_staff" && booking?.flag === "affected" && ["held", "approved"].includes(booking?.status)
+  );
+}
+
 // Venues are in Singapore, so times are shown there (REQUIREMENTS §4).
 const dayFormatter = new Intl.DateTimeFormat("en-SG", {
   timeZone: "Asia/Singapore", weekday: "short", day: "numeric", month: "short", year: "numeric",

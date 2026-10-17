@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  venueBookingsApi: { request: vi.fn(), get: vi.fn(), reject: vi.fn() },
+  venueBookingsApi: { request: vi.fn(), get: vi.fn(), reject: vi.fn(), restore: vi.fn() },
 }));
 
 const HELD = { id: "b1", status: "held", venue_name: "Innovation Lab", decision: null, history: [] };
@@ -117,5 +117,50 @@ describe("useBookingDecisionStore (SCRUM-38)", () => {
 
     expect(store.error).toBeNull();
     expect(store.conflict).toBe(false);
+  });
+});
+
+describe("useBookingDecisionStore.restore (CR-95 AC9)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const AFFECTED = { ...HELD, status: "approved", flag: "affected", flag_reason: "Venue unavailable: maintenance" };
+
+  it("restores the booking and shows it unflagged", async () => {
+    const store = signedInVenueStaff();
+    store.booking = AFFECTED;
+    venueBookingsApi.restore.mockResolvedValue({ ...AFFECTED, flag: null, flag_reason: null });
+
+    const ok = await store.restore("b1");
+
+    expect(ok).toBe(true);
+    expect(venueBookingsApi.restore).toHaveBeenCalledWith("b1", "access-token");
+    expect(store.booking.flag).toBeNull();
+    expect(store.error).toBeNull();
+    expect(store.isRestoring).toBe(false);
+  });
+
+  it("keeps the API's reason and reloads the booking when it can't be restored", async () => {
+    const store = signedInVenueStaff();
+    store.booking = AFFECTED;
+    venueBookingsApi.restore.mockRejectedValue(
+      new ApiError("The venue is still blocked for part of this booking's time.", 409),
+    );
+    venueBookingsApi.get.mockResolvedValue(AFFECTED);
+
+    const ok = await store.restore("b1");
+
+    expect(ok).toBe(false);
+    expect(store.error).toBe("The venue is still blocked for part of this booking's time.");
+    expect(store.conflict).toBe(true);
+    expect(venueBookingsApi.get).toHaveBeenCalledWith("b1", "access-token");
+    expect(store.isRestoring).toBe(false);
+  });
+
+  it("does not start a second restore while one is running", async () => {
+    const store = signedInVenueStaff();
+    store.isRestoring = true;
+
+    expect(await store.restore("b1")).toBe(false);
+    expect(venueBookingsApi.restore).not.toHaveBeenCalled();
   });
 });

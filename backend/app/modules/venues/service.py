@@ -457,6 +457,14 @@ def venue_staff_dashboard(now: datetime | None = None) -> VenueStaffDashboard:
             key=lambda b: (b.expires_at or b.period.starts_at, b.id),
         ),
         re_review_bookings=[b for b in bookings if b.status == "re_review"],
+        # Soonest event first. One that has ended has nothing left to restore.
+        affected_bookings=sorted(
+            (
+                b for b in bookings
+                if b.flag == "affected" and b.status in ("held", "approved") and b.period.ends_at > now
+            ),
+            key=lambda b: (b.period.starts_at, b.id),
+        ),
         blocks=repository.list_all_upcoming_blocks(now),
     )
 
@@ -471,6 +479,17 @@ def booking_statuses_by_event(event_ids: Iterable[str]) -> dict[str, list[str]]:
     for row in repository.list_booking_statuses(event_ids):
         statuses.setdefault(row["event_id"], []).append(row["status"])
     return statuses
+
+
+def affected_event_ids(event_ids: Iterable[str]) -> set[str]:
+    """The events with a held or approved booking flagged Affected (CR-95 AC3): the
+    ones whose coordinator has to find an alternative venue. A released or
+    cancelled booking no longer needs one, whatever flag it kept."""
+    return {
+        row["event_id"]
+        for row in repository.list_booking_statuses(event_ids)
+        if row.get("flag") == "affected" and row["status"] in ("held", "approved")
+    }
 
 
 def booking_readiness_by_space(event_id: str) -> dict[str, list[BookingReadiness]]:
@@ -509,7 +528,30 @@ BOOKING_REFUSALS = {
     "no_period": "This event has no start and end time to hold a venue for.",
     # SCRUM-64 AC2: a deactivated venue takes no new requests.
     "venue_inactive": "This venue is inactive.",
+    # CR-95 AC4: only the event's own affected booking can be replaced.
+    "replaced_booking_invalid": "That booking is not waiting for a replacement.",
 }
+
+
+def _prepare_replacement(replaces_id: str, event: dict, space_id: str | None) -> None:
+    """Refuse before changing anything unless `replaces_id` is this event's (or
+    space's) own affected booking that is still held or approved, then return a
+    Confirmed or Safety-review event to planning, which the booking functions
+    require (CR-95 AC4, AC7). The coordinator has decided to replace the venue
+    by asking, so the event stays in planning even if the venue they pick is
+    taken; if the return fails, nothing has been requested."""
+    row = repository.get_replaceable_booking(replaces_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
+    if (
+        row["event_id"] != event["id"]
+        or row.get("event_space_request_id") != space_id
+        or row.get("flag") != "affected"
+        or row["status"] not in ("held", "approved")
+    ):
+        raise BookingConflictError(BOOKING_REFUSALS["replaced_booking_invalid"], None)
+    if event["status"] in ("safety_review", "confirmed"):
+        events_service.return_to_planning(event["id"], reason_code="arrangement_flagged")
 
 
 def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooking:
@@ -529,13 +571,17 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
     event_id = event["id"]
     space_id = space["id"] if space else None
     notify_message = f'A venue booking was requested for "{event["name"]}".'
+    replaces_id = str(body.replaces_booking_id) if body.replaces_booking_id else None
+    extra = {"replaces_booking_id": replaces_id} if replaces_id else {}
+    if replaces_id:
+        _prepare_replacement(replaces_id, event, space_id)
     if space_id:
         result = repository.request_booking_for_space(
-            space_id, venue_id, coordinator_id, body.note, notify_message=notify_message,
+            space_id, venue_id, coordinator_id, body.note, notify_message=notify_message, **extra,
         )
     else:
         result = repository.request_booking(
-            event_id, venue_id, coordinator_id, body.note, notify_message=notify_message,
+            event_id, venue_id, coordinator_id, body.note, notify_message=notify_message, **extra,
         )
     outcome = result["outcome"]
     if outcome == "over_capacity":
@@ -597,6 +643,15 @@ def change_hold_expiry(booking_id: str, actor_id: str, expires_at: datetime) -> 
     return HoldExpiry(id=booking_id, status="held", expires_at=result["expires_at"])
 
 
+def _flag_fields(row: dict) -> dict:
+    """What marks a booking as affected, or as the replacement for one (CR-95)."""
+    return {
+        "flag": row.get("flag"),
+        "flag_reason": row.get("flag_reason"),
+        "replaces_booking_id": row.get("replaces_booking_id"),
+    }
+
+
 def active_booking_for_event(event_id: str) -> dict | None:
     """`{id, venue_id, venue_name, status, expires_at}` for the venue the event
     holds or has booked, or else its latest expired hold (CR-99 AC7), or None
@@ -611,6 +666,7 @@ def active_booking_for_event(event_id: str) -> dict | None:
         "venue_name": (row.get("venues") or {}).get("name"),
         "status": row["status"],
         "expires_at": row.get("expires_at"),
+        **_flag_fields(row),
     }
 
 
@@ -642,6 +698,7 @@ def _booking_detail(booking: dict) -> VenueBookingDetail:
         id=booking["id"], status=booking["status"], venue_id=booking["venue_id"],
         venue_name=booking.get("venue_name"), period=booking["period"], request_note=booking.get("request_note"),
         requested_at=booking["requested_at"], requested_by_name=booking.get("requested_by_name"),
+        flag=booking.get("flag"), flag_reason=booking.get("flag_reason"),
         event=BookingEventRequirements(
             id=event_id, name=context.name, status=context.status,
             expected_attendance=context.expected_attendance, layout_preference=context.layout_preference,
@@ -676,6 +733,32 @@ _NOT_HELD_LABELS = {
     "released": "released",
     "re_review": "under re-review",
 }
+
+
+# What `public.restore_affected_booking` refuses with, as venue staff read it (CR-95 AC9).
+RESTORE_REFUSALS = {
+    "not_affected": "This booking isn't waiting on an unavailable venue.",
+    "replacement_approved": "A replacement has already been approved, so the original can't be restored.",
+    "venue_inactive": "This venue is inactive, so the booking can't be restored.",
+    "still_blocked": "The venue is still blocked for part of this booking's time.",
+    "held_by_other": "The venue is taken for part of this booking's time.",
+}
+
+
+def restore_booking(booking_id: str, actor_id: str) -> VenueBookingDetail:
+    """Venue staff confirm an affected booking is restored (CR-95 AC9, QA3-9).
+
+    Whether the venue is free for the booking's full occupied window, and what
+    restoring changes (flag cleared, pending replacement cancelled, history,
+    notices), is the database function's, under a lock on the booking row.
+    Venue staff work as a pool (AUTH-R5), so any of them may restore any booking.
+    """
+    outcome = repository.restore_affected_booking(booking_id, actor_id)["outcome"]
+    if outcome == "booking_not_found":
+        raise BookingNotFoundError()
+    if outcome in RESTORE_REFUSALS:
+        raise BookingDecisionConflictError(RESTORE_REFUSALS[outcome])
+    return _booking_detail(repository.get_booking(booking_id))
 
 
 def reject_booking(booking_id: str, actor_id: str, body: VenueBookingReject) -> VenueBookingDetail:
@@ -723,7 +806,10 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
     or else its latest expired hold so the page can say it ran out (CR-99 AC7)."""
     shown: dict[str, dict] = {}
     for row in repository.list_active_bookings(event_id):  # oldest first
-        key = row.get("event_space_request_id") or row["id"]
+        # An affected booking and the replacement asked for beside it (CR-95)
+        # are both shown: the coordinator works from the one and tracks the other.
+        own_row = row.get("flag") or row.get("replaces_booking_id")
+        key = row["id"] if own_row else row.get("event_space_request_id") or row["id"]
         current = shown.get(key)
         if current is None or current["status"] == "expired" or row["status"] in OCCUPYING_STATUSES:
             shown[key] = row
@@ -736,6 +822,7 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
             "venue_name": (row.get("venues") or {}).get("name"),
             "status": row["status"],
             "expires_at": row.get("expires_at"),
+            **_flag_fields(row),
         }
         for row in shown.values()
     ]

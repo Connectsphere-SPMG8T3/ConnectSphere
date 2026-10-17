@@ -50,6 +50,22 @@ describe("useVenueBookingStore.request (SCRUM-19)", () => {
     );
   });
 
+  it("names the booking being replaced when one is given (CR-95 AC4)", async () => {
+    const store = signedInCoordinator();
+    venueBookingsApi.request.mockResolvedValue(BOOKING);
+
+    await store.request("event-1", "v1", "", "b-affected");
+    await store.requestForSpace("space-1", "v1", "", "b-affected");
+
+    expect(venueBookingsApi.request).toHaveBeenNthCalledWith(
+      1, { event_id: "event-1", venue_id: "v1", note: null, replaces_booking_id: "b-affected" }, "access-token",
+    );
+    expect(venueBookingsApi.request).toHaveBeenNthCalledWith(
+      2, { event_space_request_id: "space-1", venue_id: "v1", note: null, replaces_booking_id: "b-affected" },
+      "access-token",
+    );
+  });
+
   it("surfaces the API's refusal and keeps the session", async () => {
     const store = signedInCoordinator();
     venueBookingsApi.request.mockRejectedValue(

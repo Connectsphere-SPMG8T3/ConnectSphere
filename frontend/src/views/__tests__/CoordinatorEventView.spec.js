@@ -163,6 +163,75 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect([...panel.querySelectorAll("button")].map((b) => b.textContent.trim())).toContain("Find a venue");
   });
 
+  // CR-95 AC3, AC4: an affected booking says so, why, and how to replace it.
+  describe("an affected venue booking (CR-95)", () => {
+    const AFFECTED = {
+      id: "b-affected", event_space_request_id: null, venue_id: "v1", venue_name: "Seminar Room 1",
+      status: "approved", flag: "affected", flag_reason: "Venue unavailable: maintenance",
+    };
+    const REPLACEMENT = {
+      id: "b-new", event_space_request_id: null, venue_id: "v2", venue_name: "Heritage Hall",
+      status: "held", flag: null, replaces_booking_id: "b-affected", expires_at: "2026-11-01T04:00:00Z",
+    };
+    const findReplacement = (root) => [...root.querySelectorAll("button")].find((b) => b.textContent.trim() === "Find replacement");
+
+    it.each(["planning", "safety_review", "confirmed"])(
+      "shows why a %s event's venue is unavailable and opens venue search to replace it",
+      async (status) => {
+        const el = await mountView(eventResponse({ status, venue_booking: AFFECTED, venue_bookings: [AFFECTED] }));
+
+        const panel = el.querySelector('[data-testid="venue-panel"]');
+        expect(panel.textContent).toContain("Seminar Room 1");
+        expect(panel.textContent).toContain("Needs alternative venue");
+        expect(panel.textContent).toContain("Venue unavailable: maintenance");
+        findReplacement(panel).click();
+        const { default: router } = await import("@/router");
+        await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("venue-search"));
+        expect(router.currentRoute.value.query).toEqual({ event: "event-1", replaces: "b-affected" });
+      },
+    );
+
+    it("shows the replacement asked for and offers no second one", async () => {
+      const el = await mountView(eventResponse({
+        status: "planning", venue_booking: REPLACEMENT, venue_bookings: [AFFECTED, REPLACEMENT],
+      }));
+
+      const panel = el.querySelector('[data-testid="venue-panel"]');
+      expect(panel.textContent).toContain("Seminar Room 1");
+      expect(panel.textContent).toContain("Replacement requested");
+      expect(panel.querySelector('[data-testid="venue-replacement"]').textContent).toContain("Heritage Hall");
+      expect(panel.querySelector('[data-testid="venue-replacement"]').textContent).toContain("Tentative hold");
+      expect(findReplacement(panel)).toBeUndefined();
+    });
+
+    it("offers no replacement once the event is past planning, review and confirmation", async () => {
+      const el = await mountView(eventResponse({ status: "returned", venue_bookings: [AFFECTED] }));
+
+      const panel = el.querySelector('[data-testid="venue-panel"]');
+      expect(panel.textContent).toContain("Needs alternative venue");
+      expect(findReplacement(panel)).toBeUndefined();
+    });
+
+    it("marks an affected space's booking on its own card and replaces it from there", async () => {
+      const spaceBooking = { ...AFFECTED, event_space_request_id: "space-b" };
+      const el = await mountView(eventResponse({
+        status: "confirmed", spaces: TWO_SPACES, venue_bookings: [
+          { id: "b1", event_space_request_id: "space-a", venue_id: "v3", venue_name: "Innovation Lab", status: "approved" },
+          spaceBooking,
+        ],
+      }));
+
+      const [main, breakout] = spaceCards(el);
+      expect(main.textContent).not.toContain("Needs alternative venue");
+      expect(breakout.textContent).toContain("Needs alternative venue");
+      expect(breakout.textContent).toContain("Venue unavailable: maintenance");
+      findReplacement(breakout).click();
+      const { default: router } = await import("@/router");
+      await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("venue-search"));
+      expect(router.currentRoute.value.query).toEqual({ event: "event-1", space: "space-b", replaces: "b-affected" });
+    });
+  });
+
   it("shows the event's discussion thread (SCRUM-61)", async () => {
     const el = await mountView(eventResponse());
 

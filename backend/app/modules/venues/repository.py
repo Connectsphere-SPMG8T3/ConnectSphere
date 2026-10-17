@@ -393,7 +393,7 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
         # Every relationship is named because bookings have multiple venue,
         # event and profile foreign keys.
         .select(
-            "id, event_id, venue_id, occupied_period, status, created_at, expires_at, "
+            "id, event_id, venue_id, occupied_period, status, created_at, expires_at, flag, "
             "decision_reason, suggestion_note, decided_at, "
             "venues!venue_bookings_venue_id_fkey(name), "
             "events!venue_bookings_event_id_fkey(name, coordinator:profiles!events_coordinator_id_fkey(full_name)), "
@@ -414,6 +414,7 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
             status=row["status"],
             requested_at=datetime.fromisoformat(row["created_at"]),
             expires_at=datetime.fromisoformat(row["expires_at"]) if row.get("expires_at") else None,
+            flag=row.get("flag"),
             event_name=_embedded_name(row, "events", "name"),
             coordinator_name=_embedded_name(
                 {"coordinator": (_embedded_relation(row, "events") or {}).get("coordinator")},
@@ -445,46 +446,56 @@ def list_booking_statuses(event_ids: Iterable[str]) -> list[dict]:
     return response.data or []
 
 
-def request_booking(event_id: str, venue_id: str, actor_id: str, note: str | None, *,
-                    notify_message: str) -> dict:
-    """Run `public.request_venue_booking` (SCRUM-19): the hold and venue staff's
-    notifications in one transaction. Returns `{outcome, booking_id}`; every
-    refusal is an outcome code, never a raised database error."""
+def get_replaceable_booking(booking_id: str) -> dict | None:
+    """`{id, event_id, event_space_request_id, status, flag}` for the booking a
+    replacement names (CR-95 AC4), or None. The database function decides again
+    under its lock; this read lets the caller refuse before it changes anything."""
     response = (
         get_supabase_admin_client()
-        .rpc(
-            "request_venue_booking",
-            {
-                "p_event_id": event_id,
-                "p_venue_id": venue_id,
-                "p_actor_id": actor_id,
-                "p_note": note,
-                "p_notify_message": notify_message,
-            },
-        )
+        .table("venue_bookings")
+        .select("id, event_id, event_space_request_id, status, flag")
+        .eq("id", booking_id)
+        .limit(1)
         .execute()
     )
+    rows = response.data or []
+    return rows[0] if rows else None
+
+
+def request_booking(event_id: str, venue_id: str, actor_id: str, note: str | None, *,
+                    notify_message: str, replaces_booking_id: str | None = None) -> dict:
+    """Run `public.request_venue_booking` (SCRUM-19): the hold and venue staff's
+    notifications in one transaction. Returns `{outcome, booking_id}`; every
+    refusal is an outcome code, never a raised database error. With
+    `replaces_booking_id` it replaces that affected booking (CR-95 AC4)."""
+    params = {
+        "p_event_id": event_id,
+        "p_venue_id": venue_id,
+        "p_actor_id": actor_id,
+        "p_note": note,
+        "p_notify_message": notify_message,
+    }
+    if replaces_booking_id:
+        params["p_replaces_booking_id"] = replaces_booking_id
+    response = get_supabase_admin_client().rpc("request_venue_booking", params).execute()
     rows = response.data or []
     return rows[0]
 
 
 def request_booking_for_space(space_id: str, venue_id: str, actor_id: str, note: str | None, *,
-                              notify_message: str) -> dict:
-    """Create a hold for one event-space request using its own period."""
-    response = (
-        get_supabase_admin_client()
-        .rpc(
-            "request_venue_booking_for_space",
-            {
-                "p_event_space_request_id": space_id,
-                "p_venue_id": venue_id,
-                "p_actor_id": actor_id,
-                "p_note": note,
-                "p_notify_message": notify_message,
-            },
-        )
-        .execute()
-    )
+                              notify_message: str, replaces_booking_id: str | None = None) -> dict:
+    """Create a hold for one event-space request using its own period. With
+    `replaces_booking_id` it replaces that space's affected booking (CR-95 AC4)."""
+    params = {
+        "p_event_space_request_id": space_id,
+        "p_venue_id": venue_id,
+        "p_actor_id": actor_id,
+        "p_note": note,
+        "p_notify_message": notify_message,
+    }
+    if replaces_booking_id:
+        params["p_replaces_booking_id"] = replaces_booking_id
+    response = get_supabase_admin_client().rpc("request_venue_booking_for_space", params).execute()
     rows = response.data or []
     return rows[0]
 
@@ -496,7 +507,7 @@ def get_active_booking(event_id: str) -> dict | None:
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_space_request_id, venue_id, status, expires_at, venues!venue_bookings_venue_id_fkey(name)")
+        .select("id, event_space_request_id, venue_id, status, expires_at, flag, flag_reason, replaces_booking_id, venues!venue_bookings_venue_id_fkey(name)")
         .eq("event_id", event_id)
         .in_("status", [*OCCUPYING_STATUSES, "expired"])
         .order("created_at", desc=True)
@@ -539,7 +550,7 @@ def set_hold_expiry(booking_id: str, actor_id: str, expires_at: datetime) -> dic
 # `profiles` (requester and decider), so every embed names its constraint.
 _BOOKING_DETAIL_COLUMNS = (
     "id, event_id, venue_id, occupied_period, status, request_note, created_at, "
-    "decision_reason, suggestion_note, decided_at, "
+    "decision_reason, suggestion_note, decided_at, flag, flag_reason, "
     "venue:venues!venue_bookings_venue_id_fkey(name), "
     "requester:profiles!venue_bookings_requested_by_fkey(full_name), "
     "decider:profiles!venue_bookings_decided_by_fkey(full_name)"
@@ -586,6 +597,8 @@ def get_booking(booking_id: str) -> dict | None:
         "request_note": row.get("request_note"),
         "requested_at": datetime.fromisoformat(row["created_at"]),
         "requested_by_name": _embedded_name(row, "requester", "full_name"),
+        "flag": row.get("flag"),
+        "flag_reason": row.get("flag_reason"),
         "decision_reason": row.get("decision_reason"),
         "suggestion_note": row.get("suggestion_note"),
         "decided_by_name": _embedded_name(row, "decider", "full_name"),
@@ -641,6 +654,18 @@ def reject_booking(booking_id: str, actor_id: str, reason: str, suggestion: str 
     return (response.data or [])[0]
 
 
+def restore_affected_booking(booking_id: str, actor_id: str) -> dict:
+    """Run `public.restore_affected_booking` (CR-95 AC9): the flag cleared, a
+    pending replacement cancelled, history and notices in one transaction.
+    Returns `{outcome, cancelled_booking_ids}`; every refusal is an outcome code."""
+    response = (
+        get_supabase_admin_client()
+        .rpc("restore_affected_booking", {"p_booking_id": booking_id, "p_actor_id": actor_id})
+        .execute()
+    )
+    return (response.data or [])[0]
+
+
 def list_rejected_bookings(event_id: str) -> list[dict]:
     """The event's rejected bookings, newest decision first, with what venue
     staff said (SCRUM-38 AC6). For the assigned coordinator only."""
@@ -672,7 +697,7 @@ def list_active_bookings(event_id: str) -> list[dict]:
         response = (
             get_supabase_admin_client()
             .table("venue_bookings")
-            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, venues!venue_bookings_venue_id_fkey(name)")
+            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, flag, flag_reason, replaces_booking_id, venues!venue_bookings_venue_id_fkey(name)")
             .eq("event_id", event_id)
             # Expired too: a space whose hold ran out still shows it (CR-99 AC7, CR-97).
             .in_("status", [*OCCUPYING_STATUSES, "expired"])

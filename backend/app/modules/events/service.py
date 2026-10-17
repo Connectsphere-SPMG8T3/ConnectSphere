@@ -495,6 +495,14 @@ def _visible_event(event_id: str, user_id: str, role: str) -> dict:
     return _owned_event(event_id, user_id)
 
 
+def _for_role(booking: dict, role: str) -> dict:
+    """The flag and the replacement link are the coordinator's follow-up (CR-95);
+    an organiser sees a confirmed event's venue, not what is wrong with it."""
+    if role == "event_coordinator":
+        return booking
+    return {**booking, "flag": None, "flag_reason": None, "replaces_booking_id": None}
+
+
 @_safety_service_available
 def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
     row = _visible_event(event_id, user_id, role)
@@ -504,9 +512,9 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
     if role == "event_coordinator" or row["status"] == "confirmed":
         booking = venues_service.active_booking_for_event(event_id)
         if booking:
-            response.venue_booking = EventVenueBooking(**booking)
+            response.venue_booking = EventVenueBooking(**_for_role(booking, role))
         response.venue_bookings = [
-            EventSpaceVenueBooking(**booking)
+            EventSpaceVenueBooking(**_for_role(booking, role))
             for booking in venues_service.active_bookings_for_event(event_id)
         ]
     if role == "event_coordinator":
@@ -583,7 +591,10 @@ def submit(event_id: str, organiser_id: str, body: EventUpdateRequest | None = N
     return _to_response(updated)
 
 
-def _venue_readiness(booking_statuses: list[str]) -> ReadinessState:
+def _venue_readiness(booking_statuses: list[str], affected: bool = False) -> ReadinessState:
+    # An Affected booking (CR-95) is not ready, even one that was approved.
+    if affected:
+        return ReadinessState.issue
     # REQUIREMENTS §6.6: the venue is ready once a booking is approved.
     return ReadinessState.ready if "approved" in booking_statuses else ReadinessState.pending
 
@@ -601,8 +612,12 @@ def technical_status(row: dict) -> ReadinessState:
     return ReadinessState(row["technical_readiness"])
 
 
-def _action_kind(row: dict, resubmitted_at: str | None) -> CoordinatorActionKind | None:
+def _action_kind(row: dict, resubmitted_at: str | None, venue_affected: bool = False) -> CoordinatorActionKind | None:
     status = row["status"]
+    # CR-95 AC3: a venue that became unavailable is the most urgent thing a
+    # coordinator can have; the event's status is not changed by it (AC7).
+    if venue_affected and status in ("planning", "safety_review", "confirmed"):
+        return CoordinatorActionKind.needs_alternative_venue
     if status == "under_review":
         # A resubmission is the organiser's answer to a return (QA-22, QA-77):
         # SCRUM-72's "clarification response", not a first review.
@@ -630,13 +645,14 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
 
     resubmissions = repository.list_latest_resubmissions(under_review_ids)
     bookings = venues_service.booking_statuses_by_event(event_ids) if event_ids else {}
+    affected = venues_service.affected_event_ids(event_ids) if event_ids else set()
     reserved = equipment_service.reserved_event_ids(event_ids) if event_ids else set()
 
     action_items: list[CoordinatorActionItem] = []
     active_events: list[CoordinatorActiveEvent] = []
     for row in rows:
         resubmitted_at = resubmissions.get(row["id"])
-        kind = _action_kind(row, resubmitted_at)
+        kind = _action_kind(row, resubmitted_at, row["id"] in affected)
         if kind is not None:
             action_items.append(
                 CoordinatorActionItem(
@@ -656,9 +672,10 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
                 event_name=row["name"],
                 status=row["status"],
                 starts_at=row.get("starts_at"),
-                flags=["technical_issue"] if technical is ReadinessState.issue else [],
+                flags=(["technical_issue"] if technical is ReadinessState.issue else [])
+                + (["venue_affected"] if row["id"] in affected else []),
                 readiness=Readiness(
-                    venue=_venue_readiness(bookings.get(row["id"], [])),
+                    venue=_venue_readiness(bookings.get(row["id"], []), row["id"] in affected),
                     equipment=_equipment_readiness(row, reserved),
                     technical=technical,
                 ),

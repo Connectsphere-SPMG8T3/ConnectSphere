@@ -2274,3 +2274,55 @@ On `feature/scrum-21-booking-conflict-detection`, branched from `main` after CR-
 - **Manual pass:** TC-BOOK-042 passed on the local stack after one wording change the developer asked for, "Venue blocked for this timing." ([run](test-cases/runs/2026-10-17-1924-manual-53abe35.md)). Playwright drove the refusals and took the screenshots; the developer judged them.
 - **Not verified:** the race path that names the winner after `exclusion_violation` was reasoned about, not reproduced.
 - **Remaining:** AC4's callers in 36, 37 and 51; CR-100 copying venue defaults into the new columns; the PO's agreement to AC4's rewording.
+
+### 4.56. CR-95 — Rearrange bookings affected by venue unavailability
+
+| Field | Value |
+|---|---|
+| ID | `CR-95` |
+| Title | Rearrange bookings affected by venue unavailability |
+| Type | US: Core feature |
+| Status | TO DO 😖 (In Progress on the board from this branch) |
+| Epic | Venue availability calendar |
+| Sprint | 3 (6 October - 20 October) |
+| Estimate | 2 story points |
+| Priority | 2 |
+| Customer clarification | Week 7 change CR-02 (venue becomes unavailable after booking). Session 3 (13/10): QA3-52 (AC7 replaced), QA3-7 (AC3, AC10), QA3-8 (AC8 added), QA3-9 (AC9 added), QA3-30 (the replacement needs full approval), QA3-53 (the organiser sees each venue separately, CR-111). |
+
+**User story (verbatim):**
+
+> As an Event coordinator, I want to be able to be told when a venue I booked becomes unavailable and request a replacement, so that my event can still go ahead.
+
+**Acceptance criteria (verbatim, from the Product backlog row):**
+
+> AC1. [W7 CR-01] When a venue block overlaps the occupied window of a held or approved booking, that booking is marked "Affected: venue unavailable" with the block reason.
+> AC2. The event is not cancelled and keeps all its details.
+> AC3. The assigned coordinator is notified and the event shows a "Needs alternative venue" alert on their dashboard. The organiser is also notified that their venue arrangement is affected, with the next action. Attendees are not notified at this stage.
+> AC4. From the affected booking, the coordinator can open venue search pre-filled with the event's requirements and submit a replacement booking request.
+> AC5. When the replacement is approved, the affected booking is released and the history records both.
+> AC6. Other venue bookings on the same event are not changed.
+> AC7. [QA3-52] Flagging the booking doesn't change the event's status; the coordinator reviews and decides the next action. If the coordinator requests a replacement venue, a Confirmed or Preparation event returns to Planning, the replacement goes through the full request and approval process (36), and the event must pass the safety check again (82, CR-104).
+> AC8. [QA3-8] The event is never cancelled or rejected automatically, and there is no deadline for finding a replacement. If no alternative is found, the coordinator can cancel the event (84).
+> AC9. [QA3-9] If the original venue becomes free again for the booking's full occupied window before a replacement is approved, Venue Staff can confirm that the original booking is restored. Its Affected flag is cleared, and any pending replacement request can be cancelled (85).
+> AC10. [QA3-7] Registered attendees are notified only once a replacement or another attendee-facing change is confirmed (53).
+
+#### How the implementation maps to the ticket
+
+On `feature/cr-95-affected-bookings`, branched from `main` after SCRUM-21 merged (PR #71). Planned with the developer on 2026-10-17 (grilling session, then a test-first slice plan); decisions are REQUIREMENTS §9 items 61–67. The booking-flag schema is SCRUM-64's (`flag_venue_bookings`, `venue_bookings.flag`), so this story adds no flag migration of its own.
+
+1. **A block flags its bookings** (AC1, AC2, AC6; migration `20261018100000`): trigger `venue_blocks_flag_bookings` on insert and on a change to the period or venue calls `flag_venue_bookings` with `affected` and "Venue unavailable: <reason>". Newly overlapped bookings only; nothing is cleared or cancelled, and the event's status is untouched. **[Team decision]** in the database rather than a call from story 51's block endpoint, so it holds for any writer.
+2. **Notices and the dashboard alert** (AC3, AC10): the coordinator's notice is SCRUM-64's; the same trigger adds one `venue_unavailable_organiser` notice per newly flagged event. `GET /events/dashboard/coordinator` gains a `needs_alternative_venue` action kind (ranked first, red) and a `venue_affected` flag, and an affected booking makes the event's venue readiness an `issue` even if it was approved. Attendees are told nothing.
+3. **Replacement request** (AC4, AC7; migration `20261018110000`): `replaces_booking_id` on `venue_bookings`; both request functions take `p_replaces_booking_id`, accept only the event's own affected, live booking, ignore it as "the event's venue" for that one request, and link the new hold to it. The per-space unique index skips affected bookings. `POST /venue-bookings` takes `replaces_booking_id`; `_prepare_replacement` refuses a booking that isn't the event's own affected one (409, 404 if unknown), returns a Confirmed or Safety-review event to planning (`arrangement_flagged`), then requests. **[Team decision]** the return comes first because the functions accept only a planning event; if the chosen venue is then refused the event stays in planning (§9 item 64). This differs from the plan agreed in chat ("after the request commits").
+4. **Event page and search** (AC3, AC4): the event's booking summaries carry `flag`, `flag_reason` and `replaces_booking_id` (blanked for an organiser); an affected booking and its replacement are both listed. `AffectedBookingNotice`, "Find replacement" on the Venue panel and on a space's card, `venuePanelState` kinds `affected` and `replacing`, `replaces=` on venue search, and the dialog's wording (which venue it replaces, and that a Confirmed event returns to Planning).
+5. **Release** (AC5; migration `20261018120000`): `release_replaced_booking` releases the original once its replacement is approved and writes history on both. **Story 36's approve does not exist, so nothing calls it: AC5 is not met end to end.**
+6. **Restore** (AC9; migration `20261018130000`): `restore_affected_booking` clears the flag and cancels a pending replacement with history, and tells the coordinator and organiser; refused while a block covers the window, while the venue is inactive and once a replacement is approved. `POST /venue-bookings/{id}/restore` (venue staff only). The booking page shows the flag and "Restore original booking"; the booking-requests page lists the affected bookings above its filters, because nothing else led staff to the booking.
+
+#### Verification and remaining work
+
+- **Test first:** each slice was seen failing before its code. The SQL checks failed on the missing trigger, the missing `p_replaces_booking_id`, `release_replaced_booking` and `restore_affected_booking`; the first, widening-a-block check was proved able to fail by running it against an insert-only trigger. The pytest and Vitest specs failed on missing functions and states before the code existed.
+- **Local stack first, then live.** The migrations were developed against `supabase start`, built from the repository's migrations. `seed.sql` fails on a fresh database (D38), so it was patched temporarily to get a database and restored; D38 is still open. On that stack every script in `supabase/verification/` passes except `event_space_checks.sql`, which stops at D38's CR-98 backfill block (it failed the same way before this story).
+- **Live:** on the developer's go-ahead the four migrations were pushed with `supabase db push` on 2026-10-17 (the project was in sync with `main` beforehand, so exactly these four were pending). Recorded runs against this branch on spare ports: API/DB 124/124 ([run](test-cases/runs/2026-10-17-2034-api-db-9b2d0eb.md)), including the four CR-95 scripts, and e2e 66/66 ([run](test-cases/runs/2026-10-17-2053-e2e-9b2d0eb.md)), including the new `e2e/affected-booking.e2e.js` (TC-BOOK-048). Building that spec found nothing wrong in the app: its first two failures were wrong assumptions in the spec (the coordinator event URL, and that an event with spaces shows the booking on its space card, not in the Venue panel).
+- **Unit suites:** `pytest` 1368 passed; Vitest 956 passed; `npm run build` passes.
+- **Manual pass:** Claude drove TC-BOOK-049 and TC-BOOK-050 with Playwright at 1280 px and 375 px and measured no horizontal scroll; the developer looked at them and passed both ([run](test-cases/runs/2026-10-17-2056-manual-9b2d0eb.md)).
+- **Not verified:** the live advisors were not read in detail (a filtered look at them listed nothing for the CR-95 objects; the local advisors show only pre-existing equipment RLS warnings); frontend line coverage of the changed files was not computed.
+- **Remaining:** story 36's approve calling `release_replaced_booking`; story 51's block endpoint (blocks can be inserted directly today); story 85's cancellation of a pending replacement; CR-111's organiser view of each venue; the PO's agreement to §9 items 61–67.

@@ -27,6 +27,8 @@ export const useVenueStaffDashboardStore = defineStore("venueStaffDashboard", {
     bookingRequests: [],
     pendingHolds: [],
     reReviewBookings: [],
+    // CR-95 AC9: live bookings whose venue became unavailable, for staff to restore.
+    affectedBookings: [],
     blocks: [],
     generatedAt: null,
     isLoading: false,
@@ -58,6 +60,7 @@ export const useVenueStaffDashboardStore = defineStore("venueStaffDashboard", {
       this.bookingRequests = [];
       this.pendingHolds = [];
       this.reReviewBookings = [];
+      this.affectedBookings = [];
       this.blocks = [];
       this.generatedAt = null;
       this.isAvailable = false;
@@ -77,6 +80,7 @@ export const useVenueStaffDashboardStore = defineStore("venueStaffDashboard", {
         this.venues = payload?.venues ?? [];
         this.pendingHolds = payload?.pending_holds ?? [];
         this.reReviewBookings = payload?.re_review_bookings ?? [];
+        this.affectedBookings = payload?.affected_bookings ?? [];
         this.bookingRequests = payload?.booking_requests ?? [...this.pendingHolds, ...this.reReviewBookings];
         this.blocks = payload?.blocks ?? [];
         this.generatedAt = payload?.generated_at ?? null;

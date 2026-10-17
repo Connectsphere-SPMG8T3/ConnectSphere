@@ -254,6 +254,11 @@ class EventVenueBooking(BaseModel):
     status: str
     # When a hold expires unless approved (CR-99); `expired` once it has.
     expires_at: datetime | None = None
+    # CR-95: `affected` when the venue became unavailable, with why, and the
+    # booking a replacement stands in for. Coordinator view only.
+    flag: str | None = None
+    flag_reason: str | None = None
+    replaces_booking_id: str | None = None
 
 
 class EventCoordinator(BaseModel):
@@ -473,6 +478,7 @@ class CoordinatorActionKind(str, Enum):
     decisions, re-review outcomes); those arrive with the stories that build
     their data, and until then their widgets stay empty (REQUIREMENTS §6.21)."""
 
+    needs_alternative_venue = "needs_alternative_venue"
     arrangement_issue = "arrangement_issue"
     resubmitted = "resubmitted"
     awaiting_review = "awaiting_review"

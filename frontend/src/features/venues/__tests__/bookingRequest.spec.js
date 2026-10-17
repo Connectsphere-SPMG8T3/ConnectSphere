@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { BOOKING_STATUS_LABELS, criteriaFromSpace, describeConflict, venuePanelState } from "@/features/venues/bookingRequest";
+import {
+  BOOKING_STATUS_LABELS,
+  criteriaFromSpace,
+  describeConflict,
+  replacementSearchRoute,
+  venuePanelState,
+} from "@/features/venues/bookingRequest";
 
 const booking = (status) => ({
   id: "b1", venue_id: "v1", venue_name: "Innovation Lab", status, expires_at: "2026-11-01T04:00:00Z",
@@ -38,6 +44,75 @@ describe("venuePanelState", () => {
 
   it("labels the expired status for the coordinator", () => {
     expect(BOOKING_STATUS_LABELS.expired).toBe("Expired");
+  });
+});
+
+describe("venuePanelState for an affected booking (CR-95 AC3, AC4)", () => {
+  const affected = (overrides = {}) => ({
+    ...booking("approved"), id: "b-affected", flag: "affected", flag_reason: "Venue unavailable: maintenance",
+    event_space_request_id: null, ...overrides,
+  });
+  const replacement = (overrides = {}) => ({
+    ...booking("held"), id: "b-new", venue_name: "Heritage Hall", flag: null, replaces_booking_id: "b-affected",
+    event_space_request_id: null, ...overrides,
+  });
+
+  it.each(["planning", "safety_review", "confirmed"])(
+    "says the venue is unavailable and offers a replacement on a %s event",
+    (status) => {
+      const event = { status, venue_booking: affected(), venue_bookings: [affected()] };
+
+      expect(venuePanelState(event)).toEqual({
+        kind: "affected", booking: affected(), reason: "Venue unavailable: maintenance", canReplace: true,
+      });
+    },
+  );
+
+  it("does not offer a replacement on an event in any other status", () => {
+    const event = { status: "returned", venue_bookings: [affected()] };
+
+    expect(venuePanelState(event)).toMatchObject({ kind: "affected", canReplace: false });
+  });
+
+  it("shows the replacement being waited on instead of offering another", () => {
+    const event = { status: "planning", venue_bookings: [affected(), replacement()] };
+
+    expect(venuePanelState(event)).toEqual({ kind: "replacing", booking: affected(), replacement: replacement() });
+  });
+
+  it("looks at one space's bookings only", () => {
+    const event = {
+      status: "planning",
+      venue_bookings: [
+        affected({ event_space_request_id: "space-1" }),
+        { ...booking("approved"), id: "b-ok", event_space_request_id: "space-2" },
+      ],
+    };
+
+    expect(venuePanelState(event, { id: "space-1" }).kind).toBe("affected");
+    expect(venuePanelState(event, { id: "space-2" })).toEqual({
+      kind: "booked", booking: event.venue_bookings[1],
+    });
+  });
+
+  it("ignores an affected booking that is no longer held or approved", () => {
+    const event = { status: "planning", venue_booking: null, venue_bookings: [affected({ status: "released" })] };
+
+    expect(venuePanelState(event)).toEqual({ kind: "can-request" });
+  });
+});
+
+describe("replacementSearchRoute (CR-95 AC4)", () => {
+  it("opens venue search for the event, naming the booking to replace", () => {
+    expect(replacementSearchRoute({ id: "e1" }, null, { id: "b1" })).toEqual({
+      name: "venue-search", query: { event: "e1", replaces: "b1" },
+    });
+  });
+
+  it("names the space when the booking is a space's", () => {
+    expect(replacementSearchRoute({ id: "e1" }, { id: "s1" }, { id: "b1" })).toEqual({
+      name: "venue-search", query: { event: "e1", space: "s1", replaces: "b1" },
+    });
   });
 });
 

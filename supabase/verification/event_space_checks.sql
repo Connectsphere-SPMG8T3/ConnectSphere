@@ -226,9 +226,9 @@ begin
             raise exception 'SPACE EXPIRY FAIL: an unexpired overlapping hold was not refused';
         end if;
     end loop;
-    if has_function_privilege('anon', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text)', 'EXECUTE')
-       or has_function_privilege('authenticated', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text)', 'EXECUTE')
-       or not has_function_privilege('service_role', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text)', 'EXECUTE') then
+    if has_function_privilege('anon', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text,uuid)', 'EXECUTE')
+       or has_function_privilege('authenticated', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text,uuid)', 'EXECUTE')
+       or not has_function_privilege('service_role', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text,uuid)', 'EXECUTE') then
         raise exception 'SPACE EXPIRY FAIL: booking RPC grants changed';
     end if;
 end;

@@ -570,6 +570,30 @@ def test_coordinator_event_read_includes_all_active_space_bookings(monkeypatch):
     response = service.read(EVENT_ID, coordinator_id, "event_coordinator")
 
     assert [booking.model_dump() for booking in response.venue_bookings] == [
-        {**{key: value for key, value in booking.items() if key != "event_id"}, "expires_at": None}
+        {**{key: value for key, value in booking.items() if key != "event_id"}, "expires_at": None,
+         "flag": None, "flag_reason": None, "replaces_booking_id": None}
         for booking in bookings
     ]
+
+
+def test_an_organiser_does_not_see_a_bookings_flag_or_what_it_replaces(monkeypatch):
+    # CR-95: the flag and the replacement link are the coordinator's follow-up.
+    # An organiser sees a confirmed event's venues, not what is wrong with them
+    # (CR-111 gives them their own view).
+    organiser_id = "a0000000-0000-4000-8000-000000000001"
+    event = event_row("confirmed")
+    event["organiser_id"] = organiser_id
+    booking = {
+        "id": "booking-1", "event_id": EVENT_ID, "event_space_request_id": None, "venue_id": "venue-1",
+        "venue_name": "Innovation Lab", "status": "approved", "flag": "affected",
+        "flag_reason": "Venue unavailable: maintenance", "replaces_booking_id": "booking-0",
+    }
+    monkeypatch.setattr(repository, "get_event", lambda event_id: event)
+    monkeypatch.setattr(service.venues_service, "active_booking_for_event", lambda event_id: dict(booking))
+    monkeypatch.setattr(service.venues_service, "active_bookings_for_event", lambda event_id: [dict(booking)])
+
+    response = service.read(EVENT_ID, organiser_id, "event_organiser")
+
+    for shown in [response.venue_booking, *response.venue_bookings]:
+        assert (shown.flag, shown.flag_reason, shown.replaces_booking_id) == (None, None, None)
+        assert shown.status == "approved"

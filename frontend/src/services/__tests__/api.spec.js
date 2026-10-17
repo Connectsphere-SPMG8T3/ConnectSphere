@@ -232,3 +232,23 @@ describe("eventsApi Lead calls (CR-101)", () => {
     );
   });
 });
+
+describe("venueBookingsApi.restore (CR-95 AC9)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts an authenticated restore for the encoded booking id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200, ok: true, json: async () => ({ id: "booking/1", flag: null }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(venueBookingsApi.restore("booking/1", "token")).resolves.toEqual({ id: "booking/1", flag: null });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/venue-bookings/booking%2F1/restore",
+      expect.objectContaining({ method: "POST", headers: expect.objectContaining({ Authorization: "Bearer token" }) }),
+    );
+  });
+});
