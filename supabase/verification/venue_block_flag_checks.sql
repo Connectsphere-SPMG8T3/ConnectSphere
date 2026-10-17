@@ -130,6 +130,47 @@ begin
     if v_rows <> 2 then raise exception 'BLOCK FLAG FAIL: expected 2 affected bookings, got %', v_rows; end if;
 end $$;
 
+-- AC3: the organiser is told their venue arrangement is affected, once, with
+-- the next action; the coordinator's notice is SCRUM-64's; nobody else is told
+-- (attendees in particular, AC10).
+do $$
+declare
+    v_organiser uuid := 'a0000000-0000-4000-8000-000000000001';
+    v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
+    v_event uuid;
+    v_message text;
+begin
+    foreach v_event in array array['e0000000-0000-4000-8000-0000000095a1', 'e0000000-0000-4000-8000-0000000095a2']::uuid[] loop
+        if (select count(*) from public.notifications
+             where event_id = v_event and recipient_id = v_organiser and type = 'venue_unavailable_organiser') <> 1 then
+            raise exception 'BLOCK NOTICE FAIL: event % did not give its organiser exactly one notice', v_event;
+        end if;
+        if (select count(*) from public.notifications
+             where event_id = v_event and recipient_id = v_coordinator and type = 'venue_booking_affected') <> 1 then
+            raise exception 'BLOCK NOTICE FAIL: event % did not give its coordinator exactly one notice', v_event;
+        end if;
+        if exists (select 1 from public.notifications
+                    where event_id = v_event and recipient_id not in (v_organiser, v_coordinator)) then
+            raise exception 'BLOCK NOTICE FAIL: event % notified someone other than its organiser and coordinator', v_event;
+        end if;
+    end loop;
+
+    select message into v_message from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-0000000095a1' and type = 'venue_unavailable_organiser';
+    if v_message not ilike '%coordinator%' then
+        raise exception 'BLOCK NOTICE FAIL: the organiser notice does not say what happens next: %', v_message;
+    end if;
+
+    -- Events whose booking was not flagged are not told anything.
+    if exists (select 1 from public.notifications
+                where type = 'venue_unavailable_organiser'
+                  and event_id in ('e0000000-0000-4000-8000-0000000095a3', 'e0000000-0000-4000-8000-0000000095a4',
+                                   'e0000000-0000-4000-8000-0000000095a5', 'e0000000-0000-4000-8000-0000000095a6',
+                                   'e0000000-0000-4000-8000-0000000095a7')) then
+        raise exception 'BLOCK NOTICE FAIL: told the organiser of an event whose booking was not flagged';
+    end if;
+end $$;
+
 -- Editing and deleting a block (Q1, REQUIREMENTS §9): widening it flags the
 -- bookings it newly overlaps and nothing it already flagged; shortening or
 -- deleting it clears nothing, because only the coordinator's follow-up does.

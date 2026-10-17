@@ -19,17 +19,29 @@ set search_path = ''
 as $$
 declare
     v_venue_name text;
+    v_event_id uuid;
 begin
     select name into v_venue_name from public.venues where id = new.venue_id;
 
-    perform public.flag_venue_bookings(
-        new.venue_id,
-        new.blocked_period,
-        'affected',
-        'Venue unavailable: ' || new.reason::text,
-        'Venue "' || coalesce(v_venue_name, 'unknown') || '" is unavailable (' || new.reason::text
-            || ') during your event''s booking. Review it and arrange an alternative venue.'
-    );
+    -- flag_venue_bookings returns only the events it flagged just now, so a
+    -- booking flagged earlier is not announced again (CR-95 AC3).
+    for v_event_id in
+        select public.flag_venue_bookings(
+            new.venue_id,
+            new.blocked_period,
+            'affected',
+            'Venue unavailable: ' || new.reason::text,
+            'Venue "' || coalesce(v_venue_name, 'unknown') || '" is unavailable (' || new.reason::text
+                || ') during your event''s booking. Review it and arrange an alternative venue.'
+        )
+    loop
+        insert into public.notifications (recipient_id, event_id, type, message)
+        select e.organiser_id, e.id, 'venue_unavailable_organiser',
+               'The venue "' || coalesce(v_venue_name, 'unknown') || '" is unavailable (' || new.reason::text
+                   || ') during your event. Your event is not cancelled: your coordinator will arrange an alternative venue and update you.'
+          from public.events e
+         where e.id = v_event_id;
+    end loop;
     return new;
 end;
 $$;
