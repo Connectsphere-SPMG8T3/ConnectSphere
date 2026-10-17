@@ -79,10 +79,12 @@ class TestRequest:
     def test_a_space_request_can_hold_a_venue_independently(self, client, auth_headers, authenticate_as, booking, monkeypatch):
         authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
         calls = []
+        checked = []
         monkeypatch.setattr(
             events_service,
             "assigned_space",
-            lambda space_id, coordinator_id: (deepcopy(booking["event"]), {"id": space_id}),
+            lambda space_id, coordinator_id: checked.append((space_id, coordinator_id))
+            or (deepcopy(booking["event"]), {"id": space_id}),
         )
 
         def request_booking_for_space(space_id, venue_id, actor_id, note, *, notify_message):
@@ -95,7 +97,10 @@ class TestRequest:
 
         assert response.status_code == 201
         assert response.json()["event_space_request_id"] == SPACE_ID
-        assert calls[0][0] == SPACE_ID
+        assert checked == [(SPACE_ID, COORDINATOR_ID)]
+        assert calls == [
+            (SPACE_ID, VENUE_ID, COORDINATOR_ID, "Breakout room", 'A venue booking was requested for "Partner Summit".')
+        ]
 
     def test_the_assigned_coordinator_holds_a_venue_and_venue_staff_are_told(
         self, client, auth_headers, authenticate_as, booking
@@ -185,6 +190,38 @@ class TestWhoMayRequest:
 
         assert response.status_code == 403
         assert booking["calls"] == []
+
+    @pytest.mark.parametrize("event_id", [EVENT_ID, "e0000000-0000-4000-8000-0000000000ff"])
+    def test_a_draft_or_missing_event_is_not_found(self, client, auth_headers, authenticate_as, booking, event_id):
+        # Drafts are private to their organiser (DR-R2), so they look missing.
+        booking["event"]["status"] = "draft"
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+
+        response = client.post(URL, json={"event_id": event_id, "venue_id": VENUE_ID}, headers=auth_headers)
+
+        assert response.status_code == 404
+        assert booking["calls"] == []
+
+    @pytest.mark.parametrize("role", ["event_organiser", "venue_staff", "tech_support", "attendee"])
+    def test_every_other_role_is_forbidden(self, client, auth_headers, authenticate_as, booking, role):
+        authenticate_as(role, user_id=COORDINATOR_ID)
+
+        assert post(client, auth_headers).status_code == 403
+        assert booking["calls"] == []
+
+    def test_a_coordinator_acting_as_venue_staff_is_forbidden(self, client, auth_headers, monkeypatch, booking):
+        # AC6, SCRUM-76: the seeded coordinator also holds venue_staff. Acting
+        # as venue staff, they can't request a venue even for their own event.
+        from tests.test_event_comments_api import acting_as_another_role
+
+        acting_as_another_role(monkeypatch, COORDINATOR_ID, holds="event_coordinator", acts_as="venue_staff")
+
+        assert post(client, auth_headers).status_code == 403
+        assert booking["calls"] == []
+
+    def test_an_unauthenticated_request_is_refused(self, client, booking):
+        assert client.post(URL, json={"event_id": EVENT_ID, "venue_id": VENUE_ID}).status_code == 401
+
 
 
 def test_space_booking_repository_calls_the_space_rpc_with_its_parameters(monkeypatch):
@@ -287,7 +324,7 @@ def test_active_bookings_for_event_maps_each_space_booking(monkeypatch):
         "status": "held",
         "venues": {"name": "Innovation Lab"},
     }
-    monkeypatch.setattr(venues_repository, "list_active_bookings", lambda event_id: [row])
+    monkeypatch.setattr(venues_repository, "list_active_bookings", lambda event_id: [row] if event_id == EVENT_ID else [])
 
     assert venues_service.active_bookings_for_event(EVENT_ID) == [{
         "id": BOOKING_ID,
@@ -297,38 +334,6 @@ def test_active_bookings_for_event_maps_each_space_booking(monkeypatch):
         "venue_name": "Innovation Lab",
         "status": "held",
     }]
-
-    @pytest.mark.parametrize("event_id", [EVENT_ID, "e0000000-0000-4000-8000-0000000000ff"])
-    def test_a_draft_or_missing_event_is_not_found(self, client, auth_headers, authenticate_as, booking, event_id):
-        # Drafts are private to their organiser (DR-R2), so they look missing.
-        booking["event"]["status"] = "draft"
-        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
-
-        response = client.post(URL, json={"event_id": event_id, "venue_id": VENUE_ID}, headers=auth_headers)
-
-        assert response.status_code == 404
-        assert booking["calls"] == []
-
-    @pytest.mark.parametrize("role", ["event_organiser", "venue_staff", "tech_support", "attendee"])
-    def test_every_other_role_is_forbidden(self, client, auth_headers, authenticate_as, booking, role):
-        authenticate_as(role, user_id=COORDINATOR_ID)
-
-        assert post(client, auth_headers).status_code == 403
-        assert booking["calls"] == []
-
-    def test_a_coordinator_acting_as_venue_staff_is_forbidden(self, client, auth_headers, monkeypatch, booking):
-        # AC6, SCRUM-76: the seeded coordinator also holds venue_staff. Acting
-        # as venue staff, they can't request a venue even for their own event.
-        from tests.test_event_comments_api import acting_as_another_role
-
-        acting_as_another_role(monkeypatch, COORDINATOR_ID, holds="event_coordinator", acts_as="venue_staff")
-
-        assert post(client, auth_headers).status_code == 403
-        assert booking["calls"] == []
-
-    def test_an_unauthenticated_request_is_refused(self, client, booking):
-        assert client.post(URL, json={"event_id": EVENT_ID, "venue_id": VENUE_ID}).status_code == 401
-
 
 class TestRequestBody:
     def test_the_note_is_optional(self, client, auth_headers, authenticate_as, booking):

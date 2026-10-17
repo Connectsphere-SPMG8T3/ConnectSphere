@@ -261,3 +261,13 @@ class TestAccessibilityChanged:
         result = affected_bookings(before, after, [make_booking(accessibility_needs="Ramp")])
 
         assert result[0].details[0].message.startswith("The venue's accessibility features changed (now: none).")
+
+    def test_several_features_are_listed_alphabetically(self):
+        before = make_venue(accessibility_features=[AccessibilityFeature.wheelchair_access])
+        after = make_venue(accessibility_features=[AccessibilityFeature.lift_access, AccessibilityFeature.hearing_loop])
+
+        result = affected_bookings(before, after, [make_booking(accessibility_needs="Ramp")])
+
+        assert result[0].details[0].message.startswith(
+            "The venue's accessibility features changed (now: hearing loop, lift access)."
+        )
