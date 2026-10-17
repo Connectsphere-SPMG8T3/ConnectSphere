@@ -62,10 +62,18 @@ describe("VenueEditWarningModal (CR-94)", () => {
     expect(items().map((item) => badge(item).textContent.trim())).toEqual(["Unsuitable", "Warning"]);
   });
 
-  it("still promises that saving changes no booking", async () => {
-    await mountModal([unsuitable]);
+  it("says Unsuitable bookings will be flagged but not cancelled (AC3, AC6)", async () => {
+    await mountModal([unsuitable, warningOnly]);
 
-    expect(document.body.textContent).toContain("Saving will not change or cancel any booking");
+    const text = document.body.textContent;
+    expect(text).toContain("Saving will not cancel or move any booking.");
+    expect(text).toContain("Bookings marked Unsuitable will be flagged for follow-up");
+  });
+
+  it("does not mention flagging when every booking is only a warning (AC4)", async () => {
+    await mountModal([warningOnly]);
+
+    expect(document.body.textContent).toContain("Saving will not cancel or move any booking.");
     expect(document.body.textContent).not.toMatch(/flagged/i);
   });
 

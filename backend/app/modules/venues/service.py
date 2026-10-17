@@ -30,6 +30,7 @@ from app.modules.venues.schemas import (
     Editor,
     FlaggableBooking,
     HoldExpiry,
+    SuitabilitySeverity,
     VenueBooking,
     VenueBookingCreate,
     VenueBookingDetail,
@@ -165,6 +166,30 @@ def _venue_staff_notifications(venue_name: str, actor_id: str, warnings: list[Af
     ]
 
 
+def _coordinator_message(venue_name: str, warning: AffectedBooking) -> str:
+    return (f'Venue "{venue_name}" changed in a way that may affect '
+            f'"{warning.event_name or "your event"}": ' + " ".join(warning.reasons))
+
+
+def _unsuitable_flag(venue_name: str, warning: AffectedBooking, contexts: dict[str, EventPlanningContext]) -> dict:
+    """What `update_venue` needs to flag one Unsuitable booking (CR-94 AC3,
+    AC5). The reason names only the hard rules that make it Unsuitable; the
+    coordinator's message names everything the edit broke. A booking that
+    can't take the flag (already flagged, first flag wins, or in re-review)
+    gets `unflagged_message`, the part-1 notification, instead."""
+    hard = [d.message for d in warning.details if d.severity == SuitabilitySeverity.unsuitable]
+    context = contexts.get(warning.event_id) or EventPlanningContext()
+    return {
+        "booking_id": warning.booking_id,
+        "event_id": warning.event_id,
+        "coordinator_id": context.coordinator_id,
+        "reason": f'Venue "{venue_name}" was edited: ' + " ".join(hard),
+        "message": (f'Venue "{venue_name}" was edited and your booking for '
+                    f'"{warning.event_name or "your event"}" is flagged Unsuitable: ' + " ".join(warning.reasons)),
+        "unflagged_message": _coordinator_message(venue_name, warning),
+    }
+
+
 def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> VenueUpdateResponse:
     """Save a venue edit (SCRUM-63).
 
@@ -225,17 +250,16 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
     if warnings and not body.confirm:
         return VenueUpdateResponse(saved=False, venue=None, warnings=warnings)
 
+    flags = [_unsuitable_flag(after.name, w, contexts_by_event) for w in warnings if w.outcome == "unsuitable"]
     notifications = [
         {
             "recipient_id": contexts_by_event[w.event_id].coordinator_id,
             "event_id": w.event_id,
-            "message": (
-                f'Venue "{after.name}" changed in a way that may affect '
-                f'"{w.event_name or "your event"}": ' + " ".join(w.reasons)
-            ),
+            "message": _coordinator_message(after.name, w),
         }
         for w in warnings
-        if w.event_id in contexts_by_event and contexts_by_event[w.event_id].coordinator_id
+        if w.outcome != "unsuitable"
+        and w.event_id in contexts_by_event and contexts_by_event[w.event_id].coordinator_id
     ]
     notifications += _venue_staff_notifications(after.name, actor_id, warnings) if warnings else []
 
@@ -256,9 +280,20 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
         before=_snapshot(before),
         after=after_snapshot,
         notifications=notifications,
+        flags=flags,
     )
     if updated is None:
         raise VenueConflictError()
+    updated, flagged_event_ids = updated
+
+    # The edit and its flags have committed together. A failed return leaves
+    # that event where it is, but its booking is flagged, so the Safety
+    # Officer cannot approve it: report the save, not a failure (as SCRUM-64).
+    for event_id in flagged_event_ids:
+        try:
+            events_service.return_to_planning(event_id, reason_code="arrangement_flagged")
+        except EventServiceUnavailableError:
+            logger.warning("Venue %s edited, but event %s could not be returned to planning", venue_id, event_id)
 
     for booking in bookings:
         booking.event_name = (contexts_by_event.get(booking.event_id) or EventPlanningContext()).name

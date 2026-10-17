@@ -163,12 +163,14 @@ def update_venue(
     before: dict,
     after: dict,
     notifications: list[dict],
-) -> VenueProfile | None:
+    flags: list[dict],
+) -> tuple[VenueProfile, list[str]] | None:
     """Run `public.update_venue`: the version-checked update, the layouts/
-    facilities replace, the history row, and any affected-booking
-    notifications, all in one transaction (SCRUM-63). Returns the saved
-    profile, or None when the venue had moved on (lost the race), which the
-    service reports as 409.
+    facilities replace, the history row, any affected-booking notifications,
+    and the Unsuitable flags (CR-94, through `flag_venue_bookings`), all in
+    one transaction (SCRUM-63). Returns the saved profile with the ids of the
+    events it newly flagged, or None when the venue had moved on (lost the
+    race), which the service reports as 409.
     """
     response = (
         get_supabase_admin_client()
@@ -190,14 +192,15 @@ def update_venue(
                 "p_before": before,
                 "p_after": after,
                 "p_notifications": notifications,
+                "p_flags": flags,
             },
         )
         .execute()
     )
-    rows = response.data or [] if response else []
-    if not rows:
+    result = response.data if response else None
+    if not result:
         return None
-    return get_venue(venue_id)
+    return get_venue(venue_id), result["flagged_event_ids"]
 
 
 def list_flaggable_bookings(venue_id: str, since: datetime) -> list[BookingSummary]:

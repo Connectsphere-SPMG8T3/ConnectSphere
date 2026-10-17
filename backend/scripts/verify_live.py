@@ -1084,14 +1084,16 @@ def _(ctx: Context) -> None:
 
     expect(body["saved"] is True, f"saved={body['saved']}")
     rows = db_query(
-        "select recipient_id::text as recipient_id, message from public.notifications "
-        f"where event_id = '{event_id}' and type = 'venue_updated_affects_booking' order by message"
+        "select recipient_id::text as recipient_id, type, message from public.notifications "
+        f"where event_id = '{event_id}' order by type"
     )
-    recipients = sorted(row["recipient_id"] for row in rows)
+    recipients = sorted((row["type"], row["recipient_id"]) for row in rows)
     # The seeded coordinator also holds venue_staff, so is notified once as the
-    # event's coordinator and once as a member of the venue staff pool.
-    expect(recipients == [COORDINATOR_ID, COORDINATOR_ID], f"notified {rows}")
-    expect(VENUE_STAFF_ID not in recipients, "the editor was notified")
+    # event's coordinator (through the Unsuitable flag, part 2) and once as a
+    # member of the venue staff pool.
+    expect(recipients == [("venue_booking_affected", COORDINATOR_ID), ("venue_updated_affects_booking", COORDINATOR_ID)],
+           f"notified {rows}")
+    expect(all(row["recipient_id"] != VENUE_STAFF_ID for row in rows), "the editor was notified")
     staff_message = f'Venue "{payload["name"]}" was edited and "{THROWAWAY_EVENT_PREFIX}{ctx.run_id} 080" is now Unsuitable: '
     expect(any(row["message"].startswith(staff_message) for row in rows), f"no venue staff message in {rows}")
     [booking] = db_query(f"select status::text as status, venue_id::text as venue_id from public.venue_bookings where id = '{booking_id}'")
@@ -1113,6 +1115,81 @@ def _(ctx: Context) -> None:
 
     expect(warning_for(body, live) is not None, "the planning event's booking was not warned")
     expect(warning_for(body, cancelled_booking) is None, "the cancelled event's booking was re-checked")
+
+
+def booking_flag(booking_id: str) -> dict:
+    [row] = db_query(
+        "select status::text as status, flag::text as flag, flag_reason from public.venue_bookings "
+        f"where id = '{booking_id}'"
+    )
+    return row
+
+
+@check("TC-VENUE-085", "Saving past an Unsuitable warning flags the booking with its reason; it stays held", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "085")
+    event_id, booking_id = cr94_booking(ctx, "085", venue_id)
+
+    edit_venue(ctx, venue_id, {**payload, "capacity": 100, "confirm": True})
+
+    reason = f'Venue "{payload["name"]}" was edited: Capacity 100 is below the expected attendance of 120.'
+    flag = booking_flag(booking_id)
+    expect(flag == {"status": "held", "flag": "unsuitable", "flag_reason": reason}, f"booking {flag}")
+    [notice] = db_query(
+        "select recipient_id::text as recipient_id, message from public.notifications "
+        f"where event_id = '{event_id}' and type = 'venue_booking_affected'"
+    )
+    expect(notice["recipient_id"] == COORDINATOR_ID, f"notified {notice}")
+    expect("is flagged Unsuitable: Capacity 100 is below the expected attendance of 120." in notice["message"],
+           f"message {notice['message']}")
+
+
+@check("TC-VENUE-086", "A warning-only change saves without flagging", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "086")
+    _, booking_id = cr94_booking(ctx, "086", venue_id)
+
+    body = edit_venue(ctx, venue_id, {**payload, "layouts": [{"layout": "boardroom", "capacity_for_layout": None}],
+                                      "confirm": True})
+
+    expect(body["saved"] is True, f"saved={body['saved']}")
+    expect(booking_flag(booking_id)["flag"] is None, "a warning-only change flagged the booking")
+
+
+@check("TC-VENUE-087", "An already-flagged booking keeps its first flag; its coordinator is still told", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "087")
+    event_id, booking_id = cr94_booking(ctx, "087", venue_id)
+    db_query(
+        "update public.venue_bookings set flag = 'affected', flag_reason = 'Live check: flagged first', "
+        f"flagged_at = now() where id = '{booking_id}'"
+    )
+
+    edit_venue(ctx, venue_id, {**payload, "capacity": 100, "confirm": True})
+
+    flag = booking_flag(booking_id)
+    expect((flag["flag"], flag["flag_reason"]) == ("affected", "Live check: flagged first"), f"booking {flag}")
+    rows = db_query(
+        "select type, message from public.notifications "
+        f"where event_id = '{event_id}' and recipient_id = '{COORDINATOR_ID}' order by type"
+    )
+    # One as the coordinator (the unflagged message), one as venue staff.
+    expect([row["type"] for row in rows] == ["venue_updated_affects_booking"] * 2, f"notified {rows}")
+    expect(any(row["message"].startswith(f'Venue "{payload["name"]}" changed in a way that may affect') for row in rows),
+           f"no coordinator message in {rows}")
+
+
+@check("TC-VENUE-088", "A flagged event in Safety review goes back to Planning", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "088")
+    event_id, booking_id = cr94_booking(ctx, "088", venue_id)
+    db_query(f"update public.events set status = 'safety_review' where id = '{event_id}'")
+
+    edit_venue(ctx, venue_id, {**payload, "capacity": 100, "confirm": True})
+
+    expect(booking_flag(booking_id)["flag"] == "unsuitable", "the booking was not flagged")
+    [event] = db_query(f"select status::text as status from public.events where id = '{event_id}'")
+    expect(event["status"] == "planning", f"event status {event['status']}")
 
 
 # --- Tentative hold expiry (CR-99) -----------------------------------------

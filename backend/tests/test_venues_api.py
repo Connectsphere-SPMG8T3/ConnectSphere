@@ -8,7 +8,9 @@ from datetime import datetime, time, timedelta, timezone
 
 import pytest
 
+from app.core.exceptions import EventServiceUnavailableError
 from app.modules.events import repository as events_repository
+from app.modules.events import service as events_service
 from app.modules.venues import repository
 from app.modules.venues.schemas import (
     AccessibilityFeature,
@@ -635,7 +637,8 @@ class TestVenueEdit:
         monkeypatch.setattr(repository, "list_upcoming_blocks", lambda venue_id, since: [])
         monkeypatch.setattr(events_repository, "list_planning_context", lambda ids: [])
         monkeypatch.setattr(repository, "list_venue_staff_ids", lambda: set())
-        calls = {"update_venue": []}
+        # `flagged_event_ids` is what the RPC reports it flagged (CR-94).
+        calls = {"update_venue": [], "flagged_event_ids": []}
 
         def _update_venue(venue_id, actor_id, expected_version, **kwargs):
             calls["update_venue"].append({"venue_id": venue_id, "actor_id": actor_id, "version": expected_version, **kwargs})
@@ -646,7 +649,7 @@ class TestVenueEdit:
                 capacity=kwargs["capacity"],
                 updated_by=Editor(id=actor_id),
             )
-            return saved
+            return saved, calls["flagged_event_ids"]
 
         monkeypatch.setattr(repository, "update_venue", _update_venue)
         return calls
@@ -776,10 +779,11 @@ class TestVenueEdit:
             assert body["venue"]["capacity"] == 100
             assert len(body["warnings"]) == 1
 
+            # An Unsuitable booking's coordinator hears through its flag (CR-94).
             call = booking_at_risk["update_venue"][0]
-            assert len(call["notifications"]) == 1
-            assert call["notifications"][0]["recipient_id"] == COORDINATOR_ID
-            assert call["notifications"][0]["event_id"] == EVENT_ID
+            assert call["notifications"] == []
+            [flag] = call["flags"]
+            assert (flag["coordinator_id"], flag["event_id"]) == (COORDINATOR_ID, EVENT_ID)
 
         def test_a_reduction_that_still_covers_attendance_does_not_warn(
             self, client, auth_headers, authenticate_as, booking_at_risk
@@ -904,6 +908,161 @@ class TestVenueEdit:
             client.patch(f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "capacity": 100}, headers=auth_headers)
 
             assert booking_at_risk["update_venue"] == []
+
+    class TestFlagging:
+        """CR-94 part 2: saving past the warning flags each Unsuitable booking
+        through SCRUM-64's `flag_venue_bookings`, inside `update_venue`'s
+        transaction, and returns flagged events to Planning."""
+
+        BOOKING_ID = "d0000000-0000-4000-8000-000000000050"
+
+        @pytest.fixture()
+        def booking_at_risk(self, monkeypatch, profile):
+            booking = BookingSummary(
+                id=self.BOOKING_ID,
+                event_id=EVENT_ID,
+                period=Period(starts_at=datetime(2026, 10, 10, 9, tzinfo=SGT), ends_at=datetime(2026, 10, 10, 12, tzinfo=SGT)),
+                status="approved",
+            )
+            monkeypatch.setattr(repository, "list_upcoming_bookings", lambda venue_id, since: [booking])
+            monkeypatch.setattr(
+                events_repository,
+                "list_planning_context",
+                lambda ids: [
+                    {
+                        "id": EVENT_ID,
+                        "name": "Annual Gala",
+                        "coordinator_id": COORDINATOR_ID,
+                        "expected_attendance": 120,
+                        "layout_preference": "theatre",
+                        "facilities_required": ["projector"],
+                    }
+                ],
+            )
+            returned = []
+            monkeypatch.setattr(events_service, "return_to_planning",
+                                lambda event_id, *, reason_code, **kw: returned.append((event_id, reason_code)))
+            profile["returned"] = returned
+            return profile
+
+        def _save(self, client, auth_headers, **changes):
+            return client.patch(
+                f"/api/v1/venues/{HALL_A_ID}",
+                json={**VALID_EDIT_PAYLOAD, **changes, "confirm": True},
+                headers=auth_headers,
+            )
+
+        def test_an_unsuitable_booking_is_flagged_with_its_reason(
+            self, client, auth_headers, authenticate_as, booking_at_risk
+        ):
+            authenticate_as("venue_staff")
+
+            self._save(client, auth_headers, capacity=100, layouts=[{"layout": "boardroom", "capacity_for_layout": None}])
+
+            [flag] = booking_at_risk["update_venue"][0]["flags"]
+            assert flag == {
+                "booking_id": self.BOOKING_ID,
+                "event_id": EVENT_ID,
+                "coordinator_id": COORDINATOR_ID,
+                # AC5: the flag's reason names only the hard rules that make it Unsuitable.
+                "reason": 'Venue "Hall A" was edited: Capacity 100 is below the expected attendance of 120.',
+                "message": (
+                    'Venue "Hall A" was edited and your booking for "Annual Gala" is flagged Unsuitable: '
+                    "Capacity 100 is below the expected attendance of 120. "
+                    "The theatre layout this event needs is not supported."
+                ),
+                # Sent instead when the booking can't take the flag (already flagged, or re-review).
+                "unflagged_message": (
+                    'Venue "Hall A" changed in a way that may affect "Annual Gala": '
+                    "Capacity 100 is below the expected attendance of 120. "
+                    "The theatre layout this event needs is not supported."
+                ),
+            }
+
+        def test_a_removed_required_facility_is_flagged(self, client, auth_headers, authenticate_as, booking_at_risk):
+            authenticate_as("venue_staff")
+
+            self._save(client, auth_headers, facilities=[])
+
+            [flag] = booking_at_risk["update_venue"][0]["flags"]
+            assert flag["reason"].startswith('Venue "Hall A" was edited: Missing facilities this event needs:')
+
+        def test_a_warning_only_change_flags_nothing_and_notifies_the_coordinator(
+            self, client, auth_headers, authenticate_as, booking_at_risk
+        ):
+            """AC4: layout, accessibility and operating hours only warn."""
+            authenticate_as("venue_staff")
+
+            self._save(client, auth_headers, layouts=[{"layout": "boardroom", "capacity_for_layout": None}])
+
+            call = booking_at_risk["update_venue"][0]
+            assert call["flags"] == []
+            assert [(n["recipient_id"], n["event_id"]) for n in call["notifications"]] == [(COORDINATOR_ID, EVENT_ID)]
+            assert booking_at_risk["returned"] == []
+
+        def test_an_edit_affecting_nothing_flags_nothing(self, client, auth_headers, authenticate_as, booking_at_risk):
+            authenticate_as("venue_staff")
+
+            self._save(client, auth_headers, capacity=130)
+
+            assert booking_at_risk["update_venue"][0]["flags"] == []
+
+        def test_without_confirming_nothing_is_flagged(self, client, auth_headers, authenticate_as, booking_at_risk):
+            authenticate_as("venue_staff")
+
+            client.patch(f"/api/v1/venues/{HALL_A_ID}", json={**VALID_EDIT_PAYLOAD, "capacity": 100}, headers=auth_headers)
+
+            assert booking_at_risk["update_venue"] == []
+            assert booking_at_risk["returned"] == []
+
+        def test_an_event_without_a_coordinator_is_still_flagged(
+            self, client, auth_headers, authenticate_as, booking_at_risk, monkeypatch
+        ):
+            monkeypatch.setattr(
+                events_repository, "list_planning_context",
+                lambda ids: [{"id": EVENT_ID, "name": "Annual Gala", "expected_attendance": 120}],
+            )
+            authenticate_as("venue_staff")
+
+            self._save(client, auth_headers, capacity=100)
+
+            [flag] = booking_at_risk["update_venue"][0]["flags"]
+            assert flag["coordinator_id"] is None
+
+        def test_each_flagged_event_returns_to_planning(self, client, auth_headers, authenticate_as, booking_at_risk):
+            """CR-104 AC10: a flagged event in Safety review or Confirmed goes back to Planning."""
+            authenticate_as("venue_staff")
+            booking_at_risk["flagged_event_ids"] = [EVENT_ID]
+
+            response = self._save(client, auth_headers, capacity=100)
+
+            assert response.status_code == 200
+            assert booking_at_risk["returned"] == [(EVENT_ID, "arrangement_flagged")]
+
+        def test_an_event_not_newly_flagged_is_not_returned(self, client, auth_headers, authenticate_as, booking_at_risk):
+            """An already-flagged booking keeps its first flag, so nothing new happened to its event."""
+            authenticate_as("venue_staff")
+
+            self._save(client, auth_headers, capacity=100)
+
+            assert booking_at_risk["returned"] == []
+
+        def test_a_failed_return_still_reports_the_save(
+            self, client, auth_headers, authenticate_as, booking_at_risk, monkeypatch, caplog
+        ):
+            authenticate_as("venue_staff")
+            booking_at_risk["flagged_event_ids"] = [EVENT_ID]
+
+            def _down(event_id, **kw):
+                raise EventServiceUnavailableError()
+
+            monkeypatch.setattr(events_service, "return_to_planning", _down)
+
+            response = self._save(client, auth_headers, capacity=100)
+
+            assert response.status_code == 200
+            assert response.json()["saved"] is True
+            assert EVENT_ID in caplog.text
 
     class TestSpaceRequirements:
         """CR-94: a booking for one of the event's spaces is judged on that

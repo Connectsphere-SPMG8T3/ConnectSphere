@@ -1,4 +1,6 @@
 <script setup>
+import { computed } from "vue";
+
 import BauhausButton from "@/components/common/BauhausButton.vue";
 
 const props = defineProps({
@@ -17,6 +19,7 @@ const OUTCOMES = {
   warning: { label: "Warning", badge: "bg-bauhaus-yellow text-ink", card: "bg-bauhaus-yellow/30" },
 };
 const outcomeOf = (warning) => OUTCOMES[warning.outcome] || OUTCOMES.warning;
+const anyUnsuitable = computed(() => props.warnings.some((warning) => warning.outcome === "unsuitable"));
 </script>
 
 <template>
@@ -37,8 +40,9 @@ const outcomeOf = (warning) => OUTCOMES[warning.outcome] || OUTCOMES.warning;
           This change may affect upcoming bookings
         </h2>
         <p class="mt-4 text-base font-medium">
-          Saving will not change or cancel any booking — resolving this is up to you and the event's coordinator.
-          Events affected:
+          Saving will not cancel or move any booking.
+          <template v-if="anyUnsuitable">Bookings marked Unsuitable will be flagged for follow-up.</template>
+          Each event's coordinator is notified. Events affected:
         </p>
         <ul class="mt-4 flex flex-col gap-3">
           <li
