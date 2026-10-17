@@ -2089,3 +2089,56 @@ What was actually built:
 - **Not done here:** CR-98's space-scoped booking path still accepts an inactive venue (D33). CR-97 is redefining that function, so its owner adds the check (team decision, 2026-10-16).
 - **Uncovered by unit tests, by convention:** the Supabase wrappers in `venues/repository.py` and the `venuesApi.deactivate`/`reactivate` request wrappers (`docs/CI.md` §4). The live checks and e2e exercise them.
 - **Follow-up:** tell Xuan Wei about the flag contract (IMPLEMENTATION_MAP §5); CR-95 owns clearing flags and the "Needs alternative venue" alert.
+
+### 4.51. SCRUM-36 — Venue staff approve a booking request
+
+On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d` (SCRUM-38 merged in PR #56), 2026-10-17. The Product backlog sheet couldn't be read through the connector, so the story and ACs are as the developer gave them. The epic, estimate and priority weren't available.
+
+| Field | Value |
+|---|---|
+| ID | SCRUM-36 |
+| Title | Approve a venue booking request |
+| Status | In progress: built and tested offline; migration not applied |
+| Sprint | 3 (6–20 October) |
+
+**User story:** As Venue Staff, I want to be able to approve a pending venue booking request, so that I don't end up with a double-booking or an unsuitable setup that I have to scramble to fix later.
+
+**Acceptance criteria (as revised by the developer, 2026-10-17):**
+
+> AC1. Venue Staff can view a Held booking request with the booking's date and time, expected attendance, layout and other requirements (facilities, accessibility, the coordinator's note).
+> AC2. Approving a Held booking sets its status to Approved and notifies the assigned Event Coordinator, never the approver. The label stays "Approved" so it isn't confused with the event's Confirmed status after the safety check.
+> AC3. Approval is refused if a venue block now overlaps the booking: "Venue blocked for this time."
+> AC4. Approval is refused if the venue has been deactivated: "This venue is inactive…"
+> AC5. [M3, QA3-6] Once approved, the booking keeps occupying the venue for its occupied window, so any overlapping request is refused. Until CR-100 and 21 land, the window is the booking's own period (zero setup and turnaround).
+> AC6. [W7 CR-04] Only a Held booking can be approved. An expired hold, including one past its expiry that the minute job hasn't reached yet, is refused with "This hold has expired, so it can't be approved." and shows as Expired. Approved, Rejected, Re-review, Cancelled and Released bookings are also refused.
+> AC7. [QA3-24, QA3-50] In a multi-venue event, each booking is approved on its own. Approving one doesn't change the event's other bookings.
+> AC8. Only a session acting as Venue Staff can approve. Everyone else gets Forbidden (403).
+> AC9. If approval, rejection and expiry happen at the same moment, only one outcome is saved.
+> AC10. The approval, who made it and when are recorded in the booking's history.
+
+#### Decisions
+
+- **The ACs were revised before building.** The developer first pasted six ACs, including "status Confirmed" and a per-booking setup/turnaround edit starting from the venue's defaults (CR-100). CR-100 isn't built on any branch, so no setup or turnaround figures exist to edit. Following SCRUM-38's precedent, the developer rewrote the ACs into the ten above: the edit moves to CR-100 (REQUIREMENTS VC-R9, **[Team decision]**), and the label stays "Approved" (§6.13, **[Team decision]**). The developer records the change in the backlog row.
+- **Approval decides in the database, like rejection.** `approve_venue_booking` takes CR-99's lock first, then refuses an inactive venue and an overlapping block, the way `request_venue_booking` does. DB-1 needs no re-check: an approved booking stays in its exclusion set (BA-R1, BA-R9).
+- AC4's message, cut off in the AC, was completed as "This venue is inactive, so the booking can't be approved."
+- **[Assumption]** A flagged booking can still be approved (REQUIREMENTS §9 item 48).
+
+#### What was built
+
+1. **Database (`20261017120000_venue_booking_approval.sql`).** `approve_venue_booking` is `security definer`, `service_role` only, with no new columns. It returns an outcome code: `ok`, `booking_not_found`, `hold_expired`, `not_held`, `venue_inactive` or `venue_blocked`. On `ok` it sets `approved`, `decided_by`/`decided_at`, writes one `approved` history row and notifies the assigned coordinator (`venue_booking_approved`), never the actor, all in one transaction.
+2. **Backend.** `POST /venue-bookings/{id}/approve` (venue staff only, by active role), `venues.service.approve_booking`, `venues.repository.approve_booking`. It reuses SCRUM-38's errors and not-held labels.
+3. **Frontend.** **Approve** before **Reject** on `BookingRequestView`, confirmed through `ConfirmModal`; `useBookingDecisionStore.approve`, with reject and approve sharing one `decide` helper so either in flight blocks both; `canApproveBooking`; `venueBookingsApi.approve`.
+4. **Tests and checks.** Cases TC-BOOK-027–036 in `docs/test-cases/venues.md`. Live checks TC-BOOK-027–031 in `verify_live.py`, e2e TC-BOOK-033 in `bookings.e2e.js`, and SQL check `venue_booking_approve_checks.sql` (TC-BOOK-032). 38's AC10 row is now traced to approval.
+
+#### Verification
+
+- **Red first, at every layer:** the SQL check failed against the live project with "function `approve_venue_booking` does not exist"; pytest failed on the missing `repository.approve_booking`; Vitest failed on the missing `approve` and `canApproveBooking`.
+- **Database:** the migration plus the SQL check, run against the live project in one rolled-back transaction, printed `BOOKING APPROVE CHECKS PASSED`. A query afterwards confirmed the function isn't there, so nothing was applied.
+- **Full suites:** `pytest --cov` 1227 passed (95.75%); `npm run test:coverage` 907 passed. Every new and changed line in `backend/app/` and `frontend/src/` is covered; the lines still uncovered in the touched files predate this branch. `npm run build` succeeds.
+- **Not verified yet:** nothing ran against the real API or browser, because the migration isn't applied. Next: the developer runs `supabase migration list --linked` and `supabase db push`, then `verify_live.py --record`, `npm run test:e2e:record`, advisors, and the manual pass TC-BOOK-034–036.
+
+#### Follow-ups
+
+- CR-100 owns the per-booking setup/turnaround edit and its lock on approval (IMPLEMENTATION_MAP §5).
+- The booking page shows the event's attendance and layout, not a space's own (CR-98). Worth raising with the CR-97/98 owners for multi-venue events.
+- PR, review, PO acceptance, merge and the backlog status are the developer's.
