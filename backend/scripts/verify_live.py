@@ -107,6 +107,10 @@ DB_SCRIPTS = [
     ("lead_assignment_checks.sql", "CR-101 (database half: assignment columns, reassign_event)"),
     ("venue_deactivation_checks.sql", "TC-VENUE-070 (SCRUM-64 database half); D33"),
     ("booking_conflict_checks.sql", "TC-BOOK-040 (SCRUM-21 database half: occupied window, venue_conflicts)"),
+    ("venue_block_flag_checks.sql", "TC-BOOK-043, 044 (CR-95: a block flags the bookings it overlaps; organiser notice)"),
+    ("venue_replacement_checks.sql", "TC-BOOK-045 (CR-95: request a replacement for an affected booking)"),
+    ("venue_release_checks.sql", "TC-BOOK-046 (CR-95: release the original when its replacement is approved)"),
+    ("venue_restore_checks.sql", "TC-BOOK-047 (CR-95: restore an affected booking)"),
 ]
 
 
