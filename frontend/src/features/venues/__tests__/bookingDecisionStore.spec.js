@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  venueBookingsApi: { request: vi.fn(), get: vi.fn(), reject: vi.fn() },
+  venueBookingsApi: { request: vi.fn(), get: vi.fn(), reject: vi.fn(), approve: vi.fn() },
 }));
 
 const HELD = { id: "b1", status: "held", venue_name: "Innovation Lab", decision: null, history: [] };
@@ -117,5 +117,79 @@ describe("useBookingDecisionStore (SCRUM-38)", () => {
 
     expect(store.error).toBeNull();
     expect(store.conflict).toBe(false);
+  });
+});
+
+describe("useBookingDecisionStore approve (SCRUM-36)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const APPROVED = {
+    ...HELD, status: "approved",
+    history: [{ action: "approved", from_status: "held", to_status: "approved", actor_name: "Venue Staff",
+      reason: null, suggestion: null, at: "2031-03-01T02:00:00Z" }],
+  };
+
+  it("AC2 approves and replaces the booking with the approved one", async () => {
+    const store = signedInVenueStaff();
+    store.booking = HELD;
+    venueBookingsApi.approve.mockResolvedValue(APPROVED);
+
+    const ok = await store.approve("b1");
+
+    expect(ok).toBe(true);
+    expect(venueBookingsApi.approve).toHaveBeenCalledWith("b1", "access-token");
+    expect(store.booking).toEqual(APPROVED);
+    expect(store.error).toBeNull();
+    expect(store.isApproving).toBe(false);
+  });
+
+  it.each([
+    "This hold has expired, so it can't be approved.",
+    "Venue blocked for this time.",
+    "This venue is inactive, so the booking can't be approved.",
+    "Only a held booking can be approved. This one is already rejected.",
+  ])("AC3, AC4, AC6, AC9 reloads and explains a refusal: %s", async (message) => {
+    const store = signedInVenueStaff();
+    store.booking = HELD;
+    venueBookingsApi.approve.mockRejectedValue(new ApiError(message, 409));
+    venueBookingsApi.get.mockResolvedValue({ ...HELD, status: "expired" });
+
+    const ok = await store.approve("b1");
+
+    expect(ok).toBe(false);
+    expect(store.error).toBe(message);
+    expect(store.conflict).toBe(true);
+    expect(venueBookingsApi.get).toHaveBeenCalledWith("b1", "access-token");
+    expect(store.booking.status).toBe("expired");
+  });
+
+  it("keeps the booking and reports an error that isn't a conflict", async () => {
+    const store = signedInVenueStaff();
+    store.booking = HELD;
+    venueBookingsApi.approve.mockRejectedValue(new ApiError("Forbidden", 403));
+
+    const ok = await store.approve("b1");
+
+    expect(ok).toBe(false);
+    expect(store.error).toBe("Forbidden");
+    expect(store.conflict).toBe(false);
+    expect(venueBookingsApi.get).not.toHaveBeenCalled();
+    expect(store.booking).toEqual(HELD);
+  });
+
+  it("does nothing while any decision is already being sent", async () => {
+    const store = signedInVenueStaff();
+    store.isApproving = true;
+    expect(await store.approve("b1")).toBe(false);
+    store.isApproving = false;
+    store.isRejecting = true;
+    expect(await store.approve("b1")).toBe(false);
+    expect(await store.reject("b1", { reason: "Closed" })).toBe(false);
+    store.isRejecting = false;
+    store.isApproving = true;
+    expect(await store.reject("b1", { reason: "Closed" })).toBe(false);
+
+    expect(venueBookingsApi.approve).not.toHaveBeenCalled();
+    expect(venueBookingsApi.reject).not.toHaveBeenCalled();
   });
 });

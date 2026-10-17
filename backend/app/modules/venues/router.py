@@ -170,3 +170,11 @@ def reject_venue_booking(booking_id: UUID, body: VenueBookingReject, current_use
     The hold is released and the assigned coordinator is notified. Refused with
     409 when the booking is no longer held, including a hold that has expired."""
     return service.reject_booking(str(booking_id), current_user.id, body)
+
+
+@bookings_router.post("/{booking_id}/approve", response_model=VenueBookingDetail, status_code=status.HTTP_200_OK)
+def approve_venue_booking(booking_id: UUID, current_user: VenueStaffOnly) -> VenueBookingDetail:
+    """Approve a held booking (SCRUM-36). The assigned coordinator is notified.
+    Refused with 409 when the booking is no longer held (including an expired
+    hold), a venue block now overlaps it, or the venue has been deactivated."""
+    return service.approve_booking(str(booking_id), current_user.id)

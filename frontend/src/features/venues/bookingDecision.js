@@ -1,7 +1,7 @@
 /**
- * Venue staff's decision on a booking request (SCRUM-38): what may be offered,
- * what a rejection must contain, and how the booking's time reads. No I/O, so
- * SCRUM-36's approval can reuse it beside reject.
+ * Venue staff's decision on a booking request (SCRUM-38 reject, SCRUM-36
+ * approve): what may be offered, what a rejection must contain, and how the
+ * booking's time reads. No I/O.
  */
 
 // Mirrors the API's BOOKING_NOTE_MAX_LENGTH (AC2, AC3).
@@ -26,6 +26,11 @@ export function rejectionPayload({ reason = "", suggestion = "" } = {}) {
 
 /** Only a held booking can be rejected (AC9), and only by a session acting as venue staff (AC11). UX only: the API decides. */
 export function canRejectBooking(booking, role) {
+  return role === "venue_staff" && booking?.status === "held";
+}
+
+/** The same rule for approval (SCRUM-36 AC6, AC8). UX only: the API decides, including blocks and inactive venues. */
+export function canApproveBooking(booking, role) {
   return role === "venue_staff" && booking?.status === "held";
 }
 

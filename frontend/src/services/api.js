@@ -114,6 +114,11 @@ export const venueBookingsApi = {
   reject(bookingId, payload, token) {
     return request(`/venue-bookings/${encodeURIComponent(bookingId)}/reject`, { method: "POST", body: payload, token });
   },
+  // SCRUM-36: no body; 409 means it is no longer a live hold, a block now
+  // overlaps it, or the venue is inactive.
+  approve(bookingId, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/approve`, { method: "POST", token });
+  },
 };
 
 export const eventsApi = {

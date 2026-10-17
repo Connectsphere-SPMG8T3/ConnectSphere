@@ -9,7 +9,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  venueBookingsApi: { request: vi.fn(), get: vi.fn(), reject: vi.fn() },
+  venueBookingsApi: { request: vi.fn(), get: vi.fn(), reject: vi.fn(), approve: vi.fn() },
 }));
 
 function booking(overrides = {}) {
@@ -220,5 +220,100 @@ describe("BookingRequestView (SCRUM-38)", () => {
 
     expect(el.textContent).toContain("Booking not found.");
     expect(button("Reject request")).toBeNull();
+  });
+});
+
+describe("BookingRequestView approve (SCRUM-36)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+    toastState.value = null;
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  const APPROVED = booking({
+    status: "approved",
+    history: [{ action: "approved", from_status: "held", to_status: "approved", actor_name: "Venue Staff",
+      reason: null, suggestion: null, at: "2031-03-01T02:00:00Z" }],
+  });
+
+  it("AC2, AC10 approves a held booking after confirming, and shows it approved with its history", async () => {
+    const { el } = await mountView(booking());
+    venueBookingsApi.approve.mockResolvedValue(APPROVED);
+
+    button("Approve request").click();
+    await nextTick();
+    expect(document.querySelector('[role="dialog"]').textContent).toContain("Approve this booking?");
+    expect(venueBookingsApi.approve).not.toHaveBeenCalled();
+    button("Approve").click();
+
+    await vi.waitFor(() => expect(toastState.value?.message).toBe("Booking approved. The coordinator has been told."));
+    expect(venueBookingsApi.approve).toHaveBeenCalledWith("b1", "access");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(button("Approve request")).toBeNull();
+    expect(button("Reject request")).toBeNull();
+    const history = el.querySelector('[data-testid="booking-history"]');
+    expect(history.textContent).toContain("Approved");
+    expect(history.textContent).toContain("Venue Staff");
+    // An approval carries no reason, so there's no "Rejected by venue staff" panel.
+    expect(el.querySelector('[data-testid="booking-decision"]')).toBeNull();
+  });
+
+  it("closes the confirmation on cancel without approving", async () => {
+    await mountView(booking());
+
+    button("Approve request").click();
+    await nextTick();
+    button("Cancel").click();
+    await nextTick();
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(venueBookingsApi.approve).not.toHaveBeenCalled();
+  });
+
+  it("AC6 explains and reloads when the hold expired before approval, showing it Expired", async () => {
+    const { el } = await mountView(booking());
+    venueBookingsApi.approve.mockRejectedValue(new ApiError("This hold has expired, so it can't be approved.", 409));
+    venueBookingsApi.get.mockResolvedValue(booking({ status: "expired" }));
+
+    button("Approve request").click();
+    await nextTick();
+    button("Approve").click();
+
+    await vi.waitFor(() => expect(el.textContent).toContain("This hold has expired, so it can't be approved."));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(button("Approve request")).toBeNull();
+    expect(el.textContent).toContain("Expired");
+  });
+
+  it("AC3 explains a refusal that leaves the booking held, and still offers both decisions", async () => {
+    const { el } = await mountView(booking());
+    venueBookingsApi.approve.mockRejectedValue(new ApiError("Venue blocked for this time.", 409));
+
+    button("Approve request").click();
+    await nextTick();
+    button("Approve").click();
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]')?.textContent).toContain("Venue blocked for this time."));
+    expect(button("Approve request")).not.toBeNull();
+    expect(button("Reject request")).not.toBeNull();
+  });
+
+  it.each(["approved", "re_review", "rejected", "cancelled", "released", "expired"])(
+    "AC6 offers no Approve on a %s booking",
+    async (status) => {
+      await mountView(booking({ status }));
+
+      expect(button("Approve request")).toBeNull();
+    },
+  );
+
+  it("AC8 offers the coordinator no Approve", async () => {
+    await mountView(booking(), "event_coordinator");
+
+    expect(button("Approve request")).toBeNull();
   });
 });
