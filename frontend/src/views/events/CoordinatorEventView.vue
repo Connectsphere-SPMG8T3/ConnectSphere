@@ -17,7 +17,8 @@ import { showToast } from "@/composables/useToast";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { formatDecisionTime } from "@/features/venues/bookingDecision";
-import { BOOKING_STATUS_LABELS, venuePanelState } from "@/features/venues/bookingRequest";
+import AffectedBookingNotice from "@/components/venues/AffectedBookingNotice.vue";
+import { BOOKING_STATUS_LABELS, replacementSearchRoute, venuePanelState } from "@/features/venues/bookingRequest";
 import { formatHoldExpiry } from "@/features/venues/dashboard";
 
 const route = useRoute();
@@ -46,6 +47,13 @@ const rejectedBookings = computed(() => event.value?.rejected_bookings ?? []);
 const eventSpaces = computed(() => event.value?.spaces ?? []);
 // CR-97 AC5: each space's own booking, as the Venue panel reads it.
 const spacePanels = computed(() => Object.fromEntries(eventSpaces.value.map((space) => [space.id, venuePanelState(event.value, space)])));
+
+// CR-95 AC4: venue search for this event (or space), asking to replace the affected booking.
+function findReplacement(panel, space = null) {
+  router.push(replacementSearchRoute(event.value, space, panel.booking));
+}
+
+const isAffected = (panel) => panel.kind === "affected" || panel.kind === "replacing";
 
 function canFindVenue(space) {
   const panel = spacePanels.value[space.id];
@@ -294,6 +302,13 @@ watch(
                     Hold expires {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} unless approved.
                   </span>
                 </div>
+                <AffectedBookingNotice
+                  v-if="isAffected(spacePanels[space.id])"
+                  :reason="spacePanels[space.id].booking.flag_reason ?? ''"
+                  :replacement="spacePanels[space.id].replacement ?? null"
+                  :can-replace="Boolean(spacePanels[space.id].canReplace)"
+                  @replace="findReplacement(spacePanels[space.id], space)"
+                />
                 <p v-if="spacePanels[space.id].kind === 'expired'" class="mt-2 text-sm font-medium" data-testid="hold-expired">
                   The hold expired on {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} before venue staff approved it.
                   <template v-if="spacePanels[space.id].canRequest">You can request this venue again if it's still free, or find another.</template>
@@ -325,7 +340,23 @@ watch(
               </p>
             </li>
           </ul>
-          <template v-if="venuePanel.kind === 'booked'">
+          <template v-if="isAffected(venuePanel)">
+            <p class="mt-4 text-lg font-black uppercase tracking-tight">
+              <RouterLink
+                :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
+                class="underline decoration-2 underline-offset-4"
+              >
+                {{ venuePanel.booking.venue_name ?? "Venue" }}
+              </RouterLink>
+            </p>
+            <AffectedBookingNotice
+              :reason="venuePanel.booking.flag_reason ?? ''"
+              :replacement="venuePanel.replacement ?? null"
+              :can-replace="Boolean(venuePanel.canReplace)"
+              @replace="findReplacement(venuePanel)"
+            />
+          </template>
+          <template v-else-if="venuePanel.kind === 'booked'">
             <p class="mt-4 text-lg font-black uppercase tracking-tight">
               <RouterLink
                 :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
