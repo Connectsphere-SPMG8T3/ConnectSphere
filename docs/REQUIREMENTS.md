@@ -217,6 +217,8 @@ C4Container
 
 ![C4 Level 3: components of the Backend API (as built)](diagrams/c4-l3-backend-components.jpg)
 
+Source: [c4-l3-backend-components.drawio](diagrams/c4-l3-backend-components.drawio). Open it in draw.io, edit, and re-export the JPG to the same path.
+
 <details>
 <summary>Mermaid text version of this diagram</summary>
 
