@@ -320,8 +320,9 @@ def deactivate_venue(venue_id: str, actor_id: str, body: VenueDeactivateRequest)
     Without `confirm`, a venue with future held or approved bookings returns
     them instead of saving, so staff see who is affected first (the SCRUM-63
     pattern). Saving flags those bookings Affected and notifies their
-    coordinators in one transaction; then any flagged event already in Safety
-    review or Confirmed goes back to Planning (CR-104 AC10, CR-95 AC7).
+    coordinators and organisers in one transaction; then any flagged event
+    already in Safety review or Confirmed goes back to Planning (CR-104 AC10,
+    CR-95 AC7).
     """
     current = repository.get_venue(venue_id)
     if current is None:

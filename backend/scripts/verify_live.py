@@ -791,6 +791,10 @@ def _(ctx: Context) -> None:
     expect_status(request_venue(ctx, ctx.shared("event_coordinator"), event_id, venue_id), 201)
     staff = ctx.shared("venue_staff")
 
+    # Booking requests already notified venue staff; inspect only new recipients
+    # when checking the deactivation's audience.
+    previous_notices = {row["id"] for row in db_query(
+        f"select id from public.notifications where event_id = '{event_id}'")}
     preview = deactivate(ctx, staff, venue_id)
     expect_status(preview, 200)
     body = preview.json()
@@ -808,6 +812,16 @@ def _(ctx: Context) -> None:
         f"select recipient_id from public.notifications where event_id = '{event_id}' and type = 'venue_booking_affected'")
     expect([row["recipient_id"] for row in notified] == ["a0000000-0000-4000-8000-000000000002"],
            f"venue_booking_affected went to {notified} (want the coordinator once)")
+    organiser_id = "a0000000-0000-4000-8000-000000000001"  # throwaway_event's organiser
+    organiser_notified = db_query(
+        f"select recipient_id from public.notifications where event_id = '{event_id}' and type = 'venue_unavailable_organiser'")
+    expect([row["recipient_id"] for row in organiser_notified] == [organiser_id],
+           f"venue_unavailable_organiser went to {organiser_notified} (want the organiser once)")
+    new_notices = [row for row in db_query(
+        f"select id, recipient_id from public.notifications where event_id = '{event_id}'")
+        if row["id"] not in previous_notices]
+    expect(all(row["recipient_id"] in (organiser_id, COORDINATOR_ID) for row in new_notices),
+           f"deactivation notified someone other than the organiser or coordinator: {new_notices}")
 
 
 @check("TC-VENUE-067", "A booking request for an inactive venue is refused", needs_db=True)

@@ -2327,7 +2327,26 @@ On `feature/cr-95-affected-bookings`, branched from `main` after SCRUM-21 merged
 - **Not verified:** the live advisors were not read in detail (a filtered look at them listed nothing for the CR-95 objects; the local advisors show only pre-existing equipment RLS warnings); frontend line coverage of the changed files was not computed.
 - **Remaining:** story 36's approve calling `release_replaced_booking`; story 51's block endpoint (blocks can be inserted directly today); story 85's cancellation of a pending replacement; CR-111's organiser view of each venue; the PO's agreement to §9 items 61–67.
 
-### 4.57. SCRUM-36 — Venue staff approve a booking request
+### 4.57. Bug fix — D40, SCRUM-64 venue deactivation notifies the organiser
+
+| Field | Value |
+|---|---|
+| ID | D40 / SCRUM-64 |
+| Type | Bug fix |
+| Status | Fixed on `fix/scrum-64-organiser-notice`; migration `20261018140000` pushed 2026-10-18 |
+| Customer clarification | SCRUM-64 AC3 updated 17/10; QA3-7, CAL-R5 |
+
+**Symptom:** deactivating a venue flagged its future held/approved bookings Affected and notified the coordinator, but the organiser received no notice about the affected arrangement or next action. Reproduced live in a rolled-back transaction on 2026-10-18.
+
+**Root cause:** CR-95 added the organiser notice only in the venue-block trigger. SCRUM-64's older deactivation caller did not catch up when AC3 was widened. Tests missed this because `venue_deactivation_checks.sql` and TC-VENUE-066 checked only `venue_booking_affected`, without asserting the organiser's notice or the complete deactivation audience.
+
+**What was built:** migration `20261018140000_deactivation_notifies_organiser.sql` replaces `deactivate_venue` with the same signature, outcomes and behaviour plus one `venue_unavailable_organiser` per newly flagged event, skipping a null organiser and the actor. It names the venue, says the event is not cancelled and that the coordinator will arrange an alternative venue and update the organiser. The shared flag helper and CR-95 trigger are unchanged, so CR-94 edits do not send this notice. The service docstring now names both recipients; no backend contract changed.
+
+**Regression coverage:** SQL assertions were written first for exact recipients, wording, unflagged exclusions, two non-overlapping space bookings for one event, organiser-as-actor suppression, and repeated deactivation. TC-VENUE-066 also checks the organiser once and excludes other new recipients; booking-request notices are snapshotted first. Existing throwaway event deletion cascades to all notification types, so cleanup needs no change. TC-VENUE-091 traces the automated checks; TC-VENUE-092 is the developer's desktop/375 px wording pass.
+
+**Verification:** before the fix, the extended `venue_deactivation_checks.sql` failed against the live function (`ORGANISER NOTICE FAIL: event …64a1 has 0 notices, expected one`); with the migration applied in a rolled-back transaction it passed. After the developer pushed `20261018140000`, the script passed live, `verify_live.py --record` passed 124/124 including TC-VENUE-066 and TC-VENUE-070 ([run](test-cases/runs/2026-10-18-1347-api-db-e476346.md)), the browser suite passed 66/66 ([run](test-cases/runs/2026-10-18-1355-e2e-e476346.md)), full `pytest` passed (1368), and advisors show nothing new. TC-VENUE-092: the developer approved the wording from the stored message; reading it in the app is Blocked because the top-bar bell is a placeholder until SCRUM-53 ([run](test-cases/runs/2026-10-18-1430-manual-ad7b853.md)).
+
+### 4.58. SCRUM-36 — Venue staff approve a booking request
 
 On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d` (SCRUM-38 merged in PR #56), 2026-10-17. The Product backlog sheet couldn't be read through the connector, so the story and ACs are as the developer gave them. The epic, estimate and priority weren't available.
 
@@ -2362,7 +2381,7 @@ On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d`
 
 #### What was built
 
-1. **Database (`20261018140000_venue_booking_approval.sql`).** `approve_venue_booking` is `security definer`, `service_role` only, with no new columns. It returns an outcome code: `ok`, `booking_not_found`, `hold_expired`, `not_held`, `venue_inactive` or `venue_blocked`. On `ok` it sets `approved`, `decided_by`/`decided_at`, writes one `approved` history row and notifies the assigned coordinator (`venue_booking_approved`), never the actor, all in one transaction.
+1. **Database (`20261018160000_venue_booking_approval.sql`).** `approve_venue_booking` is `security definer`, `service_role` only, with no new columns. It returns an outcome code: `ok`, `booking_not_found`, `hold_expired`, `not_held`, `venue_inactive` or `venue_blocked`. On `ok` it sets `approved`, `decided_by`/`decided_at`, writes one `approved` history row and notifies the assigned coordinator (`venue_booking_approved`), never the actor, all in one transaction.
 2. **Backend.** `POST /venue-bookings/{id}/approve` (venue staff only, by active role), `venues.service.approve_booking`, `venues.repository.approve_booking`. It reuses SCRUM-38's errors and not-held labels.
 3. **Frontend.** **Approve** before **Reject** on `BookingRequestView`, confirmed through `ConfirmModal`; `useBookingDecisionStore.approve`, with reject and approve sharing one `decide` helper so either in flight blocks both; `canApproveBooking`; `venueBookingsApi.approve`.
 4. **Tests and checks.** Cases TC-BOOK-051–060 in `docs/test-cases/venues.md`. Live checks TC-BOOK-051–055 in `verify_live.py`, e2e TC-BOOK-057 in `bookings.e2e.js`, and SQL check `venue_booking_approve_checks.sql` (TC-BOOK-056). 38's AC10 row is now traced to approval.
