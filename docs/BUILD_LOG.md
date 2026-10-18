@@ -2424,7 +2424,7 @@ On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d`
 |---|---|
 | ID | SCRUM-36 |
 | Title | Approve a venue booking request |
-| Status | In progress: built and tested offline, merged with `main` through PR #76; migration not applied |
+| Status | In progress: migration applied 2026-10-18; live checks pass; manual pass pending |
 | Sprint | 3 (6–20 October) |
 
 **User story:** As Venue Staff, I want to be able to approve a pending venue booking request, so that I don't end up with a double-booking or an unsuitable setup that I have to scramble to fix later.
@@ -2469,6 +2469,12 @@ On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d`
 - **CR-95 AC5 needed this story.** Approving a replacement now releases its affected original through `release_replaced_booking`, in the same transaction. The original is locked before the replacement, the order `restore_affected_booking` takes, so an approval racing a restore waits instead of deadlocking (REQUIREMENTS §9 item 66, now resolved).
 - **SCRUM-21's conflict check** replaces this story's own block query: approval calls `venue_conflicts` on the booking's occupied window, leaving the booking out. Only a block can be found there, because DB-1 keeps live bookings apart.
 - **Red first:** the extended `venue_booking_approve_checks.sql` failed against the live project ("approving a replacement left its original approved"), then passed with the updated migration, both in rolled-back transactions. New live check TC-BOOK-061 fires approve and restore at the same instant.
+
+**Applied and checked live (2026-10-18).**
+- The developer ran `supabase db push` after `main` reached PR #76; the ledger then matched the repo exactly, with `approve_venue_booking` present.
+- `verify_live.py --record`, backend on port 8010: **133/133 passed**, including TC-BOOK-051–056 and TC-BOOK-061 ([run](test-cases/runs/2026-10-18-2318-api-db-f99b008.md)). Afterwards no throwaway events, venues or blocks were left.
+- `npm run test:e2e:record`, frontend on port 5183: **70/70 passed**, including both TC-BOOK-057 tests ([run](test-cases/runs/2026-10-18-2327-e2e-f99b008.md)).
+- `supabase db advisors`: nothing on this story's function. The ten warnings are the known leaked-password one and D19's nine.
 
 #### Follow-ups
 
