@@ -576,7 +576,8 @@ def test_coordinator_event_read_includes_all_active_space_bookings(monkeypatch):
     ]
 
 
-def test_an_organiser_does_not_see_a_bookings_flag_or_what_it_replaces(monkeypatch):
+@pytest.mark.parametrize("flag", ["affected", "safety_rejected"])
+def test_an_organiser_does_not_see_a_bookings_flag_or_what_it_replaces(monkeypatch, flag):
     # CR-95: the flag and the replacement link are the coordinator's follow-up.
     # An organiser sees a confirmed event's venues, not what is wrong with them
     # (CR-111 gives them their own view).
@@ -585,7 +586,7 @@ def test_an_organiser_does_not_see_a_bookings_flag_or_what_it_replaces(monkeypat
     event["organiser_id"] = organiser_id
     booking = {
         "id": "booking-1", "event_id": EVENT_ID, "event_space_request_id": None, "venue_id": "venue-1",
-        "venue_name": "Innovation Lab", "status": "approved", "flag": "affected",
+        "venue_name": "Innovation Lab", "status": "approved", "flag": flag,
         "flag_reason": "Venue unavailable: maintenance", "replaces_booking_id": "booking-0",
     }
     monkeypatch.setattr(repository, "get_event", lambda event_id: event)
@@ -597,3 +598,7 @@ def test_an_organiser_does_not_see_a_bookings_flag_or_what_it_replaces(monkeypat
     for shown in [response.venue_booking, *response.venue_bookings]:
         assert (shown.flag, shown.flag_reason, shown.replaces_booking_id) == (None, None, None)
         assert shown.status == "approved"
+
+    response = service.read(EVENT_ID, event['coordinator_id'], 'event_coordinator')
+    for shown in [response.venue_booking, *response.venue_bookings]:
+        assert (shown.flag, shown.flag_reason) == (flag, booking['flag_reason'])

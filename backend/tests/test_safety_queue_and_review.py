@@ -107,7 +107,7 @@ def test_read_outage_is_503(client,auth_headers,authenticate_as,state,monkeypatc
 
 @pytest.mark.parametrize('decision,label',[
  ('approved','Approved by the Safety Officer.'),
- ('arrangement_rejected','The Safety Officer did not accept an arrangement; it must be replaced.'),
+ ('arrangement_rejected','The Safety Officer rejected a venue for this event; its booking is flagged Safety rejected.'),
  ('withdrawn','An arrangement changed, so the event went back to planning.'),
 ])
 def test_each_organiser_label_is_private(client,auth_headers,authenticate_as,state,decision,label):

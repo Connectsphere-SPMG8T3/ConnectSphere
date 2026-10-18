@@ -67,6 +67,8 @@ export function formatDecisionTime(value) {
 
 // CR-99's `venue_booking_history.action` values, plus this story's rejection.
 const HISTORY_ACTION_LABELS = {
+  safety_rejected: "Safety rejected",
+  safety_revised: "Marked revised",
   rejected: "Rejected",
   approved: "Approved",
   expired: "Expired",

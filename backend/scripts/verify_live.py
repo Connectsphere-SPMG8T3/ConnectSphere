@@ -95,7 +95,7 @@ DB_SCRIPTS = [
     ("event_review_checks.sql", "SCRUM-34/52 grants"),
     ("event_history_checks.sql", "TC-REV-015, TC-REV-016"),
     ("send_for_safety_check.sql", "TC-SAFE-010–015"),
-    ("safety_decision_checks.sql", "TC-SDEC-003, 009–011, 015–017 (database half); CR-104 helper paths"),
+    ("safety_decision_checks.sql", "TC-SDEC-003, 009–011, 015–017, 024, 025 (database half)"),
     ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
@@ -1823,7 +1823,7 @@ MISSING_EVENT = "00000000-0000-4000-8000-000000000000"
 SAFETY_DECISIONS = (
     ("safety-approve", {}),
     ("safety-request-changes", {"comment": "Live check"}),
-    ("safety-reject", {"reason": "Live check"}),
+    ("safety-reject", {"reason": "Live check", "booking_id": MISSING_EVENT}),
 )
 
 
@@ -1878,8 +1878,32 @@ def _(ctx: Context) -> None:
     for text in ("", "   ", "x" * 1001):
         for action, field_name in (("safety-request-changes", "comment"), ("safety-reject", "reason")):
             expect_status(ctx.client.post(
-                f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers, json={field_name: text},
+                f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers, json={field_name: text, **({"booking_id": MISSING_EVENT} if action == "safety-reject" else {})},
             ), 422)
+
+
+    expect_status(ctx.client.post(
+        f"{ctx.api}/events/{MISSING_EVENT}/safety-reject", headers=headers,
+        json={"reason": "Legacy arrays", "booking_ids": [MISSING_EVENT]},
+    ), 422)
+
+
+@check("TC-SDEC-022", "Mark as revised is refused for every non-coordinator active role")
+def _(ctx: Context) -> None:
+    for role in (*ACCOUNTS, *W7_STAFF_ACCOUNTS):
+        if role != "event_coordinator":
+            expect_status(ctx.client.post(
+                f"{ctx.api}/venue-bookings/{MISSING_EVENT}/mark-revised",
+                headers=ctx.shared(role).headers,
+            ), 403)
+
+
+@check("TC-SDEC-023", "Mark as revised on a missing booking answers 404")
+def _(ctx: Context) -> None:
+    expect_status(ctx.client.post(
+        f"{ctx.api}/venue-bookings/{MISSING_EVENT}/mark-revised",
+        headers=ctx.shared("event_coordinator").headers,
+    ), 404)
 
 
 # --- Helpers ---------------------------------------------------------------

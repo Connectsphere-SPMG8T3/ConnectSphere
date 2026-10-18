@@ -17,6 +17,7 @@ import { showToast } from "@/composables/useToast";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { formatDecisionTime } from "@/features/venues/bookingDecision";
+import SafetyRejectedNotice from "@/components/venues/SafetyRejectedNotice.vue";
 import AffectedBookingNotice from "@/components/venues/AffectedBookingNotice.vue";
 import { BOOKING_STATUS_LABELS, replacementSearchRoute, venuePanelState } from "@/features/venues/bookingRequest";
 import { formatHoldExpiry } from "@/features/venues/dashboard";
@@ -54,6 +55,16 @@ function findReplacement(panel, space = null) {
 }
 
 const isAffected = (panel) => panel.kind === "affected" || panel.kind === "replacing";
+
+async function markRevised(bookingId) {
+  if (review.isActing) return;
+  try {
+    await review.markBookingRevised(bookingId);
+    showToast("Marked revised. Send the event for safety check when everything is ready.");
+  } catch {
+    // The store exposes the API refusal in the page alert.
+  }
+}
 
 function canFindVenue(space) {
   const panel = spacePanels.value[space.id];
@@ -302,6 +313,13 @@ watch(
                     Hold expires {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} unless approved.
                   </span>
                 </div>
+                <SafetyRejectedNotice
+                  v-if="spacePanels[space.id].kind === 'safety-rejected'"
+                  :reason="spacePanels[space.id].reason"
+                  :can-mark-revised="spacePanels[space.id].canMarkRevised"
+                  :busy="review.isActing"
+                  @mark-revised="markRevised(spacePanels[space.id].booking.id)"
+                />
                 <AffectedBookingNotice
                   v-if="isAffected(spacePanels[space.id])"
                   :reason="spacePanels[space.id].booking.flag_reason ?? ''"
@@ -340,7 +358,23 @@ watch(
               </p>
             </li>
           </ul>
-          <template v-if="isAffected(venuePanel)">
+          <template v-if="venuePanel.kind === 'safety-rejected'">
+            <p class="mt-4 text-lg font-black uppercase tracking-tight">
+              <RouterLink
+                :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
+                class="underline decoration-2 underline-offset-4"
+              >
+                {{ venuePanel.booking.venue_name ?? "Venue" }}
+              </RouterLink>
+            </p>
+            <SafetyRejectedNotice
+              :reason="venuePanel.reason"
+              :can-mark-revised="venuePanel.canMarkRevised"
+              :busy="review.isActing"
+              @mark-revised="markRevised(venuePanel.booking.id)"
+            />
+          </template>
+          <template v-else-if="isAffected(venuePanel)">
             <p class="mt-4 text-lg font-black uppercase tracking-tight">
               <RouterLink
                 :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"

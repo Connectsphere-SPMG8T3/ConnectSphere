@@ -2366,3 +2366,53 @@ Implemented on `fix/equipment-request-form-overflow`, 2026-10-18; implemented by
 - Playwright red on the original component: at 1280×900 the fieldset's right edge was 1329.6 px against the card's 1209 px, and Quantity and the textarea ended at 1311.6 px; both viewports failed. Green with the fix: 2 passed. Full browser suite with recording: 68/68 passed ([run](test-cases/runs/2026-10-18-1435-e2e-607ec03.md); the log names `607ec03` because the fix was not yet committed).
 - TC-EQR-015 (manual, desktop and 375 px): Pass, judged by the developer ([run](test-cases/runs/2026-10-18-1450-manual-97be20e.md)).
 - Live API/database checks, backend pytest and coverage were not run for this frontend sizing-only change. Review, PR, merge and backlog/DoD updates are the developer's.
+
+### 4.59. CR-104 — Rework safety decisions after Session 3
+
+| Field | Value |
+|---|---|
+| ID | CR-104, Product backlog row 71 |
+| Title | Record the operational safety decision |
+| Type | US: Core feature; story rework of PR #50 after Session 3, not a defect fix |
+| Epic | Event status management |
+| Sprint | 3 (6 October - 20 October) |
+| Estimate | 2 story points |
+| Priority | 2 |
+| Branch | feature/cr-104-safety-decision-rework |
+| Date | 2026-10-18 |
+| Sources | QA3-2/3/16/46/47; REQUIREMENTS §6.6.1 SF-R3/SF-R4/SF-R6; approved plan/spec in docs/superpowers |
+| Status | Implemented in worktree; commits blocked by read-only .git; migration and manual verification pending; not Done |
+
+**User story (verbatim, Product backlog row 71 read 2026-10-18):**
+
+> As a Safety officer, I want to be able to Approve, reject or request changes to an event's safety arrangements with comments, so that Only safe events proceed to preparation.
+
+**Acceptance criteria (verbatim from the Product backlog):**
+
+> AC1. [W7 CR-06, QA3-2, QA3-3] Approve: the event becomes Confirmed. The organiser, coordinator, venue staff and technical support are notified. Preparation follows on the first preparation update (68 AC8); Confirmed is no longer described as the Preparation stage.
+> AC2. [QA3-46] Request changes (comment required): the event returns to Planning and the coordinator is notified. No venue booking or equipment line changes status; the coordinator decides what to change with venue staff or technical support.
+> AC3. [QA3-47] Reject a venue's safety arrangement (reason required): the decision names the venue booking it rejects. That booking is flagged Safety rejected, counts as not ready (82) and is not released. The event returns to Planning and the coordinator is notified, and the safety issue and reason are shown to the coordinator on that booking. The coordinator may revise the arrangement or replace the venue. The event itself is not rejected.
+> AC4. After changes or a rejection, the coordinator sends the event for safety check again (82). In a multi-venue event only the venue concerned is reworked; the other venues keep their approvals.
+> AC5. An event cannot be Confirmed without Safety Officer approval, including through a direct API call.
+> AC6. [QA3-16] A change approved after safety approval (37) returns a Confirmed or Preparation event to Planning; it must pass the safety check again (82) once its arrangements are re-approved.
+> AC7. Every decision, comment, who made it and when are recorded in the event history.
+> AC8. Only users acting as Safety Officer can decide. Others get 403.
+> AC9. The Safety Officer always responds, so there is no timeout or escalation.
+> AC10. If an arrangement stops being ready while the event is in Safety review (a booking is flagged by CR-94 or CR-95, cancelled by 85, or the technical status leaves Ready), the event returns to Planning, leaves the queue, and the coordinator and Safety Officers are notified.
+
+
+#### How the implementation maps to the ticket
+
+Request changes returns Planning and records concerned ids without changing booking or equipment rows (AC2). Reject requires exactly one approved, unflagged venue booking: it remains approved, gains Safety rejected plus the trimmed reason and history, and the event returns Planning (AC3). Other spaces keep their approvals; readiness names only the flagged space (AC4). Assigned coordinators acting as Event Coordinator can Mark as revised in Planning through the new service-role-only RPC and POST endpoint; all flag fields clear, history records safety_revised, and the event can be sent again through 82. No revision notification [Assumption].
+
+The officer form uses a venue radio for Reject alongside optional concerned-arrangement checkboxes for Request changes, with revised confirmation copy. SafetyRejectedNotice appears on the coordinator's venue/space panel with the reason and Mark as revised; the store reloads the event after success and exposes 409 details. Organiser event reads continue to redact the internal flag and reason.
+
+Migration `20261018150000_cr104_safety_decision_rework.sql` was applied to the live project on 2026-10-18. Existing CR-95 replacement/restore remains Affected-only. AC6 is partly blocked on 68 AC8: approved_change remains confirmed-only, pinned by a test and TODO. Cancellation to free a Safety-rejected space slot belongs to 85; preparation status, cancellation and CR-95 replacement changes are outside this rework.
+
+#### Verification and remaining work
+
+Test-first RED runs: backend decision/readiness 10 failures, revision endpoint/adapter 13 failures; frontend officer form 4 failures, coordinator/helper/notice 11 failures plus API adapter 1 failure; live-probe regression tests 4 failures. These fail on the absent/new contracts, then pass with implementation. Full backend suites after API tasks: 1,392 passed; after live-probe regressions: 1,396 passed (one existing third-party warning). Full frontend after the final visibility correction: 971 passed in 69 files, 96.1% line coverage. Final live-probe suite totals and changed-line coverage evidence are in the implementation report/run evidence.
+
+Codex's sandbox couldn't write git or Supabase CLI state, so Claude reviewed the changes and committed them per task. Review fixes: `mark_safety_revision` now locks the event before the booking (the same order as `safety_return_event`, so the two can't deadlock), the `CoordinatorOnly` alias moved below the venue-staff comment, and the single-venue Safety rejected heading links to the venue like the Affected one. `supabase db push` from this branch was refused because the live history holds `20261018140000` (D40, on `fix/scrum-64-organiser-notice`, not on `main`). The developer pushed with that file copied in temporarily, and the dry run showed only `20261018150000` pending. After the push: `safety_decision_checks.sql` passed live; advisors showed nothing new (the existing leaked-password, equipment RLS initplan and unused-index notices only); `verify_live.py --record` 126/126 and `npm run test:e2e:record` 66/66; and the developer's manual pass on three throwaway 2099 events passed TC-SDEC-010, 011 and 025–029. The send-again step of TC-SDEC-026 was completed through the API (HTTP 200, `safety_review`). The throwaway events were deleted afterwards.
+
+**Plan correction in this entry:** the existing booking page showed flag reasons only for Affected bookings, so the planned venue-staff visibility assumption was false. A new view test failed (1 failed, 23 passed) on the missing safety notice before a four-line read-only Safety rejected badge/reason was added to BookingRequestView. Its existing CR-95 restore behaviour is unchanged. The full frontend suite then passed 971 tests; no changed executable lines are uncovered in either layer.

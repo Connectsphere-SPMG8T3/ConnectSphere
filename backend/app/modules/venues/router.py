@@ -43,6 +43,8 @@ VenueReader = Annotated[CurrentUser, Depends(require_roles(["event_coordinator",
 # REQUIREMENTS §6.21). Stated so the absence reads as a decision, not an
 # oversight.
 VenueStaffOnly = Annotated[CurrentUser, Depends(require_roles(["venue_staff"]))]
+# CR-104: only the assigned coordinator marks a Safety-rejected booking revised.
+CoordinatorOnly = Annotated[CurrentUser, Depends(require_roles(["event_coordinator"]))]
 
 # Endpoints are plain `def`: supabase-py is synchronous, so FastAPI runs them
 # in its threadpool instead of blocking the event loop.
@@ -162,6 +164,12 @@ def read_venue_booking(booking_id: UUID, current_user: BookingViewer) -> VenueBo
     """One booking request with its event's requirements, venue staff's decision
     if there is one, and the booking's history (SCRUM-38 AC1, AC6, AC12)."""
     return service.booking_detail(str(booking_id), current_user.id, current_user.role)
+
+
+@bookings_router.post("/{booking_id}/mark-revised", response_model=VenueBookingDetail, status_code=status.HTTP_200_OK)
+def mark_venue_booking_revised(booking_id: UUID, current_user: CoordinatorOnly) -> VenueBookingDetail:
+    """CR-104 AC3/AC4 [Team decision]: the assigned coordinator marks revised."""
+    return service.mark_safety_revision(str(booking_id), current_user.id)
 
 
 @bookings_router.post("/{booking_id}/restore", response_model=VenueBookingDetail, status_code=status.HTTP_200_OK)

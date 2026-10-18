@@ -186,3 +186,23 @@ describe("describeConflict (SCRUM-21 AC2)", () => {
     expect(describeConflict(null, "Asia/Singapore")).toBe("");
   });
 });
+
+
+describe('CR-104 Safety rejected panel', () => {
+  const rejected = { ...booking('approved'), flag:'safety_rejected',flag_reason:'Exits blocked',event_space_request_id:'s1' };
+  it.each(['planning','safety_review'])('names the booking and limits revision in %s', (status) => {
+    expect(venuePanelState({status,venue_bookings:[rejected]})).toEqual({kind:'safety-rejected',booking:rejected,reason:'Exits blocked',canMarkRevised:status==='planning'});
+  });
+  it('scopes the flag to its own space', () => {
+    const other={...booking('approved'),id:'b2',event_space_request_id:'s2'};
+    const event={status:'planning',venue_bookings:[rejected,other]};
+    expect(venuePanelState(event,{id:'s1'}).kind).toBe('safety-rejected');
+    expect(venuePanelState(event,{id:'s2'})).toEqual({kind:'booked',booking:other});
+  });
+  it('ignores a released flagged booking', () => {
+    expect(venuePanelState({status:'planning',venue_bookings:[{...rejected,status:'released'}]}).kind).not.toBe('safety-rejected');
+  });
+  it('also supports the single-booking event contract', () => {
+    expect(venuePanelState({status:'planning',venue_booking:rejected}).kind).toBe('safety-rejected');
+  });
+});
