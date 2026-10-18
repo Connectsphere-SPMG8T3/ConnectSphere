@@ -2334,7 +2334,7 @@ On `feature/cr-95-affected-bookings`, branched from `main` after SCRUM-21 merged
 |---|---|
 | ID | D40 / SCRUM-64 |
 | Type | Bug fix |
-| Status | Fixed on `fix/scrum-64-organiser-notice`; pending migration push |
+| Status | Fixed on `fix/scrum-64-organiser-notice`; migration `20261018140000` pushed 2026-10-18 |
 | Customer clarification | SCRUM-64 AC3 updated 17/10; QA3-7, CAL-R5 |
 
 **Symptom:** deactivating a venue flagged its future held/approved bookings Affected and notified the coordinator, but the organiser received no notice about the affected arrangement or next action. Reproduced live in a rolled-back transaction on 2026-10-18.
@@ -2345,4 +2345,4 @@ On `feature/cr-95-affected-bookings`, branched from `main` after SCRUM-21 merged
 
 **Regression coverage:** SQL assertions were written first for exact recipients, wording, unflagged exclusions, two non-overlapping space bookings for one event, organiser-as-actor suppression, and repeated deactivation. TC-VENUE-066 also checks the organiser once and excludes other new recipients; booking-request notices are snapshotted first. Existing throwaway event deletion cascades to all notification types, so cleanup needs no change. TC-VENUE-091 traces the automated checks; TC-VENUE-092 is the developer's desktop/375 px wording pass.
 
-**Verification:** pending live push. The SQL and API live checks were deliberately not run, and the migration was not pushed, per the implementation plan. Claude will run the regression checks against the old live function to confirm red, then verify after deployment. TC-VENUE-092 remains pending the developer's manual pass. All changes are left uncommitted for review.
+**Verification:** before the fix, the extended `venue_deactivation_checks.sql` failed against the live function (`ORGANISER NOTICE FAIL: event …64a1 has 0 notices, expected one`); with the migration applied in a rolled-back transaction it passed. After the developer pushed `20261018140000`, the script passed live, `verify_live.py --record` passed 124/124 including TC-VENUE-066 and TC-VENUE-070 ([run](test-cases/runs/2026-10-18-1347-api-db-e476346.md)), the browser suite passed 66/66 ([run](test-cases/runs/2026-10-18-1355-e2e-e476346.md)), full `pytest` passed (1368), and advisors show nothing new. TC-VENUE-092 (manual wording and layout pass) awaits the developer.
