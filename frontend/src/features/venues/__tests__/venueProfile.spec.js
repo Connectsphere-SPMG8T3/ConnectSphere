@@ -290,13 +290,13 @@ describe("CR-100 venue buffers and safety details", () => {
   });
 
   it("sends numeric buffers and trimmed safety text, including cleared fields", () => {
-    const form = { ...venueToEditForm(null), setupMinutes: "0", turnaroundMinutes: "1000000",
+    const form = { ...venueToEditForm(null), setupMinutes: "0", turnaroundMinutes: "2147483647",
       emergencyAccess: "  East exit\nCourtyard  ", restrictions: "   " };
-    expect(editFormToPayload(form)).toMatchObject({ setup_minutes: 0, turnaround_minutes: 1000000,
+    expect(editFormToPayload(form)).toMatchObject({ setup_minutes: 0, turnaround_minutes: 2147483647,
       emergency_access: "East exit\nCourtyard", restrictions: null });
   });
 
-  it.each(["", " ", "abc", "-1", "1.5"])("rejects invalid minutes %j before sending", (value) => {
+  it.each(["", " ", "abc", "-1", "1.5", "0x10", "1e3", "2147483648"])("rejects invalid minutes %j before sending", (value) => {
     for (const field of ["setupMinutes", "turnaroundMinutes"]) {
       expect(() => editFormToPayload({ ...venueToEditForm(null), [field]: value })).toThrow(/whole number/);
     }

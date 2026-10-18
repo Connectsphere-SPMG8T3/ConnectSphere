@@ -2484,3 +2484,13 @@ Shared PostgREST and browser data round-trips remain unverified until the migrat
 Rollback SQL evidence: [CR-100 migration and regression/compatibility checks](test-cases/runs/2026-10-18-2351-cr100-rollback-sql-ade5af0.md).
 
 Full unit/coverage/build evidence: [1,439 backend and 982 frontend tests passed](test-cases/runs/2026-10-18-2357-cr100-unit-build-ade5af0.md); 96.76% / 96.01% total line coverage, no uncovered changed executable lines. Production build passed.
+
+#### Review fixes (2026-10-19)
+
+A code review of `d4854d0` found three things, fixed test first on the same branch:
+
+- **Buffer minutes above Postgres `integer`.** The API accepted them and the `update_venue` cast failed in the database, a 500. `VenueUpdateRequest` now caps both fields at 2147483647 (422), and `editFormToPayload` accepts digits only up to the same limit, which also stops `0x10` and `1e3` passing as numbers. It is a storage limit: the Session 3 answer sets no business maximum (VC-R9), so the far-date handling from item 5 stays. TC-VENUE-090 now also sends 2147483648.
+- **A booking in turnaround dropped off the venue profile.** `list_upcoming_bookings` filtered on the booked end after the switch to `booked_period`. It now filters on the occupied end and still shows the booked window.
+- **Misleading migration comment.** The comment said omitted `p_after` keys keep their values "for older callers"; it now says that only covers a pre-migration backend, and that the full-form API clears an omitted field.
+
+The dashboard's affected-replacement list keeps its booked-end cut-off (an event that is over has nothing to replace); `IMPLEMENTATION_MAP.md` now states which period each booking read returns.

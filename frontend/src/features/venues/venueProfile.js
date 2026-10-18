@@ -222,7 +222,8 @@ export function venueToEditForm(venue) {
 /** The edit form's state, as the PATCH body SCRUM-63's endpoint expects. */
 export function editFormToPayload(form, { confirm = false } = {}) {
   for (const [label, value] of [["Setup", form.setupMinutes], ["Turnaround", form.turnaroundMinutes]]) {
-    if (!String(value ?? "").trim() || !Number.isInteger(Number(value)) || Number(value) < 0) {
+    // Digits only, up to Postgres `integer`; the customer set no business maximum (VC-R9).
+    if (!/^\d+$/.test(String(value ?? "").trim()) || Number(value) > 2147483647) {
       throw new Error(`${label} must be a non-negative whole number of minutes.`);
     }
   }

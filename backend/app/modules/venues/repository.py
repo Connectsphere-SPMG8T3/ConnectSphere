@@ -333,11 +333,12 @@ def list_upcoming_bookings(venue_id: str, since: datetime) -> list[BookingSummar
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_id, event_space_request_id, booked_period, status")
+        .select("id, event_id, event_space_request_id, booked_period, occupied_period, status")
         .eq("venue_id", venue_id)
         .in_("status", sorted(OCCUPYING_STATUSES))
         .execute()
     )
+    # Shown by its booked window, but kept while its turnaround still occupies the venue.
     bookings = [
         BookingSummary(
             id=row["id"],
@@ -347,8 +348,9 @@ def list_upcoming_bookings(venue_id: str, since: datetime) -> list[BookingSummar
             status=row["status"],
         )
         for row in response.data or []
+        if _parse_range(row["occupied_period"]).ends_at > since
     ]
-    return sorted((b for b in bookings if b.period.ends_at > since), key=lambda b: b.period.starts_at)
+    return sorted(bookings, key=lambda b: b.period.starts_at)
 
 
 # The two functions above scope to one venue and drop past rows in Python,

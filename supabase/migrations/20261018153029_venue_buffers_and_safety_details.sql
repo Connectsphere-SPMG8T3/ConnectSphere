@@ -1,7 +1,8 @@
 -- CR-100: venue defaults and safety details. Existing bookings are untouched.
 -- Keep the existing RPC signatures, locks, history, flags and service-only grants.
 -- update_venue reads new fields from the full p_after snapshot; omitted keys
--- preserve their current values for older callers.
+-- preserve their current values, for a backend deployed before this migration.
+-- The API's edit form always sends all four, so omitting one there clears it.
 
 alter table public.venues
     add column setup_minutes integer not null default 0,

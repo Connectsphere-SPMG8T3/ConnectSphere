@@ -424,8 +424,9 @@ class VenueUpdateRequest(BaseModel):
     opens_at: time
     closes_at: time
     description: str | None = None
-    setup_minutes: int = Field(default=0, ge=0, strict=True)
-    turnaround_minutes: int = Field(default=0, ge=0, strict=True)
+    # Postgres `integer`: the customer set no business maximum (VC-R9).
+    setup_minutes: int = Field(default=0, ge=0, le=2147483647, strict=True)
+    turnaround_minutes: int = Field(default=0, ge=0, le=2147483647, strict=True)
     emergency_access: str | None = None
     restrictions: str | None = None
 

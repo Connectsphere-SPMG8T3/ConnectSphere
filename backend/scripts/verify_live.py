@@ -1047,7 +1047,7 @@ def _(ctx: Context) -> None:
     payload = {"name": "live-check venue validation", "location": "Test", "capacity": 50,
                "opens_at": "08:00:00", "closes_at": "22:00:00", "setup_minutes": 0, "turnaround_minutes": 0}
     for field in ("setup_minutes", "turnaround_minutes"):
-        for value in (-1, "abc", "", None, True, 1.5):
+        for value in (-1, 2147483648, "abc", "", None, True, 1.5):
             expect_status(ctx.client.patch(f"{ctx.api}/venues/{venue_id}", headers=headers,
                                           json={**payload, field: value}), 422)
 

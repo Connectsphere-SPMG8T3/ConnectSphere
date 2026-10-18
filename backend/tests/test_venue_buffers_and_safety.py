@@ -42,7 +42,7 @@ def test_default_zero_and_unrecorded_safety_details(client, authenticate_as, aut
         setup_minutes=0, turnaround_minutes=0, emergency_access=None, restrictions=None)
 
 
-@pytest.mark.parametrize("minutes", [0, 30, 1000000])
+@pytest.mark.parametrize("minutes", [0, 30, 1000000, 2147483647])
 def test_save_read_and_history(client, authenticate_as, auth_headers, venue_state, minutes):
     actor = authenticate_as("venue_staff")
     facts = {**FACTS, "setup_minutes": minutes}
@@ -61,7 +61,7 @@ def test_save_read_and_history(client, authenticate_as, auth_headers, venue_stat
 
 
 @pytest.mark.parametrize("field", ["setup_minutes", "turnaround_minutes"])
-@pytest.mark.parametrize("value", [-1, "abc", "", "   ", None, True, 1.5])
+@pytest.mark.parametrize("value", [-1, 2147483648, "abc", "", "   ", None, True, 1.5])
 def test_invalid_buffer_rejected_before_write(client, authenticate_as, auth_headers, venue_state, field, value):
     authenticate_as("venue_staff")
     response = client.patch(URL, headers=auth_headers, json={**VALID_EDIT_PAYLOAD, **FACTS, field: value})
@@ -222,3 +222,22 @@ def test_conflict_contract_also_accepts_already_parsed_datetimes():
     ends = datetime(2031, 5, 20, 12, tzinfo=timezone.utc)
     conflict = BookingConflict(kind="booking", starts_at=starts, ends_at=ends)
     assert conflict.starts_at == starts and conflict.ends_at == ends
+
+
+def test_upcoming_bookings_keep_a_booking_still_in_its_turnaround(monkeypatch):
+    from datetime import datetime, timezone
+
+    query = MagicMock()
+    for name in ("select", "eq", "in_"):
+        getattr(query, name).return_value = query
+    query.execute.return_value.data = [{"id": "booking", "event_id": "event", "status": "approved",
+        "booked_period": '["2031-05-20 10:00:00+00","2031-05-20 12:00:00+00")',
+        "occupied_period": '["2031-05-20 09:30:00+00","2031-05-20 12:45:00+00")'}]
+    admin = MagicMock(); admin.table.return_value = query
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: admin)
+    # 12:30: the event has ended but its turnaround still occupies the venue.
+    [booking] = repository.list_upcoming_bookings(HALL_A_ID, datetime(2031, 5, 20, 12, 30, tzinfo=timezone.utc))
+    assert booking.period.ends_at.isoformat() == "2031-05-20T12:00:00+00:00"
+    [booking_after] = repository.list_upcoming_bookings(HALL_A_ID, datetime(2031, 5, 20, 12, 44, tzinfo=timezone.utc))
+    assert booking_after.id == "booking"
+    assert repository.list_upcoming_bookings(HALL_A_ID, datetime(2031, 5, 20, 12, 45, tzinfo=timezone.utc)) == []
