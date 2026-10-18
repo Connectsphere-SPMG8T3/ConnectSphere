@@ -2,6 +2,15 @@
 
 See [README.md](README.md) for the environment, seeded accounts and how to record a run.
 
+## Equipment request card overflow (D41)
+
+Read-only checks on the assigned coordinator's planning event `/coordinator/events/e0000000-0000-4000-8000-000000000202`. Do not submit requests or reset seeded data.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|------------|-----------------|----------|---------|----------|
+| TC-EQR-014 | D41 — equipment request controls fit the card at desktop and phone widths | E2E | Seeded planning event and catalogue available; coordinator session | Open the event at each viewport; wait for catalogue; choose the longest catalogue label, fill quantity and requirements, add a second draft item; measure every fieldset, select, input and textarea in the panel | 1280×900 and 375×800; quantity 5; requirements `HDMI to the lectern` | Every measured right edge is at most the bordered panel card's right edge +1 px; all controls have a rendered box; document scrollWidth is no greater than innerWidth. `frontend/e2e/equipment-layout.e2e.js`; no submit or database cleanup. | 🟠 | 2026-10-18 | 2026-10-18 · Pass ([run](runs/2026-10-18-1435-e2e-607ec03.md)) |
+| TC-EQR-015 | D41 — equipment request remains readable and usable at desktop and phone widths | Manual | Same planning event, coordinator; do not submit | At both widths inspect Equipment request, choose the longest catalogue label, enter quantity 5 and requirements, add a second item; inspect borders, controls, warning, counter and buttons | 1280×900 (two-column event page) and 375×800 | Item borders stay inside the card; Quantity and Technical requirements are fully visible; phone controls stack; labels, warning, counter and buttons remain readable with no clipping or horizontal page scroll. | 🟠 | 2026-10-18 | 2026-10-18 · Pass ([run](runs/2026-10-18-1450-manual-97be20e.md)) |
+
 ## Record and submit an event equipment request (SCRUM-45)
 
 **Preconditions.** Migration `20261006120000_equipment_requests.sql` applied. Seeded fixtures: `…0202` (*Review Fixture: Year-End Dinner*) is in `planning` and `…0201` (*Review Fixture: Partner Summit*) is `under_review`, both assigned to `coordinator@connectsphere.dev`. Seeded catalogue: *4K Projector* (`b…0001`, 4 in total), *Wireless Mics* (`b…0002`, 12), and three more. Reset the fixtures afterwards with `supabase/verification/event_review_fixture_reset.sql`, which also deletes their request lines.
