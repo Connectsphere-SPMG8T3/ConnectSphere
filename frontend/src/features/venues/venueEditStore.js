@@ -18,6 +18,8 @@ export const useVenueEditStore = defineStore("venueEdit", {
     warnings: [],
     // SCRUM-64: bookings a deactivation would flag Affected, from the preview.
     affected: [],
+    // SCRUM-51: the saved block and the bookings recorded against it (AC6).
+    blockResult: null,
     isLoading: false,
     isSaving: false,
     error: null,
@@ -104,6 +106,21 @@ export const useVenueEditStore = defineStore("venueEdit", {
         const response = await venuesApi.deactivate(venueId, payload, token);
         this.affected = response.saved ? [] : response.affected ?? [];
         if (response.saved) this.venue = response.venue;
+        return response.saved;
+      });
+    },
+
+    /**
+     * Block a venue (SCRUM-51). `payload` is `toBlockPayload`'s. Returns
+     * `true` once saved, with `blockResult` holding the block and the
+     * bookings recorded against it; `false` when `affected` came back for
+     * staff to confirm, and nothing was written.
+     */
+    async createBlock(venueId, payload) {
+      return this._save(async (token) => {
+        const response = await venuesApi.createBlock(venueId, payload, token);
+        this.affected = response.saved ? [] : response.affected ?? [];
+        this.blockResult = response.saved ? { block: response.block, affected: response.affected ?? [] } : null;
         return response.saved;
       });
     },

@@ -112,6 +112,7 @@ DB_SCRIPTS = [
     ("venue_replacement_checks.sql", "TC-BOOK-045 (CR-95: request a replacement for an affected booking)"),
     ("venue_release_checks.sql", "TC-BOOK-046 (CR-95: release the original when its replacement is approved)"),
     ("venue_restore_checks.sql", "TC-BOOK-047 (CR-95: restore an affected booking)"),
+    ("venue_block_create_checks.sql", "TC-BLOCK-008–013 (SCRUM-51 database half: refusals, history, flags, links, notices, RLS)"),
 ]
 
 
@@ -1584,6 +1585,203 @@ def _(ctx: Context) -> None:
     states = (booking_status(original["id"]), booking_status(replacement["id"]))
     want = ("released", "approved") if results["approve"] == 200 else ("approved", "cancelled")
     expect(states == want, f"original and replacement are {states}, want {want}")
+
+
+# --- Venue staff block a venue (SCRUM-51) -----------------------------------
+# Every block goes on a throwaway venue, so search and booking of seeded venues
+# never change; the venues (and their blocks, links and history) are deleted
+# with the booking checks' events.
+
+def create_block(ctx: Context, session: Session | None, venue_id: str, starts: str, ends: str, **body):
+    headers = session.headers if session else {}
+    return ctx.client.post(f"{ctx.api}/venues/{venue_id}/blocks", headers=headers,
+                           json={"starts_at": starts, "ends_at": ends, "reason": "maintenance", **body})
+
+
+def search_lists(ctx: Context, venue_id: str, starts: str | None = None, ends: str | None = None) -> bool:
+    params = {"starts_at": starts, "ends_at": ends} if starts else {}
+    found = ctx.client.get(f"{ctx.api}/venues", params=params, headers=ctx.shared("event_coordinator").headers)
+    expect_status(found, 200)
+    return any(r["venue"]["id"] == venue_id and not r["excluded"] for r in found.json()["results"])
+
+
+def blocks_on(venue_id: str) -> list[dict]:
+    return db_query(f"select id, reason::text as reason, notes, created_by from public.venue_blocks "
+                    f"where venue_id = '{venue_id}'")
+
+
+@check("TC-BLOCK-001", "Venue staff block a venue with a reason; the block and its history row record who and what",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B001")
+    response = create_block(ctx, ctx.shared("venue_staff"), venue_id, "2031-09-01T09:00:00+08:00",
+                            "2031-09-01T17:00:00+08:00", reason="equipment_failure", detail="  Projector rig down  ")
+    expect_status(response, 200)
+    body = response.json()
+    expect(body["saved"] is True and body["affected"] == [] and body["block"]["reason"] == "equipment_failure",
+           f"response is {body}")
+    [stored] = blocks_on(venue_id)
+    expect(stored["notes"] == "Projector rig down" and stored["created_by"] == VENUE_STAFF_ID, f"stored block is {stored}")
+
+    history = ctx.client.get(f"{ctx.api}/venues/{venue_id}/history", headers=ctx.shared("venue_staff").headers)
+    expect_status(history, 200)
+    [entry] = history.json()["entries"]
+    expect(entry["actor"]["id"] == VENUE_STAFF_ID and entry["after"]["block"]["reason"] == "equipment_failure"
+           and entry["after"]["block"]["notes"] == "Projector rig down", f"history entry is {entry}")
+
+
+@check("TC-BLOCK-002", "Invalid or incomplete block input is refused with a message naming the problem", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B002")
+    staff = ctx.shared("venue_staff")
+    cases = [
+        ({"starts_at": "2031-09-02T17:00:00+08:00", "ends_at": "2031-09-02T09:00:00+08:00"}, "End must be after start."),
+        ({"starts_at": "2020-09-02T09:00:00+08:00", "ends_at": "2020-09-02T17:00:00+08:00"}, "End must be in the future."),
+        ({"reason": "other", "detail": "  "}, "A detail is required when the reason is Other."),
+        ({"detail": "x" * 1001}, "The detail can be at most 1000 characters."),
+        ({"reason": ""}, "reason"),
+    ]
+    for overrides, named in cases:
+        body = {"starts_at": "2031-09-02T09:00:00+08:00", "ends_at": "2031-09-02T17:00:00+08:00", **overrides}
+        response = create_block(ctx, staff, venue_id, body.pop("starts_at"), body.pop("ends_at"), **body)
+        expect_status(response, 422)
+        expect(named in response.text, f"{overrides} answered {response.text} (want it to name {named!r})")
+    expect(blocks_on(venue_id) == [], "a refused block was saved")
+
+
+@check("TC-BLOCK-003", "A blocked venue drops out of overlapping searches only, and returns when the block ends",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B003")
+    expect_status(create_block(ctx, ctx.shared("venue_staff"), venue_id, "2031-09-03T09:00:00+08:00",
+                               "2031-09-03T12:00:00+08:00"), 200)
+    expect(not search_lists(ctx, venue_id, "2031-09-03T11:00:00+08:00", "2031-09-03T13:00:00+08:00"),
+           "the venue appears in a search overlapping its block")
+    # AC4: the block's end is exclusive and nothing has to be reset.
+    expect(search_lists(ctx, venue_id, "2031-09-03T12:00:00+08:00", "2031-09-03T15:00:00+08:00"),
+           "the venue is missing from a search starting when its block ends")
+    expect(search_lists(ctx, venue_id), "the venue is missing from a search with no date/time")
+
+
+@check("TC-BLOCK-004", "A booking request during a block is refused; one after it ends is accepted; approval of an "
+                       "earlier hold is refused", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B004")
+    coordinator = ctx.shared("event_coordinator")
+    staff = ctx.shared("venue_staff")
+    early = throwaway_event(ctx, "B004-a", "2031-09-04 10:00+08", "2031-09-04 11:00+08")
+    held = request_venue(ctx, coordinator, early, venue_id)
+    expect_status(held, 201)
+    expect_status(create_block(ctx, staff, venue_id, "2031-09-04T09:00:00+08:00", "2031-09-04T12:00:00+08:00",
+                               confirm=True), 200)
+
+    during = throwaway_event(ctx, "B004-b", "2031-09-04 11:00+08", "2031-09-04 13:00+08")
+    refused = request_venue(ctx, coordinator, during, venue_id)
+    expect_status(refused, 409)
+    expect_detail(refused, "Venue blocked for this timing.")
+    after = throwaway_event(ctx, "B004-c", "2031-09-04 12:00+08", "2031-09-04 14:00+08")
+    expect_status(request_venue(ctx, coordinator, after, venue_id), 201)
+
+    approval = approve_booking(ctx, staff, held.json()["id"])
+    expect_status(approval, 409)
+    expect_detail(approval, "Venue blocked for this time.")
+
+
+@check("TC-BLOCK-005", "Blocking over bookings previews them, then flags them Affected, notifies the coordinator "
+                       "and lists them with event, status and reason", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B005")
+    staff = ctx.shared("venue_staff")
+    held_event = throwaway_event(ctx, "B005-a", "2031-09-05 10:00+08", "2031-09-05 11:00+08")
+    held = request_venue(ctx, ctx.shared("event_coordinator"), held_event, venue_id)
+    expect_status(held, 201)
+    approved_event = throwaway_event(ctx, "B005-b", "2031-09-05 13:00+08", "2031-09-05 14:00+08", status="confirmed")
+    [approved] = db_query(
+        "insert into public.venue_bookings (event_id, venue_id, booked_period, status) "
+        f"values ('{approved_event}', '{venue_id}', tstzrange('2031-09-05 13:00+08', '2031-09-05 14:00+08', '[)'), "
+        "'approved') returning id"
+    )
+    period = ("2031-09-05T09:00:00+08:00", "2031-09-05T15:00:00+08:00")
+
+    preview = create_block(ctx, staff, venue_id, *period, reason="safety")
+    expect_status(preview, 200)
+    body = preview.json()
+    expect(body["saved"] is False and sorted(b["booking_id"] for b in body["affected"])
+           == sorted([held.json()["id"], approved["id"]]), f"preview is {body}")
+    expect(blocks_on(venue_id) == [], "the preview saved the block")
+
+    saved = create_block(ctx, staff, venue_id, *period, reason="safety", confirm=True)
+    expect_status(saved, 200)
+    rows = {b["booking_id"]: b for b in saved.json()["affected"]}
+    expect(set(rows) == {held.json()["id"], approved["id"]}, f"saved affected is {saved.json()}")
+    expect(rows[approved["id"]]["status"] == "approved" and rows[approved["id"]]["block_reason"] == "Safety"
+           and rows[approved["id"]]["event_name"].endswith("B005-b"), f"affected row is {rows[approved['id']]}")
+
+    flags = db_query(f"select status::text as status, flag::text as flag, flag_reason from public.venue_bookings "
+                     f"where venue_id = '{venue_id}' order by status")
+    expect(flags == [{"status": "approved", "flag": "affected", "flag_reason": "Venue unavailable: Safety"},
+                     {"status": "held", "flag": "affected", "flag_reason": "Venue unavailable: Safety"}],
+           f"bookings are {flags}")
+    [event] = db_query(f"select status::text as status from public.events where id = '{approved_event}'")
+    expect(event["status"] == "confirmed", f"the confirmed event moved to {event['status']}")
+    notified = db_query(f"select recipient_id from public.notifications where event_id = '{approved_event}' "
+                        "and type = 'venue_booking_affected'")
+    expect([row["recipient_id"] for row in notified] == [COORDINATOR_ID],
+           f"venue_booking_affected went to {notified} (want the coordinator once)")
+    [organiser] = db_query(f"select message from public.notifications where event_id = '{approved_event}' "
+                           "and type = 'venue_unavailable_organiser'")
+    expect("Safety" not in organiser["message"] and "safety" not in organiser["message"],
+           f"the organiser was told the reason: {organiser['message']}")
+
+
+@check("TC-BLOCK-006", "Only a session acting as venue staff can block; a coordinator, a venue-staff holder acting "
+                       "as coordinator, and no token are refused", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B006")
+    period = ("2031-09-06T09:00:00+08:00", "2031-09-06T12:00:00+08:00")
+    # The seeded coordinator also holds Venue Staff; its shared session acts as coordinator.
+    expect_status(create_block(ctx, ctx.shared("event_coordinator"), venue_id, *period), 403)
+    for role in ("tech_support", "event_organiser"):
+        expect_status(create_block(ctx, ctx.shared(role), venue_id, *period), 403)
+    expect_status(create_block(ctx, None, venue_id, *period), 401)
+    expect(blocks_on(venue_id) == [], "a refused caller saved a block")
+
+
+@check("TC-BLOCK-007", "A block and a booking request for the same slot at the same instant never leave an "
+                       "unflagged overlapping hold", needs_db=True)
+def _(ctx: Context) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    coordinator = ctx.shared("event_coordinator")
+    staff = ctx.shared("venue_staff")
+    for attempt in range(3):
+        venue_id = throwaway_venue(ctx, f"B007-{attempt}")
+        event_id = throwaway_event(ctx, f"B007-{attempt}", "2031-09-07 10:00+08", "2031-09-07 12:00+08")
+
+        def fire(kind: str) -> tuple[str, int]:
+            with httpx.Client(timeout=30) as client:
+                if kind == "block":
+                    response = client.post(f"{ctx.api}/venues/{venue_id}/blocks", headers=staff.headers,
+                                           json={"starts_at": "2031-09-07T09:00:00+08:00",
+                                                 "ends_at": "2031-09-07T13:00:00+08:00",
+                                                 "reason": "maintenance", "confirm": True})
+                else:
+                    response = client.post(f"{ctx.api}{BOOKINGS}", headers=coordinator.headers,
+                                           json={"event_id": event_id, "venue_id": venue_id})
+                return kind, response.status_code
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            codes = dict(pool.map(fire, ["block", "request"]))
+        expect(codes["block"] == 200 and codes["request"] in (201, 409), f"attempt {attempt}: {codes}")
+        holds = db_query(
+            "select vb.flag::text as flag, exists (select 1 from public.venue_block_bookings l "
+            "where l.booking_id = vb.id) as linked from public.venue_bookings vb "
+            f"where vb.venue_id = '{venue_id}' and vb.status = 'held'"
+        )
+        if codes["request"] == 201:
+            expect(holds == [{"flag": "affected", "linked": True}], f"attempt {attempt}: the hold is {holds}")
+        else:
+            expect(holds == [], f"attempt {attempt}: a refused request left {holds}")
 
 
 # --- Several venues per event (CR-97) --------------------------------------

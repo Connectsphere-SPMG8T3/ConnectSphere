@@ -12,6 +12,8 @@ from app.modules.venues.schemas import (
     VenueBookingCreate,
     VenueBookingDetail,
     VenueBookingReject,
+    VenueBlockCreate,
+    VenueBlockResponse,
     VenueDeactivateRequest,
     VenueDeactivateResponse,
     VenueDetail,
@@ -112,6 +114,19 @@ def deactivate_venue(
     inactive or its `version` had moved on.
     """
     return service.deactivate_venue(str(venue_id), current_user.id, body)
+
+
+@router.post("/{venue_id}/blocks", response_model=VenueBlockResponse, status_code=status.HTTP_200_OK)
+def create_block(venue_id: UUID, body: VenueBlockCreate, current_user: VenueStaffOnly) -> VenueBlockResponse:
+    """Block a venue for a period with a reason (SCRUM-51 AC1). Any user
+    acting as Venue Staff may block any venue (AUTH-R5).
+
+    `saved` is `false` without `confirm: true` when the block overlaps held or
+    approved bookings: `affected` lists them and nothing is written. Once
+    saved, `affected` lists the bookings flagged and recorded against the
+    block (AC5, AC6). `422` names the problem with the period or reason.
+    """
+    return service.create_block(str(venue_id), current_user.id, body)
 
 
 @router.post("/{venue_id}/reactivate", response_model=VenueDetail, status_code=status.HTTP_200_OK)

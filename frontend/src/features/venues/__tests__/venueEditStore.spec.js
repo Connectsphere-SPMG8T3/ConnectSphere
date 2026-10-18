@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  venuesApi: { get: vi.fn(), history: vi.fn(), update: vi.fn(), deactivate: vi.fn(), reactivate: vi.fn() },
+  venuesApi: { get: vi.fn(), history: vi.fn(), update: vi.fn(), deactivate: vi.fn(), reactivate: vi.fn(), createBlock: vi.fn() },
 }));
 
 const VENUE = {
@@ -130,6 +130,38 @@ describe("useVenueEditStore", () => {
 
     expect(history).toEqual([entry]);
     expect(store.history).toEqual([entry]);
+  });
+
+  describe("createBlock (SCRUM-51)", () => {
+    const PAYLOAD = { starts_at: "2031-05-20T09:00:00+08:00", ends_at: "2031-05-20T17:00:00+08:00",
+      reason: "maintenance", detail: null, confirm: false };
+
+    it("previews the affected bookings without saving", async () => {
+      venuesApi.createBlock.mockResolvedValue({ saved: false, block: null, affected: [{ booking_id: "b1" }] });
+      const store = useVenueEditStore();
+      expect(await store.createBlock("venue-1", PAYLOAD)).toBe(false);
+      expect(venuesApi.createBlock).toHaveBeenCalledWith("venue-1", PAYLOAD, "access-token");
+      expect(store.affected).toEqual([{ booking_id: "b1" }]);
+      expect(store.blockResult).toBeNull();
+    });
+
+    it("keeps the saved block and the bookings recorded against it", async () => {
+      const result = { saved: true, block: { id: "blk-1" }, affected: [{ booking_id: "b1", block_reason: "Maintenance" }] };
+      venuesApi.createBlock.mockResolvedValue(result);
+      const store = useVenueEditStore();
+      store.affected = [{ booking_id: "b1" }];
+      expect(await store.createBlock("venue-1", { ...PAYLOAD, confirm: true })).toBe(true);
+      expect(store.affected).toEqual([]);
+      expect(store.blockResult).toEqual({ block: result.block, affected: result.affected });
+      expect(store.isSaving).toBe(false);
+    });
+
+    it("keeps a block error for the modal and rethrows", async () => {
+      venuesApi.createBlock.mockRejectedValue(new Error("Venue not found."));
+      const store = useVenueEditStore();
+      await expect(store.createBlock("venue-1", PAYLOAD)).rejects.toThrow("Venue not found.");
+      expect(store.error).toBe("Venue not found.");
+    });
   });
 
   describe("deactivate and reactivate (SCRUM-64)", () => {

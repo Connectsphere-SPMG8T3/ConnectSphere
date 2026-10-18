@@ -5,6 +5,7 @@ import { RouterLink, useRoute } from "vue-router";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
+import BlockVenueModal from "@/components/venues/BlockVenueModal.vue";
 import DeactivateVenueModal from "@/components/venues/DeactivateVenueModal.vue";
 import VenueGallery from "@/components/venues/VenueGallery.vue";
 import { blockReasonLabel, formatEventReference } from "@/features/venues/dashboard";
@@ -175,6 +176,39 @@ async function deactivate({ reason, note, confirm }) {
   }
 }
 
+// SCRUM-51: block the venue for a period, with the same preview-then-confirm
+// as deactivation (CAL-R1). Once saved the modal lists the affected bookings
+// (AC6); closing it re-reads the venue so the Blocks tab shows the new block.
+const blockOpen = ref(false);
+
+function openBlock() {
+  venueEditStore.affected = [];
+  venueEditStore.blockResult = null;
+  actionError.value = null;
+  blockOpen.value = true;
+}
+
+async function closeBlock() {
+  const saved = Boolean(venueEditStore.blockResult);
+  blockOpen.value = false;
+  venueEditStore.affected = [];
+  venueEditStore.blockResult = null;
+  actionError.value = null;
+  if (saved) {
+    await refresh();
+    if (activeTab.value === "history") await venueEditStore.loadHistory(venue.value.id);
+  }
+}
+
+async function block(payload) {
+  actionError.value = null;
+  try {
+    await venueEditStore.createBlock(venue.value.id, payload);
+  } catch (error) {
+    actionError.value = error.message;
+  }
+}
+
 async function reactivate() {
   reactivateOpen.value = false;
   actionError.value = null;
@@ -256,9 +290,16 @@ watch(() => route.params.id, () => {
           >
             Reactivate venue
           </button>
+          <button
+            type="button"
+            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold uppercase tracking-widest text-ink shadow-hard active-press sm:border-4"
+            @click="openBlock"
+          >
+            Block venue
+          </button>
         </div>
         <p
-          v-if="actionError && !deactivateOpen"
+          v-if="actionError && !deactivateOpen && !blockOpen"
           role="alert"
           class="mt-4 border-2 border-ink bg-bauhaus-red px-3 py-2 text-sm font-bold text-canvas"
         >
@@ -274,6 +315,16 @@ watch(() => route.params.id, () => {
         :error="actionError"
         @confirm="deactivate"
         @cancel="closeDeactivate"
+      />
+      <BlockVenueModal
+        :open="blockOpen"
+        :venue-name="venue.name"
+        :affected="venueEditStore.affected"
+        :result="venueEditStore.blockResult"
+        :busy="venueEditStore.isSaving"
+        :error="actionError"
+        @confirm="block"
+        @cancel="closeBlock"
       />
       <ConfirmModal
         :open="reactivateOpen"

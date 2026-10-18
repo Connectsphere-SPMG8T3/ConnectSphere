@@ -96,6 +96,10 @@ export const venuesApi = {
   reactivate(venueId, payload, token) {
     return request(`/venues/${encodeURIComponent(venueId)}/reactivate`, { method: "POST", body: payload, token });
   },
+  // SCRUM-51: `saved: false` means `affected` came back instead of being written.
+  createBlock(venueId, payload, token) {
+    return request(`/venues/${encodeURIComponent(venueId)}/blocks`, { method: "POST", body: payload, token });
+  },
 };
 
 export const venueBookingsApi = {
