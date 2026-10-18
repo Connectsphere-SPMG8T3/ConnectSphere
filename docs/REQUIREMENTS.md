@@ -123,61 +123,83 @@ Access depends on **role** *and* on the user's **relationship to the event** (W4
 
 ### 3.1 Level 1: System context
 
+![C4 Level 1: system context (Release 1)](diagrams/c4-l1-system-context.jpg)
+
+<details>
+<summary>Mermaid text version of this diagram</summary>
+
 ```mermaid
 C4Context
-  title System Context: ConnectSphere Event Planning and Venue Booking System
+  title System Context: ConnectSphere (Release 1)
 
-  Person(organiser, "Event Organiser", "External client representative. Signs up, submits and tracks event requests")
-  Person(attendee, "Attendee", "External participant. Signs up, registers for confirmed events")
-  Person(lead, "Event Coordinator Lead", "Internal. Assigns and reassigns events to coordinators")
-  Person(coordinator, "Event Coordinator", "Internal. Lead-assigned owner of an event's planning")
-  Person(safety, "Safety Officer", "Internal. Operational Safety Check before confirmation")
-  Person(venueStaff, "Venue Staff", "Internal. Manages venues and blocks, decides booking requests")
-  Person(techStaff, "Technical Support Staff", "Internal. Manages equipment, reserves for events")
+  Person_Ext(organiser, "Event Organiser", "External client representative who submits and tracks event requests")
+  Person(lead, "Event Coordinator Lead", "Internal staff who is responsible for overseeing incoming event requests and assigning them to individual Event Coordinators")
+  Person(coordinator, "Event Coordinator", "Internal staff who is responsible for end-to-end event planning")
+  Person(venueStaff, "Venue Staff", "Internal staff who is responsible for the maintenance of the venue catalogue and approval of venue bookings")
+  Person(techStaff, "Technical Support Staff", "Internal staff who is responsible for the maintenance of the equipment catalogue and approval of equipment reservations")
+  Person(safety, "Safety Officer", "Internal staff who is responsible for reviewing the operational safety of planned events")
+  Person_Ext(attendee, "Attendee", "External participant who registers for events")
 
-  System(cs, "ConnectSphere", "Single platform for event requests, review, venue booking, equipment reservation, registration, notifications and change history")
+  System(cs, "ConnectSphere System", "Single platform for event requests, review, venue booking, equipment reservation, safety checks, attendee registration, notifications and change history")
 
-  System_Ext(email, "Email / messaging provider", "P3: channel is a team choice (QA-11), release 1 is in-app")
-  System_Ext(calendar, "Personal calendar apps", "P3: .ics export")
+  System_Ext(auth, "Supabase Authentication", "Handles user authentication, identity and session management")
 
-  Rel(organiser, cs, "Drafts, submits, amends, requests changes and cancellation, tracks status")
-  Rel(lead, cs, "Works the unassigned queue; assigns and reassigns coordinators")
-  Rel(coordinator, cs, "Reviews, returns, approves, rejects; books venues; requests equipment; sends for safety check")
-  Rel(safety, cs, "Reviews safety checklist; approves, requests changes, or rejects a venue arrangement")
-  Rel(venueStaff, cs, "Maintains venues and blocks; approves or rejects bookings; updates venue prep")
-  Rel(techStaff, cs, "Maintains equipment; checks availability; reserves; updates technical prep")
-  Rel(attendee, cs, "Browses, registers, withdraws, joins waitlist")
-  Rel(cs, email, "Sends notifications", "P3")
-  Rel(attendee, calendar, "Imports .ics", "P3")
+  Rel(organiser, cs, "Drafts, submits and amends event requests; tracks status and receives notifications", "HTTPS")
+  Rel(lead, cs, "Views the unassigned queue and assigns/reassigns events to Event Coordinators", "HTTPS")
+  Rel(coordinator, cs, "Views event requests and asks for more information if needed; creates, views and updates venue and equipment requests; sends for safety check and makes changes if needed; receives notifications", "HTTPS")
+  Rel(venueStaff, cs, "Views, accepts/reserves and updates venue requests; maintains venue catalogue; receives notifications", "HTTPS")
+  Rel(techStaff, cs, "Views, accepts and updates equipment reservations; maintains equipment catalogue; receives notifications", "HTTPS")
+  Rel(safety, cs, "Conducts Operational Safety Check; approves the event, rejects the safety arrangement or requests changes; receives notifications", "HTTPS")
+  Rel(attendee, cs, "Registers, withdraws or joins a waitlist; receives notifications", "HTTPS")
+  Rel(cs, auth, "Provides secure user login and identity management; ensures only authorised users can access the internal system and certain functionalities", "HTTPS")
 
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+  UpdateLayoutConfig($c4ShapeInRow="7", $c4BoundaryInRow="1")
 ```
+
+</details>
 
 ### 3.2 Level 2: Containers
 
+![C4 Level 2: containers (Release 1)](diagrams/c4-l2-containers.jpg)
+
+<details>
+<summary>Mermaid text version of this diagram</summary>
+
 ```mermaid
 C4Container
-  title Container Diagram: ConnectSphere
+  title Container Diagram: ConnectSphere (Release 1)
 
-  Person(user, "Any user", "Organiser, Coordinator Lead, Coordinator, Venue Staff, Tech Support, Safety Officer, Attendee")
+  Person_Ext(organiser, "Event Organiser", "External client representative who submits and tracks event requests")
+  Person(lead, "Event Coordinator Lead", "Internal staff who oversees incoming event requests and assigns them to Event Coordinators")
+  Person(coordinator, "Event Coordinator", "Internal staff who is responsible for end-to-end event planning")
+  Person(venueStaff, "Venue Staff", "Internal staff who maintains the venue catalogue and approves venue bookings")
+  Person(techStaff, "Technical Support Staff", "Internal staff who maintains the equipment catalogue and approves equipment reservations")
+  Person(safety, "Safety Officer", "Internal staff who reviews the operational safety of planned events")
+  Person_Ext(attendee, "Attendee", "External participant who registers for events")
 
-  System_Boundary(cs, "ConnectSphere") {
-    Container(spa, "Web SPA", "Vue 3, Vite, Pinia, Vue Router, Tailwind", "Responsive UI for desktop and mobile. Role-based dashboards. Talks only to the API")
-    Container(api, "API Application", "Python 3.11, FastAPI (modular monolith)", "All business rules, role and relationship authorisation, workflow, assignment queue and consistency logic")
-    ContainerDb(db, "Relational Database", "PostgreSQL 15 (Supabase)", "Events, venues, bookings, equipment, registrations, notifications, change history. Enforces no overlapping venue holds and no over-reservation")
+  System_Boundary(cs, "ConnectSphere System") {
+    Container(spa, "Web Application", "Vue 3, Vite, Pinia, Tailwind", "Provides the GUI for every role. Role-based dashboards; desktop and mobile friendly")
+    Container(api, "Backend API", "Python 3.11, FastAPI", "Modular monolith (auth, events, venues, equipment). Business rules, role and relationship authorisation, notifications")
+    ContainerDb(db, "Database", "PostgreSQL 15 (Supabase)", "Events, venues, bookings, equipment, registrations, notifications, history")
   }
 
-  System_Ext(auth, "Supabase Auth (GoTrue)", "Sign-up, sign-in, JWT issuing (ES256) and JWKS")
-  System_Ext(email, "Email provider", "P3")
+  System_Ext(auth, "Supabase Authentication", "Handles user authentication, identity and session management")
 
-  Rel(user, spa, "Uses", "HTTPS")
-  Rel(spa, api, "JSON over REST", "HTTPS, Bearer JWT")
-  Rel(api, auth, "Sign-up, sign-in, sign-out, verify JWT via JWKS", "HTTPS")
-  Rel(api, db, "Reads and writes, calls transactional SQL functions", "PostgREST (supabase-py) / SQL")
-  Rel(api, email, "Sends notification emails", "P3")
+  Rel(organiser, spa, "Drafts, submits and amends event requests; tracks status and receives notifications", "HTTPS")
+  Rel(lead, spa, "Views the unassigned queue and assigns/reassigns events to Event Coordinators", "HTTPS")
+  Rel(coordinator, spa, "Views event requests and asks for more information if needed; creates, views and updates venue and equipment requests; sends for safety check and makes changes if needed; receives notifications", "HTTPS")
+  Rel(venueStaff, spa, "Views, accepts/reserves and updates venue requests; maintains venue catalogue; receives notifications", "HTTPS")
+  Rel(techStaff, spa, "Views, accepts and updates equipment reservations; maintains equipment catalogue; receives notifications", "HTTPS")
+  Rel(safety, spa, "Conducts Operational Safety Check; approves the event, rejects the safety arrangement or requests changes; receives notifications", "HTTPS")
+  Rel(attendee, spa, "Registers, withdraws or joins a waitlist; receives notifications", "HTTPS")
+  Rel(spa, api, "Makes API calls", "JSON/HTTPS, Bearer JWT")
+  Rel(api, auth, "Signs in/out users; verifies JWTs via JWKS", "HTTPS")
+  Rel(api, db, "Reads and writes data", "PostgREST/SQL")
 
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+  UpdateLayoutConfig($c4ShapeInRow="7", $c4BoundaryInRow="1")
 ```
+
+</details>
 
 **Container decisions**
 
@@ -191,9 +213,65 @@ C4Container
 
 ### 3.3 Level 3: Components of the API application
 
+**As built (Release 1).**
+
+![C4 Level 3: components of the Backend API (as built)](diagrams/c4-l3-backend-components.jpg)
+
+<details>
+<summary>Mermaid text version of this diagram</summary>
+
 ```mermaid
 C4Component
-  title Component Diagram: API Application (FastAPI modular monolith)
+  title Component Diagram: Backend API (as built)
+
+  Container(spa, "Web Application", "Vue 3, Vite, Pinia, Tailwind", "The GUI for every role")
+  ContainerDb(db, "Database", "PostgreSQL 15 (Supabase)", "Tables, plus transactional SQL functions that also write status history and notifications")
+  System_Ext(auth, "Supabase Auth", "Sign-up, sign-in and sessions; issues JWTs and publishes JWKS")
+
+  Container_Boundary(api, "Backend API (Python 3.11, FastAPI)") {
+    Component(venues, "Venues module", "FastAPI router, service, repository", "Venue catalogue, search, edits, deactivate and reactivate; booking requests, holds, rejections and restores")
+    Component(events, "Events module", "FastAPI router, service, repository", "Requests, drafts, submit, review, return, approve, reject; Lead reassignment; safety check and decisions; comments, history, dashboards")
+    Component(equipment, "Equipment module", "FastAPI router, service, repository", "Equipment catalogue, inventory and maintenance; equipment requests and the pending queue")
+    Component(authMod, "Auth module", "FastAPI router, service, repository", "Sign-up, login, refresh, logout, current user, switch active role")
+    Component(venueRules, "Venue rules", "pure Python, no I/O", "Search, suitability, impact of a venue edit on bookings")
+    Component(eventRules, "Event rules", "pure Python, no I/O", "Lifecycle transitions, safety readiness, Lead scope")
+    Component(security, "Security", "FastAPI dependencies", "Verifies the JWT; loads profile and active role; require_roles")
+  }
+
+  Rel(spa, venues, "Makes API calls", "JSON/HTTPS, Bearer JWT")
+  Rel(spa, events, "Makes API calls", "JSON/HTTPS, Bearer JWT")
+  Rel(spa, equipment, "Makes API calls", "JSON/HTTPS, Bearer JWT")
+  Rel(spa, authMod, "Makes API calls", "JSON/HTTPS, Bearer JWT")
+  Rel(events, venues, "Reads booking status, readiness")
+  Rel(venues, events, "Checks assignment; reads requirements; returns to planning")
+  Rel(equipment, events, "Checks the coordinator is assigned")
+  Rel(events, equipment, "Reads reservations and request lines")
+  Rel(venues, venueRules, "Applies")
+  Rel(events, eventRules, "Applies")
+  Rel(venues, security, "Every route: authenticate the caller and check the active role")
+  Rel(events, security, "Every route: authenticate the caller and check the active role")
+  Rel(equipment, security, "Every route: authenticate the caller and check the active role")
+  Rel(authMod, security, "Every route: authenticate the caller and check the active role")
+  Rel(authMod, auth, "Sign up, in, out; refresh", "HTTPS")
+  Rel(security, auth, "Verifies JWTs", "get_claims, JWKS, HTTPS")
+  Rel(venues, db, "Reads and writes data; calls SQL functions", "supabase-py, PostgREST")
+  Rel(events, db, "Reads and writes data; calls SQL functions", "supabase-py, PostgREST")
+  Rel(equipment, db, "Reads and writes data; calls SQL functions", "supabase-py, PostgREST")
+  Rel(authMod, db, "Reads and writes data; calls SQL functions", "supabase-py, PostgREST")
+  Rel(security, db, "Reads and writes data; calls SQL functions", "supabase-py, PostgREST")
+
+  UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="1")
+```
+
+</details>
+
+Not built yet: the registrations, notifications and audit modules, and the in-process event bus, from the target design below. Notifications and status history are written today inside the database's SQL functions.
+
+**Target design.** New modules follow this design (AGENTS.md); the status notes under "Module rules" say which parts the team hasn't adopted.
+
+```mermaid
+C4Component
+  title Component Diagram: API Application (target design)
 
   Container(spa, "Web SPA", "Vue 3")
   ContainerDb(db, "PostgreSQL", "Supabase")
