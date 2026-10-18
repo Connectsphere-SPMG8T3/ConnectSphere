@@ -2344,5 +2344,5 @@ Implemented on `fix/equipment-request-form-overflow`, 2026-10-18; implemented by
 - `cd frontend && npx vitest run`: 68 files, 956 tests passed; the run also emitted Vue Router warnings in `EventRequestView.spec.js` about its missing active route record.
 - `node --check frontend/e2e/equipment-layout.e2e.js` and `git diff --check`: passed.
 - Playwright red on the original component: at 1280×900 the fieldset's right edge was 1329.6 px against the card's 1209 px, and Quantity and the textarea ended at 1311.6 px; both viewports failed. Green with the fix: 2 passed. Full browser suite with recording: 68/68 passed ([run](test-cases/runs/2026-10-18-1435-e2e-607ec03.md); the log names `607ec03` because the fix was not yet committed).
-- **Pending developer:** TC-EQR-015 on the planning event at desktop and 375 px: inspect fieldset borders, full visibility of Quantity and Technical requirements, stacked phone controls, readable warnings/counters/buttons, and absence of horizontal page scroll. Do not submit requests or modify shared data.
+- TC-EQR-015 (manual, desktop and 375 px): Pass, judged by the developer ([run](test-cases/runs/2026-10-18-1450-manual-97be20e.md)).
 - Live API/database checks, backend pytest and coverage were not run for this frontend sizing-only change. Review, PR, merge and backlog/DoD updates are the developer's.
