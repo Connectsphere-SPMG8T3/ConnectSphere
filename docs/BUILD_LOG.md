@@ -2354,7 +2354,7 @@ On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d`
 |---|---|
 | ID | SCRUM-36 |
 | Title | Approve a venue booking request |
-| Status | In progress: built and tested offline; migration not applied |
+| Status | In progress: built and tested offline, merged with `main` through PR #74; migration not applied |
 | Sprint | 3 (6–20 October) |
 
 **User story:** As Venue Staff, I want to be able to approve a pending venue booking request, so that I don't end up with a double-booking or an unsuitable setup that I have to scramble to fix later.
@@ -2392,6 +2392,13 @@ On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d`
 - **Database:** the migration plus the SQL check, run against the live project in one rolled-back transaction, printed `BOOKING APPROVE CHECKS PASSED`. A query afterwards confirmed the function isn't there, so nothing was applied.
 - **Full suites:** `pytest --cov` 1227 passed (95.75%); `npm run test:coverage` 907 passed. Every new and changed line in `backend/app/` and `frontend/src/` is covered; the lines still uncovered in the touched files predate this branch. `npm run build` succeeds.
 - **Not verified yet:** nothing ran against the real API or browser, because the migration isn't applied. Next: the developer runs `supabase migration list --linked` and `supabase db push`, then `verify_live.py --record`, `npm run test:e2e:record`, advisors, and the manual pass TC-BOOK-058–060.
+
+**Merged with `main` and two gaps closed (2026-10-18).**
+- `main` gained CR-94, CR-95, CR-97, SCRUM-21 and D40 (PRs #65–#74) while this was built. The merge conflicted where CR-95 added **Restore** beside **Approve**; both are kept. `main` had also taken TC-BOOK-027–036 and 12–19 Jun 2031, so this story's cases are now TC-BOOK-051–061, on 4–13 Aug 2031.
+- **The migration was renumbered twice**, to `20261018160000`. CR-94 had `20261017120000` and D40 `20261018140000` on the live project, and the CR-104 rework holds `20261018150000` there. On any of those versions, `db push` would have taken this migration as already applied and skipped it, as with D26.
+- **CR-95 AC5 needed this story.** Approving a replacement now releases its affected original through `release_replaced_booking`, in the same transaction. The original is locked before the replacement, the order `restore_affected_booking` takes, so an approval racing a restore waits instead of deadlocking (REQUIREMENTS §9 item 66, now resolved).
+- **SCRUM-21's conflict check** replaces this story's own block query: approval calls `venue_conflicts` on the booking's occupied window, leaving the booking out. Only a block can be found there, because DB-1 keeps live bookings apart.
+- **Red first:** the extended `venue_booking_approve_checks.sql` failed against the live project ("approving a replacement left its original approved"), then passed with the updated migration, both in rolled-back transactions. New live check TC-BOOK-061 fires approve and restore at the same instant.
 
 #### Follow-ups
 
