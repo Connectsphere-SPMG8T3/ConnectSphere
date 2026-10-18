@@ -14,13 +14,14 @@ const router = useRouter();
 const safety = useSafetyDecisionStore();
 const comment = ref("");
 const bookingIds = ref([]);
+const rejectedBookingId = ref(null);
 const equipmentIds = ref([]);
 const pendingKind = ref(null);
 const review = computed(() => safety.review);
 const confirmations = {
   approve: { title: "Approve this event?", label: "Approve", message: "The event will be Confirmed. The organiser and staff will be notified.", toast: "Event approved" },
-  requestChanges: { title: "Request changes?", label: "Request changes", message: "The event returns to Planning and the selected arrangements need re-review.", toast: "Changes requested" },
-  reject: { title: "Reject the safety arrangement?", label: "Reject", message: "The selected arrangement must be replaced. The event itself is not rejected.", toast: "Arrangement rejected" },
+  requestChanges: { title: "Request changes?", label: "Request changes", message: "The event returns to Planning. No booking or equipment changes status; the coordinator decides what to change.", toast: "Changes requested" },
+  reject: { title: "Reject this venue for the event?", label: "Reject", message: "The event returns to Planning and this venue's booking is flagged Safety rejected. It is not released, and the event itself is not rejected.", toast: "Venue rejected" },
 };
 const confirmation = computed(() => confirmations[pendingKind.value]);
 
@@ -34,12 +35,16 @@ async function confirmDecision() {
   const kind = pendingKind.value;
   pendingKind.value = null;
   const text = comment.value.trim();
-  const payload = kind === "approve" ? { comment: text || null } : {
-    [kind === "reject" ? "reason" : "comment"]: text,
+  const payload = kind === "approve" ? { comment: text || null } : kind === "reject" ? { reason: text, booking_id: rejectedBookingId.value } : {
+    comment: text,
     booking_ids: [...bookingIds.value], equipment_request_ids: [...equipmentIds.value],
   };
   try {
     await safety.decide(kind, route.params.id, payload);
+    comment.value = "";
+    bookingIds.value = [];
+    equipmentIds.value = [];
+    rejectedBookingId.value = null;
     showToast(confirmations[kind].toast);
     await router.push({ name: "dashboard-safety" });
   } catch {
@@ -50,6 +55,7 @@ watch(() => route.params.id, (id) => {
   comment.value = "";
   bookingIds.value = [];
   equipmentIds.value = [];
+  rejectedBookingId.value = null;
   pendingKind.value = null;
   if (id) safety.loadReview(id);
 }, { immediate: true });
@@ -118,14 +124,20 @@ watch(() => route.params.id, (id) => {
           <textarea id="safety-comment" v-model="comment" maxlength="1000" rows="5" aria-describedby="safety-comment-hint" class="mt-2 w-full border-2 border-ink bg-canvas p-3" :disabled="safety.loading" />
           <p id="safety-comment-hint" class="mt-2 text-sm">Record any crowd-movement concerns here.</p>
           <fieldset class="mt-6" :disabled="safety.loading">
-            <legend class="font-bold uppercase">Affected arrangements</legend>
+            <legend class="font-bold uppercase">Arrangements this concerns (optional)</legend>
             <label v-for="venue in review.venues" :key="venue.booking_id" class="mt-3 flex items-start gap-3"><input v-model="bookingIds" type="checkbox" :value="venue.booking_id" class="mt-1" />{{ venue.venue_name }}</label>
             <label v-for="line in review.equipment_lines" :key="line.id" class="mt-3 flex items-start gap-3"><input v-model="equipmentIds" type="checkbox" :value="line.id" class="mt-1" />{{ line.equipment_name }}</label>
+          </fieldset>
+          <fieldset class="mt-6" :disabled="safety.loading">
+            <legend class="font-bold uppercase">Venue to reject (required for Reject)</legend>
+            <label v-for="venue in review.venues" :key="venue.booking_id" class="mt-3 flex items-start gap-3">
+              <input v-model="rejectedBookingId" type="radio" name="rejected-venue" :value="venue.booking_id" :disabled="venue.booking_status !== 'approved'" class="mt-1" />{{ venue.venue_name }}
+            </label>
           </fieldset>
           <div class="mt-6 flex flex-wrap gap-3">
             <BauhausButton variant="secondary" aria-label="Approve" :disabled="safety.loading" @click="pendingKind = 'approve'">Approve</BauhausButton>
             <BauhausButton variant="yellow" aria-label="Request changes" :disabled="safety.loading || !comment.trim()" @click="pendingKind = 'requestChanges'">Request changes</BauhausButton>
-            <BauhausButton variant="primary" aria-label="Reject" :disabled="safety.loading || !comment.trim()" @click="pendingKind = 'reject'">Reject</BauhausButton>
+            <BauhausButton variant="primary" aria-label="Reject" :disabled="safety.loading || !comment.trim() || !rejectedBookingId" @click="pendingKind = 'reject'">Reject</BauhausButton>
           </div>
         </BauhausCard>
       </div>

@@ -102,27 +102,39 @@ describe('Safety queue and review', () => {
     await mountView(); await vi.waitFor(() => expect(button('Request changes')).not.toBeNull());
     expect(button('Approve').disabled).toBe(false); expect(button('Request changes').disabled).toBe(true); expect(button('Reject').disabled).toBe(true);
     await comment('   '); expect(button('Request changes').disabled).toBe(true);
-    await comment('Move chairs'); expect(button('Request changes').disabled).toBe(false); expect(button('Reject').disabled).toBe(false);
+    await comment('Move chairs'); expect(button('Request changes').disabled).toBe(false); expect(button('Reject').disabled).toBe(true);
+    document.querySelector('input[type=radio]').click(); await nextTick();
+    expect(button('Reject').disabled).toBe(false);
     expect(document.querySelector('textarea').maxLength).toBe(1000);
   });
   it.each([
     ['Approve', 'Approve this event?', 'approve', 'safetyApprove', 'Event approved'],
     ['Request changes', 'Request changes?', 'requestChanges', 'safetyRequestChanges', 'Changes requested'],
-    ['Reject', 'Reject the safety arrangement?', 'reject', 'safetyReject', 'Arrangement rejected'],
+    ['Reject', 'Reject this venue for the event?', 'reject', 'safetyReject', 'Venue rejected'],
   ])('confirms %s and sends only the selected arrangements before returning to queue', async (label, title, kind, api, toast) => {
     const { router } = await mountView(); await vi.waitFor(() => expect(button(label)).not.toBeNull());
     if (kind !== 'approve') await comment('  Move the chairs  ');
     for (const box of document.querySelectorAll('input[type="checkbox"]')) { box.click(); } await nextTick();
+    if (kind === 'reject') { document.querySelector('input[type=radio]').click(); await nextTick(); }
     button(label).click(); await nextTick();
     const dialog = document.querySelector('[role="dialog"]'); expect(dialog.textContent).toContain(title);
-    if (kind === 'reject') { expect(dialog.textContent).toContain('must be replaced'); expect(dialog.textContent).toContain('event itself is not rejected'); }
+    if (kind === 'reject') expect(dialog.textContent).toContain("The event returns to Planning and this venue's booking is flagged Safety rejected. It is not released, and the event itself is not rejected.");
+    if (kind === 'requestChanges') expect(dialog.textContent).toContain('The event returns to Planning. No booking or equipment changes status; the coordinator decides what to change.');
     eventsApi[api].mockResolvedValue({ id: 'e1', status: kind === 'approve' ? 'confirmed' : 'planning' });
     const confirm = dialog.querySelector(`button[aria-label="${label}"]`); expect(confirm).not.toBeNull(); confirm.click();
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('dashboard-safety'));
-    expect(eventsApi[api]).toHaveBeenCalledWith('e1', kind === 'approve' ? { comment: null } : {
+    expect(eventsApi[api]).toHaveBeenCalledWith('e1', kind === 'approve' ? { comment: null } : kind === 'reject' ? { reason: 'Move the chairs', booking_id: 'b1' } : {
       [kind === 'reject' ? 'reason' : 'comment']: 'Move the chairs', booking_ids: ['b1'], equipment_request_ids: ['q1'],
     }, 'access');
     expect(toastState.value.message).toBe(toast);
+  });
+  it('disables rejection of a held venue and labels the separate selections', async () => {
+    eventsApi.safetyReview.mockResolvedValue(response({ venues: [{...response().venues[0], booking_status:'held'}] }));
+    const { el } = await mountView();
+    await vi.waitFor(() => expect(el.querySelector('input[type=radio]')).not.toBeNull());
+    expect(el.querySelector('input[type=radio]').disabled).toBe(true);
+    expect(el.textContent).toContain('Venue to reject (required for Reject)');
+    expect(el.textContent).toContain('Arrangements this concerns (optional)');
   });
   it('cancels confirmation without sending a decision', async () => {
     await mountView(); await vi.waitFor(() => expect(button('Approve')).not.toBeNull()); button('Approve').click(); await nextTick();
