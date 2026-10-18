@@ -724,3 +724,10 @@ def list_venue_staff_ids() -> set[str]:
         .execute()
     )
     return {row["profile_id"] for row in response.data or []}
+
+
+def mark_safety_revision(booking_id: str, actor_id: str) -> str:
+    """CR-104: the RPC clears the safety flag atomically and returns an outcome."""
+    return get_supabase_admin_client().rpc(
+        "mark_safety_revision", {"p_booking_id": booking_id, "p_actor_id": actor_id}
+    ).execute().data
