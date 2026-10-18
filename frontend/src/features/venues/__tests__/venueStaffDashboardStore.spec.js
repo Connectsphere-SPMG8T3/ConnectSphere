@@ -96,6 +96,24 @@ describe("venue staff dashboard store", () => {
     expect(store.error).toBeNull();
   });
 
+  it("holds the affected bookings the API lists, and none when it lists none (CR-95 AC9)", async () => {
+    signedInVenueStaff();
+    const affected = { id: "d-9", venue_name: "Grand Ballroom", status: "approved", flag: "affected" };
+    venuesApi.venueStaffDashboard.mockResolvedValue({ ...PAYLOAD, affected_bookings: [affected] });
+    const store = useVenueStaffDashboardStore();
+
+    await store.load();
+    expect(store.affectedBookings).toEqual([affected]);
+
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+    await store.load();
+    expect(store.affectedBookings).toEqual([]);
+
+    store.affectedBookings = [affected];
+    store.reset();
+    expect(store.affectedBookings).toEqual([]);
+  });
+
   it("derives the tile counts from the lists", async () => {
     signedInVenueStaff();
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);

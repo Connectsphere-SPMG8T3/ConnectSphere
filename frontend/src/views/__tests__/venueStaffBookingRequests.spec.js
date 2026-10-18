@@ -92,6 +92,30 @@ describe("VenueStaffBookingRequestsView", () => {
     expect(el.querySelector('a[href="/dashboard/venue-staff"]')).toBeTruthy();
   });
 
+  it("lists the affected bookings above the filters, each linking to its booking page (CR-95 AC9)", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue({
+      ...PAYLOAD,
+      affected_bookings: [{
+        id: "booking-approved", event_id: "event-2", event_name: "Partner Summit", venue_id: "venue-2",
+        venue_name: "Rooftop Terrace", status: "approved", flag: "affected",
+        period: { starts_at: "2026-10-13T09:00:00+08:00", ends_at: "2026-10-13T12:00:00+08:00" },
+      }],
+    });
+    const { el } = await mountPage();
+
+    const section = el.querySelector('[data-testid="affected-bookings"]');
+    expect(section.textContent).toContain("Venue unavailable");
+    expect(section.textContent).toContain("Partner Summit");
+    expect(section.textContent).toContain("Rooftop Terrace");
+    expect(section.querySelector('a[href="/bookings/booking-approved"]')).toBeTruthy();
+  });
+
+  it("shows no affected section when no booking is affected", async () => {
+    const { el } = await mountPage();
+
+    expect(el.querySelector('[data-testid="affected-bookings"]')).toBeNull();
+  });
+
   it("renders each request across the full page width", async () => {
     const { el } = await mountPage();
 

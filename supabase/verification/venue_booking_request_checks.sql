@@ -174,9 +174,9 @@ begin
     end if;
 
     -- API-only (ADR-0002): browsers and the publishable key can't call it.
-    if has_function_privilege('anon', 'public.request_venue_booking(uuid, uuid, uuid, text, text)', 'execute')
-       or has_function_privilege('authenticated', 'public.request_venue_booking(uuid, uuid, uuid, text, text)', 'execute')
-       or not has_function_privilege('service_role', 'public.request_venue_booking(uuid, uuid, uuid, text, text)', 'execute') then
+    if has_function_privilege('anon', 'public.request_venue_booking(uuid, uuid, uuid, text, text, uuid)', 'execute')
+       or has_function_privilege('authenticated', 'public.request_venue_booking(uuid, uuid, uuid, text, text, uuid)', 'execute')
+       or not has_function_privilege('service_role', 'public.request_venue_booking(uuid, uuid, uuid, text, text, uuid)', 'execute') then
         raise exception 'BOOKING FAIL: request_venue_booking is callable by a role other than service_role';
     end if;
 end;

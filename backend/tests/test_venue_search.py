@@ -137,6 +137,13 @@ class TestCapacityRule:
         result = search.evaluate(venue, make_criteria(min_capacity=150, layout=VenueLayout.theatre), [])
         assert result.excluded is False
 
+    def test_a_layout_without_its_own_figure_reports_the_venue_capacity(self):
+        venue = make_venue(capacity=100, layouts=[LayoutOption(layout=VenueLayout.theatre, capacity_for_layout=None)])
+
+        result = search.evaluate(venue, make_criteria(min_capacity=150, layout=VenueLayout.theatre), [])
+
+        assert result.reasons[0].message == "Capacity 100 is below the required 150"
+
     def test_no_minimum_means_no_capacity_check(self):
         result = search.evaluate(make_venue(capacity=1), make_criteria(), [])
         assert result.excluded is False
@@ -157,12 +164,18 @@ class TestAttributeRules:
         assert result.reasons[0].message == "Missing facilities: sound system, stage"
 
     def test_missing_accessibility_features_are_named(self):
-        criteria = make_criteria(accessibility=[AccessibilityFeature.wheelchair_access, AccessibilityFeature.hearing_loop])
+        criteria = make_criteria(
+            accessibility=[
+                AccessibilityFeature.wheelchair_access,
+                AccessibilityFeature.lift_access,
+                AccessibilityFeature.hearing_loop,
+            ]
+        )
 
         result = search.evaluate(make_venue(), criteria, [])
 
         assert codes(result) == [ReasonCode.missing_accessibility_feature]
-        assert result.reasons[0].message == "Missing accessibility features: hearing loop"
+        assert result.reasons[0].message == "Missing accessibility features: hearing loop, lift access"
 
     def test_location_is_a_case_insensitive_substring_match(self):
         assert search.evaluate(make_venue(), make_criteria(location="bukit"), []).excluded is False
@@ -245,10 +258,28 @@ class TestAvailability:
         result = search.evaluate(make_venue(), make_criteria(), occupants)
         assert result.reasons[0].message == "Held by another event 10 Oct 13:00–16:00"
 
+    def test_occupant_times_follow_the_offset_the_period_was_searched_in(self):
+        # Searched in UTC: the same 13:00 SGT hold reads as 05:00.
+        criteria = make_criteria(
+            starts_at=datetime(2026, 10, 10, 6, tzinfo=timezone.utc), ends_at=datetime(2026, 10, 10, 9, tzinfo=timezone.utc)
+        )
+        occupants = [booking("held", sgt(10, 13), sgt(10, 16))]
+
+        result = search.evaluate(make_venue(), criteria, occupants)
+
+        assert result.reasons[0].message == "Held by another event 10 Oct 05:00–08:00"
+
     def test_occupants_that_do_not_overlap_are_ignored(self):
         occupants = [booking("held", sgt(11, 14), sgt(11, 17)), block("safety", sgt(20, 0), sgt(22, 0))]
         result = search.evaluate(make_venue(), make_criteria(), occupants)
         assert result.availability == Availability.available
+
+    def test_an_earlier_occupant_that_does_not_overlap_does_not_hide_a_later_conflict(self):
+        occupants = [booking("held", sgt(10, 15), sgt(10, 16)), booking("approved", sgt(10, 9), sgt(10, 10))]
+
+        result = search.evaluate(make_venue(), make_criteria(), occupants)
+
+        assert codes(result) == [ReasonCode.held]
 
     def test_availability_and_suitability_reasons_stay_distinguishable(self):
         occupants = [block("maintenance", sgt(10, 8), sgt(10, 15))]

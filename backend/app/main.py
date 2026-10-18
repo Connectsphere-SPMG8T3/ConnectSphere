@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
+from app.core.exceptions import BookingConflictError
 from app.modules.auth.router import router as auth_router
 from app.modules.equipment.router import router as equipment_router
 from app.modules.events.router import router as events_router
@@ -29,6 +31,16 @@ app.include_router(equipment_router, prefix=settings.api_v1_prefix)
 app.include_router(events_router, prefix=settings.api_v1_prefix)
 app.include_router(venues_router, prefix=settings.api_v1_prefix)
 app.include_router(venue_bookings_router, prefix=settings.api_v1_prefix)
+
+
+@app.exception_handler(BookingConflictError)
+def booking_conflict_handler(request: Request, exc: BookingConflictError) -> JSONResponse:
+    """A refused booking request keeps `detail` and adds `conflict` when the
+    database named what is in the way (SCRUM-21 AC2)."""
+    body = {"detail": exc.detail}
+    if exc.conflict is not None:
+        body["conflict"] = exc.conflict
+    return JSONResponse(status_code=exc.status_code, content=body)
 
 
 @app.get("/health", tags=["health"])

@@ -218,9 +218,9 @@ Regressions for two defects found during the SCRUM-82 manual pass. Both checks a
 | ID | Story / AC | Preconditions | Steps | Data | Expected | Type | Priority | Created | Last run |
 |---|---|---|---|---|---|---|---|---|---|
 | TC-SAFE-001 | SCRUM-82 AC5 | Seeded non-coordinator roles | POST send endpoint | — | 403 for organiser, venue staff, tech support | API | High | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2303-api-db-69d4bf9.md)) |
-| TC-SAFE-002 | SCRUM-82 AC2, AC9 | Planning fixture …0202, held booking | POST as coordinator | — | 409 names awaiting venue approval; unchanged data | API | High | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2303-api-db-69d4bf9.md)) |
-| TC-SAFE-003 | SCRUM-82 AC2 | Same fixture | GET event as coordinator | — | Readiness false; same reason | API | High | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2303-api-db-69d4bf9.md)) |
-| TC-SAFE-004 | SCRUM-82 AC2 | Same fixture | Open coordinator event page | — | Disabled Send with missing reason | Browser | High | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2308-e2e-5c7a294.md)) |
+| TC-SAFE-002 | SCRUM-82 AC2, AC9 | Planning fixture …0202, held booking | POST as coordinator | — | 409 names awaiting venue approval; unchanged data | API | High | 2026-10-08 | 2026-10-16 · Pass · [run](runs/2026-10-16-1910-api-db-6eee8f4.md) |
+| TC-SAFE-003 | SCRUM-82 AC2 | Same fixture | GET event as coordinator | — | Readiness false; same reason | API | High | 2026-10-08 | 2026-10-16 · Pass · [run](runs/2026-10-16-1910-api-db-6eee8f4.md) |
+| TC-SAFE-004 | SCRUM-82 AC2 | Same fixture | Open coordinator event page | — | Disabled Send with missing reason | Browser | High | 2026-10-08 | 2026-10-16 · Pass · [run](runs/2026-10-16-1916-e2e-6eee8f4.md) |
 | TC-SAFE-010 | SCRUM-82 AC1, AC7 | Rolled-back throwaway event | Run send_for_safety_check.sql | — | Safety review, version increment, actor/time history | SQL | High | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2303-api-db-69d4bf9.md)) |
 | TC-SAFE-011 | SCRUM-82 AC1 | Actor also holds Safety Officer | Run SQL script | — | Organiser and officers notified, actor excluded | SQL | High | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2303-api-db-69d4bf9.md)) |
 | TC-SAFE-012 | SCRUM-82 AC1 | No Safety Officer holders within transaction | Run SQL script | — | Send succeeds and organiser notified | SQL | High | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2303-api-db-69d4bf9.md)) |

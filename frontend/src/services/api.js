@@ -2,12 +2,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000
 
 class ApiError extends Error {
   // `detail` is the response's raw `detail`, so a form can place a 422's
-  // per-field errors (`detail[].loc`) under the fields they name.
-  constructor(message, status, detail = null) {
+  // per-field errors (`detail[].loc`) under the fields they name. `conflict`
+  // is what a refused booking request names as in the way (SCRUM-21).
+  constructor(message, status, detail = null, conflict = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.detail = detail;
+    this.conflict = conflict;
   }
 }
 
@@ -30,7 +32,7 @@ async function request(path, { method = "GET", body, token } = {}) {
     const message = Array.isArray(detail)
       ? detail.map((entry) => entry.msg).join(", ")
       : detail || "An unexpected error occurred. Please try again.";
-    throw new ApiError(message, response.status, detail ?? null);
+    throw new ApiError(message, response.status, detail ?? null, payload?.conflict ?? null);
   }
 
   return payload;
@@ -119,6 +121,10 @@ export const venueBookingsApi = {
   approve(bookingId, token) {
     return request(`/venue-bookings/${encodeURIComponent(bookingId)}/approve`, { method: "POST", token });
   },
+  // CR-95 AC9: venue staff restore an affected booking; 409 says why the venue isn't free yet.
+  restore(bookingId, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/restore`, { method: "POST", token });
+  },
 };
 
 export const eventsApi = {
@@ -194,6 +200,13 @@ export const eventsApi = {
   },
   approve(eventId, token) {
     return request(`/events/${encodeURIComponent(eventId)}/approve`, { method: "POST", token });
+  },
+  // CR-97 AC9: the assigned coordinator's primary venue.
+  setPrimarySpace(eventId, spaceId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/spaces/${encodeURIComponent(spaceId)}/primary`, { method: "PUT", token });
+  },
+  clearPrimarySpace(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/spaces/primary`, { method: "DELETE", token });
   },
   reject(eventId, reason, token) {
     return request(`/events/${encodeURIComponent(eventId)}/reject`, { method: "POST", body: { reason }, token });

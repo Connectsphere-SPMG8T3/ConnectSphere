@@ -2090,7 +2090,244 @@ What was actually built:
 - **Uncovered by unit tests, by convention:** the Supabase wrappers in `venues/repository.py` and the `venuesApi.deactivate`/`reactivate` request wrappers (`docs/CI.md` §4). The live checks and e2e exercise them.
 - **Follow-up:** tell Xuan Wei about the flag contract (IMPLEMENTATION_MAP §5); CR-95 owns clearing flags and the "Needs alternative venue" alert.
 
-### 4.51. SCRUM-36 — Venue staff approve a booking request
+### 4.51. CR-94 — Flag bookings affected by venue changes
+
+| Field | Value |
+|---|---|
+| ID | `CR-94` |
+| Title | Flag bookings affected by venue changes |
+| Type | US: Core feature |
+| Status | IN PROGRESS 🥸 |
+| Epic | Booking conflict detection |
+| Sprint | 3 (6 October - 20 October) |
+| Estimate | 3 story points |
+| Priority | 1 |
+| Customer clarification | Week 7 change CR-01 (setup and turnaround time). Single owner of booking flagging after venue changes (21 AC9 and CR-100 refer here). Scope widened from setup/turnaround only to any venue change, so re-estimated 2 to 3; confirm in planning poker. Hard vs warning rules follow 18. Session 3 (13/10): QA3-6 and M3: bookings keep their own setup and turnaround, so a venue edit can't create a time conflict. AC2 removed; AC numbers kept so existing references stay valid. Re-estimate. |
+
+**User story (verbatim):**
+
+> As a Venue staff, I want to have existing bookings re-checked and flagged when a venue's details change, so that conflicts and unsuitable bookings are caught and resolved before the event, not discovered on the day
+
+**Acceptance criteria (verbatim from the Product backlog):**
+
+> AC1. [W7 CR-01] When Venue Staff save any change to a venue, its future held or approved bookings are re-checked.
+> AC2. (Removed 13/10: a venue edit can no longer move a booking's occupied window, because each booking keeps its own setup and turnaround; see CR-100 AC5.)
+> AC3. A booking is flagged Unsuitable if the venue's capacity is now below the event's expected attendance, or a facility the event requires was removed.
+> AC4. Changes that only cause a suitability warning (layout, accessibility, operating hours) show the warning but do not flag the booking.
+> AC5. Each flag shows its reason, and the assigned coordinator and venue staff are notified.
+> AC6. Flagged bookings are not cancelled or removed.
+> AC7. Past and completed events are not re-checked.
+
+#### How the implementation maps to the ticket
+
+On `feature/cr-94-flag-affected-bookings`, in two parts. Part 1 (2026-10-16) classified and notified; part 2 (2026-10-17) writes the flag. Part 2 waited for SCRUM-64's booking-flag schema, merged in PR #68. The branch was then rebased onto `main`, and CR-94's §9 items were renumbered 55–58 because SCRUM-64 had taken item 47 (CR-97's branch holds 51–54).
+
+1. **Suitability rules** (part 1): `venues/suitability.py` is the one rule set (story 18 extends it). Hard rules (capacity, a required facility) make a booking **Unsuitable**; layout, operating hours and the edit-only accessibility change only **warn** (AC3, AC4). `impact.affected_bookings` keeps only rules the edit *newly* breaks (§9 item 55). A space booking is judged on its space's requirements (§9 item 56). Completed and cancelled events are skipped (AC7, §9 item 58).
+2. **Notifications** (part 1, AC5): the coordinator per affected booking, and every venue staff member except the editor, once per event.
+3. **Flagging** (part 2, AC3, AC5, AC6): PR #68 says to flag through `flag_venue_bookings(venue, period, flag, reason, message)`. That function flags by venue and period, so each Unsuitable booking is flagged by its own `occupied_period`; DB-1 lets no other active booking at the venue overlap it. **[Team decision, developer, 2026-10-17]** the calls run inside `update_venue` (migration `20261017120000`), not from Python after the save. A failed call after the save could never be retried, because saving again finds nothing newly broken. The flag's reason names the hard rules; the coordinator's notification is the flag's. A booking already flagged (first flag wins, VC-R1c) or in `re_review` (§9 item 59) keeps its state, and its coordinator gets the ordinary edit notification. `update_venue` returns the newly flagged events, and the service calls `return_to_planning(..., "arrangement_flagged")` for each (CR-104 AC10), logging a failure as SCRUM-64 does.
+4. **No automatic clearing** (**[Team decision, developer, 2026-10-17]**, §9 item 60): a later edit that fixes the venue leaves the flag for the coordinator's follow-up. No clearing path exists yet.
+5. **Frontend:** `VenueEditWarningModal` shows an Unsuitable or Warning badge per booking. From part 2 it says "Bookings marked Unsuitable will be flagged for follow-up" only when one is Unsuitable.
+6. **Checks:** `pytest` `TestVenueEdit::TestFlagging` (9 tests), `test_venue_suitability.py`, `test_venue_impact.py`; Vitest `VenueEditWarningModal.spec.js`; `venue_edit_checks.sql` (CR-94 block: flagged with reason, neighbour untouched, first flag kept, re-review not flagged, fallback notices, stale call flags nothing, grants); `verify_live.py` TC-VENUE-076 to 080, 082, 085 to 088; manual cases TC-VENUE-081, 083, 084, 089, 090.
+
+#### Verification and remaining work
+
+- **Verified:** tests were seen failing first (the backend for the new `(profile, flagged_event_ids)` contract, the modal for its new wording). `pytest` 1247 passed; Vitest 893 passed. The migration plus `venue_edit_checks.sql` ran on the live project in one rolled-back transaction first, then was applied (`supabase db query -f`, recorded with `migration repair --status applied 20261017120000`); the live source matches the file, and `venue_edit_checks.sql` prints VENUE EDIT CHECKS PASSED. `supabase db lint` flagged an uncast `'{}'` array literal, which was fixed and re-applied. Advisors show nothing for the changed objects.
+- **Live runs:** the first API/DB run failed TC-VENUE-080 because the rewritten check also counted the booking request's `venue_booking_requested` notice; the edit sent the right notices. The filter was restored ([failed run](test-cases/runs/2026-10-17-1515-api-db-cb1c85f.md)), then 112/112 ([run](test-cases/runs/2026-10-17-1524-api-db-cb1c85f.md)); e2e 63/63 ([run](test-cases/runs/2026-10-17-1533-e2e-cb1c85f.md)).
+- **Manual pass (2026-10-17):** TC-VENUE-083, 089 and 090 passed ([run](test-cases/runs/2026-10-17-1545-manual-25add62.md)).
+- **Not verified:** a concurrent edit racing a booking change was reasoned about (row lock, DB-1), not reproduced.
+- **Remaining:** no page shows a flag's reason (the readiness list says "A venue booking is flagged Unsuitable."), and nothing clears an `unsuitable` flag (§9 item 60). `re_review` bookings aren't flagged pending PO confirmation (§9 item 59).
+- **Uncovered by unit tests, by convention:** the `update_venue` Supabase wrapper in `venues/repository.py` (`docs/CI.md` §4); the live checks exercise it.
+
+### 4.54. Chore - Close venue test gaps found by mutation testing (and D37)
+
+A mutmut 3.8 run over `backend/app/modules/venues/` (2,261 mutants, run from a scratch copy; mutmut is not a project dependency) showed that the unit tests executed most service code without checking what it wrote or whom it asked. This branch adds assertions and cases where a surviving mutant meant a real behaviour was unpinned:
+
+- **Venue edit (SCRUM-63, CR-94):** every submitted field reaches `repository.update_venue`, with the VC-R3 before/after snapshots; the coordinator notification's full text; event names on the saved response; bookings and blocks are read for this venue from now; a booking whose event has no planning context is still checked and saved, with no coordinator notification and venue staff told about "an event".
+- **Venue detail, history, dashboard:** reads use the requested venue; an unknown venue's history is 404; a PostgREST actor embedded as a list (or an empty list) is unwrapped; a hold with no expiry is ordered by its start.
+- **Booking reject and detail (SCRUM-38):** the database's text refusal names its field; an unlabelled status (`expired`) reads as itself; the notification falls back to "the venue" and "your event"; only a rejection with its reason shows a decision.
+- **Booking request (SCRUM-19, CR-98):** the space path passes the space, coordinator, venue, note and message through; the active-bookings mapper reads the event it was given.
+- **Search and impact:** a layout with no figure of its own reports "Capacity"; an earlier non-overlapping occupant doesn't hide a later conflict; occupant times follow the searcher's offset; several missing or changed accessibility features are listed with their separator.
+
+While doing this, D37 was found: four authorisation tests in `test_venue_booking_request_api.py` had not been collected since CR-98. They are moved back into their class and pass.
+
+Mutation results (killed / total, before → after, measured on CR-94 as rebased onto `main` at `90c7e6d`): `service.py` 983/1,119 → 1,074/1,119, `search.py` 152/163 → 159/163, `impact.py` 85/86 → 86/86. Untouched on purpose: `repository.py` (its query-building mutants can only be caught against real Supabase, i.e. `verify_live.py`), message-wording mutants, mutants equivalent to the original, and the `astimezone(SGT)` mutants in `suitability.py`, which survive only on a machine whose local zone is UTC+8. `BookingImpactContext.coordinator_id` is never read by `impact.py`; it is left in place and noted as a follow-up.
+
+Verification: full backend suite **1,273 passed** (1,247 collected before: 18 new cases and the 8 revived D37 cases; two existing cases were re-parametrised under new IDs), 95.67% total line coverage (application code is unchanged). Test files only; no application code changed, so no live check applies.
+### 4.51. CR-97 — Book more than one venue for an event
+
+CR-97 (P1, Sprint 3) lets the coordinator book a venue per event space (W7 CR-03, QA3-23 to QA3-27). CR-98 had already built the data model: a booking per space, one active booking per space, each space's own window. CR-97 fills the remaining gaps on `feature/cr-97-multi-venue-booking`. It was built test-first in red → green → refactor slices, each phase committed separately so the history shows the order.
+
+#### What was built
+
+1. **Per-space readiness (AC10).** `readiness.safety_readiness` takes the event's spaces and checks each one's own bookings, naming the space in every blocker ("Breakout room: no approved venue booking."). `venues.service.booking_statuses_by_space` feeds it. The event read, send-for-safety and CR-104's approval check all use it. Events without spaces keep the event-wide wording.
+2. **Capacity at request (AC10, BR-R16).** `request_venue_booking_for_space` refuses `over_capacity` when the space's expected pax exceeds the venue's capacity for the space's layout, or its overall capacity when it records none for that layout (venue search's rule). The API answers 409 "<venue> seats <n>; this space needs <pax>."
+3. **Event-only requests book the first space.** A request naming only the event goes through the space function for the event's first space (`created_at, id`, the trigger's order). It is held to the same rules.
+4. **Primary venue (AC9, BR-R17).** `event_space_requests.is_primary`, at most one per event by a partial unique index. `set_primary_space` locks the spaces, then the event (the space-booking function's order). `PUT /events/{id}/spaces/{space_id}/primary` and `DELETE /events/{id}/spaces/primary` serve the assigned coordinator by active role, in planning only. An event's only space reads as primary.
+5. **Coordinator event page (AC5, AC9).** Each space card shows its booking's venue, status and hold expiry, or why an expired hold ended. **Find venue** appears only where the space can be booked. The **Primary venue** badge and a Make/Unset primary toggle appear in planning when there is more than one space. The Venue panel keeps rejections and the not-yet-requestable reason.
+6. **Migration** `20261016120000_cr97_primary_space_and_capacity.sql`, applied to the live project on 2026-10-16 after its checks passed in a rolled-back transaction.
+
+AC1–AC3 and AC8 were already delivered by CR-98; CR-97 pins them with SQL checks (TC-BOOK-032) and live checks (TC-BOOK-028). Three ACs are not met: **AC4** needs a cancel action (story 85), though independence is verified with rejected and expired bookings; **AC6** (each booking's own setup and turnaround) needs CR-100 and story 21; **AC7** is partly met, since suitability (18) and setup/turnaround (CR-100, 21) per window don't exist yet.
+
+#### Found during verification
+
+- Every booked event has a space: `populate_booking_space_request` creates a "Main space" for a space-less event. Moving bookings onto space cards therefore changed what TC-BOOK-008, TC-BOOK-022 and TC-HOLD-005 read, and CR-99 AC7's expired-hold explanation had to move to the space card (red test first). The developer chose this over keeping the old panel.
+- The seeded planning event's held booking is on its backfilled "Main space", so TC-SAFE-002–004 now expect "Main space: awaiting venue staff approval." The first recorded live run (98/100) caught this.
+- The manual pass found that the event read sent each space only its occupying booking, with no expiry. On real data, a held space couldn't say when its hold runs out, and an expired one had no CR-99 AC7 explanation. The view tests had passed on data the API never sent, because an autouse `conftest.py` stub replaced the service function itself. `venue_bookings` now gives each space its occupying booking or else its latest expired hold, with `expires_at`. The stub now sits at the repository, so API tests run the real per-space choice.
+- Also from the manual pass: the space count read "1 spaces", and a trigger-created "Main space" read "pax ·". Both fixed ("1 space"; "Requirements not specified").
+- A coordinator can't add a space; only the organiser can, in draft or returned. No live planning event had two spaces until a throwaway one was made (REQUIREMENTS §9 item 54).
+- A backend on a spare port needs `BACKEND_CORS_ORIGINS` to include the spare frontend origin, or every e2e API call fails with "Unable to reach the server".
+
+#### Verification
+
+- Backend: **1,200 passed**, 96% line coverage (92% gate). Frontend: **871 passed**, 95.92% lines (94% gate); build passes.
+- Uncovered new lines are thin adapters outside the agreed test seams: `events/repository.set_primary_space`, `eventsApi.setPrimarySpace`/`clearPrimarySpace`, and the changed select in `venues/repository.list_booking_statuses`. The live checks exercise all of them.
+- Live: [API/DB run](test-cases/runs/2026-10-16-1910-api-db-6eee8f4.md) **100/100**; [e2e run](test-cases/runs/2026-10-16-1916-e2e-6eee8f4.md) **63/63**. The earlier [98/100 run](test-cases/runs/2026-10-16-1904-api-db-10a6c32.md) records the readiness-wording failures before their fix. Advisors after the push: unchanged (10 warnings, none new).
+- Manual pass ([run](test-cases/runs/2026-10-16-1949-manual-9c4b74f.md)): TC-BOOK-035–036 **pass** on a real multi-space event, after the three display bugs above were found and fixed.
+- TC-BOOK-021 twice failed with `fetch failed … ECONNRESET` in the e2e sign-in fixture when only the booking specs ran; it passed in the full recorded run (DEFECTS D36).
+- Follow-up: the coordinator dashboard's aggregate `_venue_readiness` is still per event, not per space (DEFECTS D35).
+### 4.53. Chore - Mutation testing tooling and first baselines
+
+**[Team decision] 2026-10-16:** the team adopts mutation testing as a recommended practice, not a CI gate or DoD item (`REQUIREMENTS.md` NFR-Q2). It is run on the changed module before a PR that changes logic, and on everything at the end of each sprint. The reason for using it is in `MUTATION_TESTING.md` §1: on the venues module it found about 100 unchecked behaviours in a file with full line coverage, and led to defect D37 (`chore/venues-mutation-test-gaps`).
+
+What this branch adds:
+
+- **Backend:** `mutmut==3.8.0` in `requirements.txt`, configured in the new `backend/pyproject.toml` to mutate `app/` and run `tests/`. `pytest.ini` now sets `testpaths = tests`; without it, a plain `pytest` after a mutation run also collects the copy of the suite in `backend/mutants/` and fails on import.
+- **Frontend:** `@stryker-mutator/core` and `@stryker-mutator/vitest-runner` 9.6.1 as dev dependencies, `frontend/stryker.config.mjs`, and `npm run test:mutation`. 9.x because StrykerJS 10 requires Node 22, and CI and docker-compose run Node 20. The lockfile also moves `@babel/parser` from 7.29.8 to 7.29.9, which Stryker requires. Only `.js` modules are mutated: Stryker's instrumentation breaks `defineProps()` in `<script setup>`.
+- **Ignored output:** `backend/mutants/`, `frontend/reports/mutation/`, `frontend/.stryker-tmp/`.
+- **Docs:**
+  - `docs/MUTATION_TESTING.md`: why, when, how to run, how to triage survivors, known limits, baselines, and how it supports the rubric.
+  - Pointers in `DEVELOPMENT_WORKFLOW.md` (§2, End of sprint), `DEFINITION_OF_DONE.md` (Testing), `CI.md` (§3, why it isn't in CI), `AGENTS.md` (run commands), `docs/README.md` and `REQUIREMENTS.md` (NFR-Q2).
+
+**Two platform problems found and documented:**
+- **macOS:** a forked mutmut worker that reaches an HTTP client crashes in CoreFoundation's proxy lookup. `no_proxy='*'` prevents it.
+- **Windows:** mutmut needs `fork()`, which Windows lacks. Most of the team is on Windows, so the backend half also runs as a **manual GitHub workflow**, `.github/workflows/mutation.yml`:
+  - started from the Actions tab with a branch and a module to choose;
+  - shows the per-file table on its summary page and uploads every survivor's diff as the `mutation-report` artifact;
+  - never triggered by a PR or a push.
+
+  The table comes from `backend/scripts/mutation_report.py` (test-first: `tests/test_mutation_report.py`), which also works locally.
+
+**Baselines on `main` (`d059dbb`):**
+- **Backend:** 4,079 of 5,874 mutants killed (69%; 76% of mutants a test reaches), 2 min 11 s.
+- **Frontend:** 2,967 of 4,091 (73%; 79%), 35 min 24 s.
+
+Per-file tables are in `MUTATION_TESTING.md` §6.
+
+**Verification:**
+- Backend suite: 1,165 passed, 95.83% coverage, with and without a `mutants/` folder present.
+- A module-scoped run (`mutmut run "app.modules.events.readiness.*"`) checked only that module's 37 mutants.
+- Both full mutation runs completed without crashes.
+- Frontend: 860 Vitest tests passed and `npm run build` succeeded with Stryker installed.
+- The workflow passes `actionlint`. Its shell steps were run locally on Python 3.11 (the runner's version) for `core`. The summary table matched the baseline (212 of 328 killed), and `survivors.diff` held all 116 survivors.
+
+Not verified:
+- CI on this branch, which runs when the PR is opened.
+- The workflow on GitHub itself: a manual workflow can only be started once it is on `main`, so its first real run is after merge.
+- The WSL instructions, since no Windows machine was available.
+
+### 4.55. SCRUM-21 — Booking conflict detection
+
+| Field | Value |
+|---|---|
+| ID | `21` (SCRUM-21) |
+| Title | Booking Conflict Detection |
+| Type | US: Core feature |
+| Status | TO DO 😖 (In Progress on the board from this branch) |
+| Epic | Booking conflict detection |
+| Sprint | 3 (6 October - 20 October) |
+| Estimate | 3 story points |
+| Priority | 3 |
+| Customer clarification | W7 CR-01, CR-03, CR-04: 21 is the single conflict checker (agreed 08/10); other stories reference it instead of restating the rule. Old AC8 (simultaneous requests) removed as already delivered in 19 AC3. Split with CR-94: 21 checks new requests; CR-94 flags existing bookings after venue changes. Session 3 (13/10): QA3-5 (the venue is occupied from the start of setup to the end of turnaround; touching windows are allowed, AC3); QA3-23 and M3 (AC1 uses each booking's own window and its own setup and turnaround, not the venue's). |
+
+**User story (verbatim):**
+
+> As an Event coordinator, I want to be able to have a venue refused when it is already occupied for my event's time, including setup and turnaround, so that I don't double-book a venue
+
+**Acceptance criteria (verbatim from the Product backlog):**
+
+> AC1. [W7 CR-01] A booking's occupied window is its start minus its setup time to its end plus its turnaround time, using the booking's own window (CR-97) and its own setup and turnaround (36, CR-100) (e.g. 10:00–12:00 with 30 min setup and 45 min turnaround occupies 09:30–12:45).
+> AC2. [W7 CR-01] A booking is refused when its occupied window overlaps an approved booking, a booking under re-review, or an unexpired hold at the same venue, naming the conflicting event.
+> AC3. [W7 CR-01] Windows that only touch (one ends 12:45, the next starts 12:45) do not conflict.
+> AC4. [W7 CR-01] This single check is used by venue search availability, booking requests, booking approval, re-review after a date change, and the overlap check when a venue is blocked. It is enforced on the server, not only in the form.
+> AC5. [W7 CR-04] Expired holds and rejected, cancelled or released bookings are ignored.
+> AC6. [W7 CR-03] Each venue booking on a multi-venue event is checked separately.
+> AC7. Bookings at different venues never conflict.
+> AC8. [W7 CR-01] Flagging existing bookings that conflict after a venue change is handled in CR-94.
+
+#### How the implementation maps to the ticket
+
+On `feature/scrum-21-booking-conflict-detection`, branched from `main` after CR-97 (PR #67) and CR-94 part 1 (PR #65) merged. Planned with the developer on 2026-10-17 (grilling session); the decisions below are theirs.
+
+1. **Booked and occupied time** (AC1, migration `20261017130000`): `venue_bookings` gains `booked_period` (the booking's own time) and `setup_minutes` / `turnaround_minutes` (≥ 0, default 0). A trigger keeps `occupied_period = [booked start − setup, booked end + turnaround)`, so DB-1 is unchanged and still decides races. Postgres can't compute the range inside the exclusion constraint (`timestamptz ± interval` isn't immutable), hence the stored column. **[Team decision]** 21 adds the per-booking columns; CR-100 adds the venue defaults and copies them in, and 36 AC5 adjusts a held booking. Until then every new booking has zero setup and turnaround. Hold expiry counts to the booking's own start (`lower(booked_period)`), not the start of setup.
+2. **One check** (AC2, AC3, AC5, AC7, AC4): `public.venue_conflicts(period, venue?, exclude_booking?)` returns the clashing bookings (held and unexpired, approved, re-review) and blocks, at one venue or all. Service role only, since it returns other events' names. **[Team decision]** AC4 is met by providing the check; 36, 37 and 51 call it in their own stories (REQUIREMENTS §6.14). This needs the PO's agreement to reword AC4 on the backlog.
+3. **Request functions** (AC2, AC6): `request_venue_booking` and `request_venue_booking_for_space` are dropped and recreated with a third column, `conflict`, filled from the check. **[Team decision]** A refusal shows only the other event's name and its occupied window, or the block's reason; a lost race whose winner isn't visible yet carries the message alone.
+4. **API and search** (AC2, AC4): a refused request answers 409 `{detail, conflict}` through `BookingConflictError` and one handler in `app/main.py`. `repository.list_occupants` (venue search) reads from `venue_conflicts`, so search now counts setup and turnaround and ignores overdue holds; its reasons still don't name the other event (**[Team decision]**).
+5. **Frontend** (AC2): `ApiError.conflict`, `useVenueBookingStore.conflict` and `describeConflict` word the clash under the refusal in `RequestVenueModal`, in the event's timezone.
+6. **D33** (separate commit and migration `20261017125000`): the per-space request path now refuses an inactive venue under the same shared venue lock as the event path. 21 recreates that function, so the fix lives here rather than on a second branch redefining the same function.
+
+#### Verification and remaining work
+
+- **Test first:** every slice was seen failing before its code: the SQL checks (missing columns, expiry counted to setup start, missing `venue_conflicts`, missing `conflict`), D33 reproduced against `main`'s function on a local database (`ok` for an inactive venue), the pytest cases (no `conflict` key; search still querying the tables), and the Vitest cases.
+- **Local Supabase stack:** the migrations were developed against `supabase start` in Docker, built from the repository's migrations, so nothing touched the shared project. The seed had to be patched locally to load (D38, logged). On it: `booking_conflict_checks.sql` passes, as do all other verification scripts except CR-98's seed-backfill block (a D38 artefact; the rest of `event_space_checks.sql` passes). `verify_live.py` API checks 102/102 and the booking, multi-venue, deactivation and hold-expiry e2e specs pass against a backend and SPA running this branch on spare ports. `supabase db lint` reports one warning, in CR-104's `safety_return_event`, not in this change.
+- **Unit suites:** `pytest` 1321 passed; Vitest 917 passed; `npm run build` passes. New code is covered except v8's count of pre-existing `finally` branches in `venueBookingStore.js`.
+- **Live:** the developer pushed both migrations on 2026-10-17 after the live function bodies were confirmed to match the repository. Recorded runs against this branch on spare ports: API/DB 119/120 ([run](test-cases/runs/2026-10-17-1925-api-db-212e822.md)); the failure is `venue_edit_checks.sql` counting a real edit to Seminar Room 1 made during CR-94's manual pass (D39), not this change. D39 was fixed on this branch at the developer's request; the re-run is 120/120 ([run](test-cases/runs/2026-10-17-1939-api-db-58f605b.md)). E2E 65/65 ([run](test-cases/runs/2026-10-17-1933-e2e-212e822.md)). `supabase db advisors` shows nothing for the new or changed objects (the nine `auth_rls_initplan` warnings are D19's).
+- **Manual pass:** TC-BOOK-042 passed on the local stack after one wording change the developer asked for, "Venue blocked for this timing." ([run](test-cases/runs/2026-10-17-1924-manual-53abe35.md)). Playwright drove the refusals and took the screenshots; the developer judged them.
+- **Not verified:** the race path that names the winner after `exclusion_violation` was reasoned about, not reproduced.
+- **Remaining:** AC4's callers in 36, 37 and 51; CR-100 copying venue defaults into the new columns; the PO's agreement to AC4's rewording.
+
+### 4.56. CR-95 — Rearrange bookings affected by venue unavailability
+
+| Field | Value |
+|---|---|
+| ID | `CR-95` |
+| Title | Rearrange bookings affected by venue unavailability |
+| Type | US: Core feature |
+| Status | TO DO 😖 (In Progress on the board from this branch) |
+| Epic | Venue availability calendar |
+| Sprint | 3 (6 October - 20 October) |
+| Estimate | 2 story points |
+| Priority | 2 |
+| Customer clarification | Week 7 change CR-02 (venue becomes unavailable after booking). Session 3 (13/10): QA3-52 (AC7 replaced), QA3-7 (AC3, AC10), QA3-8 (AC8 added), QA3-9 (AC9 added), QA3-30 (the replacement needs full approval), QA3-53 (the organiser sees each venue separately, CR-111). |
+
+**User story (verbatim):**
+
+> As an Event coordinator, I want to be able to be told when a venue I booked becomes unavailable and request a replacement, so that my event can still go ahead.
+
+**Acceptance criteria (verbatim, from the Product backlog row):**
+
+> AC1. [W7 CR-01] When a venue block overlaps the occupied window of a held or approved booking, that booking is marked "Affected: venue unavailable" with the block reason.
+> AC2. The event is not cancelled and keeps all its details.
+> AC3. The assigned coordinator is notified and the event shows a "Needs alternative venue" alert on their dashboard. The organiser is also notified that their venue arrangement is affected, with the next action. Attendees are not notified at this stage.
+> AC4. From the affected booking, the coordinator can open venue search pre-filled with the event's requirements and submit a replacement booking request.
+> AC5. When the replacement is approved, the affected booking is released and the history records both.
+> AC6. Other venue bookings on the same event are not changed.
+> AC7. [QA3-52] Flagging the booking doesn't change the event's status; the coordinator reviews and decides the next action. If the coordinator requests a replacement venue, a Confirmed or Preparation event returns to Planning, the replacement goes through the full request and approval process (36), and the event must pass the safety check again (82, CR-104).
+> AC8. [QA3-8] The event is never cancelled or rejected automatically, and there is no deadline for finding a replacement. If no alternative is found, the coordinator can cancel the event (84).
+> AC9. [QA3-9] If the original venue becomes free again for the booking's full occupied window before a replacement is approved, Venue Staff can confirm that the original booking is restored. Its Affected flag is cleared, and any pending replacement request can be cancelled (85).
+> AC10. [QA3-7] Registered attendees are notified only once a replacement or another attendee-facing change is confirmed (53).
+
+#### How the implementation maps to the ticket
+
+On `feature/cr-95-affected-bookings`, branched from `main` after SCRUM-21 merged (PR #71). Planned with the developer on 2026-10-17 (grilling session, then a test-first slice plan); decisions are REQUIREMENTS §9 items 61–67. The booking-flag schema is SCRUM-64's (`flag_venue_bookings`, `venue_bookings.flag`), so this story adds no flag migration of its own.
+
+1. **A block flags its bookings** (AC1, AC2, AC6; migration `20261018100000`): trigger `venue_blocks_flag_bookings` on insert and on a change to the period or venue calls `flag_venue_bookings` with `affected` and "Venue unavailable: <reason>". Newly overlapped bookings only; nothing is cleared or cancelled, and the event's status is untouched. **[Team decision]** in the database rather than a call from story 51's block endpoint, so it holds for any writer.
+2. **Notices and the dashboard alert** (AC3, AC10): the coordinator's notice is SCRUM-64's; the same trigger adds one `venue_unavailable_organiser` notice per newly flagged event. `GET /events/dashboard/coordinator` gains a `needs_alternative_venue` action kind (ranked first, red) and a `venue_affected` flag, and an affected booking makes the event's venue readiness an `issue` even if it was approved. Attendees are told nothing.
+3. **Replacement request** (AC4, AC7; migration `20261018110000`): `replaces_booking_id` on `venue_bookings`; both request functions take `p_replaces_booking_id`, accept only the event's own affected, live booking, ignore it as "the event's venue" for that one request, and link the new hold to it. The per-space unique index skips affected bookings. `POST /venue-bookings` takes `replaces_booking_id`; `_prepare_replacement` refuses a booking that isn't the event's own affected one (409, 404 if unknown), returns a Confirmed or Safety-review event to planning (`arrangement_flagged`), then requests. **[Team decision]** the return comes first because the functions accept only a planning event; if the chosen venue is then refused the event stays in planning (§9 item 64). This differs from the plan agreed in chat ("after the request commits").
+4. **Event page and search** (AC3, AC4): the event's booking summaries carry `flag`, `flag_reason` and `replaces_booking_id` (blanked for an organiser); an affected booking and its replacement are both listed. `AffectedBookingNotice`, "Find replacement" on the Venue panel and on a space's card, `venuePanelState` kinds `affected` and `replacing`, `replaces=` on venue search, and the dialog's wording (which venue it replaces, and that a Confirmed event returns to Planning).
+5. **Release** (AC5; migration `20261018120000`): `release_replaced_booking` releases the original once its replacement is approved and writes history on both. **Story 36's approve does not exist, so nothing calls it: AC5 is not met end to end.**
+6. **Restore** (AC9; migration `20261018130000`): `restore_affected_booking` clears the flag and cancels a pending replacement with history, and tells the coordinator and organiser; refused while a block covers the window, while the venue is inactive and once a replacement is approved. `POST /venue-bookings/{id}/restore` (venue staff only). The booking page shows the flag and "Restore original booking"; the booking-requests page lists the affected bookings above its filters, because nothing else led staff to the booking.
+
+#### Verification and remaining work
+
+- **Test first:** each slice was seen failing before its code. The SQL checks failed on the missing trigger, the missing `p_replaces_booking_id`, `release_replaced_booking` and `restore_affected_booking`; the first, widening-a-block check was proved able to fail by running it against an insert-only trigger. The pytest and Vitest specs failed on missing functions and states before the code existed.
+- **Local stack first, then live.** The migrations were developed against `supabase start`, built from the repository's migrations. `seed.sql` fails on a fresh database (D38), so it was patched temporarily to get a database and restored; D38 is still open. On that stack every script in `supabase/verification/` passes except `event_space_checks.sql`, which stops at D38's CR-98 backfill block (it failed the same way before this story).
+- **Live:** on the developer's go-ahead the four migrations were pushed with `supabase db push` on 2026-10-17 (the project was in sync with `main` beforehand, so exactly these four were pending). Recorded runs against this branch on spare ports: API/DB 124/124 ([run](test-cases/runs/2026-10-17-2034-api-db-9b2d0eb.md)), including the four CR-95 scripts, and e2e 66/66 ([run](test-cases/runs/2026-10-17-2053-e2e-9b2d0eb.md)), including the new `e2e/affected-booking.e2e.js` (TC-BOOK-048). Building that spec found nothing wrong in the app: its first two failures were wrong assumptions in the spec (the coordinator event URL, and that an event with spaces shows the booking on its space card, not in the Venue panel).
+- **Unit suites:** `pytest` 1368 passed; Vitest 956 passed; `npm run build` passes.
+- **Manual pass:** Claude drove TC-BOOK-049 and TC-BOOK-050 with Playwright at 1280 px and 375 px and measured no horizontal scroll; the developer looked at them and passed both ([run](test-cases/runs/2026-10-17-2056-manual-9b2d0eb.md)).
+- **Not verified:** the live advisors were not read in detail (a filtered look at them listed nothing for the CR-95 objects; the local advisors show only pre-existing equipment RLS warnings); frontend line coverage of the changed files was not computed.
+- **Remaining:** story 36's approve calling `release_replaced_booking`; story 51's block endpoint (blocks can be inserted directly today); story 85's cancellation of a pending replacement; CR-111's organiser view of each venue; the PO's agreement to §9 items 61–67.
+
+### 4.57. SCRUM-36 — Venue staff approve a booking request
 
 On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d` (SCRUM-38 merged in PR #56), 2026-10-17. The Product backlog sheet couldn't be read through the connector, so the story and ACs are as the developer gave them. The epic, estimate and priority weren't available.
 
@@ -2128,14 +2365,14 @@ On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d`
 1. **Database (`20261017120000_venue_booking_approval.sql`).** `approve_venue_booking` is `security definer`, `service_role` only, with no new columns. It returns an outcome code: `ok`, `booking_not_found`, `hold_expired`, `not_held`, `venue_inactive` or `venue_blocked`. On `ok` it sets `approved`, `decided_by`/`decided_at`, writes one `approved` history row and notifies the assigned coordinator (`venue_booking_approved`), never the actor, all in one transaction.
 2. **Backend.** `POST /venue-bookings/{id}/approve` (venue staff only, by active role), `venues.service.approve_booking`, `venues.repository.approve_booking`. It reuses SCRUM-38's errors and not-held labels.
 3. **Frontend.** **Approve** before **Reject** on `BookingRequestView`, confirmed through `ConfirmModal`; `useBookingDecisionStore.approve`, with reject and approve sharing one `decide` helper so either in flight blocks both; `canApproveBooking`; `venueBookingsApi.approve`.
-4. **Tests and checks.** Cases TC-BOOK-027–036 in `docs/test-cases/venues.md`. Live checks TC-BOOK-027–031 in `verify_live.py`, e2e TC-BOOK-033 in `bookings.e2e.js`, and SQL check `venue_booking_approve_checks.sql` (TC-BOOK-032). 38's AC10 row is now traced to approval.
+4. **Tests and checks.** Cases TC-BOOK-051–060 in `docs/test-cases/venues.md`. Live checks TC-BOOK-051–055 in `verify_live.py`, e2e TC-BOOK-057 in `bookings.e2e.js`, and SQL check `venue_booking_approve_checks.sql` (TC-BOOK-056). 38's AC10 row is now traced to approval.
 
 #### Verification
 
 - **Red first, at every layer:** the SQL check failed against the live project with "function `approve_venue_booking` does not exist"; pytest failed on the missing `repository.approve_booking`; Vitest failed on the missing `approve` and `canApproveBooking`.
 - **Database:** the migration plus the SQL check, run against the live project in one rolled-back transaction, printed `BOOKING APPROVE CHECKS PASSED`. A query afterwards confirmed the function isn't there, so nothing was applied.
 - **Full suites:** `pytest --cov` 1227 passed (95.75%); `npm run test:coverage` 907 passed. Every new and changed line in `backend/app/` and `frontend/src/` is covered; the lines still uncovered in the touched files predate this branch. `npm run build` succeeds.
-- **Not verified yet:** nothing ran against the real API or browser, because the migration isn't applied. Next: the developer runs `supabase migration list --linked` and `supabase db push`, then `verify_live.py --record`, `npm run test:e2e:record`, advisors, and the manual pass TC-BOOK-034–036.
+- **Not verified yet:** nothing ran against the real API or browser, because the migration isn't applied. Next: the developer runs `supabase migration list --linked` and `supabase db push`, then `verify_live.py --record`, `npm run test:e2e:record`, advisors, and the manual pass TC-BOOK-058–060.
 
 #### Follow-ups
 

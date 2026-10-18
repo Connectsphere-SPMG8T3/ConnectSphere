@@ -11,6 +11,12 @@ const props = defineProps({
   period: { type: String, required: true },
   busy: { type: Boolean, default: false },
   error: { type: String, default: null },
+  // What is in the way, as describeConflict words it (SCRUM-21 AC2).
+  conflict: { type: String, default: "" },
+  // CR-95 AC4, AC7: the affected venue this request replaces, and whether
+  // requesting it sends the event back to Planning.
+  replacesVenueName: { type: String, default: "" },
+  returnsToPlanning: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(["confirm", "cancel"]);
@@ -49,6 +55,13 @@ function confirm() {
           book it for this time in the meantime.
         </p>
         <p class="mt-3 border-2 border-ink bg-surface px-3 py-2 text-sm font-bold">{{ props.period }}</p>
+        <p v-if="props.replacesVenueName" class="mt-3 text-sm font-medium" data-testid="replaces-venue">
+          This replaces {{ props.replacesVenueName }}, which is no longer available. It stays on the event until your
+          replacement is approved.
+          <template v-if="props.returnsToPlanning">
+            The event goes back to Planning and needs the safety check again.
+          </template>
+        </p>
         <label for="request-venue-note" class="mt-6 block text-xs font-bold uppercase tracking-widest text-ink/70">
           Note for venue staff (optional)
         </label>
@@ -66,6 +79,7 @@ function confirm() {
           class="mt-4 border-2 border-ink bg-bauhaus-red px-3 py-2 text-sm font-bold text-canvas"
         >
           {{ props.error }}
+          <span v-if="props.conflict" class="mt-1 block font-medium">{{ props.conflict }}</span>
         </p>
         <div class="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <BauhausButton type="button" variant="outline" aria-label="Cancel" @click="emit('cancel')">Cancel</BauhausButton>

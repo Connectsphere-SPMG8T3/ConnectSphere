@@ -1,0 +1,94 @@
+# Mutation testing — run by hand from the Actions tab (docs/MUTATION_TESTING.md).
+#
+# Actions → "Mutation testing" → Run workflow → pick the branch and a backend
+# module. The summary page shows the score per file; the "mutation-report"
+# artifact holds every surviving mutant's diff to triage.
+#
+# This is the way to run the backend half on Windows, where mutmut can't run
+# (it needs fork()). It never runs on its own and never blocks a PR. Like CI,
+# it needs no repository secrets: the suite runs on the fake credentials in
+# backend/tests/conftest.py.
+name: Mutation testing
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: Backend code to mutate
+        type: choice
+        options: [venues, events, equipment, auth, core, all]
+        default: venues
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (mutmut)
+    runs-on: ubuntu-latest
+    # A full run takes ~2 minutes on a laptop; the limit only stops a hung run.
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      # 3.11 matches backend/Dockerfile and the CI workflow.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # The input reaches the shell through an environment variable rather
+      # than being pasted into the script, so it can't inject commands.
+      - name: Run mutmut
+        env:
+          MODULE: ${{ inputs.module }}
+        run: |
+          case "$MODULE" in
+            all)  set -- ;;
+            core) set -- "app.core.*" "app.db.*" ;;
+            *)    set -- "app.modules.$MODULE.*" ;;
+          esac
+          # mutmut redraws a progress line many times a second, so its output
+          # goes to a file in the artifact rather than the job log.
+          mkdir -p reports/mutation
+          mutmut run --max-children "$(nproc)" "$@" > reports/mutation/run.log 2>&1 || { tail -50 reports/mutation/run.log; exit 1; }
+
+      - name: Summary
+        env:
+          MODULE: ${{ inputs.module }}
+          REF: ${{ github.ref_name }}
+        run: |
+          mutmut results --all true > reports/mutation/results.txt
+          {
+            echo "### Mutation testing: \`$MODULE\` on \`$REF\`"
+            echo
+            python scripts/mutation_report.py < reports/mutation/results.txt
+            echo
+            echo "Survivors' diffs are in the **mutation-report** artifact below. Which ones to fix, and which to leave: docs/MUTATION_TESTING.md §4."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Survivor diffs
+        run: |
+          python scripts/mutation_report.py --survivors < reports/mutation/results.txt > reports/mutation/survivors.txt
+          : > reports/mutation/survivors.diff
+          while read -r mutant; do
+            echo "### $mutant" >> reports/mutation/survivors.diff
+            mutmut show "$mutant" >> reports/mutation/survivors.diff 2>&1
+            echo >> reports/mutation/survivors.diff
+          done < reports/mutation/survivors.txt
+          echo "$(wc -l < reports/mutation/survivors.txt) survivors written to survivors.diff"
+
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: backend/reports/mutation/
+          retention-days: 30

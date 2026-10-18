@@ -164,6 +164,15 @@ def read_venue_booking(booking_id: UUID, current_user: BookingViewer) -> VenueBo
     return service.booking_detail(str(booking_id), current_user.id, current_user.role)
 
 
+@bookings_router.post("/{booking_id}/restore", response_model=VenueBookingDetail, status_code=status.HTTP_200_OK)
+def restore_venue_booking(booking_id: UUID, current_user: VenueStaffOnly) -> VenueBookingDetail:
+    """Restore an affected booking once its venue is free for the full occupied
+    window (CR-95 AC9): clears the Affected flag and cancels a pending replacement.
+    Refused with 409 while a block or deactivation remains or once a replacement
+    is approved."""
+    return service.restore_booking(str(booking_id), current_user.id)
+
+
 @bookings_router.post("/{booking_id}/reject", response_model=VenueBookingDetail, status_code=status.HTTP_200_OK)
 def reject_venue_booking(booking_id: UUID, body: VenueBookingReject, current_user: VenueStaffOnly) -> VenueBookingDetail:
     """Reject a held booking with a reason and an optional suggestion (SCRUM-38).

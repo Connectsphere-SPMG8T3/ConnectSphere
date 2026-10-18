@@ -2,6 +2,7 @@
  * Venue booking request helpers (SCRUM-19): what the coordinator's event page
  * offers, and how a search opened from an event is pre-filled.
  */
+import { BLOCK_REASON_LABELS } from "@/features/venues/dashboard";
 import { emptyCriteria } from "@/features/venues/venueSearchStore";
 import { SINGAPORE_OFFSET_MS, singaporeDayKey, toInstant } from "@/features/venues/singaporeTime";
 
@@ -53,8 +54,46 @@ export function criteriaFromSpace(space, event) {
  * What the event page's Venue panel shows. The API is the enforcement point;
  * this only avoids offering a request that would answer 409.
  */
+// The venue changes that mean a coordinator may still arrange a replacement:
+// the event is in planning, or has gone on and will be returned to it (CR-95 AC7).
+const REPLACEABLE_EVENT_STATUSES = ["planning", "safety_review", "confirmed"];
+const LIVE_BOOKING_STATUSES = ["held", "approved"];
+
+/**
+ * An affected booking (the venue became unavailable, CR-95 AC1) and, if one has
+ * been asked for, the replacement standing beside it. A booking that is no
+ * longer held or approved needs neither.
+ */
+function affectedPanelState(event, space) {
+  const bookings = (event.venue_bookings ?? []).filter(
+    (item) => !space || item.event_space_request_id === space.id,
+  );
+  const affected = bookings.find((item) => item.flag === "affected" && LIVE_BOOKING_STATUSES.includes(item.status));
+  if (!affected) return null;
+  const replacement = bookings.find(
+    (item) => item.replaces_booking_id === affected.id && [...LIVE_BOOKING_STATUSES, "re_review"].includes(item.status),
+  );
+  if (replacement) return { kind: "replacing", booking: affected, replacement };
+  return {
+    kind: "affected",
+    booking: affected,
+    reason: affected.flag_reason,
+    canReplace: REPLACEABLE_EVENT_STATUSES.includes(event.status),
+  };
+}
+
+/** Venue search for this event (or space), asking to replace `booking` (CR-95 AC4). */
+export function replacementSearchRoute(event, space, booking) {
+  const query = { event: event.id };
+  if (space) query.space = space.id;
+  query.replaces = booking.id;
+  return { name: "venue-search", query };
+}
+
 export function venuePanelState(event, space = null) {
   if (!event) return { kind: "none" };
+  const affected = affectedPanelState(event, space);
+  if (affected) return affected;
   // CR-99 AC7: the hold ran out. Say so, and offer the venue again when a
   // request is possible at all.
   const booking = space
@@ -71,4 +110,26 @@ export function venuePanelState(event, space = null) {
     return { kind: "unavailable", reason: "A venue can be requested once the request is approved for planning." };
   }
   return { kind: "none" };
+}
+
+/**
+ * What refused a venue request, as one line under the refusal (SCRUM-21 AC2):
+ * the other event's name and the window it occupies, setup to turnaround, or
+ * a block and its reason. Times are in the event's own timezone, like the
+ * request's period above it. Empty when the API named nothing.
+ */
+export function describeConflict(conflict, timeZone) {
+  if (!conflict) return "";
+  const dateTime = new Intl.DateTimeFormat("en-SG", { dateStyle: "medium", timeStyle: "short", timeZone });
+  const timeOnly = new Intl.DateTimeFormat("en-SG", { timeStyle: "short", timeZone });
+  const dayOnly = new Intl.DateTimeFormat("en-SG", { dateStyle: "medium", timeZone });
+  const starts = new Date(conflict.starts_at);
+  const ends = new Date(conflict.ends_at);
+  const end = dayOnly.format(starts) === dayOnly.format(ends) ? timeOnly.format(ends) : dateTime.format(ends);
+  const window = `${dateTime.format(starts)} – ${end}`;
+  if (conflict.kind === "block") {
+    const reason = (BLOCK_REASON_LABELS[conflict.block_reason] ?? conflict.block_reason).toLowerCase();
+    return `Blocked for ${reason} ${window}.`;
+  }
+  return `"${conflict.event_name}" occupies it ${window}, including setup and turnaround.`;
 }

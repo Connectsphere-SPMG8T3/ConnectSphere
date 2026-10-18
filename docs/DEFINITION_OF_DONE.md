@@ -6,7 +6,7 @@ The team agreed this DoD in the [Team A-HA! Scrum Playbook](https://docs.google.
 
 This file says *what* to check. *How* to get there (branching, TDD, the live checks, who does each step) is in [`DEVELOPMENT_WORKFLOW.md`](DEVELOPMENT_WORKFLOW.md).
 
-_Last updated: 2026-10-13 — Done also needs the PBI's row in the sprint's DoD tab to show ✅ Done, with its ticks updated before the PR and the merge (`chore/backlog-notes-column`)._
+_Last updated: 2026-10-16 — Testing notes that mutation testing is recommended for logic changes but is not a DoD item (`chore/mutation-testing`). 2026-10-13 — Done also needs the PBI's row in the sprint's DoD tab to show ✅ Done, with its ticks updated before the PR and the merge (`chore/backlog-notes-column`)._
 
 ---
 
@@ -37,6 +37,8 @@ _Last updated: 2026-10-13 — Done also needs the PBI's row in the sprint's DoD 
 - [ ] Developed **test-first** (red, green, refactor): a failing test, then the minimum code to pass it, then refactoring with the suite green. The playbook requires this for backend functions. This repository applies it to frontend logic too (root `AGENTS.md`, "Test-driven development").
 - [ ] **100% code coverage** of the new and changed code in `backend/app/` and `frontend/src/`, or every uncovered line is listed with the reason it can't be covered. This follows the course rubric: *"100% coverage unless not possible and stated why."* How coverage is measured, and the standing exclusions, are in [`CI.md`](CI.md) §4 item 2.
 - [ ] Tests cover the normal path, boundaries, conflicts, failures **and authorisation denials**. Every acceptance criterion traces to a test case (`TC-*`) and an automated test in the story's traceability table in [`test-cases/`](test-cases/README.md).
+
+Coverage shows the tests *ran* the code, not that they would catch it breaking. Mutation testing checks the second; it is recommended for PBIs that change logic but is not part of this DoD ([`MUTATION_TESTING.md`](MUTATION_TESTING.md), [Team decision] 2026-10-16).
 
 ## Quality
 

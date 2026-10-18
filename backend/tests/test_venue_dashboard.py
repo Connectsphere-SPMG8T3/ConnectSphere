@@ -107,6 +107,31 @@ class TestServicePartitioning:
 
         assert [h.id for h in result.pending_holds] == ["d-2"]
 
+    def test_affected_bookings_are_the_live_flagged_ones_that_have_not_ended(self, monkeypatch):
+        # CR-95 AC9: venue staff need to find a booking whose venue became
+        # unavailable, to restore it once the venue is free again.
+        past = Period(starts_at=datetime(2026, 9, 1, 9, tzinfo=SGT), ends_at=datetime(2026, 9, 1, 12, tzinfo=SGT))
+        bookings = [
+            make_booking("a-2", "approved", datetime(2026, 9, 3, tzinfo=SGT), flag="affected",
+                         period=Period(starts_at=datetime(2026, 10, 12, 9, tzinfo=SGT),
+                                       ends_at=datetime(2026, 10, 12, 12, tzinfo=SGT))),
+            make_booking("a-1", "held", datetime(2026, 9, 4, tzinfo=SGT), flag="affected",
+                         expires_at=datetime(2026, 9, 30, 9, tzinfo=SGT)),
+            make_booking("ended", "approved", datetime(2026, 8, 1, tzinfo=SGT), flag="affected", period=past),
+            make_booking("other-flag", "approved", datetime(2026, 9, 5, tzinfo=SGT), flag="unsuitable"),
+            make_booking("plain", "approved", datetime(2026, 9, 6, tzinfo=SGT)),
+            make_booking("released", "released", datetime(2026, 9, 7, tzinfo=SGT), flag="affected"),
+        ]
+        monkeypatch.setattr(repository, "list_venues", list)
+        monkeypatch.setattr(repository, "list_all_upcoming_blocks", lambda since: [])
+        monkeypatch.setattr(repository, "list_all_upcoming_bookings", lambda since, statuses: bookings)
+
+        result = service.venue_staff_dashboard(now=NOW)
+
+        # Soonest event first.
+        assert [b.id for b in result.affected_bookings] == ["a-1", "a-2"]
+        assert result.affected_bookings[0].flag == "affected"
+
     def test_re_review_is_kept_out_of_the_holds_queue(self, queue):
         result = service.venue_staff_dashboard(now=NOW)
         assert [b.id for b in result.re_review_bookings] == ["d-5"]
@@ -260,6 +285,7 @@ class TestCrossVenueReads:
                 "occupied_period": '["2026-10-10 13:00:00+08","2026-10-10 16:00:00+08")',
                 "status": "re_review",
                 "created_at": "2026-09-10T11:45:00+08:00",
+                "flag": "affected",
                 "venues": {"name": "Hall B"},
             },
         ]
@@ -289,6 +315,12 @@ class TestCrossVenueReads:
         bookings = repository.list_all_upcoming_bookings(NOW, {"held", "re_review"})
         assert [b.id for b in bookings] == ["d-1", "d-2"]
         assert [b.venue_name for b in bookings] == ["Hall B", "Hall A"]
+
+    def test_a_bookings_flag_is_read(self, bookings_client):
+        bookings = repository.list_all_upcoming_bookings(NOW, {"held", "re_review"})
+        by_id = {b.id: b for b in bookings}
+        assert by_id["d-1"].flag == "affected"
+        assert by_id["d-2"].flag is None
 
     def test_event_name_is_left_unset(self, bookings_client):
         bookings = repository.list_all_upcoming_bookings(NOW, {"held"})

@@ -72,10 +72,61 @@ export function createThrowawayEvent(tag, startsAt, endsAt) {
 
 /** A booking on a throwaway event with a chosen status and expiry (CR-99), for
  * states a request alone can't reach. Deleted with the event's bookings. */
-export function createThrowawayHold(event, venueId, startsAt, endsAt, status, expiresAt) {
+export function createThrowawayHold(event, venueId, startsAt, endsAt, status, expiresAt, spaceId = null) {
+  const space = spaceId ? `'${spaceId}'` : "null"; // null: the trigger links the event's first space
   const [row] = query(
-    "insert into public.venue_bookings (event_id, venue_id, occupied_period, status, expires_at) values " +
-      `('${event.id}', '${venueId}', tstzrange('${startsAt}', '${endsAt}', '[)'), '${status}', '${expiresAt}') returning id`,
+    "insert into public.venue_bookings (event_id, event_space_request_id, venue_id, occupied_period, status, expires_at) values " +
+      `('${event.id}', ${space}, '${venueId}', tstzrange('${startsAt}', '${endsAt}', '[)'), '${status}', '${expiresAt}') returning id`,
+  );
+  return row;
+}
+
+/** A booking on a throwaway event with a chosen status and no expiry, for an approved one (CR-95). */
+export function createThrowawayBooking(event, venueId, startsAt, endsAt, status) {
+  const [row] = query(
+    "insert into public.venue_bookings (event_id, venue_id, occupied_period, status) values " +
+      `('${event.id}', '${venueId}', tstzrange('${startsAt}', '${endsAt}', '[)'), '${status}') returning id`,
+  );
+  return row;
+}
+
+/** Moves a throwaway event to a status a request alone can't reach (CR-95: Confirmed). */
+export function setThrowawayEventStatus(event, status) {
+  query(`update public.events set status = '${status}' where id = '${event.id}'`);
+}
+
+// Same note as backend/scripts/verify_live.py's THROWAWAY_BLOCK_NOTE, so either
+// run's cleanup removes both runs' leftovers.
+const BLOCK_NOTE = "live-check";
+
+/**
+ * A block on a venue (CR-95). Inserting it flags the held and approved bookings it overlaps,
+ * so create the booking first.
+ */
+export function createThrowawayBlock(venueId, startsAt, endsAt, reason = "maintenance") {
+  const [row] = query(
+    "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values " +
+      `('${venueId}', tstzrange('${startsAt}', '${endsAt}', '[)'), '${reason}', '${BLOCK_NOTE}') returning id`,
+  );
+  return row;
+}
+
+/** Removes the throwaway blocks, which is how a venue becomes free again for a restore (CR-95 AC9). */
+export function deleteThrowawayBlocks() {
+  query(`delete from public.venue_blocks where notes = '${BLOCK_NOTE}'`);
+}
+
+/** The booking's flag and status, read straight from the database. */
+export function readThrowawayBooking(bookingId) {
+  const [row] = query(`select status, flag from public.venue_bookings where id = '${bookingId}'`);
+  return row;
+}
+
+/** A space on a throwaway event (CR-97); it goes when the event is deleted (cascade). */
+export function createThrowawaySpace(event, label, expectedPax) {
+  const [row] = query(
+    "insert into public.event_space_requests (event_id, label, expected_pax) values " +
+      `('${event.id}', '${label}', ${expectedPax}) returning id`,
   );
   return row;
 }
@@ -96,6 +147,15 @@ export function createThrowawayRequest(tag, startsAt, endsAt, venueId) {
       "'a0000000-0000-4000-8000-000000000002') returning id",
   );
   return { event, bookingId: booking.id };
+}
+
+/** Gives a throwaway booking its own setup and turnaround (SCRUM-21), as CR-100
+ * will copy them in from the venue; its occupied window widens to match. */
+export function setThrowawayBookingBuffers(bookingId, setupMinutes, turnaroundMinutes) {
+  query(
+    `update public.venue_bookings set setup_minutes = ${setupMinutes}, turnaround_minutes = ${turnaroundMinutes} ` +
+      `where id = '${bookingId}'`,
+  );
 }
 
 /** Deletes the throwaway events and their bookings (that foreign key restricts). */

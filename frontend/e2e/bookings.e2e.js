@@ -1,7 +1,7 @@
 // Venue booking request (SCRUM-19), rejection (SCRUM-38) and approval (SCRUM-36) against real data.
 // Cases: docs/test-cases/venues.md.
 import { API_URL, expect, seedSession, test } from "./support/fixtures.js";
-import { createThrowawayEvent, createThrowawayRequest } from "./support/throwaway.js";
+import { createThrowawayEvent, createThrowawayRequest, setThrowawayBookingBuffers } from "./support/throwaway.js";
 
 const INNOVATION_LAB = "b0000000-0000-4000-8000-000000000006";
 
@@ -24,10 +24,31 @@ test("TC-BOOK-008 a coordinator finds a venue from the event and requests it", a
   await dialog.getByLabel("Note for venue staff (optional)").fill("Early access at 09:30 please");
   await dialog.getByRole("button", { name: "Request venue" }).click();
 
-  // Back on the event, which now shows the tentative hold.
+  // Back on the event, which now shows the tentative hold on the space the
+  // booking was made for (CR-97: the database gives a space-less event its "Main space").
   await expect(page).toHaveURL(`/coordinator/events/${event.id}`);
-  await expect(page.getByTestId("venue-panel")).toContainText("Innovation Lab");
-  await expect(page.getByTestId("venue-panel")).toContainText("Tentative hold");
+  const booking = page.getByTestId("event-spaces").locator("article").filter({ hasText: "Main space" }).getByTestId("space-booking");
+  await expect(booking).toContainText("Innovation Lab");
+  await expect(booking).toContainText("Tentative hold");
+});
+
+test("TC-BOOK-041 a refused request names the event in the way and its window", async ({ page, sharedSessions }) => {
+  // 19 Jun 2031. The coordinator's event is 12:30–14:00; another event takes
+  // Innovation Lab 10:00–12:00 with 45 min turnaround after the search loaded.
+  const event = createThrowawayEvent("041", "2031-06-19 12:30+08", "2031-06-19 14:00+08");
+  await seedSession(page, await sharedSessions("event_coordinator"));
+  await page.goto(`/venues?event=${event.id}`);
+  await expect(page.getByRole("button", { name: "Request Innovation Lab" })).toBeVisible();
+
+  const other = createThrowawayRequest("041-other", "2031-06-19 10:00+08", "2031-06-19 12:00+08", INNOVATION_LAB);
+  setThrowawayBookingBuffers(other.bookingId, 30, 45);
+  await page.getByRole("button", { name: "Request Innovation Lab" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Request venue" }).click();
+
+  const alert = dialog.getByRole("alert");
+  await expect(alert).toContainText("Venue already held for this time by another event.");
+  await expect(alert).toContainText(`"${other.event.name}" occupies it 19 Jun 2031, 9:30 am – 12:45 pm`);
 });
 
 test("TC-BOOK-021 venue staff read a held request and reject it with a reason", async ({ page, sharedSessions }) => {
@@ -84,8 +105,8 @@ test("TC-BOOK-022 the coordinator sees why a booking was rejected and can look a
   await expect(panel).toContainText("Rejected by venue staff");
   await expect(panel).toContainText("Closed for maintenance that week");
   await expect(panel).toContainText("Try the week after");
-  // AC7: they can still look for another venue.
-  await expect(panel.getByRole("button", { name: "Find a venue" })).toBeVisible();
+  // AC7: they can still look for another venue, from the space the booking was for (CR-97).
+  await expect(page.getByTestId("event-spaces").getByRole("link", { name: "Find venue" })).toBeVisible();
 });
 
 test("TC-BOOK-022 the organiser's event page never shows the rejection", async ({ page, sharedSessions }) => {
@@ -98,9 +119,9 @@ test("TC-BOOK-022 the organiser's event page never shows the rejection", async (
   await expect(page.getByRole("main")).not.toContainText("Try the week after");
 });
 
-test("TC-BOOK-033 venue staff approve a held request and the coordinator sees it approved", async ({ page, sharedSessions }) => {
-  // 19 Jun 2031, 14:00–17:00 Singapore time, on a throwaway event and booking.
-  const { event, bookingId } = createThrowawayRequest("033", "2031-06-19 14:00+08", "2031-06-19 17:00+08", INNOVATION_LAB);
+test("TC-BOOK-057 venue staff approve a held request and the coordinator sees it approved", async ({ page, sharedSessions }) => {
+  // 12 Aug 2031, 14:00–17:00 Singapore time, on a throwaway event and booking.
+  const { event, bookingId } = createThrowawayRequest("057", "2031-08-12 14:00+08", "2031-08-12 17:00+08", INNOVATION_LAB);
   await seedSession(page, await sharedSessions("venue_staff"));
 
   await page.goto(`/bookings/${bookingId}`);
@@ -125,8 +146,8 @@ test("TC-BOOK-033 venue staff approve a held request and the coordinator sees it
   expect((await read.json()).venue_booking.status).toBe("approved");
 });
 
-test("TC-BOOK-033 the coordinator reads a held request but is offered no Approve", async ({ page, sharedSessions }) => {
-  const { bookingId } = createThrowawayRequest("033-c", "2031-06-18 14:00+08", "2031-06-18 17:00+08", INNOVATION_LAB);
+test("TC-BOOK-057 the coordinator reads a held request but is offered no Approve", async ({ page, sharedSessions }) => {
+  const { bookingId } = createThrowawayRequest("057-c", "2031-08-11 14:00+08", "2031-08-11 17:00+08", INNOVATION_LAB);
   await seedSession(page, await sharedSessions("event_coordinator"));
 
   await page.goto(`/bookings/${bookingId}`);

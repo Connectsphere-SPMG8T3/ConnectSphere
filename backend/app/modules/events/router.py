@@ -69,6 +69,13 @@ def update_event_space(
     return service.update_space(str(space_id), current_user.id, body)
 
 
+# Declared above `/{event_id}/spaces/{space_id}`, which would otherwise take
+# "primary" as a space id and answer with the organiser-only route's 403.
+@router.delete("/{event_id}/spaces/primary", response_model=EventResponse)
+def clear_primary_space(event_id: UUID, current_user: EventCoordinator) -> EventResponse:
+    return service.set_primary_space(str(event_id), None, current_user.id)
+
+
 @router.delete("/{event_id}/spaces/{space_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_event_space(event_id: UUID, space_id: UUID, current_user: EventOrganiser) -> Response:
     service.delete_space(str(space_id), current_user.id)
@@ -140,6 +147,11 @@ def submit_event(
     body: EventUpdateRequest | None = None,
 ) -> EventResponse:
     return service.submit(str(event_id), current_user.id, body)
+
+
+@router.put("/{event_id}/spaces/{space_id}/primary", response_model=EventResponse)
+def set_primary_space(event_id: UUID, space_id: UUID, current_user: EventCoordinator) -> EventResponse:
+    return service.set_primary_space(str(event_id), str(space_id), current_user.id)
 
 
 @router.post("/{event_id}/send-for-safety-check", response_model=EventResponse)

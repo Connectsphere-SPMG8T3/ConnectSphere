@@ -1,8 +1,9 @@
 <script setup>
 /**
  * One venue booking request. Venue staff see what the event needs from the
- * venue and can approve a held request (SCRUM-36) or reject it with a reason
- * (SCRUM-38); the assigned coordinator reads the same page to see why. Every
+ * venue and can approve a held request (SCRUM-36), reject it with a reason
+ * (SCRUM-38) or restore an affected one (CR-95); the assigned coordinator
+ * reads the same page to see why. Every
  * rule is the API's; this page only avoids offering what it would refuse.
  */
 import { computed, onMounted, ref, watch } from "vue";
@@ -17,6 +18,7 @@ import { showToast } from "@/composables/useToast";
 import {
   canApproveBooking,
   canRejectBooking,
+  canRestoreBooking,
   formatBookingPeriod,
   formatDecisionTime,
   historyActionLabel,
@@ -41,6 +43,10 @@ const event = computed(() => booking.value?.event ?? {});
 const showApprove = computed(() => canApproveBooking(booking.value, auth.role));
 const showReject = computed(() => canRejectBooking(booking.value, auth.role));
 const isDeciding = computed(() => store.isApproving || store.isRejecting);
+// CR-95: a booking flagged Affected shows why to everyone who can read the page;
+// only venue staff can confirm the venue is free again and restore it (AC9).
+const isAffected = computed(() => booking.value?.flag === "affected");
+const showRestore = computed(() => canRestoreBooking(booking.value, auth.role));
 const facilities = computed(() =>
   (event.value.facilities_required ?? []).map((value) => FACILITY_LABELS[value] ?? value).join(", "),
 );
@@ -71,6 +77,11 @@ async function approve() {
   const ok = await store.approve(String(route.params.id));
   isApproveOpen.value = false;
   if (ok) showToast("Booking approved. The coordinator has been told.");
+}
+
+async function restore() {
+  const ok = await store.restore(String(route.params.id));
+  if (ok) showToast("Booking restored. The coordinator and organiser have been told.");
 }
 
 function openReject() {
@@ -129,6 +140,25 @@ async function reject(form) {
           <p class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard">
             {{ bookingStatusLabel(booking.status) }}
           </p>
+        </div>
+        <div v-if="isAffected" class="mt-6 border-l-4 border-bauhaus-red bg-canvas px-4 py-3" data-testid="booking-affected">
+          <p class="text-xs font-black uppercase tracking-widest text-bauhaus-red">Affected: venue unavailable</p>
+          <p v-if="booking.flag_reason" class="mt-1 text-sm font-medium">{{ booking.flag_reason }}</p>
+          <template v-if="showRestore">
+            <p class="mt-2 text-sm font-medium">
+              If the venue is free again for the whole booking, restore it. The flag is cleared and any replacement
+              request is cancelled.
+            </p>
+            <BauhausButton
+              class="mt-3"
+              variant="secondary"
+              aria-label="Restore original booking"
+              :disabled="store.isRestoring"
+              @click="restore"
+            >
+              Restore original booking
+            </BauhausButton>
+          </template>
         </div>
         <div v-if="showApprove || showReject" class="mt-6 flex flex-wrap gap-3">
           <BauhausButton

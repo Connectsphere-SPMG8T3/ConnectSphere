@@ -17,7 +17,8 @@ import { showToast } from "@/composables/useToast";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { formatDecisionTime } from "@/features/venues/bookingDecision";
-import { BOOKING_STATUS_LABELS, venuePanelState } from "@/features/venues/bookingRequest";
+import AffectedBookingNotice from "@/components/venues/AffectedBookingNotice.vue";
+import { BOOKING_STATUS_LABELS, replacementSearchRoute, venuePanelState } from "@/features/venues/bookingRequest";
 import { formatHoldExpiry } from "@/features/venues/dashboard";
 
 const route = useRoute();
@@ -35,10 +36,29 @@ const statusLabel = computed(() => STATUS_LABELS[event.value?.status] ?? event.v
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
-const venuePanel = computed(() => venuePanelState(event.value));
+// CR-97: with spaces, each space card shows its own booking; the panel keeps
+// rejections and the reason no venue can be requested yet.
+const venuePanel = computed(() => {
+  const state = venuePanelState(event.value);
+  return eventSpaces.value.length && state.kind !== "unavailable" ? { kind: "none" } : state;
+});
 // SCRUM-38 AC6, AC7: why venue staff said no, shown above the way to try another venue.
 const rejectedBookings = computed(() => event.value?.rejected_bookings ?? []);
 const eventSpaces = computed(() => event.value?.spaces ?? []);
+// CR-97 AC5: each space's own booking, as the Venue panel reads it.
+const spacePanels = computed(() => Object.fromEntries(eventSpaces.value.map((space) => [space.id, venuePanelState(event.value, space)])));
+
+// CR-95 AC4: venue search for this event (or space), asking to replace the affected booking.
+function findReplacement(panel, space = null) {
+  router.push(replacementSearchRoute(event.value, space, panel.booking));
+}
+
+const isAffected = (panel) => panel.kind === "affected" || panel.kind === "replacing";
+
+function canFindVenue(space) {
+  const panel = spacePanels.value[space.id];
+  return panel.kind === "can-request" || (panel.kind === "expired" && panel.canRequest);
+}
 
 function displayDateTime(value, timeZone) {
   if (!value) return "Not provided";
@@ -53,6 +73,12 @@ function spaceSchedule(space) {
   return `${prefix}: ${displayDateTime(startsAt, event.value.event_timezone)} – ${displayDateTime(endsAt, event.value.event_timezone)}`;
 }
 
+// A space the booking trigger created has a label only; show what is set.
+function spaceRequirements(space) {
+  const parts = [space.expected_pax ? `${space.expected_pax} pax` : null, space.layout_preference].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "Requirements not specified";
+}
+
 function displayValue(value) {
   return value || "Not provided";
 }
@@ -65,6 +91,23 @@ async function confirmSafety() {
     showToast("Sent for safety check");
   } catch {
     // The refreshed readiness and refusal appear in the page.
+  }
+}
+
+// CR-97 AC9: which space is the primary venue, while the event is in planning.
+const canChoosePrimary = computed(() => event.value?.status === "planning" && eventSpaces.value.length > 1);
+
+async function togglePrimary(space) {
+  try {
+    if (space.is_primary) {
+      await review.clearPrimarySpace();
+      showToast(`${space.label} is no longer the primary venue`);
+    } else {
+      await review.setPrimarySpace(space.id);
+      showToast(`${space.label} is now the primary venue`);
+    }
+  } catch {
+    // review.error is shown in the page's alert.
   }
 }
 
@@ -206,25 +249,70 @@ watch(
           <section v-if="eventSpaces.length" class="mt-8 border-t-4 border-ink pt-6" data-testid="event-spaces">
             <div class="flex items-center justify-between gap-3">
               <h3 class="text-xl font-black uppercase tracking-tight">Space requests</h3>
-              <span class="text-xs font-bold uppercase tracking-widest text-ink/70">{{ eventSpaces.length }} spaces</span>
+              <span class="text-xs font-bold uppercase tracking-widest text-ink/70" data-testid="space-count">{{ eventSpaces.length }} {{ eventSpaces.length === 1 ? "space" : "spaces" }}</span>
             </div>
             <div class="mt-4 grid gap-4">
               <article v-for="space in eventSpaces" :key="space.id" class="border-2 border-ink bg-canvas p-4">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h4 class="text-lg font-black uppercase tracking-tight">{{ space.label }}</h4>
-                    <p class="mt-1 text-sm font-medium">{{ space.expected_pax }} pax · {{ space.layout_preference }}</p>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <h4 class="text-lg font-black uppercase tracking-tight">{{ space.label }}</h4>
+                      <span
+                        v-if="space.is_primary"
+                        class="border-2 border-ink bg-bauhaus-red px-2 py-0.5 text-xs font-black uppercase tracking-widest text-canvas"
+                        data-testid="primary-badge"
+                      >Primary venue</span>
+                    </div>
+                    <p class="mt-1 text-sm font-medium" data-testid="space-requirements">{{ spaceRequirements(space) }}</p>
                     <p class="mt-1 text-sm font-medium">{{ spaceSchedule(space) }}</p>
                   </div>
                   <RouterLink
-                    v-if="event.status === 'planning'"
+                    v-if="canFindVenue(space)"
                     :to="{ name: 'venue-search', query: { event: event.id, space: space.id } }"
                     class="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard"
                   >
                     Find venue
                   </RouterLink>
                 </div>
+                <BauhausButton
+                  v-if="canChoosePrimary"
+                  class="mt-3"
+                  variant="outline"
+                  :aria-label="space.is_primary ? `Unset ${space.label} as the primary venue` : `Make ${space.label} the primary venue`"
+                  :disabled="review.isActing"
+                  @click="togglePrimary(space)"
+                >
+                  {{ space.is_primary ? "Unset primary" : "Make primary" }}
+                </BauhausButton>
                 <p class="mt-2 text-xs font-bold uppercase tracking-wide text-ink/70">{{ space.facilities_required?.length ? space.facilities_required.join(", ") : "No facilities specified" }}</p>
+                <div v-if="spacePanels[space.id].booking" class="mt-3 flex flex-wrap items-center gap-3" data-testid="space-booking">
+                  <RouterLink
+                    :to="{ name: 'venue-detail', params: { id: spacePanels[space.id].booking.venue_id } }"
+                    class="font-black uppercase tracking-tight underline decoration-2 underline-offset-4"
+                  >
+                    {{ spacePanels[space.id].booking.venue_name ?? "Venue" }}
+                  </RouterLink>
+                  <span
+                    class="border-2 border-ink px-2 py-0.5 text-xs font-black uppercase tracking-widest"
+                    :class="spacePanels[space.id].booking.status === 'approved' ? 'bg-bauhaus-blue text-canvas' : 'bg-bauhaus-yellow'"
+                  >
+                    {{ BOOKING_STATUS_LABELS[spacePanels[space.id].booking.status] ?? spacePanels[space.id].booking.status }}
+                  </span>
+                  <span v-if="spacePanels[space.id].booking.status === 'held' && spacePanels[space.id].booking.expires_at" class="text-sm font-bold">
+                    Hold expires {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} unless approved.
+                  </span>
+                </div>
+                <AffectedBookingNotice
+                  v-if="isAffected(spacePanels[space.id])"
+                  :reason="spacePanels[space.id].booking.flag_reason ?? ''"
+                  :replacement="spacePanels[space.id].replacement ?? null"
+                  :can-replace="Boolean(spacePanels[space.id].canReplace)"
+                  @replace="findReplacement(spacePanels[space.id], space)"
+                />
+                <p v-if="spacePanels[space.id].kind === 'expired'" class="mt-2 text-sm font-medium" data-testid="hold-expired">
+                  The hold expired on {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} before venue staff approved it.
+                  <template v-if="spacePanels[space.id].canRequest">You can request this venue again if it's still free, or find another.</template>
+                </p>
               </article>
             </div>
           </section>
@@ -252,7 +340,23 @@ watch(
               </p>
             </li>
           </ul>
-          <template v-if="venuePanel.kind === 'booked'">
+          <template v-if="isAffected(venuePanel)">
+            <p class="mt-4 text-lg font-black uppercase tracking-tight">
+              <RouterLink
+                :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
+                class="underline decoration-2 underline-offset-4"
+              >
+                {{ venuePanel.booking.venue_name ?? "Venue" }}
+              </RouterLink>
+            </p>
+            <AffectedBookingNotice
+              :reason="venuePanel.booking.flag_reason ?? ''"
+              :replacement="venuePanel.replacement ?? null"
+              :can-replace="Boolean(venuePanel.canReplace)"
+              @replace="findReplacement(venuePanel)"
+            />
+          </template>
+          <template v-else-if="venuePanel.kind === 'booked'">
             <p class="mt-4 text-lg font-black uppercase tracking-tight">
               <RouterLink
                 :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
@@ -313,7 +417,7 @@ watch(
               Find a venue
             </BauhausButton>
           </template>
-          <p v-else class="mt-4 text-sm font-medium">{{ venuePanel.reason }}</p>
+          <p v-else-if="venuePanel.reason" class="mt-4 text-sm font-medium">{{ venuePanel.reason }}</p>
         </BauhausCard>
 
         <BauhausCard background="white" accent="none">

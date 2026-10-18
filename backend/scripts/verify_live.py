@@ -100,13 +100,18 @@ DB_SCRIPTS = [
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
     ("hold_expiry_checks.sql", "TC-HOLD-001–003 (database half: bounds, job, notices, approval race)"),
-    ("event_space_checks.sql", "TC-SPACE-003, 005, 009; TC-HOLD-009 (overdue space holds)"),
+    ("event_space_checks.sql", "TC-SPACE-003, 005, 009; TC-HOLD-009 (overdue space holds); TC-BOOK-031–033 (CR-97 database half)"),
     ("equipment_request_checks.sql", "TC-EQR-002, 003, 006, 007, 008, 009 (database half)"),
     ("venue_edit_checks.sql", "TC-VENUE-058, 059, 061 (database half)"),
     ("venue_booking_reject_checks.sql", "TC-BOOK-023"),
-    ("venue_booking_approve_checks.sql", "TC-BOOK-032"),
+    ("venue_booking_approve_checks.sql", "TC-BOOK-056"),
     ("lead_assignment_checks.sql", "CR-101 (database half: assignment columns, reassign_event)"),
-    ("venue_deactivation_checks.sql", "TC-VENUE-070 (SCRUM-64 database half)"),
+    ("venue_deactivation_checks.sql", "TC-VENUE-070 (SCRUM-64 database half); D33"),
+    ("booking_conflict_checks.sql", "TC-BOOK-040 (SCRUM-21 database half: occupied window, venue_conflicts)"),
+    ("venue_block_flag_checks.sql", "TC-BOOK-043, 044 (CR-95: a block flags the bookings it overlaps; organiser notice)"),
+    ("venue_replacement_checks.sql", "TC-BOOK-045 (CR-95: request a replacement for an affected booking)"),
+    ("venue_release_checks.sql", "TC-BOOK-046 (CR-95: release the original when its replacement is approved)"),
+    ("venue_restore_checks.sql", "TC-BOOK-047 (CR-95: restore an affected booking)"),
 ]
 
 
@@ -272,14 +277,15 @@ def _(ctx: Context) -> None:
     session, _ = safety_fixture(ctx)
     response = ctx.client.post(f"{ctx.api}/events/{SAFE_EVENT}/send-for-safety-check", headers=session.headers)
     expect_status(response, 409)
-    expect("A venue booking is awaiting venue staff approval." in response.json()["detail"], "Missing booking reason")
+    # CR-97: the seeded event's booking is on its backfilled "Main space", so the reason names it.
+    expect("Main space: awaiting venue staff approval." in response.json()["detail"], "Missing booking reason")
 
 
 @check("TC-SAFE-003", "The coordinator read carries the same missing booking reason")
 def _(ctx: Context) -> None:
     _, event = safety_fixture(ctx)
     expect(event["safety_readiness"]["ready"] is False, "Fixture must not be ready")
-    expect("A venue booking is awaiting venue staff approval." in event["safety_readiness"]["missing"], "Missing booking reason")
+    expect("Main space: awaiting venue staff approval." in event["safety_readiness"]["missing"], "Missing booking reason")
 
 
 # --- Login -----------------------------------------------------------------
@@ -714,7 +720,10 @@ def delete_throwaway_bookings() -> int:
     like = f"'{THROWAWAY_EVENT_PREFIX}%'"
     db_query(f"delete from public.venue_bookings where event_id in (select id from public.events where name like {like})")
     db_query(f"delete from public.venue_blocks where notes = '{THROWAWAY_BLOCK_NOTE}'")
-    return len(db_query(f"delete from public.events where name like {like} returning id"))
+    deleted = len(db_query(f"delete from public.events where name like {like} returning id"))
+    # CR-94's throwaway venues: their layouts, facilities and edit history cascade.
+    db_query(f"delete from public.venues where name like {like}")
+    return deleted
 
 
 THROWAWAY_VENUE_PREFIX = "live-check venue "
@@ -895,7 +904,7 @@ def _(ctx: Context) -> None:
 
     response = request_venue(ctx, ctx.shared("event_coordinator"), event_id, HERITAGE_HALL)
     expect_status(response, 409)
-    expect_detail(response, "Venue blocked for this time.")
+    expect_detail(response, "Venue blocked for this timing.")
 
 
 @check("TC-BOOK-004", "An event that already holds a venue can't request another")
@@ -957,6 +966,239 @@ def _(ctx: Context) -> None:
         f"where event_id in ('{left}', '{right}') and status = 'held'"
     )
     expect(count["n"] == 1, f"{count['n']} holds exist")
+
+# --- Venue edit re-checks bookings (CR-94) ----------------------------------
+# Each check builds its own "live-check" venue holding throwaway events, so an
+# edit that saves never touches a seeded venue. All of it is deleted with the
+# booking checks' events.
+
+CR94_PERIOD = ("2031-06-10 14:00+08", "2031-06-10 17:00+08")
+CR94_VENUE = {
+    "location": "Live check campus", "capacity": 150,
+    "layouts": [{"layout": "theatre", "capacity_for_layout": None}],
+    "facilities": ["projector"], "accessibility_features": ["wheelchair_access"],
+    "opens_at": "08:00:00", "closes_at": "22:00:00", "description": None,
+}
+
+
+def cr94_venue(ctx: Context, case: str) -> tuple[str, dict]:
+    """A throwaway venue shaped like CR94_VENUE: (its id, its full edit payload)."""
+    name = f"{THROWAWAY_EVENT_PREFIX}{ctx.run_id} {case}"
+    [row] = db_query(
+        "with v as (insert into public.venues (name, location, capacity, accessibility_features, opens_at, closes_at) "
+        f"values ('{name}', 'Live check campus', 150, '{{wheelchair_access}}', '08:00', '22:00') returning id), "
+        "l as (insert into public.venue_layouts (venue_id, layout) select id, 'theatre' from v), "
+        "f as (insert into public.venue_facilities (venue_id, facility) select id, 'projector' from v) "
+        "select id from v"
+    )
+    return row["id"], {**CR94_VENUE, "name": name}
+
+
+def cr94_booking(ctx: Context, case: str, venue_id: str, *, attendance: int = 120, needs: str | None = None) -> tuple[str, str]:
+    """A throwaway planning event expecting `attendance` in theatre layout with a
+    projector, holding `venue_id`: (event id, booking id)."""
+    event_id = throwaway_event(ctx, case, *CR94_PERIOD)
+    accessibility = f"'{needs}'" if needs else "null"
+    db_query(
+        f"update public.events set expected_attendance = {attendance}, layout_preference = 'theatre', "
+        f"facilities_required = '{{projector}}', accessibility_needs = {accessibility} where id = '{event_id}'"
+    )
+    response = request_venue(ctx, ctx.shared("event_coordinator"), event_id, venue_id)
+    expect_status(response, 201)
+    return event_id, response.json()["id"]
+
+
+def edit_venue(ctx: Context, venue_id: str, payload: dict) -> dict:
+    response = ctx.client.patch(f"{ctx.api}/venues/{venue_id}", headers=ctx.shared("venue_staff").headers, json=payload)
+    expect_status(response, 200)
+    return response.json()
+
+
+def warning_for(body: dict, booking_id: str) -> dict | None:
+    return next((w for w in body["warnings"] if w["booking_id"] == booking_id), None)
+
+
+@check("TC-VENUE-076", "Cutting capacity below attendance marks the booking Unsuitable, saving nothing", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "076")
+    _, booking_id = cr94_booking(ctx, "076", venue_id)
+
+    body = edit_venue(ctx, venue_id, {**payload, "capacity": 100})
+
+    expect(body["saved"] is False, f"saved={body['saved']} before confirming")
+    warning = warning_for(body, booking_id)
+    expect(warning is not None, f"no warning for the booking: {body['warnings']}")
+    expect(warning["outcome"] == "unsuitable", f"outcome {warning['outcome']}")
+    expect([d["code"] for d in warning["details"]] == ["capacity"], f"details {warning['details']}")
+    expect(warning["reasons"] == ["Capacity 100 is below the expected attendance of 120."], f"reasons {warning['reasons']}")
+    [stored] = db_query(f"select capacity, version from public.venues where id = '{venue_id}'")
+    expect(stored == {"capacity": 150, "version": 0}, f"the venue changed before confirming: {stored}")
+
+
+@check("TC-VENUE-077", "Removing a required facility marks the booking Unsuitable", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "077")
+    _, booking_id = cr94_booking(ctx, "077", venue_id)
+
+    warning = warning_for(edit_venue(ctx, venue_id, {**payload, "facilities": []}), booking_id)
+
+    expect(warning is not None and warning["outcome"] == "unsuitable", f"warning {warning}")
+    expect(warning["reasons"] == ["Missing facilities this event needs: projector."], f"reasons {warning['reasons']}")
+
+
+@check("TC-VENUE-078", "Layout and operating-hours changes only warn", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "078")
+    _, booking_id = cr94_booking(ctx, "078", venue_id)
+
+    layout = warning_for(
+        edit_venue(ctx, venue_id, {**payload, "layouts": [{"layout": "boardroom", "capacity_for_layout": None}]}),
+        booking_id,
+    )
+    hours = warning_for(edit_venue(ctx, venue_id, {**payload, "closes_at": "16:00:00"}), booking_id)
+
+    expect(layout is not None and layout["outcome"] == "warning", f"layout warning {layout}")
+    expect([d["code"] for d in layout["details"]] == ["layout_not_supported"], f"layout details {layout['details']}")
+    expect(hours is not None and hours["outcome"] == "warning", f"hours warning {hours}")
+    expect([d["code"] for d in hours["details"]] == ["outside_operating_hours"], f"hours details {hours['details']}")
+
+
+@check("TC-VENUE-079", "An accessibility change warns only events that list accessibility needs", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "079")
+    _, with_needs = cr94_booking(ctx, "079-a", venue_id, needs="Two wheelchair users")
+    # Same period on the same venue would be refused, so the second event is a day later.
+    other = throwaway_event(ctx, "079-b", "2031-06-11 14:00+08", "2031-06-11 17:00+08")
+    response = request_venue(ctx, ctx.shared("event_coordinator"), other, venue_id)
+    expect_status(response, 201)
+    without_needs = response.json()["id"]
+
+    body = edit_venue(ctx, venue_id, {**payload, "accessibility_features": []})
+
+    warning = warning_for(body, with_needs)
+    expect(warning is not None and warning["outcome"] == "warning", f"warning {warning}")
+    expect([d["code"] for d in warning["details"]] == ["accessibility_changed"], f"details {warning['details']}")
+    expect(warning_for(body, without_needs) is None, "an event with no accessibility needs was warned")
+
+
+@check("TC-VENUE-080", "Saving past the warning notifies the coordinator and the other venue staff, not the editor; "
+       "the booking is unchanged (TC-VENUE-081)", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "080")
+    event_id, booking_id = cr94_booking(ctx, "080", venue_id)
+
+    body = edit_venue(ctx, venue_id, {**payload, "capacity": 100, "confirm": True})
+
+    expect(body["saved"] is True, f"saved={body['saved']}")
+    rows = db_query(
+        "select recipient_id::text as recipient_id, type, message from public.notifications "
+        f"where event_id = '{event_id}' and type in ('venue_booking_affected', 'venue_updated_affects_booking') "
+        "order by type"
+    )
+    recipients = sorted((row["type"], row["recipient_id"]) for row in rows)
+    # The seeded coordinator also holds venue_staff, so is notified once as the
+    # event's coordinator (through the Unsuitable flag, part 2) and once as a
+    # member of the venue staff pool.
+    expect(recipients == [("venue_booking_affected", COORDINATOR_ID), ("venue_updated_affects_booking", COORDINATOR_ID)],
+           f"notified {rows}")
+    expect(all(row["recipient_id"] != VENUE_STAFF_ID for row in rows), "the editor was notified")
+    staff_message = f'Venue "{payload["name"]}" was edited and "{THROWAWAY_EVENT_PREFIX}{ctx.run_id} 080" is now Unsuitable: '
+    expect(any(row["message"].startswith(staff_message) for row in rows), f"no venue staff message in {rows}")
+    [booking] = db_query(f"select status::text as status, venue_id::text as venue_id from public.venue_bookings where id = '{booking_id}'")
+    expect(booking == {"status": "held", "venue_id": venue_id}, f"the booking changed: {booking}")
+
+
+@check("TC-VENUE-082", "Bookings of cancelled events aren't re-checked", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "082")
+    _, live = cr94_booking(ctx, "082-a", venue_id)
+    cancelled = throwaway_event(ctx, "082-b", "2031-06-11 14:00+08", "2031-06-11 17:00+08")
+    db_query(f"update public.events set expected_attendance = 120 where id = '{cancelled}'")
+    response = request_venue(ctx, ctx.shared("event_coordinator"), cancelled, venue_id)
+    expect_status(response, 201)
+    cancelled_booking = response.json()["id"]
+    db_query(f"update public.events set status = 'cancelled' where id = '{cancelled}'")
+
+    body = edit_venue(ctx, venue_id, {**payload, "capacity": 100})
+
+    expect(warning_for(body, live) is not None, "the planning event's booking was not warned")
+    expect(warning_for(body, cancelled_booking) is None, "the cancelled event's booking was re-checked")
+
+
+def booking_flag(booking_id: str) -> dict:
+    [row] = db_query(
+        "select status::text as status, flag::text as flag, flag_reason from public.venue_bookings "
+        f"where id = '{booking_id}'"
+    )
+    return row
+
+
+@check("TC-VENUE-085", "Saving past an Unsuitable warning flags the booking with its reason; it stays held", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "085")
+    event_id, booking_id = cr94_booking(ctx, "085", venue_id)
+
+    edit_venue(ctx, venue_id, {**payload, "capacity": 100, "confirm": True})
+
+    reason = f'Venue "{payload["name"]}" was edited: Capacity 100 is below the expected attendance of 120.'
+    flag = booking_flag(booking_id)
+    expect(flag == {"status": "held", "flag": "unsuitable", "flag_reason": reason}, f"booking {flag}")
+    [notice] = db_query(
+        "select recipient_id::text as recipient_id, message from public.notifications "
+        f"where event_id = '{event_id}' and type = 'venue_booking_affected'"
+    )
+    expect(notice["recipient_id"] == COORDINATOR_ID, f"notified {notice}")
+    expect("is flagged Unsuitable: Capacity 100 is below the expected attendance of 120." in notice["message"],
+           f"message {notice['message']}")
+
+
+@check("TC-VENUE-086", "A warning-only change saves without flagging", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "086")
+    _, booking_id = cr94_booking(ctx, "086", venue_id)
+
+    body = edit_venue(ctx, venue_id, {**payload, "layouts": [{"layout": "boardroom", "capacity_for_layout": None}],
+                                      "confirm": True})
+
+    expect(body["saved"] is True, f"saved={body['saved']}")
+    expect(booking_flag(booking_id)["flag"] is None, "a warning-only change flagged the booking")
+
+
+@check("TC-VENUE-087", "An already-flagged booking keeps its first flag; its coordinator is still told", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "087")
+    event_id, booking_id = cr94_booking(ctx, "087", venue_id)
+    db_query(
+        "update public.venue_bookings set flag = 'affected', flag_reason = 'Live check: flagged first', "
+        f"flagged_at = now() where id = '{booking_id}'"
+    )
+
+    edit_venue(ctx, venue_id, {**payload, "capacity": 100, "confirm": True})
+
+    flag = booking_flag(booking_id)
+    expect((flag["flag"], flag["flag_reason"]) == ("affected", "Live check: flagged first"), f"booking {flag}")
+    rows = db_query(
+        "select type, message from public.notifications "
+        f"where event_id = '{event_id}' and recipient_id = '{COORDINATOR_ID}' order by type"
+    )
+    # One as the coordinator (the unflagged message), one as venue staff.
+    expect([row["type"] for row in rows] == ["venue_updated_affects_booking"] * 2, f"notified {rows}")
+    expect(any(row["message"].startswith(f'Venue "{payload["name"]}" changed in a way that may affect') for row in rows),
+           f"no coordinator message in {rows}")
+
+
+@check("TC-VENUE-088", "A flagged event in Safety review goes back to Planning", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "088")
+    event_id, booking_id = cr94_booking(ctx, "088", venue_id)
+    db_query(f"update public.events set status = 'safety_review' where id = '{event_id}'")
+
+    edit_venue(ctx, venue_id, {**payload, "capacity": 100, "confirm": True})
+
+    expect(booking_flag(booking_id)["flag"] == "unsuitable", "the booking was not flagged")
+    [event] = db_query(f"select status::text as status from public.events where id = '{event_id}'")
+    expect(event["status"] == "planning", f"event status {event['status']}")
+
 
 # --- Tentative hold expiry (CR-99) -----------------------------------------
 
@@ -1182,11 +1424,11 @@ def booking_status(booking_id: str) -> str:
     return row["status"]
 
 
-@check("TC-BOOK-027", "Approving a hold makes it Approved, records it, tells only the coordinator and keeps "
+@check("TC-BOOK-051", "Approving a hold makes it Approved, records it, tells only the coordinator and keeps "
                       "the slot occupied", needs_db=True)
 def _(ctx: Context) -> None:
-    event_id, booking_id = hold_for(ctx, "027-a", "2031-06-12 14:00+08", "2031-06-12 17:00+08")
-    other_event = throwaway_event(ctx, "027-b", "2031-06-12 16:00+08", "2031-06-12 18:00+08")
+    event_id, booking_id = hold_for(ctx, "051-a", "2031-08-04 14:00+08", "2031-08-04 17:00+08")
+    other_event = throwaway_event(ctx, "051-b", "2031-08-04 16:00+08", "2031-08-04 18:00+08")
 
     response = approve_booking(ctx, ctx.shared("venue_staff"), booking_id)
     expect_status(response, 200)
@@ -1208,14 +1450,14 @@ def _(ctx: Context) -> None:
     expect_detail(refused, "Venue already held for this time by another event.")
 
 
-@check("TC-BOOK-028", "Approval is refused when a block now overlaps the hold or the venue is inactive", needs_db=True)
+@check("TC-BOOK-052", "Approval is refused when a block now overlaps the hold or the venue is inactive", needs_db=True)
 def _(ctx: Context) -> None:
     staff = ctx.shared("venue_staff")
     # AC3: the block is saved after the hold, as CAL-R1 allows.
-    _, blocked_id = hold_for(ctx, "028-a", "2031-06-13 14:00+08", "2031-06-13 17:00+08")
+    _, blocked_id = hold_for(ctx, "052-a", "2031-08-05 14:00+08", "2031-08-05 17:00+08")
     db_query(
         "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values "
-        f"('{INNOVATION_LAB}', tstzrange('2031-06-13 16:00+08', '2031-06-13 18:00+08', '[)'), "
+        f"('{INNOVATION_LAB}', tstzrange('2031-08-05 16:00+08', '2031-08-05 18:00+08', '[)'), "
         f"'maintenance', '{THROWAWAY_BLOCK_NOTE}')"
     )
     blocked = approve_booking(ctx, staff, blocked_id)
@@ -1224,8 +1466,8 @@ def _(ctx: Context) -> None:
     expect(booking_status(blocked_id) == "held", "a refused approval changed the booking under the block")
 
     # AC4: a throwaway venue, deactivated after the hold was made.
-    venue_id = throwaway_venue(ctx, "028")
-    event_id = throwaway_event(ctx, "028-b", "2031-06-13 10:00+08", "2031-06-13 12:00+08")
+    venue_id = throwaway_venue(ctx, "052")
+    event_id = throwaway_event(ctx, "052-b", "2031-08-05 10:00+08", "2031-08-05 12:00+08")
     held = request_venue(ctx, ctx.shared("event_coordinator"), event_id, venue_id)
     expect_status(held, 201)
     expect_status(deactivate(ctx, staff, venue_id, confirm=True), 200)
@@ -1235,24 +1477,24 @@ def _(ctx: Context) -> None:
     expect(booking_status(held.json()["id"]) == "held", "a refused approval changed the booking at the inactive venue")
 
 
-@check("TC-BOOK-029", "An expired hold, or a booking no longer held, can't be approved", needs_db=True)
+@check("TC-BOOK-053", "An expired hold, or a booking no longer held, can't be approved", needs_db=True)
 def _(ctx: Context) -> None:
     staff = ctx.shared("venue_staff")
     # AC6: past its expiry, before the minute job has run.
-    _, overdue_id = hold_for(ctx, "029-a", "2031-06-14 14:00+08", "2031-06-14 17:00+08")
+    _, overdue_id = hold_for(ctx, "053-a", "2031-08-06 14:00+08", "2031-08-06 17:00+08")
     db_query(f"update public.venue_bookings set expires_at = now() - interval '1 minute' where id = '{overdue_id}'")
     expired = approve_booking(ctx, staff, overdue_id)
     expect_status(expired, 409)
     expect_detail(expired, "This hold has expired, so it can't be approved.")
     expect(booking_status(overdue_id) == "expired", "the overdue hold was not expired")
 
-    _, rejected_id = hold_for(ctx, "029-b", "2031-06-14 18:00+08", "2031-06-14 19:00+08")
+    _, rejected_id = hold_for(ctx, "053-b", "2031-08-06 18:00+08", "2031-08-06 19:00+08")
     expect_status(reject_booking(ctx, staff, rejected_id), 200)
     refused = approve_booking(ctx, staff, rejected_id)
     expect_status(refused, 409)
     expect_detail(refused, "Only a held booking can be approved. This one is already rejected.")
 
-    _, approved_id = hold_for(ctx, "029-c", "2031-06-14 20:00+08", "2031-06-14 21:00+08")
+    _, approved_id = hold_for(ctx, "053-c", "2031-08-06 20:00+08", "2031-08-06 21:00+08")
     expect_status(approve_booking(ctx, staff, approved_id), 200)
     twice = approve_booking(ctx, staff, approved_id)
     expect_status(twice, 409)
@@ -1263,11 +1505,11 @@ def _(ctx: Context) -> None:
     expect_detail(late, "Only a held booking can be rejected. This one is approved.")
 
 
-@check("TC-BOOK-030", "Approve and reject sent at the same instant: exactly one outcome is saved", needs_db=True)
+@check("TC-BOOK-054", "Approve and reject sent at the same instant: exactly one outcome is saved", needs_db=True)
 def _(ctx: Context) -> None:
     from concurrent.futures import ThreadPoolExecutor
 
-    _, booking_id = hold_for(ctx, "030", "2031-06-15 14:00+08", "2031-06-15 17:00+08")
+    _, booking_id = hold_for(ctx, "054", "2031-08-07 14:00+08", "2031-08-07 17:00+08")
     staff = ctx.shared("venue_staff")
 
     def fire(action: str) -> tuple[str, int]:
@@ -1286,14 +1528,183 @@ def _(ctx: Context) -> None:
     expect(booking_status(booking_id) == winner, f"the booking is {booking_status(booking_id)}, want {winner}")
 
 
-@check("TC-BOOK-031", "Only a session acting as venue staff can approve", needs_db=True)
+@check("TC-BOOK-055", "Only a session acting as venue staff can approve", needs_db=True)
 def _(ctx: Context) -> None:
-    _, booking_id = hold_for(ctx, "031", "2031-06-16 14:00+08", "2031-06-16 17:00+08")
+    _, booking_id = hold_for(ctx, "055", "2031-08-08 14:00+08", "2031-08-08 17:00+08")
     for role in ("event_organiser", "event_coordinator", "tech_support", "attendee"):
         expect_status(approve_booking(ctx, ctx.shared(role), booking_id), 403)
     # SCRUM-76: the seeded coordinator also holds venue_staff, but acting as coordinator is refused.
     expect_status(approve_booking(ctx, ctx.login("event_coordinator"), booking_id), 403)
     expect(booking_status(booking_id) == "held", "a refused caller changed the booking")
+
+
+# --- Several venues per event (CR-97) --------------------------------------
+
+def throwaway_space(event_id: str, label: str, *, pax: int | None = None, layout: str | None = None,
+                    starts: str | None = None, ends: str | None = None) -> str:
+    """A space on a throwaway event; it goes when the event is deleted (cascade)."""
+    def literal(value):
+        return "null" if value is None else f"'{value}'"
+    rows = db_query(
+        "insert into public.event_space_requests (event_id, label, expected_pax, layout_preference, starts_at, ends_at) "
+        f"values ('{event_id}', '{label}', {'null' if pax is None else pax}, {literal(layout)}, "
+        f"{literal(starts)}, {literal(ends)}) returning id"
+    )
+    return rows[0]["id"]
+
+
+def request_space(ctx: Context, session: Session, space_id: str, venue_id: str):
+    return ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=session.headers,
+                           json={"event_space_request_id": space_id, "venue_id": venue_id})
+
+
+@check("TC-BOOK-027", "A venue too small for the space's layout is refused with its capacity", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "027", "2031-06-10 09:00+08", "2031-06-10 12:00+08")
+    space_id = throwaway_space(event_id, "Workshop", pax=61, layout="classroom")
+
+    response = request_space(ctx, ctx.shared("event_coordinator"), space_id, INNOVATION_LAB)
+    expect_status(response, 409)
+    expect_detail(response, "Innovation Lab seats 60; this space needs 61.")
+    expect(not db_query(f"select 1 from public.venue_bookings where event_id = '{event_id}'"),
+           "a refused request left a booking behind")
+
+
+@check("TC-BOOK-028", "Two spaces hold two venues; the event lists both and readiness names each space",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "028", "2031-06-11 09:00+08", "2031-06-11 13:00+08")
+    main = throwaway_space(event_id, "Main hall", pax=50)
+    breakout = throwaway_space(event_id, "Breakout room", pax=20,
+                               starts="2031-06-11 10:00+08", ends="2031-06-11 11:00+08")
+    coordinator = ctx.shared("event_coordinator")
+
+    expect_status(request_space(ctx, coordinator, main, INNOVATION_LAB), 201)
+    refused = request_space(ctx, coordinator, breakout, INNOVATION_LAB)  # AC3: same venue, overlapping
+    expect_status(refused, 409)
+    expect_detail(refused, "Venue already held for this time by another event.")
+    expect_status(request_space(ctx, coordinator, breakout, HERITAGE_HALL), 201)
+
+    event = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=coordinator.headers).json()
+    booked = sorted((b["event_space_request_id"], b["venue_id"], b["status"]) for b in event.get("venue_bookings", []))
+    expect(booked == sorted([(main, INNOVATION_LAB, "held"), (breakout, HERITAGE_HALL, "held")]),
+           f"event lists {event.get('venue_bookings')}")
+    expect(event["safety_readiness"]["missing"] == [
+        "Main hall: awaiting venue staff approval.", "Breakout room: awaiting venue staff approval.",
+    ], f"readiness reads {event['safety_readiness']}")
+
+
+@check("TC-BOOK-029", "The assigned coordinator sets, swaps and clears the primary venue; others can't",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "029", "2031-06-12 09:00+08", "2031-06-12 12:00+08")
+    main = throwaway_space(event_id, "Main hall")
+    breakout = throwaway_space(event_id, "Breakout room")
+    coordinator = ctx.shared("event_coordinator")
+    url = f"{ctx.api}/events/{event_id}/spaces"
+
+    def primaries(response):
+        expect_status(response, 200)
+        return [s["id"] for s in response.json()["spaces"] if s["is_primary"]]
+
+    expect(primaries(ctx.client.get(f"{ctx.api}/events/{event_id}", headers=coordinator.headers)) == [],
+           "a two-space event starts with a primary")
+    expect(primaries(ctx.client.put(f"{url}/{main}/primary", headers=coordinator.headers)) == [main], "set failed")
+    expect(primaries(ctx.client.put(f"{url}/{breakout}/primary", headers=coordinator.headers)) == [breakout],
+           "swap failed")
+    expect(primaries(ctx.client.delete(f"{url}/primary", headers=coordinator.headers)) == [], "clear failed")
+
+    for role in ("event_organiser", "venue_staff", "tech_support", "attendee"):
+        expect_status(ctx.client.put(f"{url}/{main}/primary", headers=ctx.shared(role).headers), 403)
+    session = ctx.login("event_coordinator")  # SCRUM-76: holds venue_staff too
+    expect_status(ctx.client.post(f"{ctx.api}/auth/active-role", json={"role": "venue_staff"},
+                                  headers=session.headers), 200)
+    expect_status(ctx.client.put(f"{url}/{main}/primary", headers=session.headers), 403)
+    expect(not db_query(f"select 1 from public.event_space_requests where event_id = '{event_id}' and is_primary"),
+           "a refused call set a primary")
+
+    db_query(f"update public.events set status = 'safety_review' where id = '{event_id}'")
+    refused = ctx.client.put(f"{url}/{main}/primary", headers=coordinator.headers)
+    expect_status(refused, 409)
+    expect_detail(refused, "The primary venue can only be changed while the event is in planning.")
+
+
+@check("TC-BOOK-030", "An event-only request books the event's first space", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "030", "2031-06-13 09:00+08", "2031-06-13 12:00+08")
+    first = throwaway_space(event_id, "Main hall", pax=40)
+    throwaway_space(event_id, "Breakout room", pax=10)
+
+    response = request_venue(ctx, ctx.shared("event_coordinator"), event_id, HERITAGE_HALL)
+    expect_status(response, 201)
+    expect(response.json()["event_space_request_id"] == first, f"booked {response.json()}")
+
+
+# --- Booking conflict detection (SCRUM-21) ---------------------------------
+
+def hold_with_buffers(ctx: Context, case: str, starts: str, ends: str, venue_id: str) -> str:
+    """A throwaway event holding `venue_id`, its hold given 30 min setup and
+    45 min turnaround the way CR-100 will copy them in. Returns the event id."""
+    event_id = throwaway_event(ctx, case, starts, ends)
+    expect_status(request_venue(ctx, ctx.shared("event_coordinator"), event_id, venue_id), 201)
+    db_query("update public.venue_bookings set setup_minutes = 30, turnaround_minutes = 45 "
+             f"where event_id = '{event_id}'")
+    return event_id
+
+
+@check("TC-BOOK-037", "A request in another booking's turnaround is refused, naming that event and its window",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    hold_with_buffers(ctx, "037-a", "2031-06-16 10:00+08", "2031-06-16 12:00+08", INNOVATION_LAB)
+    later = throwaway_event(ctx, "037-b", "2031-06-16 12:30+08", "2031-06-16 14:00+08")
+    after_turnaround = throwaway_event(ctx, "037-c", "2031-06-16 12:45+08", "2031-06-16 14:00+08")
+    coordinator = ctx.shared("event_coordinator")
+
+    refused = request_venue(ctx, coordinator, later, INNOVATION_LAB)
+    expect_status(refused, 409)
+    expect(refused.json() == {
+        "detail": "Venue already held for this time by another event.",
+        "conflict": {"kind": "booking", "event_name": f"{THROWAWAY_EVENT_PREFIX}{ctx.run_id} 037-a",
+                     "block_reason": None,
+                     "starts_at": "2031-06-16T01:30:00Z", "ends_at": "2031-06-16T04:45:00Z"},
+    }, f"refusal was {refused.json()}")
+    # AC3: starting exactly as the turnaround ends is allowed.
+    expect_status(request_venue(ctx, coordinator, after_turnaround, INNOVATION_LAB), 201)
+
+
+@check("TC-BOOK-038", "A space request during a block is refused with the block's reason and period", needs_db=True)
+def _(ctx: Context) -> None:
+    db_query(
+        "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values "
+        f"('{HERITAGE_HALL}', tstzrange('2031-06-17 10:00+08', '2031-06-17 12:00+08', '[)'), "
+        f"'maintenance', '{THROWAWAY_BLOCK_NOTE}')"
+    )
+    event_id = throwaway_event(ctx, "038", "2031-06-17 09:00+08", "2031-06-17 18:00+08")
+    space_id = throwaway_space(event_id, "Morning room", starts="2031-06-17 11:00+08", ends="2031-06-17 13:00+08")
+
+    refused = request_space(ctx, ctx.shared("event_coordinator"), space_id, HERITAGE_HALL)
+    expect_status(refused, 409)
+    expect(refused.json() == {
+        "detail": "Venue blocked for this timing.",
+        "conflict": {"kind": "block", "event_name": None, "block_reason": "maintenance",
+                     "starts_at": "2031-06-17T02:00:00Z", "ends_at": "2031-06-17T04:00:00Z"},
+    }, f"refusal was {refused.json()}")
+
+
+@check("TC-BOOK-039", "Search rules a venue out during another booking's turnaround, without naming the event",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    hold_with_buffers(ctx, "039", "2031-06-18 10:00+08", "2031-06-18 12:00+08", INNOVATION_LAB)
+
+    found = ctx.client.get(f"{ctx.api}/venues", headers=ctx.shared("event_coordinator").headers, params={
+        "starts_at": "2031-06-18T12:30:00+08:00", "ends_at": "2031-06-18T14:00:00+08:00", "include_excluded": "true",
+    })
+    expect_status(found, 200)
+    [lab] = [r for r in found.json()["results"] if r["venue"]["id"] == INNOVATION_LAB]
+    messages = [reason["message"] for reason in lab["reasons"]]
+    expect(lab["excluded"] and "Held by another event 18 Jun 09:30–12:45" in messages,
+           f"Innovation Lab was {lab['excluded'] and 'excluded' or 'listed'} with {messages}")
+    expect(not any(ctx.run_id in message for message in messages), f"search named the event: {messages}")
 
 
 # --- Equipment requests (SCRUM-45) ----------------------------------------

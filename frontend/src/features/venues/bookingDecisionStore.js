@@ -18,6 +18,7 @@ export const useBookingDecisionStore = defineStore("bookingDecision", {
     loadError: null,
     isApproving: false,
     isRejecting: false,
+    isRestoring: false,
     error: null,
     conflict: false,
   }),
@@ -68,6 +69,32 @@ export const useBookingDecisionStore = defineStore("bookingDecision", {
         return false;
       } finally {
         this[busyFlag] = false;
+      }
+    },
+
+    /**
+     * Venue staff restore an affected booking (CR-95 AC9). Resolves true once
+     * it is unflagged; false with `error` set otherwise, and on a 409 the
+     * booking is reloaded because the venue or the replacement changed.
+     */
+    async restore(bookingId) {
+      if (this.isRestoring) return false;
+      const auth = useAuthStore();
+      this.isRestoring = true;
+      this.error = null;
+      this.conflict = false;
+      try {
+        this.booking = await auth.withSession((token) => venueBookingsApi.restore(bookingId, token));
+        return true;
+      } catch (error) {
+        this.error = error.message;
+        if (error.status === 409) {
+          this.conflict = true;
+          await this.load(bookingId);
+        }
+        return false;
+      } finally {
+        this.isRestoring = false;
       }
     },
   },

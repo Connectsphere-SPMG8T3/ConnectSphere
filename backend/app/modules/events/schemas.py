@@ -37,6 +37,16 @@ class EventPlanningContext(BaseModel):
     accessibility_needs: str | None = None
 
 
+class SpaceRequirements(BaseModel):
+    """What one requested space needs from a venue (CR-94). A null field (or,
+    for facilities, an empty list: the column is never null) means the space
+    did not say, and the caller falls back to the event's value."""
+
+    expected_pax: int | None = None
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] | None = None
+
+
 def _validate_space_window(starts_at: datetime | None, ends_at: datetime | None) -> None:
     if starts_at is None and ends_at is None:
         return
@@ -122,6 +132,7 @@ class EventSpaceRequestResponse(BaseModel):
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     version: int = 1
+    is_primary: bool = False  # CR-97 AC9
 
 
 class TechnicalReadiness(str, Enum):
@@ -243,6 +254,11 @@ class EventVenueBooking(BaseModel):
     status: str
     # When a hold expires unless approved (CR-99); `expired` once it has.
     expires_at: datetime | None = None
+    # CR-95: `affected` when the venue became unavailable, with why, and the
+    # booking a replacement stands in for. Coordinator view only.
+    flag: str | None = None
+    flag_reason: str | None = None
+    replaces_booking_id: str | None = None
 
 
 class EventCoordinator(BaseModel):
@@ -253,6 +269,12 @@ class EventCoordinator(BaseModel):
 class BookingReadiness(BaseModel):
     status: str
     flags: list[str] = []
+
+
+class SpaceReadiness(BaseModel):
+    """One event space and the bookings made for it (CR-97 AC10)."""
+    label: str
+    bookings: list[BookingReadiness] = []
 
 
 class SafetyReadiness(BaseModel):
@@ -345,6 +367,15 @@ class EventResponse(EventFields):
     created_at: datetime
     updated_at: datetime
     spaces: list[EventSpaceRequestResponse] = []
+
+    @field_validator("spaces")
+    @classmethod
+    def _only_space_is_primary(cls, spaces: list[EventSpaceRequestResponse]) -> list[EventSpaceRequestResponse]:
+        # CR-97 Q11: an event's only space is its primary venue without being marked.
+        if len(spaces) == 1:
+            spaces[0].is_primary = True
+        return spaces
+
     # The open amendment while the event is returned (SCRUM-33); null otherwise
     # and on list responses.
     amendment: AmendmentRequest | None = None
@@ -447,6 +478,7 @@ class CoordinatorActionKind(str, Enum):
     decisions, re-review outcomes); those arrive with the stories that build
     their data, and until then their widgets stay empty (REQUIREMENTS §6.21)."""
 
+    needs_alternative_venue = "needs_alternative_venue"
     arrangement_issue = "arrangement_issue"
     resubmitted = "resubmitted"
     awaiting_review = "awaiting_review"

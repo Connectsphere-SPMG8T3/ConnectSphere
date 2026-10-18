@@ -43,6 +43,7 @@ def data(monkeypatch):
         events=[],
         resubmissions={},
         bookings={},
+        affected=set(),
         reserved=set(),
         calls={},
     )
@@ -54,6 +55,7 @@ def data(monkeypatch):
     monkeypatch.setattr(repository, "list_coordinator_events", list_coordinator_events)
     monkeypatch.setattr(repository, "list_latest_resubmissions", lambda ids: state.resubmissions)
     monkeypatch.setattr(venues_service, "booking_statuses_by_event", lambda ids: state.bookings)
+    monkeypatch.setattr(venues_service, "affected_event_ids", lambda ids: state.affected)
     monkeypatch.setattr(equipment_service, "reserved_event_ids", lambda ids: state.reserved)
     return state
 
@@ -126,6 +128,41 @@ class TestActionItems:
         assert items_by_kind(dashboard) == {"arrangement_issue": ["e-004", "e-005"]}
         flags = {e.event_id: e.flags for e in dashboard.active_events}
         assert flags == {"e-004": ["technical_issue"], "e-005": ["technical_issue"], "e-006": []}
+
+    def test_an_event_whose_venue_booking_is_affected_needs_an_alternative_venue(self, data):
+        # CR-95 AC3: the coordinator's dashboard carries the alert; the event's status is untouched.
+        data.events = [
+            event_row("e-040", "planning"),
+            event_row("e-041", "confirmed"),
+            event_row("e-042", "planning"),
+        ]
+        data.affected = {"e-040", "e-041"}
+
+        dashboard = service.coordinator_dashboard(COORDINATOR_ID)
+
+        assert items_by_kind(dashboard) == {"needs_alternative_venue": ["e-040", "e-041"]}
+        by_id = {e.event_id: e for e in dashboard.active_events}
+        assert by_id["e-040"].flags == ["venue_affected"]
+        assert by_id["e-042"].flags == []
+        assert [e.status.value for e in dashboard.active_events] == ["planning", "confirmed", "planning"]
+
+    def test_an_affected_booking_is_a_venue_issue_even_when_it_was_approved(self, data):
+        data.events = [event_row("e-043", "confirmed")]
+        data.bookings = {"e-043": ["approved"]}
+        data.affected = {"e-043"}
+
+        dashboard = service.coordinator_dashboard(COORDINATOR_ID)
+
+        assert dashboard.active_events[0].readiness.venue.value == "issue"
+
+    def test_the_alternative_venue_alert_outranks_a_technical_issue_and_both_flags_show(self, data):
+        data.events = [event_row("e-044", "planning", technical_readiness="issue")]
+        data.affected = {"e-044"}
+
+        dashboard = service.coordinator_dashboard(COORDINATOR_ID)
+
+        assert items_by_kind(dashboard) == {"needs_alternative_venue": ["e-044"]}
+        assert dashboard.active_events[0].flags == ["technical_issue", "venue_affected"]
 
     def test_planning_and_confirmed_events_without_issues_need_no_action(self, data):
         data.events = [event_row("e-007", "planning"), event_row("e-008", "confirmed")]
@@ -273,6 +310,43 @@ class TestCrossModuleReads:
             "e-1": [BookingReadiness(status="approved", flags=["affected"]), BookingReadiness(status="held")],
         }
         assert venues_service.booking_statuses_by_event(["e-1"]) == {"e-1": ["approved", "held"]}
+
+    def test_affected_event_ids_are_the_events_with_a_live_booking_flagged_affected(self, monkeypatch):
+        from app.modules.venues import repository as venues_repository
+
+        monkeypatch.setattr(
+            venues_repository,
+            "list_booking_statuses",
+            lambda ids: [
+                {"event_id": "e-1", "status": "approved", "flag": "affected"},
+                {"event_id": "e-2", "status": "held", "flag": "affected"},
+                {"event_id": "e-3", "status": "approved", "flag": "unsuitable"},
+                {"event_id": "e-4", "status": "released", "flag": "affected"},
+                {"event_id": "e-5", "status": "held", "flag": None},
+            ],
+        )
+
+        assert venues_service.affected_event_ids(["e-1", "e-2", "e-3", "e-4", "e-5"]) == {"e-1", "e-2"}
+
+    def test_booking_readiness_by_space_carries_each_bookings_flag(self, monkeypatch):
+        # CR-97 AC10 with SCRUM-64: a flagged booking blocks its own space.
+        from app.modules.events.schemas import BookingReadiness
+        from app.modules.venues import repository as venues_repository
+
+        monkeypatch.setattr(
+            venues_repository,
+            "list_booking_statuses",
+            lambda ids: [
+                {"event_id": "e-1", "event_space_request_id": "s-1", "status": "approved", "flag": "affected"},
+                {"event_id": "e-1", "event_space_request_id": "s-2", "status": "held", "flag": None},
+                {"event_id": "e-1", "event_space_request_id": None, "status": "approved", "flag": None},
+            ],
+        )
+
+        assert venues_service.booking_readiness_by_space("e-1") == {
+            "s-1": [BookingReadiness(status="approved", flags=["affected"])],
+            "s-2": [BookingReadiness(status="held")],
+        }
 
     def test_reserved_event_ids_are_those_with_a_live_or_finished_reservation(self, monkeypatch):
         from app.modules.equipment import repository as equipment_repository

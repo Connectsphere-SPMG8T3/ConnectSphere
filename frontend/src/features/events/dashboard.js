@@ -57,6 +57,15 @@ export const ACTIVE_COORDINATOR_STATUSES = ["under_review", "returned", "plannin
  */
 export const ACTION_KINDS = [
   {
+    key: "needs_alternative_venue",
+    label: "Needs alternative venue",
+    tone: "red",
+    // CR-95 AC3: the venue was blocked or deactivated under a held or approved
+    // booking. The event keeps its status; nothing happens until the
+    // coordinator arranges a replacement (AC7, AC8), so it ranks first.
+    description: "The booked venue is no longer available. Arrange an alternative venue.",
+  },
+  {
     key: "arrangement_issue",
     label: "Arrangement issue",
     tone: "red",
@@ -175,7 +184,7 @@ export function prioritiseActionItems(items = []) {
  * older "clarification thread" reading of SCRUM-33 (docs/archive/2026-09-13-design-review.md B2a).
  */
 export const ACTION_CATEGORY_KINDS = {
-  immediate: ["arrangement_issue", "re_review_rejected", "cancellation_request", "change_request"],
+  immediate: ["needs_alternative_venue", "arrangement_issue", "re_review_rejected", "cancellation_request", "change_request"],
   awaitingApproval: ["awaiting_review"],
   clarificationResponses: ["resubmitted"],
 };

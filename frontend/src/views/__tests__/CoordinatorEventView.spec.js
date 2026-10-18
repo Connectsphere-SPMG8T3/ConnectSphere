@@ -9,7 +9,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), listComments: vi.fn(), addComment: vi.fn() },
+  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), listComments: vi.fn(), addComment: vi.fn(), setPrimarySpace: vi.fn(), clearPrimarySpace: vi.fn() },
 }));
 
 function eventResponse(overrides = {}) {
@@ -163,6 +163,75 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect([...panel.querySelectorAll("button")].map((b) => b.textContent.trim())).toContain("Find a venue");
   });
 
+  // CR-95 AC3, AC4: an affected booking says so, why, and how to replace it.
+  describe("an affected venue booking (CR-95)", () => {
+    const AFFECTED = {
+      id: "b-affected", event_space_request_id: null, venue_id: "v1", venue_name: "Seminar Room 1",
+      status: "approved", flag: "affected", flag_reason: "Venue unavailable: maintenance",
+    };
+    const REPLACEMENT = {
+      id: "b-new", event_space_request_id: null, venue_id: "v2", venue_name: "Heritage Hall",
+      status: "held", flag: null, replaces_booking_id: "b-affected", expires_at: "2026-11-01T04:00:00Z",
+    };
+    const findReplacement = (root) => [...root.querySelectorAll("button")].find((b) => b.textContent.trim() === "Find replacement");
+
+    it.each(["planning", "safety_review", "confirmed"])(
+      "shows why a %s event's venue is unavailable and opens venue search to replace it",
+      async (status) => {
+        const el = await mountView(eventResponse({ status, venue_booking: AFFECTED, venue_bookings: [AFFECTED] }));
+
+        const panel = el.querySelector('[data-testid="venue-panel"]');
+        expect(panel.textContent).toContain("Seminar Room 1");
+        expect(panel.textContent).toContain("Needs alternative venue");
+        expect(panel.textContent).toContain("Venue unavailable: maintenance");
+        findReplacement(panel).click();
+        const { default: router } = await import("@/router");
+        await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("venue-search"));
+        expect(router.currentRoute.value.query).toEqual({ event: "event-1", replaces: "b-affected" });
+      },
+    );
+
+    it("shows the replacement asked for and offers no second one", async () => {
+      const el = await mountView(eventResponse({
+        status: "planning", venue_booking: REPLACEMENT, venue_bookings: [AFFECTED, REPLACEMENT],
+      }));
+
+      const panel = el.querySelector('[data-testid="venue-panel"]');
+      expect(panel.textContent).toContain("Seminar Room 1");
+      expect(panel.textContent).toContain("Replacement requested");
+      expect(panel.querySelector('[data-testid="venue-replacement"]').textContent).toContain("Heritage Hall");
+      expect(panel.querySelector('[data-testid="venue-replacement"]').textContent).toContain("Tentative hold");
+      expect(findReplacement(panel)).toBeUndefined();
+    });
+
+    it("offers no replacement once the event is past planning, review and confirmation", async () => {
+      const el = await mountView(eventResponse({ status: "returned", venue_bookings: [AFFECTED] }));
+
+      const panel = el.querySelector('[data-testid="venue-panel"]');
+      expect(panel.textContent).toContain("Needs alternative venue");
+      expect(findReplacement(panel)).toBeUndefined();
+    });
+
+    it("marks an affected space's booking on its own card and replaces it from there", async () => {
+      const spaceBooking = { ...AFFECTED, event_space_request_id: "space-b" };
+      const el = await mountView(eventResponse({
+        status: "confirmed", spaces: TWO_SPACES, venue_bookings: [
+          { id: "b1", event_space_request_id: "space-a", venue_id: "v3", venue_name: "Innovation Lab", status: "approved" },
+          spaceBooking,
+        ],
+      }));
+
+      const [main, breakout] = spaceCards(el);
+      expect(main.textContent).not.toContain("Needs alternative venue");
+      expect(breakout.textContent).toContain("Needs alternative venue");
+      expect(breakout.textContent).toContain("Venue unavailable: maintenance");
+      findReplacement(breakout).click();
+      const { default: router } = await import("@/router");
+      await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("venue-search"));
+      expect(router.currentRoute.value.query).toEqual({ event: "event-1", space: "space-b", replaces: "b-affected" });
+    });
+  });
+
   it("shows the event's discussion thread (SCRUM-61)", async () => {
     const el = await mountView(eventResponse());
 
@@ -193,6 +262,124 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
       "/venues?event=event-1&space=space-a",
       "/venues?event=event-1&space=space-b",
     ]);
+  });
+
+  // CR-97 AC5: the event page lists every space's booking and its status.
+  const TWO_SPACES = [
+    { id: "space-a", label: "Main hall", expected_pax: 50, layout_preference: "theatre", facilities_required: [], is_primary: false },
+    { id: "space-b", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: [], is_primary: false },
+  ];
+  const spaceCards = (el) => [...el.querySelectorAll('[data-testid="event-spaces"] article')];
+
+  it("CR-97 AC5 shows each space's own booking and status", async () => {
+    const el = await mountView(eventResponse({
+      status: "planning", spaces: TWO_SPACES,
+      venue_bookings: [
+        { id: "b1", event_space_request_id: "space-a", venue_id: "v1", venue_name: "Innovation Lab", status: "approved" },
+        { id: "b2", event_space_request_id: "space-b", venue_id: "v2", venue_name: "Heritage Hall", status: "held",
+          expires_at: "2026-11-01T02:00:00Z" },
+      ],
+    }));
+    const [main, breakout] = spaceCards(el);
+    expect(main.textContent).toContain("Innovation Lab");
+    expect(main.textContent).toContain("Approved");
+    expect(breakout.textContent).toContain("Heritage Hall");
+    expect(breakout.textContent).toContain("Tentative hold");
+    expect(breakout.textContent).toContain("Hold expires");
+  });
+
+  it("CR-97 offers Find venue only for a space without an occupying booking", async () => {
+    const el = await mountView(eventResponse({
+      status: "planning", spaces: [...TWO_SPACES, { id: "space-c", label: "Foyer", expected_pax: 30, facilities_required: [] }],
+      venue_bookings: [
+        { id: "b1", event_space_request_id: "space-a", venue_id: "v1", venue_name: "Innovation Lab", status: "held" },
+        { id: "b2", event_space_request_id: "space-b", venue_id: "v2", venue_name: "Heritage Hall", status: "expired",
+          expires_at: "2026-10-01T02:00:00Z" },
+      ],
+    }));
+    const findVenue = (card) => [...card.querySelectorAll("a")].some((link) => link.textContent.trim() === "Find venue");
+    expect(spaceCards(el).map(findVenue)).toEqual([false, true, true]);
+  });
+
+  it("CR-97 AC9 badges the primary space only", async () => {
+    const el = await mountView(eventResponse({
+      status: "planning", spaces: [TWO_SPACES[0], { ...TWO_SPACES[1], is_primary: true }],
+    }));
+    const badged = (card) => card.querySelector('[data-testid="primary-badge"]') !== null;
+    expect(spaceCards(el).map(badged)).toEqual([false, true]);
+    expect(spaceCards(el)[1].querySelector('[data-testid="primary-badge"]').textContent.trim()).toBe("Primary venue");
+  });
+
+  it("CR-97 AC9 makes a space the primary venue", async () => {
+    const el = await mountView(eventResponse({ status: "planning", spaces: TWO_SPACES }));
+    eventsApi.setPrimarySpace.mockResolvedValue(eventResponse({
+      status: "planning", spaces: [TWO_SPACES[0], { ...TWO_SPACES[1], is_primary: true }],
+    }));
+    spaceCards(el)[1].querySelector('button[aria-label="Make Breakout room the primary venue"]').click();
+    await vi.waitFor(() => expect(spaceCards(el)[1].querySelector('[data-testid="primary-badge"]')).not.toBeNull());
+    expect(eventsApi.setPrimarySpace).toHaveBeenCalledWith("event-1", "space-b", "access");
+  });
+
+  it("CR-97 AC9 unsets the primary venue", async () => {
+    const el = await mountView(eventResponse({ status: "planning", spaces: [{ ...TWO_SPACES[0], is_primary: true }, TWO_SPACES[1]] }));
+    eventsApi.clearPrimarySpace.mockResolvedValue(eventResponse({ status: "planning", spaces: TWO_SPACES }));
+    spaceCards(el)[0].querySelector('button[aria-label="Unset Main hall as the primary venue"]').click();
+    await vi.waitFor(() => expect(el.querySelector('[data-testid="primary-badge"]')).toBeNull());
+    expect(eventsApi.clearPrimarySpace).toHaveBeenCalledWith("event-1", "access");
+  });
+
+  it.each([
+    ["an event with one space", { status: "planning", spaces: [{ ...TWO_SPACES[0], is_primary: true }] }],
+    ["an event outside planning", { status: "safety_review", spaces: TWO_SPACES }],
+  ])("CR-97 AC9 offers no primary choice for %s", async (_, overrides) => {
+    const el = await mountView(eventResponse(overrides));
+    expect(el.querySelector('[data-testid="event-spaces"] button')).toBeNull();
+  });
+
+  it("CR-97 leaves bookings to the space cards when the event has spaces, keeping rejections in the Venue panel", async () => {
+    const booking = { id: "b1", event_space_request_id: "space-a", venue_id: "v1", venue_name: "Innovation Lab", status: "approved" };
+    const el = await mountView(eventResponse({
+      status: "planning", spaces: TWO_SPACES, venue_booking: booking, venue_bookings: [booking],
+      rejected_bookings: [{ id: "b9", venue_id: "v3", venue_name: "Auditorium A", reason: "Closed for works", suggestion: null, decided_at: null }],
+    }));
+    const panel = el.querySelector('[data-testid="venue-panel"]');
+    expect(panel.textContent).toContain("Auditorium A");
+    expect(panel.textContent).not.toContain("Innovation Lab");
+    expect(panel.textContent).not.toContain("Find a venue");
+  });
+
+  it("CR-97 still explains why no venue can be requested yet when the event has spaces", async () => {
+    const el = await mountView(eventResponse({ status: "under_review", spaces: TWO_SPACES }));
+    expect(el.querySelector('[data-testid="venue-panel"]').textContent)
+      .toContain("A venue can be requested once the request is approved for planning.");
+  });
+
+  it("CR-97 keeps CR-99 AC7's expired-hold explanation on the space card", async () => {
+    const el = await mountView(eventResponse({
+      status: "planning", spaces: TWO_SPACES,
+      venue_bookings: [{ id: "b2", event_space_request_id: "space-b", venue_id: "v2", venue_name: "Heritage Hall",
+        status: "expired", expires_at: "2031-06-01T04:00:00Z" }],
+    }));
+    const breakout = spaceCards(el)[1];
+    expect(breakout.querySelector('[data-testid="hold-expired"]').textContent).toContain(
+      "The hold expired on 1 Jun 2031, 12:00 before venue staff approved it.",
+    );
+    expect(breakout.textContent).toContain("You can request this venue again if it's still free, or find another.");
+  });
+
+  it.each([[1, "1 space"], [2, "2 spaces"]])("counts %i space(s) as \"%s\"", async (count, label) => {
+    const el = await mountView(eventResponse({ status: "planning", spaces: TWO_SPACES.slice(0, count) }));
+    expect(el.querySelector('[data-testid="space-count"]').textContent.trim()).toBe(label);
+  });
+
+  // A space the booking trigger created ("Main space") has a label only.
+  it("shows only the requirements a space has, and says when it has none", async () => {
+    const el = await mountView(eventResponse({ status: "planning", spaces: [
+      { id: "space-a", label: "Main space", expected_pax: null, layout_preference: null, facilities_required: [] },
+      { id: "space-b", label: "Breakout room", expected_pax: 20, layout_preference: null, facilities_required: [] },
+    ] }));
+    const requirements = spaceCards(el).map((card) => card.querySelector('[data-testid="space-requirements"]').textContent.trim());
+    expect(requirements).toEqual(["Requirements not specified", "20 pax"]);
   });
 
   it("does not offer space venue search before planning", async () => {

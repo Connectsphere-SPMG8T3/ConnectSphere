@@ -5,6 +5,7 @@ import {
   ACTIVE_COORDINATOR_STATUSES,
   STATUS_DESCRIPTIONS,
   STATUS_LABELS,
+  actionKindMeta,
   countByStatus,
   groupActiveEventsByStatus,
   outstandingReadiness,
@@ -112,6 +113,39 @@ describe("action item prioritisation (SCRUM-72 AC1)", () => {
     const keys = ACTION_KINDS.map((kind) => kind.key);
     expect(new Set(keys).size).toBe(keys.length);
     ACTION_KINDS.forEach((kind) => expect(kind.label).toBeTruthy());
+  });
+});
+
+describe("needs an alternative venue (CR-95 AC3)", () => {
+  it("is labelled for the coordinator and shown in red", () => {
+    const meta = actionKindMeta("needs_alternative_venue");
+
+    expect(meta.label).toBe("Needs alternative venue");
+    expect(meta.tone).toBe("red");
+    expect(meta.description).toMatch(/venue/i);
+  });
+
+  it("outranks every other kind, including an arrangement issue", () => {
+    const items = [
+      actionItem({ event_id: "a", kind: "arrangement_issue" }),
+      actionItem({ event_id: "b", kind: "needs_alternative_venue" }),
+      actionItem({ event_id: "c", kind: "awaiting_review" }),
+    ];
+
+    expect(prioritiseActionItems(items).map((item) => item.kind)).toEqual([
+      "needs_alternative_venue",
+      "arrangement_issue",
+      "awaiting_review",
+    ]);
+  });
+
+  it("counts as an immediate action", () => {
+    const summary = summariseActionItems([
+      actionItem({ event_id: "a", kind: "needs_alternative_venue" }),
+      actionItem({ event_id: "b", kind: "awaiting_review" }),
+    ]);
+
+    expect(summary).toEqual({ immediate: 1, awaitingApproval: 1, clarificationResponses: 0, total: 2 });
   });
 });
 

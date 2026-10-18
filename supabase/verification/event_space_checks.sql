@@ -226,10 +226,192 @@ begin
             raise exception 'SPACE EXPIRY FAIL: an unexpired overlapping hold was not refused';
         end if;
     end loop;
-    if has_function_privilege('anon', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text)', 'EXECUTE')
-       or has_function_privilege('authenticated', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text)', 'EXECUTE')
-       or not has_function_privilege('service_role', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text)', 'EXECUTE') then
+    if has_function_privilege('anon', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text,uuid)', 'EXECUTE')
+       or has_function_privilege('authenticated', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text,uuid)', 'EXECUTE')
+       or not has_function_privilege('service_role', 'public.request_venue_booking_for_space(uuid,uuid,uuid,text,text,uuid)', 'EXECUTE') then
         raise exception 'SPACE EXPIRY FAIL: booking RPC grants changed';
+    end if;
+end;
+$$;
+
+-- CR-97 AC10 / BR-R16: a space is refused a venue too small for its expected
+-- pax. Capacity is the venue's figure for the space's layout when it has one,
+-- else the venue's overall capacity (the same rule as venue search).
+do $$
+declare
+    v_owner uuid := 'a0000000-0000-4000-8000-000000000001';
+    v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
+    v_venue uuid := 'b0000000-0000-4000-8000-000000000006'; -- 80 seats; classroom 60, reception no layout figure
+    v_case record;
+    v_event_id uuid;
+    v_space_id uuid;
+    v_start timestamptz;
+    v_result record;
+    v_day integer := 0;
+begin
+    for v_case in
+        select * from (values
+            (61, 'classroom'::public.venue_layout, 'over_capacity'),  -- layout figure used, though under 80
+            (60, 'classroom'::public.venue_layout, 'ok'),             -- exactly the layout capacity
+            (81, 'reception'::public.venue_layout, 'over_capacity'),  -- no layout figure: venue capacity
+            (80, null::public.venue_layout, 'ok'),                    -- no layout preference: venue capacity
+            (null, 'classroom'::public.venue_layout, 'ok')            -- no expected pax: not checked
+        ) as t(pax, layout, expected)
+    loop
+        v_day := v_day + 1;
+        v_event_id := gen_random_uuid();
+        v_start := '2091-03-01 02:00+00'::timestamptz + v_day * interval '1 day';
+        insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at)
+        values (v_event_id, v_owner, v_coordinator, 'planning', 'CR-97 capacity check (rolled back)', v_start, v_start + interval '2 hours');
+        insert into public.event_space_requests (event_id, label, expected_pax, layout_preference)
+        values (v_event_id, 'Capacity space', v_case.pax, v_case.layout) returning id into v_space_id;
+
+        select * into v_result from public.request_venue_booking_for_space(
+            v_space_id, v_venue, v_coordinator, null, 'CR-97 capacity check');
+        if v_result.outcome is distinct from v_case.expected then
+            raise exception 'CR-97 CAPACITY FAIL: % pax, layout %: got %, expected %',
+                v_case.pax, v_case.layout, v_result.outcome, v_case.expected;
+        end if;
+        if v_case.expected = 'over_capacity' and exists (
+            select 1 from public.venue_bookings where event_space_request_id = v_space_id
+        ) then
+            raise exception 'CR-97 CAPACITY FAIL: a refused request still created a booking';
+        end if;
+    end loop;
+end;
+$$;
+
+-- CR-97 AC1, AC2, AC3, AC4, AC8: one event books a venue per space, in
+-- different locations; the same venue for two overlapping spaces is refused;
+-- a booking that stops occupying one space leaves the other untouched.
+do $$
+declare
+    v_owner uuid := 'a0000000-0000-4000-8000-000000000001';
+    v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
+    v_lab uuid := 'b0000000-0000-4000-8000-000000000006';      -- Innovation Lab, Jurong East
+    v_heritage uuid := 'b0000000-0000-4000-8000-000000000007'; -- Heritage Hall, Chinatown
+    v_event_id uuid := gen_random_uuid();
+    v_main uuid;
+    v_breakout uuid;
+    v_main_booking uuid;
+    v_breakout_booking uuid;
+    v_start timestamptz := '2092-04-01 02:00+00';
+    v_result record;
+begin
+    insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at)
+    values (v_event_id, v_owner, v_coordinator, 'planning', 'CR-97 multi-venue check (rolled back)', v_start, v_start + interval '4 hours');
+    insert into public.event_space_requests (event_id, label, expected_pax)
+    values (v_event_id, 'Main hall', 50) returning id into v_main;
+    insert into public.event_space_requests (event_id, label, expected_pax, starts_at, ends_at)
+    values (v_event_id, 'Breakout room', 20, v_start + interval '1 hour', v_start + interval '2 hours')
+    returning id into v_breakout;
+
+    select * into v_result from public.request_venue_booking_for_space(v_main, v_lab, v_coordinator, null, 'CR-97 check');
+    if v_result.outcome is distinct from 'ok' then
+        raise exception 'CR-97 MULTI FAIL: first space got %', v_result.outcome;
+    end if;
+    v_main_booking := v_result.booking_id;
+
+    -- AC3: the same venue for an overlapping space of the same event is refused.
+    select * into v_result from public.request_venue_booking_for_space(v_breakout, v_lab, v_coordinator, null, 'CR-97 check');
+    if v_result.outcome is distinct from 'held_by_other' then
+        raise exception 'CR-97 MULTI FAIL: same venue twice returned %, expected held_by_other', v_result.outcome;
+    end if;
+
+    -- AC1, AC2, AC8: a second venue elsewhere, checked on the space's own window.
+    select * into v_result from public.request_venue_booking_for_space(v_breakout, v_heritage, v_coordinator, null, 'CR-97 check');
+    if v_result.outcome is distinct from 'ok' then
+        raise exception 'CR-97 MULTI FAIL: second venue got %', v_result.outcome;
+    end if;
+    v_breakout_booking := v_result.booking_id;
+    if (select occupied_period from public.venue_bookings where id = v_breakout_booking)
+       is distinct from tstzrange(v_start + interval '1 hour', v_start + interval '2 hours', '[)') then
+        raise exception 'CR-97 MULTI FAIL: second booking does not occupy its space''s own window';
+    end if;
+
+    -- AC4: one booking stops occupying; the other space keeps its booking, and
+    -- the freed space can be booked again.
+    update public.venue_bookings set status = 'rejected' where id = v_main_booking;
+    if (select status from public.venue_bookings where id = v_breakout_booking) is distinct from 'held' then
+        raise exception 'CR-97 MULTI FAIL: ending one space''s booking changed another''s';
+    end if;
+    select * into v_result from public.request_venue_booking_for_space(v_main, v_lab, v_coordinator, null, 'CR-97 check');
+    if v_result.outcome is distinct from 'ok' then
+        raise exception 'CR-97 MULTI FAIL: freed space could not be booked again: %', v_result.outcome;
+    end if;
+end;
+$$;
+
+-- CR-97 AC9 / BR-R17: the assigned coordinator marks at most one event space
+-- as the primary venue, while the event is in planning.
+do $$
+declare
+    v_owner uuid := 'a0000000-0000-4000-8000-000000000001';
+    v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
+    v_other_actor uuid := 'a0000000-0000-4000-8000-000000000003';
+    v_event_id uuid := gen_random_uuid();
+    v_other_event_id uuid := gen_random_uuid();
+    v_main uuid;
+    v_breakout uuid;
+    v_foreign uuid;
+    v_outcome text;
+    v_start timestamptz := '2093-05-01 02:00+00';
+begin
+    insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at)
+    values
+        (v_event_id, v_owner, v_coordinator, 'planning', 'CR-97 primary check (rolled back)', v_start, v_start + interval '2 hours'),
+        (v_other_event_id, v_owner, v_coordinator, 'planning', 'CR-97 primary other (rolled back)', v_start, v_start + interval '2 hours');
+    insert into public.event_space_requests (event_id, label) values (v_event_id, 'Main hall') returning id into v_main;
+    insert into public.event_space_requests (event_id, label) values (v_event_id, 'Breakout room') returning id into v_breakout;
+    insert into public.event_space_requests (event_id, label) values (v_other_event_id, 'Elsewhere') returning id into v_foreign;
+
+    v_outcome := public.set_primary_space(v_event_id, v_main, v_coordinator);
+    if v_outcome is distinct from 'ok'
+       or not (select is_primary from public.event_space_requests where id = v_main) then
+        raise exception 'CR-97 PRIMARY FAIL: set returned % or did not mark the space', v_outcome;
+    end if;
+
+    v_outcome := public.set_primary_space(v_event_id, v_breakout, v_coordinator);
+    if v_outcome is distinct from 'ok'
+       or (select is_primary from public.event_space_requests where id = v_main)
+       or not (select is_primary from public.event_space_requests where id = v_breakout) then
+        raise exception 'CR-97 PRIMARY FAIL: swap did not move the primary';
+    end if;
+
+    begin
+        update public.event_space_requests set is_primary = true where id = v_main;
+        raise exception 'CR-97 PRIMARY FAIL: a second primary space was allowed';
+    exception when unique_violation then
+        null;
+    end;
+
+    v_outcome := public.set_primary_space(v_event_id, null, v_coordinator);
+    if v_outcome is distinct from 'ok'
+       or exists (select 1 from public.event_space_requests where event_id = v_event_id and is_primary) then
+        raise exception 'CR-97 PRIMARY FAIL: unset left a primary space';
+    end if;
+
+    if public.set_primary_space(v_event_id, v_main, v_other_actor) is distinct from 'not_assigned' then
+        raise exception 'CR-97 PRIMARY FAIL: an unassigned actor was not refused';
+    end if;
+    if public.set_primary_space(v_event_id, v_foreign, v_coordinator) is distinct from 'space_not_found' then
+        raise exception 'CR-97 PRIMARY FAIL: another event''s space was not refused';
+    end if;
+    if public.set_primary_space(gen_random_uuid(), v_main, v_coordinator) is distinct from 'event_not_found' then
+        raise exception 'CR-97 PRIMARY FAIL: a missing event was not refused';
+    end if;
+    update public.events set status = 'safety_review' where id = v_event_id;
+    if public.set_primary_space(v_event_id, v_main, v_coordinator) is distinct from 'not_planning' then
+        raise exception 'CR-97 PRIMARY FAIL: a non-planning event was not refused';
+    end if;
+    if exists (select 1 from public.event_space_requests where event_id = v_event_id and is_primary) then
+        raise exception 'CR-97 PRIMARY FAIL: a refused call changed the primary';
+    end if;
+
+    if has_function_privilege('anon', 'public.set_primary_space(uuid,uuid,uuid)', 'EXECUTE')
+       or has_function_privilege('authenticated', 'public.set_primary_space(uuid,uuid,uuid)', 'EXECUTE')
+       or not has_function_privilege('service_role', 'public.set_primary_space(uuid,uuid,uuid)', 'EXECUTE') then
+        raise exception 'CR-97 PRIMARY FAIL: set_primary_space grants are wrong';
     end if;
 end;
 $$;

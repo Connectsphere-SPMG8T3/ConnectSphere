@@ -84,6 +84,36 @@ describe("CR-98 space request API", () => {
   });
 });
 
+describe("SCRUM-21 a refused booking request", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps what is in the way beside the message", async () => {
+    const conflict = {
+      kind: "booking", event_name: "Alumni Night", block_reason: null,
+      starts_at: "2031-04-07T01:30:00Z", ends_at: "2031-04-07T04:45:00Z",
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      status: 409,
+      ok: false,
+      json: async () => ({ detail: "Venue already held for this time by another event.", conflict }),
+    }));
+
+    await expect(venueBookingsApi.request({ venue_id: "venue-1" }, "token")).rejects.toMatchObject({
+      message: "Venue already held for this time by another event.",
+      status: 409,
+      conflict,
+    });
+  });
+
+  it("has no conflict when the API names none", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      status: 409, ok: false, json: async () => ({ detail: "This venue is inactive." }),
+    }));
+
+    await expect(venueBookingsApi.request({ venue_id: "venue-1" }, "token")).rejects.toMatchObject({ conflict: null });
+  });
+});
+
 describe("SCRUM-82 eventsApi.sendForSafetyCheck", () => {
   afterEach(() => vi.unstubAllGlobals());
   it("posts to the encoded endpoint without a body and uses the session token", async () => {
@@ -213,6 +243,26 @@ describe("eventsApi Lead calls (CR-101)", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/v1/events/event%2Fone/reassign",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ coordinator_id: "c2", expected_version: 4 }) }),
+    );
+  });
+});
+
+describe("venueBookingsApi.restore (CR-95 AC9)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts an authenticated restore for the encoded booking id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200, ok: true, json: async () => ({ id: "booking/1", flag: null }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(venueBookingsApi.restore("booking/1", "token")).resolves.toEqual({ id: "booking/1", flag: null });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/venue-bookings/booking%2F1/restore",
+      expect.objectContaining({ method: "POST", headers: expect.objectContaining({ Authorization: "Bearer token" }) }),
     );
   });
 });

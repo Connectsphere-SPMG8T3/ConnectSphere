@@ -28,11 +28,12 @@ test("TC-HOLD-005 the coordinator sees an expired hold and can look for a venue 
   createThrowawayHold(event, INNOVATION_LAB, "2031-06-25 10:00+08", "2031-06-25 12:00+08", "expired", "2031-06-01 12:00+08");
   await seedSession(page, await sharedSessions("event_coordinator"));
 
+  // CR-97: the booking shows on the space it was made for ("Main space", created by the database).
   await page.goto(`/coordinator/events/${event.id}`);
-  const panel = page.getByTestId("venue-panel");
-  await expect(panel).toContainText("Innovation Lab");
-  await expect(panel).toContainText("Expired");
-  await expect(panel).toContainText("The hold expired on 1 Jun 2031, 12:00");
-  await panel.getByRole("button", { name: "Find a venue" }).click();
-  await expect(page).toHaveURL(new RegExp(`/venues\\?event=${event.id}`));
+  const card = page.getByTestId("event-spaces").locator("article").filter({ hasText: "Main space" });
+  await expect(card.getByTestId("space-booking")).toContainText("Innovation Lab");
+  await expect(card.getByTestId("space-booking")).toContainText("Expired");
+  await expect(card.getByTestId("hold-expired")).toContainText("The hold expired on 1 Jun 2031, 12:00");
+  await card.getByRole("link", { name: "Find venue" }).click();
+  await expect(page).toHaveURL(new RegExp(`/venues\\?event=${event.id}&space=`));
 });

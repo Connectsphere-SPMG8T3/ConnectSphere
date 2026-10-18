@@ -139,6 +139,18 @@ class Occupant(BaseModel):
     detail: str
 
 
+class BookingConflict(BaseModel):
+    """What refused a booking request (SCRUM-21 AC2): another event's booking,
+    named by the event only, or a block with its reason. The window is the one
+    it occupies, setup to turnaround."""
+
+    kind: Literal["booking", "block"]
+    event_name: str | None = None
+    block_reason: str | None = None
+    starts_at: AwareDatetime
+    ends_at: AwareDatetime
+
+
 class BlockSummary(BaseModel):
     id: str
     period: Period
@@ -149,6 +161,7 @@ class BlockSummary(BaseModel):
 class BookingSummary(BaseModel):
     id: str
     event_id: str
+    event_space_request_id: str | None = None
     period: Period
     status: str
     event_name: str | None = None
@@ -238,6 +251,9 @@ class VenueStaffBooking(BookingSummary):
     # When a hold expires unless approved (CR-99). The dashboard sorts pending
     # holds on it, soonest first. Null on a booking that was never held.
     expires_at: datetime | None = None
+    # `affected` when the venue became unavailable under it (CR-95); venue staff
+    # restore or leave it. Null on an unflagged booking.
+    flag: str | None = None
     # `event_name`, `coordinator_name` and decision metadata are resolved by
     # the complete dashboard history query; the SPA only falls back to an id
     # when an event row is genuinely unavailable.
@@ -257,6 +273,8 @@ class VenueStaffDashboard(BaseModel):
     booking_requests: list[VenueStaffBooking] = []
     pending_holds: list[VenueStaffBooking] = []
     re_review_bookings: list[VenueStaffBooking] = []
+    # Live bookings whose venue became unavailable and have not ended (CR-95 AC9).
+    affected_bookings: list[VenueStaffBooking] = []
     blocks: list[VenueStaffBlock] = []
 
 
@@ -296,6 +314,48 @@ class Reason(BaseModel):
     message: str
 
 
+class VenueRequirements(BaseModel):
+    """What one event (or one of its spaces) needs from a venue, as
+    `suitability.check` judges it. Every field is optional: a requirement the
+    event did not state is never held against a venue."""
+
+    expected_attendance: int | None = None
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] = []
+    period: Period | None = None
+
+
+class SuitabilityVerdict(str, Enum):
+    suitable = "suitable"
+    suitable_with_warnings = "suitable_with_warnings"
+    unsuitable = "unsuitable"
+
+
+class SuitabilitySeverity(str, Enum):
+    unsuitable = "unsuitable"
+    warning = "warning"
+
+
+class SuitabilityCode(str, Enum):
+    capacity = "capacity"
+    missing_facility = "missing_facility"
+    layout_not_supported = "layout_not_supported"
+    outside_operating_hours = "outside_operating_hours"
+    # Edit-only (CR-94): set by `venues.impact`, never by `suitability.check`.
+    accessibility_changed = "accessibility_changed"
+
+
+class SuitabilityReason(BaseModel):
+    code: SuitabilityCode
+    severity: SuitabilitySeverity
+    message: str
+
+
+class SuitabilityResult(BaseModel):
+    verdict: SuitabilityVerdict
+    reasons: list[SuitabilityReason] = []
+
+
 class BookingImpactContext(BaseModel):
     """One occupying booking plus the event fields needed to judge whether an
     edit to the venue (VC-R2) newly breaks something that booking relies on.
@@ -313,15 +373,23 @@ class BookingImpactContext(BaseModel):
     expected_attendance: int | None = None
     layout_preference: VenueLayout | None = None
     facilities_required: list[Facility] = []
+    accessibility_needs: str | None = None
 
 
 class AffectedBooking(BaseModel):
-    """A booking whose event has a new problem because of this edit (VC-R2)."""
+    """A booking whose event has a new problem because of this edit (VC-R2).
+
+    `outcome` is `unsuitable` when any newly broken rule is a hard one
+    (capacity, a required facility), otherwise `warning` (CR-94). `reasons`
+    repeats the `details` messages for callers that only show text.
+    """
 
     booking_id: str
     event_id: str
     event_name: str | None = None
     period: Period
+    outcome: Literal["unsuitable", "warning"]
+    details: list[SuitabilityReason] = []
     reasons: list[str]
 
 
@@ -405,6 +473,8 @@ class VenueBookingCreate(BaseModel):
     event_space_request_id: UUID | None = None
     venue_id: UUID
     note: str | None = Field(default=None, max_length=BOOKING_NOTE_MAX_LENGTH)
+    # CR-95 AC4: the affected booking this request replaces.
+    replaces_booking_id: UUID | None = None
 
     @field_validator("note", mode="before")
     @classmethod
@@ -507,6 +577,10 @@ class VenueBookingDetail(BaseModel):
     request_note: str | None = None
     requested_at: datetime
     requested_by_name: str | None = None
+    # CR-95: `affected` when the venue became unavailable, with why; venue staff
+    # may restore the booking once the venue is free again (AC9).
+    flag: str | None = None
+    flag_reason: str | None = None
     event: BookingEventRequirements
     decision: BookingDecision | None = None
     history: list[BookingHistoryEntry] = []
