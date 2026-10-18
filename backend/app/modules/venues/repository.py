@@ -654,6 +654,21 @@ def reject_booking(booking_id: str, actor_id: str, reason: str, suggestion: str 
     return (response.data or [])[0]
 
 
+def approve_booking(booking_id: str, actor_id: str, *, notify_message: str) -> dict:
+    """Run `public.approve_venue_booking` (SCRUM-36): the decision, its history
+    row and the coordinator's notification in one transaction. Returns
+    `{outcome, event_id, from_status}`; every refusal is an outcome code."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "approve_venue_booking",
+            {"p_booking_id": booking_id, "p_actor_id": actor_id, "p_notify_message": notify_message},
+        )
+        .execute()
+    )
+    return (response.data or [])[0]
+
+
 def restore_affected_booking(booking_id: str, actor_id: str) -> dict:
     """Run `public.restore_affected_booking` (CR-95 AC9): the flag cleared, a
     pending replacement cancelled, history and notices in one transaction.

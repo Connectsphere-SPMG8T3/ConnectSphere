@@ -795,6 +795,38 @@ def reject_booking(booking_id: str, actor_id: str, body: VenueBookingReject) -> 
     return _booking_detail(repository.get_booking(booking_id))
 
 
+def approve_booking(booking_id: str, actor_id: str) -> VenueBookingDetail:
+    """Venue staff approve a held booking (SCRUM-36, REQUIREMENTS §6.13).
+
+    `public.approve_venue_booking` decides under the same lock on the booking
+    row as rejection and the expiry job, so only one of them wins (AC9). It
+    also refuses a hold that a venue block now overlaps (AC3) or whose venue
+    has been deactivated (AC4). Only this booking changes (AC7).
+    """
+    booking = repository.get_booking(booking_id)
+    if booking is None:
+        raise BookingNotFoundError()
+    event_name = events_service.names_by_id([booking["event_id"]]).get(booking["event_id"], "your event")
+    venue_name = booking.get("venue_name") or "the venue"
+    result = repository.approve_booking(
+        booking_id, actor_id,
+        notify_message=f'Venue staff approved the booking of {venue_name} for "{event_name}".',
+    )
+    outcome = result["outcome"]
+    if outcome == "booking_not_found":
+        raise BookingNotFoundError()
+    if outcome == "hold_expired":
+        raise BookingDecisionConflictError("This hold has expired, so it can't be approved.")
+    if outcome == "not_held":
+        label = _NOT_HELD_LABELS.get(result["from_status"], str(result["from_status"]).replace("_", " "))
+        raise BookingDecisionConflictError(f"Only a held booking can be approved. This one is {label}.")
+    if outcome == "venue_blocked":
+        raise BookingDecisionConflictError("Venue blocked for this time.")
+    if outcome == "venue_inactive":
+        raise BookingDecisionConflictError("This venue is inactive, so the booking can't be approved.")
+    return _booking_detail(repository.get_booking(booking_id))
+
+
 def rejected_bookings_for_event(event_id: str) -> list[dict]:
     """The event's rejected bookings with venue staff's reason and suggestion
     (SCRUM-38 AC6). Callers must already have checked the reader is the

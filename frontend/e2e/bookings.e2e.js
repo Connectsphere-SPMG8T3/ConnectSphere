@@ -1,4 +1,4 @@
-// Venue booking request (SCRUM-19) and rejection (SCRUM-38) against real data.
+// Venue booking request (SCRUM-19), rejection (SCRUM-38) and approval (SCRUM-36) against real data.
 // Cases: docs/test-cases/venues.md.
 import { API_URL, expect, seedSession, test } from "./support/fixtures.js";
 import { createThrowawayEvent, createThrowawayRequest, setThrowawayBookingBuffers } from "./support/throwaway.js";
@@ -118,3 +118,40 @@ test("TC-BOOK-022 the organiser's event page never shows the rejection", async (
   await expect(page.getByRole("main")).not.toContainText("Closed for maintenance that week");
   await expect(page.getByRole("main")).not.toContainText("Try the week after");
 });
+
+test("TC-BOOK-057 venue staff approve a held request and the coordinator sees it approved", async ({ page, sharedSessions }) => {
+  // 12 Aug 2031, 14:00–17:00 Singapore time, on a throwaway event and booking.
+  const { event, bookingId } = createThrowawayRequest("057", "2031-08-12 14:00+08", "2031-08-12 17:00+08", INNOVATION_LAB);
+  await seedSession(page, await sharedSessions("venue_staff"));
+
+  await page.goto(`/bookings/${bookingId}`);
+  await expect(page.getByRole("main")).toContainText("Pending hold");
+  await page.getByRole("button", { name: "Approve request" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Approve this booking?");
+  await dialog.getByRole("button", { name: "Approve", exact: true }).click();
+
+  // AC2, AC10: approved, recorded in the history, and no decision left to make.
+  await expect(page.getByRole("main")).toContainText("Approved");
+  await expect(page.getByTestId("booking-history")).toContainText("Approved");
+  await expect(page.getByRole("button", { name: "Approve request" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reject request" })).toHaveCount(0);
+
+  // AC2: the coordinator's event page shows the venue as approved.
+  const coordinator = await sharedSessions("event_coordinator");
+  const read = await page.request.get(`${API_URL}/events/${event.id}`, {
+    headers: { Authorization: `Bearer ${coordinator.token}` },
+  });
+  expect(read.status()).toBe(200);
+  expect((await read.json()).venue_booking.status).toBe("approved");
+});
+
+test("TC-BOOK-057 the coordinator reads a held request but is offered no Approve", async ({ page, sharedSessions }) => {
+  const { bookingId } = createThrowawayRequest("057-c", "2031-08-11 14:00+08", "2031-08-11 17:00+08", INNOVATION_LAB);
+  await seedSession(page, await sharedSessions("event_coordinator"));
+
+  await page.goto(`/bookings/${bookingId}`);
+  await expect(page.getByRole("main")).toContainText("Pending hold");
+  await expect(page.getByRole("button", { name: "Approve request" })).toHaveCount(0);
+});
+

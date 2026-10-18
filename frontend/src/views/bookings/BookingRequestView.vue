@@ -1,10 +1,10 @@
 <script setup>
 /**
- * One venue booking request (SCRUM-38). Venue staff see what the event needs
- * from the venue (AC1) and can reject a held request with a reason (AC2–AC4);
- * the assigned coordinator reads the same page to see why (AC6). SCRUM-36's
- * Approve belongs beside Reject. Every rule is the API's; this page only
- * avoids offering what it would refuse.
+ * One venue booking request. Venue staff see what the event needs from the
+ * venue and can approve a held request (SCRUM-36), reject it with a reason
+ * (SCRUM-38) or restore an affected one (CR-95); the assigned coordinator
+ * reads the same page to see why. Every
+ * rule is the API's; this page only avoids offering what it would refuse.
  */
 import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
@@ -12,9 +12,11 @@ import { RouterLink, useRoute } from "vue-router";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
+import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import RejectBookingModal from "@/components/venues/RejectBookingModal.vue";
 import { showToast } from "@/composables/useToast";
 import {
+  canApproveBooking,
   canRejectBooking,
   canRestoreBooking,
   formatBookingPeriod,
@@ -30,6 +32,7 @@ const route = useRoute();
 const auth = useAuthStore();
 const store = useBookingDecisionStore();
 
+const isApproveOpen = ref(false);
 const isRejectOpen = ref(false);
 
 const LAYOUT_LABELS = Object.fromEntries(LAYOUTS.map((entry) => [entry.value, entry.label]));
@@ -37,7 +40,9 @@ const FACILITY_LABELS = Object.fromEntries(FACILITIES.map((entry) => [entry.valu
 
 const booking = computed(() => store.booking);
 const event = computed(() => booking.value?.event ?? {});
+const showApprove = computed(() => canApproveBooking(booking.value, auth.role));
 const showReject = computed(() => canRejectBooking(booking.value, auth.role));
+const isDeciding = computed(() => store.isApproving || store.isRejecting);
 // CR-95: a booking flagged Affected shows why to everyone who can read the page;
 // only venue staff can confirm the venue is free again and restore it (AC9).
 const isAffected = computed(() => booking.value?.flag === "affected");
@@ -61,6 +66,18 @@ function load() {
 
 onMounted(load);
 watch(() => route.params.id, (id) => id && load());
+
+function openApprove() {
+  store.error = null;
+  store.conflict = false;
+  isApproveOpen.value = true;
+}
+
+async function approve() {
+  const ok = await store.approve(String(route.params.id));
+  isApproveOpen.value = false;
+  if (ok) showToast("Booking approved. The coordinator has been told.");
+}
 
 async function restore() {
   const ok = await store.restore(String(route.params.id));
@@ -147,8 +164,23 @@ async function reject(form) {
             </BauhausButton>
           </template>
         </div>
-        <div v-if="showReject" class="mt-6 flex flex-wrap gap-3">
-          <BauhausButton variant="primary" aria-label="Reject request" :disabled="store.isRejecting" @click="openReject">
+        <div v-if="showApprove || showReject" class="mt-6 flex flex-wrap gap-3">
+          <BauhausButton
+            v-if="showApprove"
+            variant="secondary"
+            aria-label="Approve request"
+            :disabled="isDeciding"
+            @click="openApprove"
+          >
+            Approve
+          </BauhausButton>
+          <BauhausButton
+            v-if="showReject"
+            variant="primary"
+            aria-label="Reject request"
+            :disabled="isDeciding"
+            @click="openReject"
+          >
             Reject
           </BauhausButton>
         </div>
@@ -228,6 +260,15 @@ async function reject(form) {
       </BauhausCard>
     </template>
 
+    <ConfirmModal
+      :open="isApproveOpen"
+      title="Approve this booking?"
+      :message="`${booking?.venue_name ?? 'This venue'} will be booked for ${event.name ?? 'this event'}, and the coordinator will be told.`"
+      confirm-label="Approve"
+      cancel-label="Cancel"
+      @confirm="approve"
+      @stay="isApproveOpen = false"
+    />
     <RejectBookingModal
       v-if="booking"
       :open="isRejectOpen"

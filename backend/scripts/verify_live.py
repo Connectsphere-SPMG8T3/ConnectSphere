@@ -104,6 +104,7 @@ DB_SCRIPTS = [
     ("equipment_request_checks.sql", "TC-EQR-002, 003, 006, 007, 008, 009 (database half)"),
     ("venue_edit_checks.sql", "TC-VENUE-058, 059, 061 (database half)"),
     ("venue_booking_reject_checks.sql", "TC-BOOK-023"),
+    ("venue_booking_approve_checks.sql", "TC-BOOK-056"),
     ("lead_assignment_checks.sql", "CR-101 (database half: assignment columns, reassign_event)"),
     ("venue_deactivation_checks.sql", "TC-VENUE-070 (SCRUM-64 database half); D33"),
     ("booking_conflict_checks.sql", "TC-BOOK-040 (SCRUM-21 database half: occupied window, venue_conflicts)"),
@@ -1424,6 +1425,165 @@ def _(ctx: Context) -> None:
     expect(seen.json().get("rejected_bookings") == [] and "Under repair" not in seen.text,
            "the organiser's event read shows the rejection")
     expect_status(ctx.client.get(f"{ctx.api}{BOOKINGS}/{booking_id}", headers=organiser.headers), 403)
+
+
+# --- Venue staff approve a booking request (SCRUM-36) ---------------------------
+
+def approve_booking(ctx: Context, session: Session, booking_id: str) -> httpx.Response:
+    return ctx.client.post(f"{ctx.api}{BOOKINGS}/{booking_id}/approve", headers=session.headers)
+
+
+def booking_status(booking_id: str) -> str:
+    [row] = db_query(f"select status::text as status from public.venue_bookings where id = '{booking_id}'")
+    return row["status"]
+
+
+@check("TC-BOOK-051", "Approving a hold makes it Approved, records it, tells only the coordinator and keeps "
+                      "the slot occupied", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = hold_for(ctx, "051-a", "2031-08-04 14:00+08", "2031-08-04 17:00+08")
+    other_event = throwaway_event(ctx, "051-b", "2031-08-04 16:00+08", "2031-08-04 18:00+08")
+
+    response = approve_booking(ctx, ctx.shared("venue_staff"), booking_id)
+    expect_status(response, 200)
+    body = response.json()
+    expect(body["status"] == "approved" and body["decision"] is None, f"booking reads {body}")
+    expect([(e["action"], e["from_status"], e["to_status"]) for e in body["history"]] == [("approved", "held", "approved")],
+           f"history is {body['history']}")
+    [stored] = db_query(f"select decided_by, decided_at is not null as stamped from public.venue_bookings "
+                        f"where id = '{booking_id}'")
+    expect(stored == {"decided_by": VENUE_STAFF_ID, "stamped": True}, f"stored decision is {stored}")
+    notified = db_query(f"select recipient_id from public.notifications "
+                        f"where event_id = '{event_id}' and type = 'venue_booking_approved'")
+    expect([row["recipient_id"] for row in notified] == [COORDINATOR_ID],
+           f"venue_booking_approved went to {notified} (want the assigned coordinator only)")
+
+    # AC5: the approved booking still occupies Innovation Lab.
+    refused = request_venue(ctx, ctx.shared("event_coordinator"), other_event, INNOVATION_LAB)
+    expect_status(refused, 409)
+    expect_detail(refused, "Venue already held for this time by another event.")
+
+
+@check("TC-BOOK-052", "Approval is refused when a block now overlaps the hold or the venue is inactive", needs_db=True)
+def _(ctx: Context) -> None:
+    staff = ctx.shared("venue_staff")
+    # AC3: the block is saved after the hold, as CAL-R1 allows.
+    _, blocked_id = hold_for(ctx, "052-a", "2031-08-05 14:00+08", "2031-08-05 17:00+08")
+    db_query(
+        "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values "
+        f"('{INNOVATION_LAB}', tstzrange('2031-08-05 16:00+08', '2031-08-05 18:00+08', '[)'), "
+        f"'maintenance', '{THROWAWAY_BLOCK_NOTE}')"
+    )
+    blocked = approve_booking(ctx, staff, blocked_id)
+    expect_status(blocked, 409)
+    expect_detail(blocked, "Venue blocked for this time.")
+    expect(booking_status(blocked_id) == "held", "a refused approval changed the booking under the block")
+
+    # AC4: a throwaway venue, deactivated after the hold was made.
+    venue_id = throwaway_venue(ctx, "052")
+    event_id = throwaway_event(ctx, "052-b", "2031-08-05 10:00+08", "2031-08-05 12:00+08")
+    held = request_venue(ctx, ctx.shared("event_coordinator"), event_id, venue_id)
+    expect_status(held, 201)
+    expect_status(deactivate(ctx, staff, venue_id, confirm=True), 200)
+    inactive = approve_booking(ctx, staff, held.json()["id"])
+    expect_status(inactive, 409)
+    expect_detail(inactive, "This venue is inactive, so the booking can't be approved.")
+    expect(booking_status(held.json()["id"]) == "held", "a refused approval changed the booking at the inactive venue")
+
+
+@check("TC-BOOK-053", "An expired hold, or a booking no longer held, can't be approved", needs_db=True)
+def _(ctx: Context) -> None:
+    staff = ctx.shared("venue_staff")
+    # AC6: past its expiry, before the minute job has run.
+    _, overdue_id = hold_for(ctx, "053-a", "2031-08-06 14:00+08", "2031-08-06 17:00+08")
+    db_query(f"update public.venue_bookings set expires_at = now() - interval '1 minute' where id = '{overdue_id}'")
+    expired = approve_booking(ctx, staff, overdue_id)
+    expect_status(expired, 409)
+    expect_detail(expired, "This hold has expired, so it can't be approved.")
+    expect(booking_status(overdue_id) == "expired", "the overdue hold was not expired")
+
+    _, rejected_id = hold_for(ctx, "053-b", "2031-08-06 18:00+08", "2031-08-06 19:00+08")
+    expect_status(reject_booking(ctx, staff, rejected_id), 200)
+    refused = approve_booking(ctx, staff, rejected_id)
+    expect_status(refused, 409)
+    expect_detail(refused, "Only a held booking can be approved. This one is already rejected.")
+
+    _, approved_id = hold_for(ctx, "053-c", "2031-08-06 20:00+08", "2031-08-06 21:00+08")
+    expect_status(approve_booking(ctx, staff, approved_id), 200)
+    twice = approve_booking(ctx, staff, approved_id)
+    expect_status(twice, 409)
+    expect_detail(twice, "Only a held booking can be approved. This one is approved.")
+    # 38 AC9 against a real approval, which TC-BOOK-017 had to fake.
+    late = reject_booking(ctx, staff, approved_id)
+    expect_status(late, 409)
+    expect_detail(late, "Only a held booking can be rejected. This one is approved.")
+
+
+@check("TC-BOOK-054", "Approve and reject sent at the same instant: exactly one outcome is saved", needs_db=True)
+def _(ctx: Context) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    _, booking_id = hold_for(ctx, "054", "2031-08-07 14:00+08", "2031-08-07 17:00+08")
+    staff = ctx.shared("venue_staff")
+
+    def fire(action: str) -> tuple[str, int]:
+        with httpx.Client(timeout=30) as client:
+            body = {"reason": "Raced"} if action == "reject" else None
+            return action, client.post(f"{ctx.api}{BOOKINGS}/{booking_id}/{action}", headers=staff.headers,
+                                       json=body).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = dict(pool.map(fire, ["approve", "reject"]))
+    expect(sorted(results.values()) == [200, 409], f"expected one 200 and one 409, got {results}")
+    winner = "approved" if results["approve"] == 200 else "rejected"
+    decisions = db_query("select action from public.venue_booking_history "
+                         f"where booking_id = '{booking_id}' and action in ('approved', 'rejected')")
+    expect([row["action"] for row in decisions] == [winner], f"history recorded {decisions}, want only {winner}")
+    expect(booking_status(booking_id) == winner, f"the booking is {booking_status(booking_id)}, want {winner}")
+
+
+@check("TC-BOOK-055", "Only a session acting as venue staff can approve", needs_db=True)
+def _(ctx: Context) -> None:
+    _, booking_id = hold_for(ctx, "055", "2031-08-08 14:00+08", "2031-08-08 17:00+08")
+    for role in ("event_organiser", "event_coordinator", "tech_support", "attendee"):
+        expect_status(approve_booking(ctx, ctx.shared(role), booking_id), 403)
+    # SCRUM-76: the seeded coordinator also holds venue_staff, but acting as coordinator is refused.
+    expect_status(approve_booking(ctx, ctx.login("event_coordinator"), booking_id), 403)
+    expect(booking_status(booking_id) == "held", "a refused caller changed the booking")
+
+
+@check("TC-BOOK-061", "Approving a replacement and restoring its original at the same instant: exactly one wins",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    # CR-95: an approved original flagged Affected at Heritage Hall, and its
+    # held replacement at Innovation Lab. Both are this check's own rows.
+    event_id = throwaway_event(ctx, "061", "2031-08-13 09:00+08", "2031-08-13 10:00+08")
+    [original] = db_query(
+        "insert into public.venue_bookings (event_id, venue_id, occupied_period, status, flag, flag_reason, flagged_at) "
+        f"values ('{event_id}', '{HERITAGE_HALL}', tstzrange('2031-08-13 09:00+08', '2031-08-13 10:00+08', '[)'), "
+        "'approved', 'affected', 'live check', now()) returning id"
+    )
+    [replacement] = db_query(
+        "insert into public.venue_bookings (event_id, venue_id, occupied_period, status, replaces_booking_id) "
+        f"values ('{event_id}', '{INNOVATION_LAB}', tstzrange('2031-08-13 09:00+08', '2031-08-13 10:00+08', '[)'), "
+        f"'held', '{original['id']}') returning id"
+    )
+    staff = ctx.shared("venue_staff")
+
+    def fire(call: tuple[str, str]) -> tuple[str, int]:
+        action, booking_id = call
+        with httpx.Client(timeout=30) as client:
+            return action, client.post(f"{ctx.api}{BOOKINGS}/{booking_id}/{action}", headers=staff.headers).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = dict(pool.map(fire, [("approve", replacement["id"]), ("restore", original["id"])]))
+    # A deadlock would surface as a 500 here, not a 409.
+    expect(sorted(results.values()) == [200, 409], f"expected one 200 and one 409, got {results}")
+    states = (booking_status(original["id"]), booking_status(replacement["id"]))
+    want = ("released", "approved") if results["approve"] == 200 else ("approved", "cancelled")
+    expect(states == want, f"original and replacement are {states}, want {want}")
 
 
 # --- Several venues per event (CR-97) --------------------------------------
