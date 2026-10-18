@@ -2326,3 +2326,23 @@ On `feature/cr-95-affected-bookings`, branched from `main` after SCRUM-21 merged
 - **Manual pass:** Claude drove TC-BOOK-049 and TC-BOOK-050 with Playwright at 1280 px and 375 px and measured no horizontal scroll; the developer looked at them and passed both ([run](test-cases/runs/2026-10-17-2056-manual-9b2d0eb.md)).
 - **Not verified:** the live advisors were not read in detail (a filtered look at them listed nothing for the CR-95 objects; the local advisors show only pre-existing equipment RLS warnings); frontend line coverage of the changed files was not computed.
 - **Remaining:** story 36's approve calling `release_replaced_booking`; story 51's block endpoint (blocks can be inserted directly today); story 85's cancellation of a pending replacement; CR-111's organiser view of each venue; the PO's agreement to §9 items 61–67.
+
+### 4.57. Fix — D41, equipment request form overflows its card
+
+Implemented on `fix/equipment-request-form-overflow`, 2026-10-18; implemented by Codex and verified by Claude.
+
+**Symptom and reproduction.** As the assigned coordinator, open the planning event `/coordinator/events/e0000000-0000-4000-8000-000000000202`. At 1280×900 the event page has two columns and the equipment card is about 570 px wide: Item 1's border extends beyond the card, Quantity is clipped, and Technical requirements extends past the card. The form must also fit at 375×800 without horizontal page scroll.
+
+**Root cause from source inspection.** Tailwind 3.4 preflight resets fieldset margin and padding but leaves the browser's `min-inline-size: min-content`. Catalogue select options contribute an intrinsic minimum width, and `sm:grid-cols-[1fr_8rem]` adds a fixed quantity column and gap while the `1fr` track retains an automatic minimum. The fieldset therefore resists shrinking to the card's available content width. Its `w-full` textarea follows that oversized ancestor. `BauhausCard` uses `overflow-hidden`, explaining the clipped controls rather than correcting their width. Browser measurements and isolation of the sizing constraints remain for Claude.
+
+**Fix.** Only sizing classes in `EquipmentRequestPanel.vue`: `min-w-0` on the repeated fieldset and both grid children, and `sm:grid-cols-[minmax(0,1fr)_8rem]` for the item/quantity grid. No shared components or other fieldsets changed. `BauhausCheckboxGroup.vue` and `SafetyReviewView.vue` also omit a fieldset minimum-width reset; neither has this select/grid combination, so long unbreakable content is a potential risk rather than a confirmed defect.
+
+**Regression first.** Added `frontend/e2e/equipment-layout.e2e.js` before changing the component. TC-EQR-014 runs at 1280×900 and 375×800, waits for the real catalogue, chooses its longest label and adds a second draft item. It measures every fieldset, select, input and textarea against the actual card's right edge (+1 px tolerance), and checks document scrollWidth against innerWidth. It never submits or changes seeded data. A separate spec avoids the existing `equipment.e2e.js` database cleanup hook. TC-EQR-015 records the remaining developer visual pass; both cases were created 2026-10-18.
+
+#### Verification and remaining work
+
+- `cd frontend && npx vitest run`: 68 files, 956 tests passed; the run also emitted Vue Router warnings in `EventRequestView.spec.js` about its missing active route record.
+- `node --check frontend/e2e/equipment-layout.e2e.js` and `git diff --check`: passed.
+- Playwright red on the original component: at 1280×900 the fieldset's right edge was 1329.6 px against the card's 1209 px, and Quantity and the textarea ended at 1311.6 px; both viewports failed. Green with the fix: 2 passed. Full browser suite with recording: 68/68 passed ([run](test-cases/runs/2026-10-18-1435-e2e-607ec03.md); the log names `607ec03` because the fix was not yet committed).
+- **Pending developer:** TC-EQR-015 on the planning event at desktop and 375 px: inspect fieldset borders, full visibility of Quantity and Technical requirements, stacked phone controls, readable warnings/counters/buttons, and absence of horizontal page scroll. Do not submit requests or modify shared data.
+- Live API/database checks, backend pytest and coverage were not run for this frontend sizing-only change. Review, PR, merge and backlog/DoD updates are the developer's.
