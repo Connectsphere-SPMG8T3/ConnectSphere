@@ -3,7 +3,8 @@
 -- CR-95 and CR-94 reuse, the reason and flag constraints, the inactive-venue
 -- refusal in request_venue_booking(), the flagged-booking refusal in
 -- safety_approve_event(), and that only the service role can run the new
--- functions.
+-- functions, plus the organiser notice (D40, QA3-7): once per affected event,
+-- never the actor or attendees, with reassurance and the next action.
 -- Run with the Supabase MCP execute_sql, `supabase db query --linked -f`, or
 -- `psql "$DATABASE_URL" -f`. Raises on the first failure and prints
 -- VENUE DEACTIVATION CHECKS PASSED otherwise. Everything runs inside
@@ -13,8 +14,8 @@
 
 begin;
 
--- Throwaway events, all assigned to the seeded coordinator, each with one
--- booking at Seminar Room 1 in 2031 (or 2020 for the one that has ended).
+-- Throwaway events, all assigned to the seeded coordinator, with bookings
+-- in 2031 (or 2020 for the one that has ended); a9 has two space bookings.
 insert into public.events (id, organiser_id, coordinator_id, status, name, expected_attendance, starts_at, ends_at)
 values
     ('e0000000-0000-4000-8000-0000000064a1', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002',
@@ -32,7 +33,11 @@ values
     ('e0000000-0000-4000-8000-0000000064a7', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002',
      'planning', 'Deactivation check new request (rolled back)', 20, '2031-06-07 10:00+08', '2031-06-07 12:00+08'),
     ('e0000000-0000-4000-8000-0000000064a8', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002',
-     'safety_review', 'Deactivation check approval (rolled back)', 20, '2031-06-08 10:00+08', '2031-06-08 12:00+08');
+     'safety_review', 'Deactivation check approval (rolled back)', 20, '2031-06-08 10:00+08', '2031-06-08 12:00+08'),
+    ('e0000000-0000-4000-8000-0000000064a9', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002',
+     'planning', 'Deactivation check two bookings (rolled back)', 20, '2031-06-09 10:00+08', '2031-06-09 16:00+08'),
+    ('e0000000-0000-4000-8000-0000000064aa', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002',
+     'planning', 'Deactivation check organiser actor (rolled back)', 20, '2031-06-10 10:00+08', '2031-06-10 12:00+08');
 
 insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status)
 values
@@ -52,6 +57,19 @@ values
     ('d0000000-0000-4000-8000-0000000064b8', 'e0000000-0000-4000-8000-0000000064a8', 'b0000000-0000-4000-8000-000000000001',
      tstzrange('2031-06-08 10:00+08', '2031-06-08 12:00+08', '[)'), 'approved');
 
+-- Separate spaces allow two non-overlapping bookings for one event under
+-- venue_bookings_one_active_per_space and venue_bookings_no_overlap.
+insert into public.venue_bookings (event_id, venue_id, occupied_period, status)
+values ('e0000000-0000-4000-8000-0000000064a9', 'b0000000-0000-4000-8000-000000000003',
+        tstzrange('2031-06-09 10:00+08', '2031-06-09 12:00+08', '[)'), 'held');
+insert into public.event_space_requests (id, event_id, label, starts_at, ends_at)
+values ('f0000000-0000-4000-8000-0000000064b9', 'e0000000-0000-4000-8000-0000000064a9',
+        'Second period', '2031-06-09 14:00+08', '2031-06-09 16:00+08');
+insert into public.venue_bookings (event_id, event_space_request_id, venue_id, occupied_period, status)
+values ('e0000000-0000-4000-8000-0000000064a9', 'f0000000-0000-4000-8000-0000000064b9',
+        'b0000000-0000-4000-8000-000000000003',
+        tstzrange('2031-06-09 14:00+08', '2031-06-09 16:00+08', '[)'), 'held');
+
 -- Already flagged by another story (CR-94): must stay as it is.
 update public.venue_bookings
    set flag = 'conflict', flag_reason = 'Conflict from a venue change', flagged_at = now()
@@ -64,6 +82,9 @@ do $$
 declare
     v_venue uuid := 'b0000000-0000-4000-8000-000000000003';
     v_staff uuid := 'a0000000-0000-4000-8000-000000000003';
+    v_organiser uuid := 'a0000000-0000-4000-8000-000000000001';
+    v_event uuid;
+    v_notices integer;
     v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
     v_before public.venues;
     v_after public.venues;
@@ -139,10 +160,49 @@ begin
                         'e0000000-0000-4000-8000-0000000064a5', 'e0000000-0000-4000-8000-0000000064a6');
     if v_rows <> 0 then raise exception 'DEACTIVATE FAIL: notified an event whose booking was not flagged'; end if;
 
+    -- D40: one organiser notice per newly flagged event, even with two bookings.
+    foreach v_event in array array['e0000000-0000-4000-8000-0000000064a1',
+                                  'e0000000-0000-4000-8000-0000000064a2',
+                                  'e0000000-0000-4000-8000-0000000064a9']::uuid[]
+    loop
+        select count(*) into v_rows from public.notifications
+         where event_id = v_event and type = 'venue_unavailable_organiser';
+        if v_rows <> 1 then
+            raise exception 'ORGANISER NOTICE FAIL: event % has % notices, expected one', v_event, v_rows;
+        end if;
+        if not exists (
+            select 1 from public.notifications
+             where event_id = v_event and type = 'venue_unavailable_organiser'
+               and recipient_id = v_organiser
+               and position(v_before.name in message) > 0
+               and message like '%not cancelled%' and message like '%alternative venue%'
+        ) then
+            raise exception 'ORGANISER NOTICE FAIL: wrong recipient or message for %', v_event;
+        end if;
+    end loop;
+    select count(*) into v_rows from public.venue_bookings
+     where event_id = 'e0000000-0000-4000-8000-0000000064a9' and flag = 'affected';
+    if v_rows <> 2 then raise exception 'ORGANISER NOTICE FAIL: both space bookings must be flagged'; end if;
+    if exists (
+        select 1 from public.notifications
+         where type = 'venue_unavailable_organiser'
+           and event_id in ('e0000000-0000-4000-8000-0000000064a3', 'e0000000-0000-4000-8000-0000000064a4',
+                            'e0000000-0000-4000-8000-0000000064a5', 'e0000000-0000-4000-8000-0000000064a6')
+    ) then
+        raise exception 'ORGANISER NOTICE FAIL: notified an event whose booking was not flagged';
+    end if;
+    select count(*) into v_notices from public.notifications
+     where type = 'venue_unavailable_organiser'
+       and event_id::text like 'e0000000-0000-4000-8000-0000000064a%';
+
     -- A second deactivate is refused and changes nothing.
     select outcome into v_outcome from public.deactivate_venue(
         v_venue, v_staff, v_after.version, 'permanently_closed', null, '{}'::jsonb, '{}'::jsonb, 'x', 'msg');
     if v_outcome <> 'already_inactive' then raise exception 'DEACTIVATE FAIL: second call gave %', v_outcome; end if;
+    select count(*) into v_rows from public.notifications
+     where type = 'venue_unavailable_organiser'
+       and event_id::text like 'e0000000-0000-4000-8000-0000000064a%';
+    if v_rows <> v_notices then raise exception 'ORGANISER NOTICE FAIL: second call added notices'; end if;
 
     -- AC2: no new requests for an inactive venue.
     select outcome into v_outcome from public.request_venue_booking(
@@ -174,6 +234,30 @@ begin
     if v_outcome <> 'already_active' then raise exception 'REACTIVATE FAIL: second call gave %', v_outcome; end if;
     v_outcome := public.reactivate_venue('b0000000-0000-4000-8000-0000000000ff', v_staff, 0, '{}'::jsonb, '{}'::jsonb);
     if v_outcome <> 'venue_not_found' then raise exception 'REACTIVATE FAIL: unknown venue gave %', v_outcome; end if;
+
+    -- Never notify the organiser when they are the deactivating actor (NT-R1).
+    insert into public.venue_bookings (event_id, venue_id, occupied_period, status)
+    values ('e0000000-0000-4000-8000-0000000064aa', v_venue,
+            tstzrange('2031-06-10 10:00+08', '2031-06-10 12:00+08', '[)'), 'held');
+    select outcome, event_ids into v_outcome, v_events from public.deactivate_venue(
+        v_venue, v_organiser, v_after.version, 'permanently_closed', null,
+        '{}'::jsonb, '{}'::jsonb, 'Venue deactivated: permanently closed', 'Coordinator follow-up');
+    if v_outcome <> 'ok' or v_events is distinct from array['e0000000-0000-4000-8000-0000000064aa']::uuid[] then
+        raise exception 'ORGANISER NOTICE FAIL: actor case did not flag its event: %, %', v_outcome, v_events;
+    end if;
+    if exists (select 1 from public.notifications
+                where event_id = 'e0000000-0000-4000-8000-0000000064aa' and type = 'venue_unavailable_organiser') then
+        raise exception 'ORGANISER NOTICE FAIL: organiser actor received a notice';
+    end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-0000000064aa'
+       and recipient_id = v_coordinator and type = 'venue_booking_affected';
+    if v_rows <> 1 then raise exception 'ORGANISER NOTICE FAIL: actor case must still notify the coordinator once'; end if;
+    if exists (select 1 from public.notifications
+                where event_id::text like 'e0000000-0000-4000-8000-0000000064a%'
+                  and recipient_id not in (v_organiser, v_coordinator)) then
+        raise exception 'ORGANISER NOTICE FAIL: notified someone other than the organiser or coordinator';
+    end if;
 
     -- The approval recheck refuses a flagged booking (82 AC10, CR-104 AC5).
     select count(*) into v_rows from public.safety_approve_event(
