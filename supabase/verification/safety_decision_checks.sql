@@ -10,7 +10,10 @@ begin
     if to_regclass('public.event_safety_decisions') is null
        or to_regprocedure('public.safety_approve_event(uuid,uuid,integer,text,text,text)') is null
        or to_regprocedure('public.safety_return_event(uuid,uuid,integer,text,text,uuid[],uuid[],text)') is null
-       or to_regprocedure('public.return_event_to_planning(uuid,integer,text,text,text,text)') is null then
+       or to_regprocedure('public.return_event_to_planning(uuid,integer,text,text,text,text)') is null
+       or to_regprocedure('public.mark_safety_revision(uuid,uuid)') is null
+       or not exists (select 1 from pg_enum e join pg_type t on t.oid=e.enumtypid
+                      where t.typnamespace='public'::regnamespace and t.typname='venue_booking_flag' and e.enumlabel='safety_rejected') then
         raise exception 'SAFETY FAIL: Task 1 table/RPC interfaces are missing';
     end if;
 end $$;
@@ -20,7 +23,7 @@ insert into safety_fixture select key, gen_random_uuid() from unnest(array[
     'organiser','coordinator','officer','other_coordinator','staff','equipment',
     'approve','held','empty','stale','changes','reject','invalid','withdraw_review','withdraw_confirmed',
     'booking_approve','booking_held','booking_stale','booking_changes','booking_unticked',
-    'booking_reject','booking_invalid','booking_inactive','booking_withdraw_review','booking_withdraw_confirmed','line_changes','line_unticked','line_reject','line_foreign','line_inactive','line_withdraw_review','line_withdraw_confirmed'
+    'booking_reject','reject_multi','reject_held','reject_flagged','booking_multi_a','booking_multi_b','booking_reject_held','booking_reject_flagged','booking_invalid','booking_inactive','booking_withdraw_review','booking_withdraw_confirmed','line_changes','line_unticked','line_reject','line_foreign','line_inactive','line_withdraw_review','line_withdraw_confirmed'
 ]) key;
 
 -- Auth trigger creates attendee profiles; staff roles are granted explicitly.
@@ -47,7 +50,7 @@ select f.id,o.id,c.id,case when f.key='withdraw_confirmed' then 'confirmed' else
        'Safety fixture ' || f.key, '2099-01-01 10:00+00','2099-01-01 12:00+00'
 from safety_fixture f cross join safety_fixture o cross join safety_fixture c
 where o.key='organiser' and c.key='coordinator'
-  and f.key in ('approve','held','empty','stale','changes','reject','invalid','withdraw_review','withdraw_confirmed');
+  and f.key in ('approve','held','empty','stale','changes','reject','reject_multi','reject_held','reject_flagged','invalid','withdraw_review','withdraw_confirmed');
 -- Each booking gets its own venue and explicit space; all periods match the event.
 -- Requires the live event_space_requests migrations (20261008100000/20261009100000).
 do $$
@@ -58,6 +61,8 @@ begin
         from (values ('booking_approve','approve','approved'),('booking_held','held','held'),
          ('booking_stale','stale','approved'),('booking_changes','changes','approved'),
          ('booking_unticked','changes','approved'),('booking_reject','reject','approved'),
+         ('booking_multi_a','reject_multi','approved'),('booking_multi_b','reject_multi','approved'),
+         ('booking_reject_held','reject_held','held'),('booking_reject_flagged','reject_flagged','approved'),
          ('booking_invalid','invalid','approved'),('booking_inactive','reject','released'),
          ('booking_withdraw_review','withdraw_review','approved'),('booking_withdraw_confirmed','withdraw_confirmed','approved')) x(booking,event,status)
         join safety_fixture b on b.key=x.booking join safety_fixture e on e.key=x.event
@@ -87,6 +92,7 @@ select jsonb_build_object('event',(select to_jsonb(x) from public.events x where
  'decisions',(select jsonb_agg(to_jsonb(x) order by id) from public.event_safety_decisions x where event_id=e),
  'notifications',(select jsonb_agg(to_jsonb(x) order by id) from public.notifications x where event_id=e),
  'bookings',(select jsonb_agg(to_jsonb(x) order by id) from public.venue_bookings x where event_id=e),
+ 'booking_history',(select jsonb_agg(to_jsonb(x) order by x.id) from public.venue_booking_history x join public.venue_bookings b on b.id=x.booking_id where b.event_id=e),
  'equipment',(select jsonb_agg(to_jsonb(x) order by id) from public.equipment_requests x where event_id=e));
 $$;
 create function pg_temp.assert(ok boolean, label text) returns void language plpgsql as $$
@@ -141,7 +147,7 @@ begin
         perform pg_temp.assert(n=0 and pg_temp.snapshot(e)=before_state,'foreign/unknown/null booking refused');
     end loop;
     foreach bad in array array[(select id from safety_fixture where key='line_foreign'),gen_random_uuid(),null::uuid] loop
-        select count(*) into n from public.safety_return_event(e,actor,v,'arrangement_rejected',marker,'{}',array[bad],'Fixed coordinator');
+        select count(*) into n from public.safety_return_event(e,actor,v,'changes_requested',marker,'{}',array[bad],'Fixed coordinator');
         perform pg_temp.assert(n=0 and pg_temp.snapshot(e)=before_state,'foreign/unknown/null equipment refused');
     end loop;
     foreach k in array array['approved','withdrawn','invalid',null::text] loop
@@ -167,23 +173,76 @@ begin
         line := (select id from safety_fixture where key=case when k='changes' then 'line_changes' else 'line_reject' end);
         select version into v from public.events where id=e;
         select count(*) into h from public.event_status_history where event_id=e;
-        select * into result from public.safety_return_event(e,actor,v,case when k='changes' then 'changes_requested' else 'arrangement_rejected' end,marker,case when k='reject' then array[b,b,(select id from safety_fixture where key='booking_inactive')] else array[b,b] end,case when k='reject' then array[line,line,(select id from safety_fixture where key='line_inactive')] else array[line,line,(select id from safety_fixture where key='line_unticked')] end,'Fixed coordinator');
+        before_state := pg_temp.snapshot(e);
+        select * into result from public.safety_return_event(e,actor,v,case when k='changes' then 'changes_requested' else 'arrangement_rejected' end,
+          '  '||marker||'  ',array[b,b],case when k='changes' then array[line,line] else '{}'::uuid[] end,'Fixed coordinator');
         perform pg_temp.assert(result.status='planning' and result.version=v+1,'return transition '||k);
         perform pg_temp.assert((select count(*) from public.event_status_history where event_id=e)=h+1,'one return history');
-        perform pg_temp.assert((select status::text from public.venue_bookings where id=b)=case when k='changes' then 're_review' else 'released' end,'listed booking status');
-        perform pg_temp.assert((select status::text from public.equipment_requests where id=line)=case when k='changes' then 're_review' else 'rejected' end,'listed equipment status');
-        perform pg_temp.assert((select count(*) from public.event_safety_decisions where event_id=e and b=any(affected_booking_ids) and line=any(affected_equipment_request_ids) and cardinality(affected_booking_ids)=case when k='reject' then 2 else 1 end and cardinality(affected_equipment_request_ids)=2 and comment=marker and decided_by=actor)=1,'decision affected ids deduplicated');
+        perform pg_temp.assert((select status from public.venue_bookings where id=b)='approved','booking remains approved');
+        perform pg_temp.assert((select status::text from public.equipment_requests where id=line)=case when k='changes' then 'reserved' else 'pending' end,'equipment unchanged');
+        perform pg_temp.assert((select count(*) from public.event_safety_decisions where event_id=e and affected_booking_ids=array[b]
+          and affected_equipment_request_ids=case when k='changes' then array[line] else '{}'::uuid[] end
+          and comment=marker and decided_by=actor)=1,'decision concerned ids deduplicated');
+        perform pg_temp.assert((pg_temp.snapshot(e)->'equipment') is not distinct from (before_state->'equipment'),'all equipment fields unchanged');
         if k='reject' then
+            perform pg_temp.assert((select flag='safety_rejected' and flag_reason=marker and flagged_at is not null from public.venue_bookings where id=b),'rejected booking flag and trimmed reason');
+            perform pg_temp.assert((select count(*) from public.venue_booking_history where booking_id=b and action='safety_rejected' and actor_id=actor and from_status='approved' and to_status='approved')=1,'rejection history');
             perform pg_temp.assert((select rejected_venue_ids from public.event_safety_decisions where event_id=e)=array[(select venue_id from public.venue_bookings where id=b)],'rejected venue ids');
-            perform pg_temp.assert((select status from public.venue_bookings where id=(select id from safety_fixture where key='booking_inactive'))='released','inactive booking unchanged');
-            perform pg_temp.assert((select status from public.equipment_requests where id=(select id from safety_fixture where key='line_inactive'))='released','inactive equipment unchanged');
         else
+            perform pg_temp.assert((pg_temp.snapshot(e)->'bookings') is not distinct from (before_state->'bookings') and (pg_temp.snapshot(e)->'booking_history') is not distinct from (before_state->'booking_history'),'all booking fields and history unchanged on request changes');
+            perform pg_temp.assert((select rejected_venue_ids from public.event_safety_decisions where event_id=e)='{}'::uuid[],'changes rejects no venues');
+            perform pg_temp.assert((select flag is null from public.venue_bookings where id=b),'changes sets no flag');
             perform pg_temp.assert((select status from public.venue_bookings where id=(select id from safety_fixture where key='booking_unticked'))='approved','unticked booking unchanged');
-            perform pg_temp.assert((select status from public.equipment_requests where id=(select id from safety_fixture where key='line_unticked'))='pending','selected pending equipment unchanged');
         end if;
         perform pg_temp.assert((select count(*) from public.notifications where event_id=e)=1 and
           (select recipient_id=coordinator and message='Fixed coordinator' and type=case when k='changes' then 'event_safety_changes_requested' else 'event_safety_arrangement_rejected' end from public.notifications where event_id=e),'coordinator only');
     end loop;
+
+    -- TC-SDEC-024/025: refuse held/flagged bookings without any side effects.
+    foreach k in array array['reject_held','reject_flagged','reject_multi'] loop
+        e := (select id from safety_fixture where key=k);
+        b := (select id from safety_fixture where key=case k when 'reject_multi' then 'booking_multi_a' when 'reject_held' then 'booking_reject_held' else 'booking_reject_flagged' end);
+        select version into v from public.events where id=e;
+        if k='reject_flagged' then
+            update public.venue_bookings set flag='affected',flag_reason='Unavailable',flagged_at=now() where id=b;
+        end if;
+        before_state := pg_temp.snapshot(e);
+        if k='reject_multi' then
+            begin
+                perform public.safety_return_event(e,actor,v,'arrangement_rejected',marker,array[b,(select id from safety_fixture where key='booking_multi_b')],'{}','Fixed coordinator');
+                raise exception 'SAFETY FAIL: two rejected bookings accepted';
+            exception when invalid_parameter_value then null; end;
+            perform pg_temp.assert(pg_temp.snapshot(e)=before_state,'invalid cardinality unchanged');
+            perform public.safety_return_event(e,actor,v,'arrangement_rejected',marker,array[b],'{}','Fixed coordinator');
+            perform pg_temp.assert((select status='approved' and flag is null from public.venue_bookings where id=(select id from safety_fixture where key='booking_multi_b')),'other space remains ready');
+        else
+            select count(*) into n from public.safety_return_event(e,actor,v,'arrangement_rejected',marker,array[b],'{}','Fixed coordinator');
+            perform pg_temp.assert(n=0 and pg_temp.snapshot(e)=before_state,'reject refused unchanged: '||k);
+        end if;
+    end loop;
+
+    e := (select id from safety_fixture where key='reject');
+    b := (select id from safety_fixture where key='booking_reject');
+    before_state := pg_temp.snapshot(e);
+    perform pg_temp.assert(public.mark_safety_revision(gen_random_uuid(),coordinator)='booking_not_found','revision missing');
+    perform pg_temp.assert(public.mark_safety_revision(b,(select id from safety_fixture where key='other_coordinator'))='not_assigned','revision assignment');
+    perform pg_temp.assert(pg_temp.snapshot(e)=before_state,'unassigned revision unchanged');
+    foreach source in array array['safety_review','confirmed'] loop
+        update public.events set status=source::public.event_status where id=e;
+        before_state := pg_temp.snapshot(e);
+        perform pg_temp.assert(public.mark_safety_revision(b,coordinator)='not_planning','revision only planning: '||source);
+        perform pg_temp.assert(pg_temp.snapshot(e)=before_state,'nonplanning revision unchanged');
+    end loop;
+    update public.events set status='planning' where id=e;
+    select version into v from public.events where id=e;
+    select count(*) into n from public.notifications where event_id=e;
+    perform pg_temp.assert(public.mark_safety_revision(b,coordinator)='ok','revision succeeds');
+    perform pg_temp.assert((select flag is null and flag_reason is null and flagged_at is null and status='approved' from public.venue_bookings where id=b),'revision clears all flag columns');
+    perform pg_temp.assert((select count(*) from public.venue_booking_history where booking_id=b and action='safety_revised' and actor_id=coordinator and from_status='approved' and to_status='approved')=1,'revision history');
+    perform pg_temp.assert((select version from public.events where id=e)=v and (select count(*) from public.notifications where event_id=e)=n,'revision no version bump or notification');
+    before_state := pg_temp.snapshot(e);
+    perform pg_temp.assert(public.mark_safety_revision(b,coordinator)='not_safety_rejected','revision twice refused');
+    perform pg_temp.assert(pg_temp.snapshot(e)=before_state,'second revision unchanged');
 
     foreach source in array array['safety_review','confirmed'] loop
         e := (select id from safety_fixture where key=case when source='safety_review' then 'withdraw_review' else 'withdraw_confirmed' end);
@@ -234,7 +293,8 @@ begin
     exception when check_violation then null; end;
     foreach sig in array array['public.safety_approve_event(uuid,uuid,integer,text,text,text)',
         'public.safety_return_event(uuid,uuid,integer,text,text,uuid[],uuid[],text)',
-        'public.return_event_to_planning(uuid,integer,text,text,text,text)'] loop
+        'public.return_event_to_planning(uuid,integer,text,text,text,text)',
+        'public.mark_safety_revision(uuid,uuid)'] loop
         foreach role_name in array array['anon','authenticated'] loop
             perform pg_temp.assert(not has_function_privilege(role_name,sig,'EXECUTE'),'RPC denied: '||role_name||' '||sig);
         end loop;

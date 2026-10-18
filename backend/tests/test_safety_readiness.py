@@ -97,3 +97,14 @@ def test_an_event_space_with_only_a_closed_booking_has_none(closed):  # CR-97 AC
     spaces = [S(label="Main hall", bookings=[B(status="approved")]), S(label="Breakout room", bookings=[B(status=closed, flags=["affected"])])]
     bookings = [booking for space in spaces for booking in space.bookings]
     assert safety_readiness(bookings, T.issue, spaces).missing == ["Breakout room: no approved venue booking.", TECH]
+
+
+def test_safety_rejected_booking_is_not_ready_event_wide():
+    result=safety_readiness([B(status='approved',flags=['safety_rejected'])],T.ready)
+    assert result.ready is False
+    assert result.missing==['A venue booking is flagged Safety rejected.']
+
+def test_only_the_rejected_space_is_reported():
+    from app.modules.events.schemas import SpaceReadiness
+    spaces=[SpaceReadiness(label='Hall A',bookings=[B(status='approved',flags=['safety_rejected'])]),SpaceReadiness(label='Hall B',bookings=[B(status='approved')])]
+    assert safety_readiness([],T.ready,spaces).missing==['Hall A: flagged Safety rejected.']

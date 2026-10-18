@@ -829,7 +829,7 @@ def return_to_planning(event_id: str, *, reason_code: ReturnReason, message: str
 _SAFETY_LABELS = {
     "approved": "Approved by the Safety Officer.",
     "changes_requested": "The Safety Officer asked for changes to the arrangements.",
-    "arrangement_rejected": "The Safety Officer did not accept an arrangement; it must be replaced.",
+    "arrangement_rejected": "The Safety Officer rejected a venue for this event; its booking is flagged Safety rejected.",
     "withdrawn": "An arrangement changed, so the event went back to planning.",
 }
 
@@ -863,11 +863,14 @@ def safety_approve(event_id: str, officer_id: str, body: SafetyApproveRequest | 
     return _to_response(updated)
 
 
+SAFETY_REJECT_REFUSED_MESSAGE = "This venue booking can't be rejected: it must be approved and not already flagged, or the event changed. Reload and try again."
+
+
 def _safety_return(event_id: str, officer_id: str, body, action: str, decision: str, comment: str) -> EventResponse:
     row = _officer_event(event_id)
     lifecycle.target(action, row["status"])
-    booking_ids = [str(id) for id in body.booking_ids]
-    equipment_ids = [str(id) for id in body.equipment_request_ids]
+    booking_ids = [str(body.booking_id)] if decision == "arrangement_rejected" else [str(id) for id in body.booking_ids]
+    equipment_ids = [] if decision == "arrangement_rejected" else [str(id) for id in body.equipment_request_ids]
     if (set(booking_ids) - venues_service.event_booking_ids(event_id)
             or set(equipment_ids) - equipment_service.event_request_ids(event_id)):
         raise UnknownEventArrangementError()
@@ -877,7 +880,7 @@ def _safety_return(event_id: str, officer_id: str, body, action: str, decision: 
         coordinator_message=f'"{row["name"]}": {_SAFETY_LABELS[decision]}',
     )
     if not updated:
-        raise EventConflictError(STALE_EVENT_MESSAGE)
+        raise EventConflictError(SAFETY_REJECT_REFUSED_MESSAGE if decision == "arrangement_rejected" else STALE_EVENT_MESSAGE)
     return _to_response(updated)
 
 

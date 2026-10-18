@@ -3,11 +3,12 @@ import { createApp, nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { toastState } from "@/composables/useToast";
-import { ApiError, eventsApi } from "@/services/api";
+import { ApiError, eventsApi, venueBookingsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
+  venueBookingsApi: { markRevised: vi.fn() },
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
   eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), listComments: vi.fn(), addComment: vi.fn(), setPrimarySpace: vi.fn(), clearPrimarySpace: vi.fn() },
 }));
@@ -62,6 +63,34 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     vi.clearAllMocks();
   });
 
+  it.each([false,true])('CR-104 shows the rejected booking and revises it (spaces=%s)', async (multi) => {
+    const rejected={id:'b1',venue_id:'v1',venue_name:'Town Hall',status:'approved',flag:'safety_rejected',flag_reason:'Exits blocked',event_space_request_id:'s1'};
+    const other={id:'b2',venue_id:'v2',venue_name:'Other Hall',status:'approved',event_space_request_id:'s2'};
+    const response=eventResponse({status:'planning',venue_booking:rejected,venue_bookings:[rejected,other],
+      spaces:multi?[{id:'s1',label:'Hall A'},{id:'s2',label:'Hall B'}]:[]});
+    const el=await mountView(response);
+    expect(el.querySelectorAll('[data-testid=venue-safety-rejected]')).toHaveLength(1);
+    if(multi) {
+      const cards=el.querySelectorAll('article');
+      const otherCard=[...cards].find(card=>card.textContent.includes('Hall B'));
+      expect(otherCard.querySelector('[data-testid=venue-safety-rejected]')).toBeNull();
+    }
+    venueBookingsApi.markRevised.mockResolvedValue({id:'b1',flag:null});
+    eventsApi.get.mockResolvedValue({...response,venue_booking:{...rejected,flag:null},venue_bookings:[{...rejected,flag:null},other]});
+    const previous=eventsApi.get.mock.calls.length;
+    el.querySelector('[data-testid=venue-safety-rejected] button').click();
+    await vi.waitFor(()=>expect(venueBookingsApi.markRevised).toHaveBeenCalledWith('b1','access'));
+    await vi.waitFor(()=>expect(eventsApi.get.mock.calls.length).toBeGreaterThan(previous));
+    await vi.waitFor(()=>expect(el.querySelector('[data-testid=venue-safety-rejected]')).toBeNull());
+    expect(toastState.value.message).toBe('Marked revised. Send the event for safety check when everything is ready.');
+  });
+  it('CR-104 shows a refused revision in the page', async()=>{
+    const rejected={id:'b1',venue_id:'v1',status:'approved',flag:'safety_rejected',flag_reason:'Exits blocked'};
+    const el=await mountView(eventResponse({status:'planning',venue_booking:rejected,venue_bookings:[rejected]}));
+    venueBookingsApi.markRevised.mockRejectedValue(new ApiError('Only in Planning',409));
+    el.querySelector('[data-testid=venue-safety-rejected] button').click();
+    await vi.waitFor(()=>expect(el.querySelector('[role=alert]').textContent).toBe('Only in Planning'));
+  });
   it("SCRUM-38 AC6, AC7 shows why venue staff rejected a booking and still offers another venue", async () => {
     const el = await mountView(eventResponse({
       status: "planning", venue_booking: null,

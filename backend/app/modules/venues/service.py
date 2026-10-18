@@ -859,3 +859,24 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
         }
         for row in shown.values()
     ]
+
+
+MARK_REVISED_REFUSALS = {
+    "not_safety_rejected": "This booking isn't flagged Safety rejected.",
+    "not_planning": "A booking can be marked revised only while the event is in Planning.",
+}
+
+
+def mark_safety_revision(booking_id: str, actor_id: str) -> VenueBookingDetail:
+    """CR-104 AC3/AC4 [Team decision]: assigned coordinator marks revised.
+
+    The RPC checks assignment and Planning under locks before clearing the flag.
+    """
+    outcome = repository.mark_safety_revision(booking_id, actor_id)
+    if outcome == "booking_not_found":
+        raise BookingNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome in MARK_REVISED_REFUSALS:
+        raise BookingDecisionConflictError(MARK_REVISED_REFUSALS[outcome])
+    return _booking_detail(repository.get_booking(booking_id))

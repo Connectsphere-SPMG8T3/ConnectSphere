@@ -324,7 +324,8 @@ class SafetyChangesRequest(SafetyArrangementIds):
         return value.strip() if isinstance(value, str) else value
 
 
-class SafetyRejectRequest(SafetyArrangementIds):
+class SafetyRejectRequest(BaseModel):
+    booking_id: UUID
     reason: str = Field(min_length=1, max_length=1000)
 
     @field_validator("reason", mode="before")

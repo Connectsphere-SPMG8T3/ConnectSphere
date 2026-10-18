@@ -13,7 +13,7 @@ LINE='b0000000-0000-4000-8000-000000000002'
 FOREIGN='b0000000-0000-4000-8000-000000000099'
 CASES=[('safety-approve',{'comment':'  PRIVATE-MARKER  '},'confirmed'),
        ('safety-request-changes',{'comment':'  PRIVATE-MARKER  ','booking_ids':[BOOKING,BOOKING],'equipment_request_ids':[LINE,LINE]},'planning'),
-       ('safety-reject',{'reason':'  PRIVATE-MARKER  ','booking_ids':[BOOKING],'equipment_request_ids':[LINE]},'planning')]
+       ('safety-reject',{'reason':'  PRIVATE-MARKER  ','booking_id':BOOKING},'planning')]
 ROLES=['event_organiser','event_coordinator','venue_staff','tech_support','attendee','event_coordinator_lead']
 
 @pytest.fixture()
@@ -47,7 +47,8 @@ def test_decision_and_repeat(client,auth_headers,authenticate_as,state,path,body
     messages=[v for k,v in kwargs.items() if k.endswith('message')]
     assert messages and all('Partner Summit' in m and 'PRIVATE-MARKER' not in m for m in messages)
     if target=='planning':
-        assert kwargs['booking_ids']==[BOOKING] and kwargs['equipment_request_ids']==[LINE]
+        assert kwargs['booking_ids']==[BOOKING]
+        assert kwargs['equipment_request_ids']==([LINE] if path=='safety-request-changes' else [])
         assert kwargs['decision']==('changes_requested' if path=='safety-request-changes' else 'arrangement_rejected')
     assert post(client,auth_headers,path,body).status_code==409
     assert len(state['calls'])==1
@@ -79,7 +80,10 @@ def test_stale(client,auth_headers,authenticate_as,state,path,body,target):
     authenticate_as('safety_officer')
     state['stale']=True
     result=post(client,auth_headers,path,body)
-    assert result.status_code==409 and result.json()['detail']=='This event was updated by someone else. Reload.'
+    assert result.status_code==409
+    expected = ("This venue booking can't be rejected: it must be approved and not already flagged, or the event changed. Reload and try again."
+                if path=='safety-reject' else 'This event was updated by someone else. Reload.')
+    assert result.json()['detail']==expected
 
 @pytest.mark.parametrize('race',[False,True])
 def test_not_ready(client,auth_headers,authenticate_as,state,race):
@@ -99,11 +103,10 @@ def test_invalid_text(client,auth_headers,authenticate_as,state,path,body,target
     assert post(client,auth_headers,path,body).status_code==422
     assert not state['calls']
 
-@pytest.mark.parametrize('path',['safety-request-changes','safety-reject'])
-@pytest.mark.parametrize('field',['booking_ids','equipment_request_ids'])
+@pytest.mark.parametrize('path,field',[('safety-request-changes','booking_ids'),('safety-request-changes','equipment_request_ids'),('safety-reject','booking_id')])
 def test_foreign_ids(client,auth_headers,authenticate_as,state,path,field):
     authenticate_as('safety_officer')
-    result=post(client,auth_headers,path,{('reason' if path=='safety-reject' else 'comment'):'private',field:[FOREIGN]})
+    result=post(client,auth_headers,path,{('reason' if path=='safety-reject' else 'comment'):'private',field:(FOREIGN if path=='safety-reject' else [FOREIGN])})
     assert result.status_code==422 and result.json()['detail']=='Unknown booking or equipment line for this event'
     assert not state['calls']
 
@@ -124,3 +127,27 @@ def test_decision_outage_is_503(client,auth_headers,authenticate_as,state,monkey
     response=post(client,auth_headers,path,body)
     assert response.status_code==503
     assert response.json()['detail']=='The event service is temporarily unavailable. Please try again.'
+
+
+def test_reject_sends_exactly_the_named_booking(client, auth_headers, authenticate_as, state):
+    authenticate_as('safety_officer')
+    result = post(client, auth_headers, 'safety-reject', {'reason': 'Exits blocked', 'booking_id': BOOKING})
+    assert result.status_code == 200
+    (_, kwargs), = state['calls']
+    assert kwargs['booking_ids'] == [BOOKING] and kwargs['equipment_request_ids'] == []
+    assert kwargs['decision'] == 'arrangement_rejected'
+    assert 'its booking is flagged Safety rejected.' in kwargs['coordinator_message']
+
+@pytest.mark.parametrize('body', [{'reason': 'x'}, {'reason': 'x', 'booking_id': 'not-a-uuid'}, {'reason':'x', 'booking_ids':[BOOKING]}])
+def test_reject_requires_one_booking_id(client, auth_headers, authenticate_as, state, body):
+    authenticate_as('safety_officer')
+    assert post(client, auth_headers, 'safety-reject', body).status_code == 422
+    assert not state['calls']
+
+def test_changes_requested_body_unchanged(client, auth_headers, authenticate_as, state):
+    authenticate_as('safety_officer')
+    result = post(client, auth_headers, 'safety-request-changes', {'comment':'Move the stage','booking_ids':[BOOKING],'equipment_request_ids':[LINE]})
+    assert result.status_code == 200
+    (_, kwargs), = state['calls']
+    assert kwargs['booking_ids']==[BOOKING] and kwargs['equipment_request_ids']==[LINE]
+    assert kwargs['decision']=='changes_requested'

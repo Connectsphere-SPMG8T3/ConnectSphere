@@ -82,6 +82,16 @@ describe("BookingRequestView (SCRUM-38)", () => {
     mountedApps.splice(0).forEach((app) => app.unmount());
   });
 
+  it("CR-104 shows the safety rejection reason to venue staff without a restore action", async () => {
+    const { el } = await mountView(booking({ status: "approved", flag: "safety_rejected", flag_reason: "Exits blocked" }));
+    const notice = el.querySelector('[data-testid="booking-safety-rejected"]');
+    expect(notice).not.toBeNull();
+    expect(notice.textContent).toContain("Safety rejected");
+    expect(notice.textContent).toContain("Exits blocked");
+    expect(button("Restore original booking")).toBeNull();
+    expect(notice.querySelector("button")).toBeNull();
+  });
+
   it("AC1 shows venue staff the event's date, time, capacity, layout and other requirements", async () => {
     const { el } = await mountView(booking());
 

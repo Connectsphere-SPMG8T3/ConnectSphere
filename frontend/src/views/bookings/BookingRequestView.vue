@@ -141,6 +141,10 @@ async function reject(form) {
             {{ bookingStatusLabel(booking.status) }}
           </p>
         </div>
+        <div v-if="booking.flag === 'safety_rejected'" class="mt-6 border-l-4 border-bauhaus-red bg-canvas px-4 py-3" data-testid="booking-safety-rejected">
+          <p class="text-xs font-black uppercase tracking-widest text-bauhaus-red">Safety rejected</p>
+          <p class="mt-1 text-sm font-medium">{{ booking.flag_reason }}</p>
+        </div>
         <div v-if="isAffected" class="mt-6 border-l-4 border-bauhaus-red bg-canvas px-4 py-3" data-testid="booking-affected">
           <p class="text-xs font-black uppercase tracking-widest text-bauhaus-red">Affected: venue unavailable</p>
           <p v-if="booking.flag_reason" class="mt-1 text-sm font-medium">{{ booking.flag_reason }}</p>

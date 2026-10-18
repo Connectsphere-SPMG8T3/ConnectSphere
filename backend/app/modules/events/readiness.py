@@ -2,7 +2,7 @@
 from app.modules.events.schemas import BookingReadiness, ReadinessState, SafetyReadiness, SpaceReadiness
 
 ACTIVE_BOOKING_STATUSES = frozenset({"held", "approved", "re_review"})
-FLAG_LABELS = {"affected": "Affected", "conflict": "Conflict", "unsuitable": "Unsuitable", "expired": "Expired"}
+FLAG_LABELS = {"safety_rejected": "Safety rejected", "affected": "Affected", "conflict": "Conflict", "unsuitable": "Unsuitable", "expired": "Expired"}
 
 
 def safety_readiness(

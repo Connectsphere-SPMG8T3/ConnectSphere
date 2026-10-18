@@ -2,13 +2,9 @@
 
 ## Safety review (CR-103 / CR-104)
 
-**Status: implemented on branch; migration applied, automated live checks and the developer's manual pass passing, 2026-10-09.** Branch `feature/cr-103-cr-104-safety-review-decision`. Manual mutations require developer-owned disposable data, never seeded/shared fixtures.
+**Status: Session 3 rework on `feature/cr-104-safety-decision-rework`, verified 2026-10-18; migration `20261018150000` applied.** This reworks PR #50, not a defect fix. The earlier 9 Oct runs apply to the old behaviour and are not evidence for the rework.
 
-**Deployment (9 Oct 2026):** migration `20261009110000_safety_review_decision.sql` applied by the developer (`supabase db push`); `migration list --linked` matches. `safety_decision_checks.sql` passes against the live project, rolled back (no rows left). No new advisor findings for the decision table or its RPCs. Seeded accounts `safety.officer@connectsphere.dev` and `coordinator.lead@connectsphere.dev` exist (`docs/SETUP.md`).
-
-**Recorded live runs (9 Oct, after the push):** full API/database run [71/71 passed](runs/2026-10-09-1806-api-db-76181b4.md); full browser run [55/55 passed](runs/2026-10-09-1811-e2e-76181b4.md); officer checks added afterwards, [8/8 passed](runs/2026-10-09-1815-api-db-76181b4.md). The earlier [14:33](runs/2026-10-09-1433-api-db-ab6a851.md) and [14:43](runs/2026-10-09-1443-e2e-ab6a851.md) runs failed only because the migration was not yet applied.
-
-Manual pass: [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md), every case run passed. Still not run: the extra-role and assigned/unassigned coordinator halves of TC-SDEC-003, foreign-id validation, concurrency, layout and wording. CR-100/24 dependent fields remain null. CR-104 AC6/AC10 callers are unwired.
+Unit suites pass (backend 1,396; frontend 971). Live runs after the migration push: API and database 126/126 ([run](runs/2026-10-18-1911-api-db-253189d.md)), browser 66/66 ([run](runs/2026-10-18-1919-e2e-253189d.md)), and the developer's manual pass on throwaway events ([run](runs/2026-10-18-2040-manual-190ccba.md)).
 
 | ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
 |---|---|---|---|---|---|---|---|---|---|
@@ -21,8 +17,8 @@ Manual pass: [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md), 
 | TC-SDEC-007 | Review context and missing dependent data | Manual | Safety Officer account; developer-owned review event | Open /safety/events/<id>; inspect attendance, times, registration, venue details and equipment | Venue capacity/layout/accessibility; event accessibility needs | Attendance-to-capacity ratio and all available context shown; emergency access/restrictions/exit confirmation null and Not recorded, not falsely ready | 🔴 | 2026-10-09 | Pass — [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md) |
 | TC-SDEC-008 | Crowd-movement comment and phone layout | Manual | Safety Officer account; review page | At desktop and 375px inspect comment hint, venue sections, checkboxes and buttons | Long event/venue names | Crowd-movement hint reads clearly; no horizontal scroll or flashing/jumping; labels usable | 🔴 | 2026-10-09 | Pass — [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md) |
 | TC-SDEC-009 | Approve and notification privacy | Manual | Safety Officer; applied migration; disposable ready review event | Approve; inspect transition, decision row and intended notification recipients | Optional unique officer comment | Confirmed; one private decision/history row; organiser/coordinator/venue staff/tech support notified once, actor excluded; comment absent from history reason/messages | 🔴 | 2026-10-09 | Pass — [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md) |
-| TC-SDEC-010 | Request changes only to selected ready arrangements | Manual | Safety Officer; applied migration; disposable event with approved bookings and reserved/pending equipment | Tick subset; enter comment; request changes | Selected approved booking, reserved equipment and pending equipment | Planning; selected approved booking/reserved equipment re_review; pending equipment untouched; unticked unchanged; coordinator alone notified | 🔴 | 2026-10-09 | Pass — [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md) |
-| TC-SDEC-011 | Reject arrangement and consult assumption | Manual | Safety Officer; applied migration; disposable review event | Tick arrangements; enter reason; inspect reject modal and confirm | Selected booking/equipment IDs | Planning, not Rejected; selected bookings released, rejected venue IDs stored, equipment rejected; coordinator notified; replacement wording clear; same-venue rebooking not blocked | 🔴 | 2026-10-09 | Pass — [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md) |
+| TC-SDEC-010 | Request changes preserves every arrangement | Automated (SQL) + Manual | Rework migration applied; disposable review event with approved bookings and reserved equipment | Select concerned ids, enter comment and confirm Request changes; inspect rows and notifications | Approved booking and reserved line | Event Planning; no booking or equipment row changes; decision stores deduplicated concerned ids; coordinator alone notified | 🔴 | 2026-10-09 | 2026-10-18 Pass: SQL ([run](runs/2026-10-18-1911-api-db-253189d.md)), manual ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
+| TC-SDEC-011 | Reject one venue without releasing its booking | Automated (SQL) + Manual | Rework migration applied; disposable review event with an approved unflagged booking | Select exactly one venue radio, enter reason and confirm Reject; open coordinator event | One booking_id, trimmed reason | Event Planning, not Rejected; named booking remains approved and is flagged Safety rejected with reason and history; equipment unchanged; rejected_venue_ids stores its venue; coordinator notified | 🔴 | 2026-10-09 | 2026-10-18 Pass: SQL ([run](runs/2026-10-18-1911-api-db-253189d.md)), manual ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
 | TC-SDEC-012 | Corrected event returns for another review | Manual | Officer/coordinator accounts; applied migration; disposable returned event | Correct arrangements, send using SCRUM-82, open queue again | Ready arrangements | New safety-review entry and queue position; prior private decisions retained | 🔴 | 2026-10-09 | Pass — [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md) |
 | TC-SDEC-013 | No coordinator confirmation bypass | Manual | Coordinator account; disposable event | Use coordinator API actions on ready event | Coordinator active role | Coordinator cannot transition directly to confirmed; approval requires officer | 🔴 | 2026-10-09 | Not run |
 | TC-SDEC-014 | Missing event reads/decisions | Integration | Safety Officer account required | GET review and POST each decision for missing UUID (automated, `verify_live.py`) | 00000000-0000-4000-8000-000000000000 | 404 without mutation | 🔴 | 2026-10-09 | Pass — [2026-10-09 18:15 API run](runs/2026-10-09-1815-api-db-76181b4.md) |
@@ -33,6 +29,15 @@ Manual pass: [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md), 
 | TC-SDEC-019 | Approved change returns to planning — unwired | Manual | Story 37 caller required; not delivered here | After approval change attendance/venue/equipment through story 37 | Disposable confirmed event | Planning via approved_details_changed; coordinator notified; pending until caller lands | 🔴 | 2026-10-09 | Not run |
 | TC-SDEC-020 | Readiness loss withdraws from queue — unwired | Manual | CR-94/95, 85, 24 callers required; not delivered here | Flag/cancel booking or clear technical readiness via owning story | Disposable review event | Planning, queue entry gone, coordinator/officers notified; pending until each caller lands | 🔴 | 2026-10-09 | Not run |
 | TC-SDEC-021 | Dashboard figures and recent decisions (CR-103 AC7) | Manual + Integration | Safety Officer account; some decisions in the last 30 days | Open /dashboard/safety at desktop and 375px; compare tiles with the queue and the list | Existing queue and history | In queue and Oldest waiting match the queue; Approved / Changes requested / Arrangement rejected match the list (withdrawals listed, not counted); list newest first with event, outcome, decider or System, time, comment; tiles aligned, no sideways scroll | 🟢 | 2026-10-09 | Pass — [19:45 manual](runs/2026-10-09-1945-manual-a803cc8.md); API half automated [19:31](runs/2026-10-09-1931-api-db-8d181c6.md) |
+
+| TC-SDEC-022 | Mark as revised denies other active roles | Automated | Backend on this branch; seeded role sessions | POST missing booking mark-revised as each non-coordinator active role | Random missing booking UUID | 403 for all six non-coordinator roles; no RPC or booking changes | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-1911-api-db-253189d.md)) |
+| TC-SDEC-023 | Mark as revised missing booking | Automated | Rework migration applied; coordinator session | POST /venue-bookings/<missing-id>/mark-revised | Missing UUID | 404, no writes | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-1911-api-db-253189d.md)) |
+| TC-SDEC-024 | Reject held or flagged booking | Automated (SQL) | Rework migration applied; throwaway review events | Call safety_return_event for held or flagged booking | Held booking; Affected booking | No row (API 409); no decision, transition or side effects | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-1911-api-db-253189d.md)) |
+| TC-SDEC-025 | Only the rejected venue needs revision | Automated (SQL) + Manual | Disposable event with two approved spaces | Reject Hall A; open coordinator event and inspect both spaces | Two space bookings | Only Hall A flagged and named in readiness; Hall B stays approved, unflagged and ready | 🔴 | 2026-10-18 | 2026-10-18 Pass: SQL ([run](runs/2026-10-18-1911-api-db-253189d.md)), manual ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
+| TC-SDEC-026 | Mark revised then send again | Manual | Rework migration applied; assigned coordinator; disposable Planning event | Revise arrangement with venue staff; Mark as revised; send for safety check again | Safety-rejected booking; other readiness ready | All flag fields cleared, approved status retained, safety_revised history; event enters Safety review | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
+| TC-SDEC-027 | Officer radio, copy and phone layout | Manual | Safety Officer; disposable review event | Open /safety/events/<id> at desktop and 375px; inspect radios and both dialogs | Approved and held bookings; reason | Held radio disabled; Reject needs reason and venue; exact rework dialog copy; stacked list, no horizontal scroll, flashes or jumps | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
+| TC-SDEC-028 | Coordinator notice wording and phone layout | Manual | Assigned coordinator; Safety-rejected booking | Open /coordinator/events/<id> at desktop and 375px; inspect venue or space card | Planning and Safety-review events | Safety rejected badge, reason and revision guidance visible; Mark as revised only in Planning, disabled while busy; no horizontal scroll or layout jumps | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
+| TC-SDEC-029 | Organiser sees no flag or reason | Manual | Organiser; disposable event after safety rejection | Open organiser event page and inspect event response | Internal booking flag and officer reason | No flag or flag_reason fields populated; officer reason absent; existing fixed outcome summary allowed | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
 
 ### Traceability — CR-103 / CR-104
 
@@ -45,34 +50,24 @@ Manual pass: [2026-10-09 19:30 manual](runs/2026-10-09-1930-manual-ca319bb.md), 
 | CR-103 AC5 | TC-SDEC-003, TC-SDEC-004 | Role groundwork precedes this delivery |
 | CR-103 AC6 | TC-SDEC-007, TC-SDEC-008 | Crowd concerns in comment; dependent fields unavailable |
 | CR-103 AC7 | TC-SDEC-021, TC-SDEC-003 | Added 9 Oct; 30-day window [Team decision] |
-| CR-104 AC1 | TC-SDEC-009, TC-SDEC-014, TC-SDEC-015 | Approve success path is manual |
-| CR-104 AC2 | TC-SDEC-010, TC-SDEC-014, TC-SDEC-015, TC-SDEC-016 | Pending equipment unchanged |
-| CR-104 AC3 | TC-SDEC-011, TC-SDEC-014, TC-SDEC-015, TC-SDEC-016 | Replacement interpretation awaits consult |
-| CR-104 AC4 | TC-SDEC-005, TC-SDEC-012 | Reuse SCRUM-82 submission |
+| CR-104 AC1 | TC-SDEC-009, TC-SDEC-014, TC-SDEC-015, TC-SDEC-027 | Approve stays Confirmed; no Preparation status added |
+| CR-104 AC2 | TC-SDEC-010, TC-SDEC-014–016, TC-SDEC-027 | No arrangement row changes |
+| CR-104 AC3 | TC-SDEC-011, TC-SDEC-014–016, TC-SDEC-022–029 | One approved unflagged booking; revise allowed; cancellation waits for 85 |
+| CR-104 AC4 | TC-SDEC-005, TC-SDEC-012, TC-SDEC-025, TC-SDEC-026 | Space-scoped readiness and Mark as revised; reuse 82 submission |
 | CR-104 AC5 | TC-SDEC-009, TC-SDEC-013 | No direct coordinator confirmation |
-| CR-104 AC6 | TC-SDEC-019 | No story 37 caller wired; not complete |
+| CR-104 AC6 | TC-SDEC-019 | Partly blocked: approved_change accepts confirmed only; TODO(68 AC8) for preparation; 37 caller remains pending |
 | CR-104 AC7 | TC-SDEC-003, TC-SDEC-009, TC-SDEC-010, TC-SDEC-011, TC-SDEC-015, TC-SDEC-017 | Private decision history, not public comments |
 | CR-104 AC8 | TC-SDEC-001, TC-SDEC-002, TC-SDEC-003, TC-SDEC-004 | Assigned coordinator may read history only |
 | CR-104 AC9 | TC-SDEC-018 | No timeout/escalation |
 | CR-104 AC10 | TC-SDEC-020 | CR-94/95, 85, 24 callers unwired; not complete |
 
-Automated live checks: `backend/scripts/verify_live.py` registers TC-SDEC-001/002/014 in full and the read-only or refused-before-write halves of TC-SDEC-003 (Lead), 005 (queue order), 015 (outside review) and 016 (text), plus `safety_decision_checks.sql`; `frontend/e2e/safety-decision.e2e.js` registers TC-SDEC-004 per seeded role. Success paths stay manual because they change data.
+Automated checks: pytest covers the narrowed schema, guards, RPC outcomes, organiser redaction and per-space readiness; Vitest covers the officer form, coordinator notice, API and reload. `verify_live.py` adds TC-SDEC-022/023 and legacy-array validation to 016. The SQL file covers revised 010/011, 024 and the database half of 025. Existing `frontend/e2e/safety-decision.e2e.js` route denials remain unchanged. No shared-data success flow is automated against seeded events.
 
-### Frontend branch-coverage gaps
+### Developer manual pass (after migration deployment)
 
-The changed executable-line bar is satisfied (292/292); the following branches remain uncovered and are not claimed verified:
+- **Review `/safety/events/<id>`:** TC-SDEC-011/027 — choose one approved venue, confirm exact wording and check at 375px that radios stack without sideways scroll, flashes or jumps.
+- **Coordinator `/coordinator/events/<id>`:** TC-SDEC-025/026/028 — only the rejected space shows the badge/reason; inspect guidance at 375px; revise with venue staff, mark revised, then send again on disposable data.
+- **Venue staff `/bookings/<id>`:** inspect the Safety rejected badge and reason; no restore action is offered for this flag.
+- **Organiser event page:** TC-SDEC-029 — no internal booking flag or officer reason appears in the page or event response.
 
-- `SafetyDashboard.vue:31`: missing attendance.
-- `SafetyDecisionDetails.vue:15–16`: unknown decision and system actor.
-- `SafetyReviewView.vue:28`: guard; `:60`: back button; `:68, :71–72, :83–85, :101`: missing/empty values; `:99`: registration disabled.
-
-### Developer manual pass
-
-The migration and the Safety Officer account are in place. Record verdicts using [runs/README.md](runs/README.md):
-
-- **Queue `/dashboard/safety`:** TC-SDEC-005/006 — check ordering, waiting times, resubmission position and empty/loading/error wording.
-- **Review `/safety/events/<id>`:** TC-SDEC-007/008/011 — check context, “Not recorded” fields, crowd-movement wording, rejection selection and 375px layout without jumps or flashes. On disposable events, run TC-SDEC-009–016/018 for decision outcomes, validation, history and notifications; TC-SDEC-003 also needs extra-role accounts.
-- **Dashboard figures `/dashboard/safety`:** TC-SDEC-021 — tiles match the queue and the recent-decisions list; layout at desktop and 375px.
-- **Coordinator `/coordinator/events/<id>` and organiser event detail:** TC-SDEC-017 — compare the full internal banner with the plain external reason and check the rejected-arrangement label.
-
-TC-SDEC-019/020 remain deferred until the owning stories wire their callers. Do not record manual passes without the developer's verdict.
+Only the developer records the visual/wording verdicts; use [runs/README.md](runs/README.md). Pending migration deployment, full SQL and recorded live/browser regression, post-migration advisors and Claude review remain outside this implementation run. Update the sprint DoD rows before PR and merge; PO acceptance, PR, merge and backlog Done remain developer steps.
