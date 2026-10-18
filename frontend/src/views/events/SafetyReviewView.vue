@@ -89,8 +89,8 @@ watch(() => route.params.id, (id) => {
               <div><dt class="font-bold">Layouts</dt><dd>{{ venue.layouts.join(', ') || 'Not provided' }}</dd></div>
               <div><dt class="font-bold">Accessibility features</dt><dd>{{ venue.accessibility_features.join(', ') || 'None specified' }}</dd></div>
               <div><dt class="font-bold">Attendance against capacity</dt><dd>{{ review.event.expected_attendance ?? 'Not provided' }} / {{ venue.capacity }} ({{ venue.attendance_to_capacity == null ? 'Not provided' : `${Math.round(venue.attendance_to_capacity * 100)}%` }})</dd></div>
-              <div><dt class="font-bold">Emergency access</dt><dd>{{ venue.emergency_access ?? 'Not recorded' }}</dd></div>
-              <div><dt class="font-bold">Restrictions</dt><dd>{{ venue.restrictions ?? 'Not recorded' }}</dd></div>
+              <div><dt class="font-bold">Emergency access</dt><dd class="whitespace-pre-wrap break-words">{{ venue.emergency_access ?? 'Not recorded' }}</dd></div>
+              <div><dt class="font-bold">Restrictions</dt><dd class="whitespace-pre-wrap break-words">{{ venue.restrictions ?? 'Not recorded' }}</dd></div>
             </dl>
           </div>
         </BauhausCard>

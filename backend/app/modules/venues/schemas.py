@@ -4,7 +4,7 @@ The enums mirror the Postgres enums created by the SCRUM-39 migration; keep
 the two in step (REQUIREMENTS §6.8 lists the values as a [Team decision]).
 """
 
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from enum import Enum
 from typing import Literal
 from uuid import UUID
@@ -74,13 +74,21 @@ class ReasonCode(str, Enum):
     booked = "booked"
 
 
-# Setup/turnaround between consecutive bookings, in minutes. The customer set
-# it to zero (QA-28, QA-82, QA-103), so back-to-back bookings are allowed and
-# no availability check applies a buffer (VS-R1, §6.14). It is a named constant
-# served on the venue profile rather than a number the SPA hard-codes, so the
-# day the customer asks for a real buffer, this is the one place it changes
-# (REQUIREMENTS §8, "a future rule plugs into §6.11 and §6.14").
-TURNAROUND_MINUTES = 0
+def parse_occupied_datetime(value: str | datetime) -> datetime:
+    """Clip occupied endpoints for comparisons, never the stored range/buffers.
+
+    PostgreSQL supports BCE and five-digit years; Python does not. Every
+    occupied booking contains a representable booked window, so clipping only
+    its expanded endpoints preserves overlaps within the application's dates.
+    Boundary endpoints are labelled as beyond supported dates by the UI.
+    """
+    if isinstance(value, datetime):
+        return value
+    if value.endswith(" BC"):
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if len(value.split("-", 1)[0]) > 4:
+        return datetime.max.replace(tzinfo=timezone.utc)
+    return datetime.fromisoformat(value)
 
 
 def label(value: str | Enum) -> str:
@@ -125,6 +133,10 @@ class VenueSummary(BaseModel):
     closes_at: time
     is_active: bool
     description: str | None = None
+    setup_minutes: int = Field(default=0, ge=0)
+    turnaround_minutes: int = Field(default=0, ge=0)
+    emergency_access: str | None = None
+    restrictions: str | None = None
     # Set exactly when the venue is inactive (SCRUM-64 AC1).
     inactive_reason: VenueInactiveReason | None = None
     inactive_note: str | None = None
@@ -149,6 +161,11 @@ class BookingConflict(BaseModel):
     block_reason: str | None = None
     starts_at: AwareDatetime
     ends_at: AwareDatetime
+
+    @field_validator("starts_at", "ends_at", mode="before")
+    @classmethod
+    def _occupied_endpoint(cls, value):
+        return parse_occupied_datetime(value)
 
 
 class BlockSummary(BaseModel):
@@ -219,9 +236,6 @@ class VenuePhoto(BaseModel):
 
 
 class VenueDetail(VenueProfile):
-    # Stated on the profile so venue staff can see the rule they are planning
-    # against, instead of inferring it from bookings that sit back-to-back.
-    turnaround_minutes: int = TURNAROUND_MINUTES
     photos: list[VenuePhoto] = []
     upcoming_blocks: list[BlockSummary] = []
     # Every booking that occupies the venue (§6.14): `approved` (confirmed),
@@ -410,6 +424,16 @@ class VenueUpdateRequest(BaseModel):
     opens_at: time
     closes_at: time
     description: str | None = None
+    setup_minutes: int = Field(default=0, ge=0, strict=True)
+    turnaround_minutes: int = Field(default=0, ge=0, strict=True)
+    emergency_access: str | None = None
+    restrictions: str | None = None
+
+    @field_validator("emergency_access", "restrictions")
+    @classmethod
+    def _optional_safety_text(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
     # Set once the caller has seen the warnings below and still wants to save
     # (VC-R2: "resolution is manual" — a warning never blocks the edit).
     confirm: bool = False

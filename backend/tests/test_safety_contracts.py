@@ -114,7 +114,7 @@ def test_review_arrangement_reads(monkeypatch,domain):
         query.select.return_value=query;query.eq.return_value=query;query.in_.return_value=query
         query.execute.return_value.data=[{'id':'b','venue_id':'v','status':'approved','venues':{'name':'Hall','capacity':20,'venue_layouts':[{'layout':'boardroom','capacity_for_layout':20}],'accessibility_features':['ramp']}}]
         monkeypatch.setattr(module.repository,'get_supabase_admin_client',lambda:client)
-        assert module.event_bookings_with_venues('e')==[dict(booking_id='b',venue_id='v',booking_status='approved',venue_name='Hall',capacity=20,layouts=['boardroom'],accessibility_features=['ramp'])]
+        assert module.event_bookings_with_venues('e')==[dict(booking_id='b',venue_id='v',booking_status='approved',venue_name='Hall',capacity=20,layouts=['boardroom'],accessibility_features=['ramp'],emergency_access=None,restrictions=None)]
         query.in_.assert_called_once_with('status',['held','approved','re_review'])
         assert 'venue_layouts(layout)' in query.select.call_args.args[0]
     else:

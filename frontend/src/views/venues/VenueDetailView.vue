@@ -11,7 +11,6 @@ import { blockReasonLabel, formatEventReference } from "@/features/venues/dashbo
 import { useVenueEditStore } from "@/features/venues/venueEditStore";
 import {
   defaultBookingGroupKey,
-  formatTurnaround,
   groupUpcomingBookings,
   lastEditorName,
   stepIndex,
@@ -323,9 +322,12 @@ watch(() => route.params.id, () => {
           <dd class="font-medium">{{ venue.capacity }} pax</dd>
           <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Open</dt>
           <dd class="font-medium">{{ venue.opens_at.slice(0, 5) }}–{{ venue.closes_at.slice(0, 5) }}</dd>
-          <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Turnaround</dt>
-          <dd class="font-medium">{{ formatTurnaround(venue.turnaround_minutes) }}</dd>
+          <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Default setup</dt>
+          <dd class="font-medium">{{ venue.setup_minutes }} minutes</dd>
+          <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Default turnaround</dt>
+          <dd class="font-medium">{{ venue.turnaround_minutes }} minutes</dd>
         </dl>
+        <p class="mt-4 text-sm font-medium">Defaults apply to new booking requests only. Existing bookings keep their own times.</p>
         <h3 class="mb-2 mt-6 text-xs font-bold uppercase tracking-widest text-ink/70">Layouts</h3>
         <ul class="flex flex-wrap gap-2">
           <li
@@ -367,6 +369,10 @@ watch(() => route.params.id, () => {
           </li>
           <li v-if="!venue.accessibility_features.length" class="text-sm font-medium">None recorded</li>
         </ul>
+        <dl class="mt-6 space-y-4 text-sm">
+          <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Emergency access</dt><dd class="mt-2 whitespace-pre-wrap break-words font-medium">{{ venue.emergency_access ?? 'Not recorded' }}</dd></div>
+          <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Restrictions</dt><dd class="mt-2 whitespace-pre-wrap break-words font-medium">{{ venue.restrictions ?? 'Not recorded' }}</dd></div>
+        </dl>
       </BauhausCard>
 
       <BauhausCard

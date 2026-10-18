@@ -55,6 +55,15 @@ describe('Safety queue and review', () => {
     eventsApi.safetyHistory.mockResolvedValue({ items: [] });
   });
   afterEach(() => { apps.splice(0).forEach((app) => app.unmount()); vi.useRealTimers(); });
+  it('CR-100 shows recorded emergency access and restrictions on the safety review', async () => {
+    const data = response();
+    data.venues[0].emergency_access = 'East exit\nCourtyard';
+    data.venues[0].restrictions = 'No flames';
+    eventsApi.safetyReview.mockResolvedValue(data);
+    const { el } = await mountView();
+    await vi.waitFor(() => expect(el.textContent).toContain('East exit\nCourtyard'));
+    expect(el.textContent).toContain('No flames');
+  });
   it('shows queue rows in server order and links to each review', async () => {
     eventsApi.safetyQueue.mockResolvedValue({ items: [
       { event_id: 'e1', name: 'Oldest Fair', organiser_name: 'Priya', starts_at: '2026-11-12T02:00:00Z', expected_attendance: 80, entered_review_at: '2026-10-08T02:00:00Z' },

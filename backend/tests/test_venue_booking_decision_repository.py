@@ -52,7 +52,7 @@ def use(monkeypatch, data):
 
 BOOKING_ROW = {
     "id": "d1", "event_id": "e1", "venue_id": "v1",
-    "occupied_period": '["2031-03-10 06:00:00+00","2031-03-10 09:00:00+00")',
+    "booked_period": '["2031-03-10 06:00:00+00","2031-03-10 09:00:00+00")',
     "status": "rejected", "request_note": "Early access", "created_at": "2031-02-01T00:00:00+00:00",
     "decision_reason": "Capacity exceeded", "suggestion_note": "Try Heritage Hall",
     "decided_at": "2031-03-01T02:00:00+00:00",

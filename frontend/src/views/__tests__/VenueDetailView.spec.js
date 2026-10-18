@@ -88,6 +88,29 @@ describe("VenueDetailView: deactivation (SCRUM-64)", () => {
     document.body.innerHTML = "";
   });
 
+  it("CR-100 shows both defaults and the recorded safety facts", async () => {
+    await mountView("event_coordinator", { ...ACTIVE, setup_minutes: 30, turnaround_minutes: 45,
+      emergency_access: "East exit\nCourtyard", restrictions: "No flames" });
+    expect(document.querySelector("#panel-capacity").textContent).toContain("Default setup");
+    expect(document.querySelector("#panel-capacity").textContent).toContain("30 minutes");
+    expect(document.querySelector("#panel-capacity").textContent).toContain("45 minutes");
+    document.querySelector("#tab-facilities").click();
+    await nextTick();
+    expect(document.querySelector("#panel-facilities").textContent).toContain("East exit\nCourtyard");
+    expect(document.querySelector("#panel-facilities").textContent).toContain("No flames");
+  });
+
+  it("CR-100 labels missing safety facts instead of inventing them", async () => {
+    await mountView("venue_staff", { ...ACTIVE, setup_minutes: 0, emergency_access: null, restrictions: null });
+    document.querySelector("#tab-facilities").click();
+    await nextTick();
+    const panel = document.querySelector("#panel-facilities");
+    expect(panel.textContent).toContain("Emergency access");
+    expect(panel.textContent).toContain("Restrictions");
+    expect(panel.querySelectorAll("dd")[0].textContent).toBe("Not recorded");
+    expect(panel.querySelectorAll("dd")[1].textContent).toBe("Not recorded");
+  });
+
   it("offers Deactivate to venue staff on an active venue", async () => {
     await mountView("venue_staff", ACTIVE);
     expect(button("Deactivate venue")).toBeTruthy();

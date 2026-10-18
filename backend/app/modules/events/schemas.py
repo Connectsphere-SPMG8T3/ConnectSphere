@@ -652,8 +652,8 @@ class SafetyReviewVenue(BaseModel):
     layouts: list[str] = []
     accessibility_features: list[str] = []
     attendance_to_capacity: float | None = None
-    emergency_access: None = None
-    restrictions: None = None
+    emergency_access: str | None = None
+    restrictions: str | None = None
 
 
 class SafetyEquipmentLine(BaseModel):
