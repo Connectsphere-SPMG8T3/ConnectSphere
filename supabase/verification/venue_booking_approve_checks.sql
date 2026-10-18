@@ -1,6 +1,8 @@
 -- SCRUM-36 venue staff approve a booking request: the real approve_venue_booking
 -- function, the booking's history, DB-1 after approval, and the shared lock with
--- reject_venue_booking. Needs CR-99, SCRUM-38 and SCRUM-64 applied first.
+-- reject_venue_booking and CR-95's restore_affected_booking, and the release of
+-- the booking a replacement replaces. Needs CR-99, SCRUM-38, SCRUM-64, SCRUM-21
+-- and CR-95 applied first.
 -- Run with `supabase db query --linked -f` or `psql "$DATABASE_URL" -f`. Raises
 -- on the first failure and prints BOOKING APPROVE CHECKS PASSED otherwise.
 -- Everything runs inside `begin; ... rollback;`, so the throwaway events,
@@ -56,7 +58,19 @@ insert into public.events (id, organiser_id, coordinator_id, status, name, start
     -- S: approved by its own coordinator acting as venue staff (NT-R1).
     ('e0000000-0000-4000-8000-0000000036b3', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000000002', 'planning', 'Approve check S (rolled back)',
-     '2031-05-18 09:00+08', '2031-05-18 10:00+08');
+     '2031-05-18 09:00+08', '2031-05-18 10:00+08'),
+    -- P, Q, T: an affected original at Heritage Hall and its replacement at
+    -- Innovation Lab (CR-95). P is approved; Q is restored first; T is
+    -- approved, then restore is tried.
+    ('e0000000-0000-4000-8000-0000000036b7', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'planning', 'Approve check P, replacement (rolled back)',
+     '2031-05-27 09:00+08', '2031-05-27 10:00+08'),
+    ('e0000000-0000-4000-8000-0000000036b8', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'planning', 'Approve check Q, restored first (rolled back)',
+     '2031-05-28 09:00+08', '2031-05-28 10:00+08'),
+    ('e0000000-0000-4000-8000-0000000036b9', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'planning', 'Approve check T, approved first (rolled back)',
+     '2031-05-29 09:00+08', '2031-05-29 10:00+08');
 
 insert into public.event_space_requests (id, event_id, label, expected_pax) values
     ('f0000000-0000-4000-8000-000000003601', 'e0000000-0000-4000-8000-0000000036a4', 'Plenary', 80),
@@ -100,6 +114,22 @@ insert into public.venue_bookings (id, event_id, event_space_request_id, venue_i
      'b0000000-0000-4000-8000-000000000006', tstzrange('2031-05-15 09:00+08', '2031-05-15 10:00+08', '[)'), 'released', null),
     ('d0000000-0000-4000-8000-0000000036e6', 'e0000000-0000-4000-8000-0000000036a8', null,
      'b0000000-0000-4000-8000-000000000006', tstzrange('2031-05-15 09:00+08', '2031-05-15 10:00+08', '[)'), 'expired', null);
+
+insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status, flag, flag_reason, flagged_at) values
+    ('d0000000-0000-4000-8000-0000000036a7', 'e0000000-0000-4000-8000-0000000036b7', 'b0000000-0000-4000-8000-000000000007',
+     tstzrange('2031-05-27 09:00+08', '2031-05-27 10:00+08', '[)'), 'approved', 'affected', 'Approve check', now()),
+    ('d0000000-0000-4000-8000-0000000036a8', 'e0000000-0000-4000-8000-0000000036b8', 'b0000000-0000-4000-8000-000000000007',
+     tstzrange('2031-05-28 09:00+08', '2031-05-28 10:00+08', '[)'), 'approved', 'affected', 'Approve check', now()),
+    ('d0000000-0000-4000-8000-0000000036a9', 'e0000000-0000-4000-8000-0000000036b9', 'b0000000-0000-4000-8000-000000000007',
+     tstzrange('2031-05-29 09:00+08', '2031-05-29 10:00+08', '[)'), 'approved', 'affected', 'Approve check', now());
+
+insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status, replaces_booking_id) values
+    ('d0000000-0000-4000-8000-0000000036f7', 'e0000000-0000-4000-8000-0000000036b7', 'b0000000-0000-4000-8000-000000000006',
+     tstzrange('2031-05-27 09:00+08', '2031-05-27 10:00+08', '[)'), 'held', 'd0000000-0000-4000-8000-0000000036a7'),
+    ('d0000000-0000-4000-8000-0000000036f8', 'e0000000-0000-4000-8000-0000000036b8', 'b0000000-0000-4000-8000-000000000006',
+     tstzrange('2031-05-28 09:00+08', '2031-05-28 10:00+08', '[)'), 'held', 'd0000000-0000-4000-8000-0000000036a8'),
+    ('d0000000-0000-4000-8000-0000000036f9', 'e0000000-0000-4000-8000-0000000036b9', 'b0000000-0000-4000-8000-000000000006',
+     tstzrange('2031-05-29 09:00+08', '2031-05-29 10:00+08', '[)'), 'held', 'd0000000-0000-4000-8000-0000000036a9');
 
 insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status, expires_at) values
     ('d0000000-0000-4000-8000-0000000036f1', 'e0000000-0000-4000-8000-0000000036b1',
@@ -268,6 +298,47 @@ begin
        or (select status from public.venue_bookings where id = v_booking) <> 'approved'
        or (select status from public.venue_bookings where id = 'd0000000-0000-4000-8000-0000000036b7') <> 'rejected' then
         raise exception 'BOOKING APPROVE FAIL: a decision was overwritten by a later one';
+    end if;
+
+    -- CR-95 AC5: approving a replacement releases the affected original in the
+    -- same step. The original keeps its Affected flag as the record of why.
+    select * into v_result from public.approve_venue_booking('d0000000-0000-4000-8000-0000000036f7', v_staff, 'x');
+    if v_result.outcome is distinct from 'ok' then
+        raise exception 'BOOKING APPROVE FAIL: the replacement was not approved (outcome %)', v_result.outcome;
+    end if;
+    select * into v_row from public.venue_bookings where id = 'd0000000-0000-4000-8000-0000000036a7';
+    if v_row.status <> 'released' or v_row.flag is distinct from 'affected' then
+        raise exception 'BOOKING APPROVE FAIL: approving a replacement left its original % (flag %)', v_row.status, v_row.flag;
+    end if;
+    if (select array_agg(action order by action) from public.venue_booking_history
+         where booking_id = 'd0000000-0000-4000-8000-0000000036f7') is distinct from array['approved', 'replacement_approved']
+       or (select count(*) from public.venue_booking_history
+            where booking_id = 'd0000000-0000-4000-8000-0000000036a7' and action = 'released_for_replacement'
+              and actor_id = v_staff and from_status = 'approved' and to_status = 'released') <> 1 then
+        raise exception 'BOOKING APPROVE FAIL: the replacement and its original do not each record the release';
+    end if;
+    -- Approving a booking that replaces nothing releases nothing.
+    if exists (select 1 from public.venue_booking_history
+                where booking_id = v_booking and action in ('replacement_approved', 'released_for_replacement')) then
+        raise exception 'BOOKING APPROVE FAIL: approving a plain booking wrote replacement history';
+    end if;
+
+    -- Restored first: restore cancels the pending replacement, so approval is refused.
+    if (select outcome from public.restore_affected_booking('d0000000-0000-4000-8000-0000000036a8', v_staff)) <> 'ok' then
+        raise exception 'BOOKING APPROVE FAIL: setup, the original Q could not be restored';
+    end if;
+    select * into v_result from public.approve_venue_booking('d0000000-0000-4000-8000-0000000036f8', v_staff, 'x');
+    if v_result.outcome is distinct from 'not_held' or v_result.from_status is distinct from 'cancelled'
+       or (select status from public.venue_bookings where id = 'd0000000-0000-4000-8000-0000000036a8') <> 'approved' then
+        raise exception 'BOOKING APPROVE FAIL: a replacement cancelled by restore was approved, or its original released (outcome %)', v_result.outcome;
+    end if;
+
+    -- Approved first: the original is released, so restore is refused.
+    select * into v_result from public.approve_venue_booking('d0000000-0000-4000-8000-0000000036f9', v_staff, 'x');
+    if v_result.outcome is distinct from 'ok'
+       or (select outcome from public.restore_affected_booking('d0000000-0000-4000-8000-0000000036a9', v_staff)) = 'ok'
+       or (select status from public.venue_bookings where id = 'd0000000-0000-4000-8000-0000000036f9') <> 'approved' then
+        raise exception 'BOOKING APPROVE FAIL: restore undid an approved replacement';
     end if;
 
     -- Unknown ids come back as an outcome, not an error.

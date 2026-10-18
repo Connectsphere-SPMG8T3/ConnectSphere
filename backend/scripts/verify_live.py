@@ -1552,6 +1552,40 @@ def _(ctx: Context) -> None:
     expect(booking_status(booking_id) == "held", "a refused caller changed the booking")
 
 
+@check("TC-BOOK-061", "Approving a replacement and restoring its original at the same instant: exactly one wins",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    # CR-95: an approved original flagged Affected at Heritage Hall, and its
+    # held replacement at Innovation Lab. Both are this check's own rows.
+    event_id = throwaway_event(ctx, "061", "2031-08-13 09:00+08", "2031-08-13 10:00+08")
+    [original] = db_query(
+        "insert into public.venue_bookings (event_id, venue_id, occupied_period, status, flag, flag_reason, flagged_at) "
+        f"values ('{event_id}', '{HERITAGE_HALL}', tstzrange('2031-08-13 09:00+08', '2031-08-13 10:00+08', '[)'), "
+        "'approved', 'affected', 'live check', now()) returning id"
+    )
+    [replacement] = db_query(
+        "insert into public.venue_bookings (event_id, venue_id, occupied_period, status, replaces_booking_id) "
+        f"values ('{event_id}', '{INNOVATION_LAB}', tstzrange('2031-08-13 09:00+08', '2031-08-13 10:00+08', '[)'), "
+        f"'held', '{original['id']}') returning id"
+    )
+    staff = ctx.shared("venue_staff")
+
+    def fire(call: tuple[str, str]) -> tuple[str, int]:
+        action, booking_id = call
+        with httpx.Client(timeout=30) as client:
+            return action, client.post(f"{ctx.api}{BOOKINGS}/{booking_id}/{action}", headers=staff.headers).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = dict(pool.map(fire, [("approve", replacement["id"]), ("restore", original["id"])]))
+    # A deadlock would surface as a 500 here, not a 409.
+    expect(sorted(results.values()) == [200, 409], f"expected one 200 and one 409, got {results}")
+    states = (booking_status(original["id"]), booking_status(replacement["id"]))
+    want = ("released", "approved") if results["approve"] == 200 else ("approved", "cancelled")
+    expect(states == want, f"original and replacement are {states}, want {want}")
+
+
 # --- Several venues per event (CR-97) --------------------------------------
 
 def throwaway_space(event_id: str, label: str, *, pax: int | None = None, layout: str | None = None,
