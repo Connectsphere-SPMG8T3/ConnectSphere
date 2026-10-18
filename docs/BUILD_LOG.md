@@ -2424,7 +2424,7 @@ On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d`
 |---|---|
 | ID | SCRUM-36 |
 | Title | Approve a venue booking request |
-| Status | In progress: migration applied 2026-10-18; live checks pass; manual pass pending |
+| Status | In review: migration applied, live checks and the developer's manual pass passing (2026-10-18/19) |
 | Sprint | 3 (6–20 October) |
 
 **User story:** As Venue Staff, I want to be able to approve a pending venue booking request, so that I don't end up with a double-booking or an unsuitable setup that I have to scramble to fix later.
@@ -2476,8 +2476,11 @@ On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d`
 - `npm run test:e2e:record`, frontend on port 5183: **70/70 passed**, including both TC-BOOK-057 tests ([run](test-cases/runs/2026-10-18-2327-e2e-f99b008.md)).
 - `supabase db advisors`: nothing on this story's function. The ten warnings are the known leaked-password one and D19's nine.
 
+**Manual pass (2026-10-19).** The developer checked TC-BOOK-058–060 in the browser on throwaway bookings "Booking A", "B" and "C": all three passed ([run](test-cases/runs/2026-10-19-0012-manual-5de792c.md)). The coordinator's approval notification was confirmed in the database, since the app has no screen for notifications yet (SCRUM-27). The test bookings were deleted afterwards.
+
 #### Follow-ups
 
 - CR-100 owns the per-booking setup/turnaround edit and its lock on approval (IMPLEMENTATION_MAP §5).
 - The booking page shows the event's attendance and layout, not a space's own (CR-98). Worth raising with the CR-97/98 owners for multi-venue events.
+- The notification bell still says "Notifications aren't sent yet", though every story now saves them; worth raising with the owners of 69/53.
 - PR, review, PO acceptance, merge and the backlog status are the developer's.
