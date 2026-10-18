@@ -229,10 +229,10 @@ C4Component
   System_Ext(auth, "Supabase Auth", "Sign-up, sign-in and sessions; issues JWTs and publishes JWKS")
 
   Container_Boundary(api, "Backend API (Python 3.11, FastAPI)") {
-    Component(venues, "Venues module", "FastAPI router, service, repository", "Venue catalogue, search, edits, deactivate and reactivate; booking requests, holds, rejections and restores")
+    Component(venues, "Venues module", "FastAPI router, service, repository", "Venue catalogue, search, edits and edit history, deactivate and reactivate; booking requests, holds, rejections and restores; venue staff dashboard")
     Component(events, "Events module", "FastAPI router, service, repository", "Requests, drafts, submit, review, return, approve, reject; Lead reassignment; safety check and decisions; comments, history, dashboards")
-    Component(equipment, "Equipment module", "FastAPI router, service, repository", "Equipment catalogue, inventory and maintenance; equipment requests and the pending queue")
-    Component(authMod, "Auth module", "FastAPI router, service, repository", "Sign-up, login, refresh, logout, current user, switch active role")
+    Component(equipment, "Equipment module", "FastAPI router, service, repository", "Equipment catalogue, inventory and maintenance; availability check; equipment requests and the pending queue")
+    Component(authMod, "Auth module", "FastAPI router, service, dependencies", "Sign-up, login, refresh, logout, current user, switch active role")
     Component(venueRules, "Venue rules", "pure Python, no I/O", "Search, suitability, impact of a venue edit on bookings")
     Component(eventRules, "Event rules", "pure Python, no I/O", "Lifecycle transitions, safety readiness, Lead scope")
     Component(security, "Security", "FastAPI dependencies", "Verifies the JWT; loads profile and active role; require_roles")
