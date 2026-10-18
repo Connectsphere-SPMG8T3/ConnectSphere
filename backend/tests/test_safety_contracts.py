@@ -21,7 +21,7 @@ def test_decision_text_validation(name, field, text):
     assert hasattr(schemas, name)
     with pytest.raises(ValidationError): getattr(schemas,name)(**{field:text})
 
-@pytest.mark.parametrize('name,field', [('SafetyChangesRequest','comment'),('SafetyRejectRequest','reason')])
+@pytest.mark.parametrize('name,field', [('SafetyChangesRequest','comment')])
 def test_decision_ids_are_unique_and_text_trimmed(name, field):
     assert hasattr(schemas,name)
     uid = 'a0000000-0000-4000-8000-000000000001'
@@ -120,3 +120,15 @@ def test_review_arrangement_reads(monkeypatch,domain):
     else:
         monkeypatch.setattr(module.repository,'list_event_requests',lambda _:[{'id':'q','equipment':{'name':'Mic'},'quantity':2,'status':'pending'}])
         assert module.event_lines('e')==[dict(id='q',equipment_name='Mic',quantity=2,status='pending')]
+
+
+def test_reject_text_trimmed_and_legacy_arrays_ignored():
+    uid='a0000000-0000-4000-8000-000000000001'
+    result=schemas.SafetyRejectRequest(reason='  private  ',booking_id=uid,booking_ids=[uid],equipment_request_ids=[uid])
+    assert result.reason=='private' and result.booking_id==UUID(uid)
+    assert result.model_dump().keys()=={'reason','booking_id'}
+
+def test_approved_change_sources_until_68_lands():
+    # CR-104 AC6: add preparation here when 68 AC8 creates it.
+    assert lifecycle.allowed_from('approved_change') == ['confirmed']
+    assert 'preparation' not in {s.value for s in schemas.EventStatus}

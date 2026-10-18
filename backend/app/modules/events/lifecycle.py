@@ -22,10 +22,11 @@ TRANSITIONS: dict[str, tuple[frozenset[EventStatus], EventStatus]] = {
     "send_to_safety": (frozenset({EventStatus.planning}), EventStatus.safety_review),
     # Only the Safety Officer's approval confirms an event (CR-104 AC1, AC5).
     "safety_approve": (frozenset({EventStatus.safety_review}), EventStatus.confirmed),
-    # Changes or a rejected arrangement send the event back to planning, not the
-    # event itself to rejected (CR-104 AC2, AC3).
+    # Request changes preserves arrangements; rejecting one venue flags its booking
+    # Safety rejected. Both return the event to planning (CR-104 AC2/AC3).
     "safety_request_changes": (frozenset({EventStatus.safety_review}), EventStatus.planning),
     "safety_reject": (frozenset({EventStatus.safety_review}), EventStatus.planning),
+    # TODO(68 AC8): add EventStatus.preparation once it exists (CR-104 AC6, QA3-16).
     "approved_change": (frozenset({EventStatus.confirmed}), EventStatus.planning),
     # An arrangement stopped being ready during review (CR-104 AC10).
     "safety_withdraw": (frozenset({EventStatus.safety_review}), EventStatus.planning),
