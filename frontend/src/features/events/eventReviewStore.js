@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 
-import { eventsApi } from "@/services/api";
+import { eventsApi, venueBookingsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 // Mirrors the API's REJECT_REASON_MAX_LENGTH ([Assumption], REQUIREMENTS §9).
@@ -105,6 +105,22 @@ export const useEventReviewStore = defineStore("eventReview", {
       } catch (error) {
         if (this.historyEventId !== eventId) return this.history;
         throw error;
+      }
+    },
+
+    async markBookingRevised(bookingId) {
+      const auth = useAuthStore();
+      const eventId = this.event.id;
+      this.isActing = true;
+      this.error = null;
+      try {
+        await auth.withSession((token) => venueBookingsApi.markRevised(bookingId, token));
+        await this.load(eventId);
+      } catch (error) {
+        this.error = error.message;
+        throw error;
+      } finally {
+        this.isActing = false;
       }
     },
 

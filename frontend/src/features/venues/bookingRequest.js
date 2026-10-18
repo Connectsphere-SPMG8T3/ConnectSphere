@@ -90,8 +90,18 @@ export function replacementSearchRoute(event, space, booking) {
   return { name: "venue-search", query };
 }
 
+function safetyRejectedPanelState(event, space) {
+  const bookings = event.venue_bookings ?? (event.venue_booking ? [event.venue_booking] : []);
+  const booking = bookings.find((item) => (!space || item.event_space_request_id === space.id)
+    && item.flag === "safety_rejected" && LIVE_BOOKING_STATUSES.includes(item.status));
+  if (!booking) return null;
+  return { kind: "safety-rejected", booking, reason: booking.flag_reason, canMarkRevised: event.status === "planning" };
+}
+
 export function venuePanelState(event, space = null) {
   if (!event) return { kind: "none" };
+  const rejected = safetyRejectedPanelState(event, space);
+  if (rejected) return rejected;
   const affected = affectedPanelState(event, space);
   if (affected) return affected;
   // CR-99 AC7: the hold ran out. Say so, and offer the venue again when a

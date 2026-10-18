@@ -112,3 +112,9 @@ describe("booking history wording (AC12)", () => {
     expect(formatDecisionTime(null)).toBe("time not recorded");
   });
 });
+
+
+it('labels CR-104 safety history actions', () => {
+  expect(historyActionLabel('safety_rejected')).toBe('Safety rejected');
+  expect(historyActionLabel('safety_revised')).toBe('Marked revised');
+});
