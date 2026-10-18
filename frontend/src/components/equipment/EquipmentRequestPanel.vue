@@ -118,10 +118,10 @@ async function submit() {
 
     <form v-if="isOpen" class="mt-8 space-y-6" novalidate @submit.prevent="submit">
       <h3 class="text-sm font-bold uppercase tracking-widest">Add items</h3>
-      <fieldset v-for="(line, index) in draft" :key="index" class="space-y-4 border-2 border-ink p-4">
+      <fieldset v-for="(line, index) in draft" :key="index" class="min-w-0 space-y-4 border-2 border-ink p-4">
         <legend class="px-1 text-xs font-bold uppercase tracking-widest">Item {{ index + 1 }}</legend>
-        <div class="grid gap-4 sm:grid-cols-[1fr_8rem]">
-          <div>
+        <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_8rem]">
+          <div class="min-w-0">
             <BauhausSelect
               v-model="line.equipmentId"
               label="Item"
@@ -135,6 +135,7 @@ async function submit() {
             </p>
           </div>
           <BauhausInput
+            class="min-w-0"
             v-model="line.quantity"
             label="Quantity"
             type="number"
