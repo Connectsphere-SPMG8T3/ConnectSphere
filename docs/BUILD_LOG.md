@@ -2678,7 +2678,7 @@ On `feature/scrum-24-equipment-reservation`, branched from `feature/scrum-51-blo
 |---|---|
 | ID | SCRUM-24 |
 | Title | Manage equipment reservation |
-| Status | In progress: built, migration applied, live checks and e2e passing; manual pass outstanding (2026-10-19) |
+| Status | In review: built, migration applied, live checks, e2e and the developer's manual pass passing (2026-10-19) |
 | Sprint | 3 (6–20 October) |
 
 **User story:** As Technical Support Staff, I want to check whether enough equipment is available for a pending request line and reserve it for the event, so that the same limited equipment isn't committed to overlapping events.
@@ -2722,9 +2722,14 @@ The developer asked for the tech support dashboard to follow venue staff's: an *
 - **Seed:** the five seeded items now hold 10–24 units each (4K Projector 14, Wireless Mics 24, PA Systems 10, Stage Lighting 16, HDMI Switchers 12), and nine items were added (`b…0006`–`b…000e`): Sound System, Speaker Stands, Whiteboards, Flip Chart Stands, Projector Screens, Lecterns, Extension Cords, Presentation Laptops, Wireless Presenters. The same rows were upserted into the live project by ID (no truncate), so reservations and requests on the old items kept their references.
 - **Checks:** TC-EQR-002 (`verify_live.py`) and TC-EQR-005 (`equipment.e2e.js`) relied on "5 is above the 4 that exist"; they now submit 15 of 14, and TC-EQR-005's expected note reads "Only 14 exist in the catalogue." Both passed (`runs/2026-10-19-2223-api-db-744f444.md`, `runs/2026-10-19-2224-e2e-744f444.md`).
 
+#### Manual pass (2026-10-19)
+
+- **[Record](test-cases/runs/2026-10-19-2330-manual-ae2f465.md), Eileen:** TC-EQR-029, 030, 031, 032 and 034 passed at desktop and 375px, on throwaway events "live-check Manual A–E". Each step's stored result was confirmed in the database. Also seen: a refusal with "1 free" after another event took 11 of 12, an empty Not available reason refused, unticking Ready to Pending and back, a Re-review line reserved again on its one reservation, and unticking a Ready event in Safety review returning it to Planning with both notifications. No defects.
+- **TC-EQR-033 automated:** the TC-EQR-027 browser check already clicked the Active requests tile; it now also checks that the tile shows a count rather than "—" and carries TC-EQR-033 in its name. Equipment e2e 4/4 ([run](test-cases/runs/2026-10-19-2331-e2e-ae2f465.md)).
+- **Setup slip:** the first data script set Event C's status straight to Safety review without the status-history entry a real hand-off writes, so the Safety Officer's queue left it out. Adding the entry fixed it; not an app defect.
+
 #### Follow-ups
 
-- Manual pass TC-EQR-029–032 by the developer.
 - Story 37 must call `equipment.service.recheck_event`; story 44 should set edited reserved lines to `re_review` (EQ-R4); story 84 gets AC6 from `transition_event`.
 - Tell story 23's owner about D45, and Jie Ching that technical status is now derived and `exit_confirmation` is filled.
 - Raise D14 at the consult (AC10 clearing vs "no automatic reset").

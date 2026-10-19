@@ -4,7 +4,7 @@
 import { expect, seedSession, test } from "./support/fixtures.js";
 import { createThrowawayEquipment, createThrowawayEvent, createThrowawayLine } from "./support/throwaway.js";
 
-test("TC-EQR-027 tech support reserve a line, tick the exit check, and the coordinator sees it Ready", async ({ page, browser, sharedSessions }) => {
+test("TC-EQR-027 TC-EQR-033 tech support reserve a line, tick the exit check, and the coordinator sees it Ready", async ({ page, browser, sharedSessions }) => {
   const event = createThrowawayEvent("EQR027", "2031-08-10 09:00+08", "2031-08-10 12:00+08");
   const item = createThrowawayEquipment("027", 3);
   createThrowawayLine(event, item, 2);
@@ -13,7 +13,11 @@ test("TC-EQR-027 tech support reserve a line, tick the exit check, and the coord
   // AC1: the dashboard's Active requests tile opens the requests page; from
   // there, open the event and reserve the line.
   await page.goto("/dashboard/tech-support");
-  await page.getByTestId("tile").filter({ hasText: "Active requests" }).click();
+  const tile = page.getByTestId("tile").filter({ hasText: "Active requests" });
+  // TC-EQR-033: the tile counts waiting lines (this run's line among them), never "—".
+  await expect(tile).toContainText(/\d+/);
+  await expect(tile).not.toContainText("—");
+  await tile.click();
   await expect(page).toHaveURL("/dashboard/tech-support/requests");
   await page.getByRole("link", { name: new RegExp(event.name) }).click();
   await expect(page).toHaveURL(`/tech-support/events/${event.id}`);
