@@ -190,3 +190,103 @@ describe("TechSupportDashboard active requests tile (SCRUM-24)", () => {
     expect(table).not.toContain("Speaker");
   });
 });
+
+describe("TechSupportDashboard inventory window (D46)", () => {
+  const ITEM = { equipment_id: "e1", name: "4K Projector", total_quantity: 14, reserved_quantity: 0, maintenance_quantity: 0, net_available: 14 };
+  const iso = (local) => new Date(local).toISOString();
+  const field = (el, label) => [...el.querySelectorAll("label")].find((l) => l.textContent.includes(label))?.querySelector("input");
+  const windowText = (el) => el.querySelector("[data-testid=inventory-window]")?.textContent ?? "";
+
+  async function setField(el, label, value) {
+    const input = field(el, label);
+    input.value = value;
+    input.dispatchEvent(new Event("input"));
+    await settle();
+  }
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.useRealTimers();
+  });
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+    equipmentApi.inventory.mockResolvedValue({ items: [ITEM] });
+    equipmentApi.maintenance.mockResolvedValue({ items: [] });
+    equipmentApi.requestList.mockResolvedValue({ lines: [] });
+  });
+
+  it("opens on today 9 am to 5 pm and says which window the table counts", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 19, 22, 30));
+    const { el } = await mountDashboard();
+    await vi.waitFor(() => expect(el.textContent).toContain("4K Projector"));
+
+    expect(equipmentApi.inventory).toHaveBeenCalledWith(iso("2026-10-19T09:00"), iso("2026-10-19T17:00"), "access");
+    expect(field(el, "Window start").value).toBe("2026-10-19T09:00");
+    expect(field(el, "Window end").value).toBe("2026-10-19T17:00");
+    expect(windowText(el)).toContain("Showing stock for 19 Oct 2026, 9:00 am – 5:00 pm");
+    expect(el.textContent).not.toContain("set under Availability");
+  });
+
+  it("reloads for a window the developer picks, so an event's reservations show", async () => {
+    const { el } = await mountDashboard();
+    await vi.waitFor(() => expect(equipmentApi.inventory).toHaveBeenCalledTimes(1));
+    equipmentApi.inventory.mockResolvedValue({ items: [{ ...ITEM, reserved_quantity: 11, net_available: 3 }] });
+
+    await setField(el, "Window start", "2031-09-01T09:00");
+    await setField(el, "Window end", "2031-09-01T13:00");
+    await vi.waitFor(() => expect(windowText(el)).toContain("1 Sep 2031, 9:00 am – 1:00 pm"));
+
+    expect(equipmentApi.inventory).toHaveBeenLastCalledWith(iso("2031-09-01T09:00"), iso("2031-09-01T13:00"), "access");
+    const row = [...el.querySelectorAll("tbody tr")].find((r) => r.textContent.includes("4K Projector"));
+    expect(row.textContent).toContain("11");
+    expect(row.textContent).toContain("PARTIALLY RESERVED");
+  });
+
+  it("refuses a window that ends before it starts, and keeps naming the window still shown", async () => {
+    const { el } = await mountDashboard();
+    await vi.waitFor(() => expect(windowText(el)).toContain("Showing stock for"));
+    const shown = windowText(el);
+
+    await setField(el, "Window end", "2000-01-01T09:00");
+
+    expect(el.querySelector("[data-testid=inventory-window-error]").textContent).toContain("End time must be later than the start time.");
+    expect(equipmentApi.inventory).toHaveBeenCalledTimes(1);
+    expect(windowText(el)).toBe(shown);
+  });
+
+  it("shows the latest window's numbers even if an earlier load answers last", async () => {
+    const { el } = await mountDashboard();
+    await setField(el, "Window end", "2031-12-31T17:00");
+    await vi.waitFor(() => expect(equipmentApi.inventory).toHaveBeenCalledTimes(2));
+    let answerSlow;
+    equipmentApi.inventory
+      .mockImplementationOnce(() => new Promise((resolve) => { answerSlow = () => resolve({ items: [{ ...ITEM, name: "Stale" }] }); }))
+      .mockResolvedValueOnce({ items: [{ ...ITEM, name: "Fresh" }] });
+
+    await setField(el, "Window start", "2031-09-01T09:00");
+    await setField(el, "Window start", "2031-09-02T09:00");
+    await vi.waitFor(() => expect(el.textContent).toContain("Fresh"));
+    answerSlow();
+    // Let the stale answer run all the way through withSession before looking.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await settle();
+
+    expect(el.textContent).toContain("Fresh");
+    expect(el.textContent).not.toContain("Stale");
+    expect(windowText(el)).toContain("2 Sep 2031");
+  });
+
+  it("keeps the availability check's window separate", async () => {
+    const { el, router } = await mountDashboard();
+    await vi.waitFor(() => expect(equipmentApi.inventory).toHaveBeenCalledTimes(1));
+    await setField(el, "Window start", "2031-09-01T09:00");
+
+    await router.push({ name: "dashboard-tech-support", query: { tab: "availability" } });
+    await settle();
+
+    expect(field(el, "Start date and time").value).not.toBe("2031-09-01T09:00");
+  });
+});
