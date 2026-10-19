@@ -2531,3 +2531,49 @@ On `feature/scrum-83-attendee-signup`, 2026-10-19. Follow-up to §4.63 recording
 2. **Coverage.** Full backend suite: 1,432 passed; 96.36% total coverage, above the 92% gate. Full frontend suite: 995 passed; 96.33% line, 88.51% branch and 80.27% function coverage. The changed frontend production files `AuthPageLayout.vue`, `SignupView.vue` and the router are at 100%; `LoginView.vue` is 69.47% overall, with the new signup links covered and uncovered lines in its existing sign-in behavior. `auth/schemas.py` is at 98%; its single uncovered line (56) predates this story. The new live-check decoder option is covered by `test_supabase_cli_output_is_decoded_as_utf8`.
 3. **TC-VENUE-066 harness correction.** The 12:49 live run failed because Windows decoded the Unicode venue reason using the console code page, although the live booking had the expected `affected` flag and `held` status ([initial rerun](test-cases/runs/2026-10-19-1249-api-db-810bde3.md)). `verify_live.py::_supabase_query` now explicitly decodes subprocess output as UTF-8. The regression test passed, the targeted live check passed 1/1 ([rerun](test-cases/runs/2026-10-19-1251-api-db-810bde3.md)), and the full backend suite passed 1,432/1,432.
 4. **Workflow status.** No commit or push was made. The story remains on its feature branch; review, PO acceptance, merge and backlog status remain with the developer/team.
+
+### 4.65. SCRUM-51 — Venue Staff block a venue for maintenance or operational reasons
+
+On `feature/scrum-51-block-venue`, branched from `main` at `810bde3` and merged with `main` at `77b8522` (SCRUM-83), 2026-10-19. The Product backlog sheet couldn't be read through the connector, so the story and ACs are as the developer gave them.
+
+| Field | Value |
+|---|---|
+| ID | SCRUM-51 |
+| Title | Block venue for maintenance or operational reasons |
+| Status | In review: migrations applied, live checks, e2e and the developer's manual pass passing (2026-10-19) |
+| Sprint | 3 (6–20 October) |
+
+**User story:** As Venue Staff, I want to block a venue for maintenance or operational reasons, so that I don't receive booking requests for a venue that isn't available.
+
+**Acceptance criteria (as given by the developer, 2026-10-19):** AC1 block with a period, a reason category (maintenance, equipment failure, renovation, safety, internal activity, other) and a detail (≤ 1000, required for other); end after start and in the future, start may be past; named refusals. AC2 not in overlapping searches. AC3 requests and approval refused: "Venue blocked for this time." AC4 available again when the block ends, no manual step. AC5 overlapping held/approved bookings flagged Affected with the reason, coordinator notified, event not cancelled. AC6 venue staff see the affected bookings with event, status and reason. AC7 found through the conflict check (21) on occupied windows. AC8 only Venue Staff for that venue; others 403. AC9 recorded in the venue's history; blocks never deleted. AC10 a booking under two blocks flagged and notified once, each block recorded. AC11 rejected, cancelled, released, expired and ended bookings not flagged. AC12 multi-venue: only the blocked venue's booking. AC13 organiser told without the reason; attendees not told.
+
+#### What was there already
+
+`venue_blocks` (Sprint 1), its place in SCRUM-21's `venue_conflicts` (so search, both request functions and 36's approval already refused a blocked time: AC2–AC4), and CR-95's `venue_blocks_flag_bookings` trigger, which flagged overlapping held/approved bookings through SCRUM-64's `flag_venue_bookings` and told the coordinator and organiser (most of AC5, AC11). Nothing created a block.
+
+#### What was built
+
+1. **Database** (`20261019100000`, `20261019100001`). The `equipment_failure` reason; `venue_blocks.created_by` and the detail checks; `venue_block_bookings`, written by the trigger for every held or approved, not-ended booking a block overlaps (through `venue_conflicts`, AC7), even one flagged earlier, so AC10 holds and story 54 can tell whether another block still covers a booking. The trigger now writes the reason's label and leaves it out of the organiser's notice (AC13). `create_venue_block` locks the venue `for update` (requests and approval take it `for share`, so a block and a request can't race), refuses a bad period or detail, expires overdue holds, inserts the block and writes the history row (AC9). API roles can't delete blocks or read the links.
+2. **Backend.** `POST /venues/{venue_id}/blocks`, Venue Staff only, any venue. It validates (AC1), previews the affected bookings through `venue_conflicts` without `confirm` (CAL-R1, the deactivation pattern), and on confirm returns the block and the bookings linked to it with event name, status and reason label (AC6). It never returns an event to planning (CR-95 AC7).
+3. **Frontend.** **Block venue** on the venue page opens `BlockVenueModal`: the form with per-field errors, the preview, then the saved list. `blockForm.js` holds the rules; the History tab reads the new entry as "Block added".
+4. **Wording.** At the manual pass the developer chose "Venue blocked for this time." for booking-request refusals too (was "for this timing", TC-BOOK-042), so requests and approval match AC3.
+
+#### Decisions
+
+AC8's "venue they manage" is every venue (AUTH-R5, QA-44); an inactive venue can still be blocked; the organiser's notice omits the reason while the coordinator's keeps it; venue staff are not notified, although CAL-R1 says they should be (REQUIREMENTS §9 items 69–73).
+
+#### Verification
+
+- **Test-first:** the API, repository, form, modal, store, summariser and view specs failed on missing code before each piece was written.
+- **Automated suites:** backend 1,481 passed, 96.45% coverage; frontend 1,025 passed; build clean. New code fully covered.
+- **Live API/database:** [141/142](test-cases/runs/2026-10-19-1546-api-db-558bcfd.md). TC-BLOCK-001–007 (including the block/request race) and the new SQL script TC-BLOCK-008–013 passed, as did CR-95's scripts with the changed trigger. TC-AUTH-049 failed once on a local DNS lookup error (`Errno 8`); on another network it [passed](test-cases/runs/2026-10-19-1614-api-db-fff946e.md). After the wording change the block-related checks re-ran [13/13](test-cases/runs/2026-10-19-1631-api-db-6c190fd.md).
+- **Browser:** the first run caught CR-95's TC-BOOK-048/050 expecting the old raw reason text; fixed in `09e7bec`, the re-run passed [75/75](test-cases/runs/2026-10-19-1602-e2e-09e7bec.md), including TC-BLOCK-014–016.
+- **Manual:** TC-BLOCK-017–019 (layout at desktop and 375 px, wording, History entry) [passed](test-cases/runs/2026-10-19-1633-manual-8d19d25.md).
+- **Harness:** the SQL script's multi-venue event first collided with `venue_bookings_one_active_per_space` (an unspaced booking is linked to the event's first space); it now gives each venue its own space.
+
+#### Follow-ups
+
+- Raise with the PO: AC8's wording, and whether venue staff should be notified of a block (CAL-R1).
+- Tell Xuan Wei and Jie Ching that CR-95's trigger changed.
+- A Supabase connection failure still answers 500, not 503: recorded as DEFECTS D42 (related to D10, D18); TC-AUTH-049's DNS failure showed it.
+- PR, review, PO acceptance, merge and the backlog status are the developer's.

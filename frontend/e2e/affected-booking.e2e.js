@@ -42,7 +42,7 @@ test("TC-BOOK-048/049/050 a block flags a Confirmed event; the coordinator repla
   const panel = page.getByTestId("event-spaces").locator("article").first();
   await expect(panel).toContainText("Seminar Room 1");
   await expect(panel).toContainText("Needs alternative venue");
-  await expect(panel).toContainText("Venue unavailable: maintenance");
+  await expect(panel).toContainText("Venue unavailable: Maintenance");
   await panel.getByRole("button", { name: "Find replacement" }).click();
   await expect(page).toHaveURL(new RegExp(`replaces=${booking.id}`));
 
@@ -67,7 +67,7 @@ test("TC-BOOK-048/049/050 a block flags a Confirmed event; the coordinator repla
   const staffPage = await staffContext.newPage();
   await seedSession(staffPage, await sharedSessions("venue_staff"));
   await staffPage.goto(`/bookings/${booking.id}`);
-  await expect(staffPage.getByTestId("booking-affected")).toContainText("Venue unavailable: maintenance");
+  await expect(staffPage.getByTestId("booking-affected")).toContainText("Venue unavailable: Maintenance");
   await staffPage.getByRole("button", { name: "Restore original booking" }).click();
   await expect(staffPage.getByRole("alert")).toContainText("still blocked");
 

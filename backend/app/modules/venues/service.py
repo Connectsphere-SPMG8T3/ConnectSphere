@@ -15,6 +15,7 @@ from app.core.exceptions import (
     NotAssignedCoordinatorError,
     VenueAlreadyActiveError,
     VenueAlreadyInactiveError,
+    VenueBlockInvalidError,
     VenueConflictError,
     VenueNotFoundError,
 )
@@ -23,8 +24,10 @@ from app.modules.events.schemas import BookingReadiness, EventPlanningContext, S
 from app.modules.venues import impact, repository, search
 from app.modules.venues.search import OCCUPYING_STATUSES
 from app.modules.venues.schemas import (
+    BLOCK_REASON_LABELS,
     INACTIVE_REASON_LABELS,
     AffectedBooking,
+    BlockSummary,
     BookingConflict,
     BookingDecision,
     BookingEventRequirements,
@@ -38,6 +41,8 @@ from app.modules.venues.schemas import (
     VenueBookingCreate,
     VenueBookingDetail,
     VenueBookingReject,
+    VenueBlockCreate,
+    VenueBlockResponse,
     VenueDeactivateRequest,
     VenueDeactivateResponse,
     VenueDetail,
@@ -47,6 +52,7 @@ from app.modules.venues.schemas import (
     VenueSearchResponse,
     VenueStaffDashboard,
     VenueReactivateRequest,
+    Period,
     VenueSummary,
     VenueUpdateRequest,
     VenueUpdateResponse,
@@ -374,6 +380,56 @@ def deactivate_venue(venue_id: str, actor_id: str, body: VenueDeactivateRequest)
     return VenueDeactivateResponse(saved=True, venue=get_venue(venue_id), affected=affected)
 
 
+_BLOCK_REFUSALS = {
+    "invalid_period": "End must be after start.",
+    "ended": "End must be in the future.",
+    "detail_too_long": "The detail can be at most 1000 characters.",
+    "invalid_detail": "A detail is required when the reason is Other.",
+}
+
+
+def create_block(venue_id: str, actor_id: str, body: VenueBlockCreate) -> VenueBlockResponse:
+    """Block a venue for a period (SCRUM-51 AC1, AC5, AC6, AC9).
+
+    Without `confirm`, a block that overlaps held or approved bookings returns
+    them instead of saving (CAL-R1, the deactivation pattern). Both lists come
+    from the shared conflict check, never an overlap query of our own (AC7).
+    Saving writes the block and its history row; the database trigger then
+    flags the bookings Affected, records the block against each, and notifies
+    the coordinators and organisers (CR-95, AC5, AC10-AC13). The events'
+    statuses are left alone (CR-95 AC7), so nothing is returned to planning.
+    """
+    if repository.get_venue(venue_id) is None:
+        raise VenueNotFoundError()
+
+    period = Period(starts_at=body.starts_at, ends_at=body.ends_at)
+    label = BLOCK_REASON_LABELS[body.reason]
+    affected = repository.list_block_conflicts(venue_id, period)
+    if affected and not body.confirm:
+        return VenueBlockResponse(saved=False, affected=_name_affected(affected, label))
+
+    result = repository.create_venue_block(
+        venue_id, actor_id,
+        period=period, reason=body.reason.value, notes=body.detail,
+        history_after={"block": {"starts_at": body.starts_at.isoformat(), "ends_at": body.ends_at.isoformat(),
+                                 "reason": body.reason.value, "notes": body.detail}},
+    )
+    outcome = result["outcome"]
+    if outcome == "venue_not_found":
+        raise VenueNotFoundError()
+    if outcome in _BLOCK_REFUSALS:
+        raise VenueBlockInvalidError(_BLOCK_REFUSALS[outcome])
+
+    block = BlockSummary(id=result["block_id"], period=period, reason=body.reason.value, notes=body.detail)
+    linked = repository.list_block_bookings(result["block_id"])
+    return VenueBlockResponse(saved=True, block=block, affected=_name_affected(linked, label))
+
+
+def _name_affected(bookings, label: str):
+    names = events_service.names_by_id(b.event_id for b in bookings) if bookings else {}
+    return [b.model_copy(update={"event_name": names.get(b.event_id), "block_reason": label}) for b in bookings]
+
+
 def reactivate_venue(venue_id: str, actor_id: str, body: VenueReactivateRequest) -> VenueDetail:
     """Make an inactive venue bookable again (SCRUM-64 AC4).
 
@@ -523,7 +579,7 @@ def booking_readiness_by_event(event_ids: Iterable[str]) -> dict[str, list[Booki
 # (REQUIREMENTS §6.12, §6.14, §6.4). Wording of the first and fourth is the spec's.
 BOOKING_REFUSALS = {
     "held_by_other": "Venue already held for this time by another event.",
-    "blocked": "Venue blocked for this timing.",
+    "blocked": "Venue blocked for this time.",
     "already_booked": "This event already has a venue booking.",
     "returned": "Requirements are still being amended.",
     "no_period": "This event has no start and end time to hold a venue for.",

@@ -806,7 +806,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 
 **Behaviour**
 - Coordinators and venue staff (W4) see a calendar per venue with three distinguishable entry types: **approved booking**, **tentative hold** (a pending request, QA-6), and **block** (with its reason). The exact UI is left to the team (QA-60, QA-61). **[Team decision]** Day, week, and month views, colour plus a pattern for each type.
-- **Blocks:** venue staff create a block with a period and reason (maintenance, renovation, safety, internal activity, other). They can shorten or end it early. Blocks show on the calendar (QA-104).
+- **Blocks:** venue staff create a block with a period and reason (maintenance, equipment failure, renovation, safety, internal activity, other) and an optional detail of at most 1000 characters, required for "other" (SCRUM-51 AC1). The end must be after the start and in the future; the start may be in the past, for an emergency block starting now. They can shorten or end it early (54). Blocks are never deleted (SCRUM-51 AC9). Blocks show on the calendar (QA-104).
 
 **Rules**
 - **CAL-R1:** A block **may** overlap an existing hold or booking, because emergencies happen (QA-102). Saving shows a warning listing the affected events. After saving, those coordinators and venue staff are notified. **Bookings are not automatically cancelled**; resolution is manual (QA-26, QA-97, QA-102).
@@ -1496,6 +1496,11 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 67. **[Assumption]** CR-95 AC9: restoring needs the venue free for the booking's full occupied window, which for a booking that was never cancelled means no block covering it and an active venue (a booking cannot have been taken by another event while it still occupied its slot). Restoring cancels any pending replacement but does not change the event's status; an event the replacement request returned to planning stays there. It is refused once a replacement is approved.
 
 68. **[Assumption, 2026-10-18]** CR-104 Mark as revised sends no notification. Venue staff can read the safety rejection reason on the booking page as internal staff (SF-R6). The assigned coordinator clears the flag in Planning only; no event version bump. Confirm notification and visibility expectations with the PO.
+69. **[Team decision, SCRUM-51, 2026-10-19]** SCRUM-51 AC1 and AC8 say Venue Staff block a venue "they manage". Staff-to-venue allocation is not tracked and Venue Staff work as a pool (AUTH-R5, QA-44), so any user acting as Venue Staff may block any venue, as with approval, rejection and deactivation; every other active role gets 403. Raise the AC wording with the PO.
+70. **[Assumption, SCRUM-51]** An inactive venue can still be blocked: the block is a period of unavailability and deactivation a state, and neither depends on the other.
+71. **[Team decision, SCRUM-51]** AC13: the organiser's `venue_unavailable_organiser` notice for a block no longer names the reason; it names the venue, says the event is not cancelled and that the coordinator will arrange an alternative. The coordinator's `venue_booking_affected` notice and the booking's flag keep the reason, now as its label ("Venue unavailable: Equipment failure"). This changes item 65 for blocks; deactivation's notice (D40) is unchanged.
+72. **[Team decision, SCRUM-51]** AC10: each booking a block overlaps when it is saved is recorded against it in `venue_block_bookings`, even when another block or story flagged it first, so story 54 can tell whether ending one block early leaves the booking under another. The flag itself is still set once (item 61).
+73. **[Open question, SCRUM-51]** CAL-R1 says that after a block is saved, the affected coordinators **and venue staff** are notified. SCRUM-51's ACs name only the coordinator (AC5) and the organiser (AC13), so venue staff are not notified. Ask the PO whether they should be.
 
 ## 10. Non-functional requirements
 
