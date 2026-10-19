@@ -62,7 +62,7 @@ watch(() => route.params.id, (id) => {
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl break-words px-4 py-12 sm:px-8">
+  <main class="break-words py-12">
     <BauhausButton variant="outline" class="mb-8" @click="router.push({ name: 'dashboard-safety' })">Back to queue</BauhausButton>
     <p v-if="safety.error" role="alert" class="mb-6 border-4 border-ink p-4 font-bold">{{ safety.error }}</p>
     <p v-if="safety.loading && !review" class="font-bold uppercase">Loading safety review…</p>
