@@ -101,6 +101,7 @@ def store(monkeypatch):
     monkeypatch.setattr(repository, "submit_request", submit_request)
     monkeypatch.setattr(repository, "list_event_requests", list_event_requests)
     monkeypatch.setattr(repository, "list_pending_requests", list_pending_requests)
+    monkeypatch.setattr(repository, "get_event_technical", lambda event_id: None)
     return state
 
 

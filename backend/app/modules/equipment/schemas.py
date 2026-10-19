@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
 
 
 class EquipmentCheckItem(BaseModel):
@@ -126,12 +126,19 @@ class EquipmentRequestLine(BaseModel):
     quantity: int
     technical_requirements: str | None
     status: str
+    # SCRUM-24 AC9: internal, so only tech support and the assigned coordinator
+    # ever receive a line (AC12).
+    technical_notes: str | None = None
+    not_available_reason: str | None = None
     requested_by: Requester | None
     created_at: datetime
 
 
 class EquipmentRequestLinesResponse(BaseModel):
     lines: list[EquipmentRequestLine]
+    # SCRUM-24 AC9-AC11, on the coordinator's event view only.
+    technical_status: str | None = None
+    exit_confirmation: "ExitConfirmation | None" = None
 
 
 class PendingEquipmentLine(EquipmentRequestLine):
@@ -141,3 +148,86 @@ class PendingEquipmentLine(EquipmentRequestLine):
 
 class PendingEquipmentLinesResponse(BaseModel):
     lines: list[PendingEquipmentLine]
+
+
+# --- SCRUM-24 reservation ------------------------------------------------------
+
+NOT_AVAILABLE_REASON_MAX_LENGTH = 500
+TECHNICAL_NOTES_MAX_LENGTH = 2000
+
+
+class NotAvailableRequest(BaseModel):
+    """AC3, AC9: a reason is required (EQ-R3)."""
+
+    reason: str = Field(max_length=NOT_AVAILABLE_REASON_MAX_LENGTH)
+
+    @field_validator("reason")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Give a reason the line is not available.")
+        return value
+
+
+class LineNoteRequest(BaseModel):
+    """AC9: internal notes; blank clears them."""
+
+    note: str | None = Field(default=None, max_length=TECHNICAL_NOTES_MAX_LENGTH)
+
+    @field_validator("note")
+    @classmethod
+    def blank_is_none(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+
+class ExitConfirmationRequest(BaseModel):
+    """AC10: tick or untick "Equipment does not block exits or walkways"."""
+
+    confirmed: StrictBool
+
+
+class LineActionResponse(BaseModel):
+    line_id: UUID
+    status: str
+    free_quantity: int | None = None
+
+
+class ExitConfirmation(BaseModel):
+    """Who ticked "Equipment does not block exits or walkways", and when (AC10).
+    Shared with the safety review page (CR-103 AC3)."""
+
+    confirmed_by_name: str | None
+    confirmed_at: datetime
+
+
+class TechnicalHistoryEntry(BaseModel):
+    action: str
+    line_label: str | None
+    from_status: str | None
+    to_status: str | None
+    detail: str | None
+    actor_name: str | None
+    created_at: datetime
+
+
+class TechnicalEvent(BaseModel):
+    id: UUID
+    name: str
+    status: str
+    starts_at: datetime | None
+    ends_at: datetime | None
+    coordinator_name: str | None
+
+
+class TechnicalEventResponse(BaseModel):
+    """Technical Support's view of one event's equipment (AC9-AC13)."""
+
+    event: TechnicalEvent
+    technical_status: str
+    exit_confirmation: ExitConfirmation | None
+    lines: list[EquipmentRequestLine]
+    history: list[TechnicalHistoryEntry]
+
+
+EquipmentRequestLinesResponse.model_rebuild()

@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from app.core.security import CurrentUser, get_current_user
 from app.main import app
 from app.modules.equipment import repository, service
-from app.modules.equipment.repository import CommitmentRow, EquipmentRow, MaintenanceRow
+from app.modules.equipment.repository import AvailabilityRow, CommitmentRow, EquipmentRow, MaintenanceRow
 from app.modules.equipment.schemas import EquipmentAvailabilityRequest
 
 START = datetime(2026, 10, 15, 9, tzinfo=timezone.utc)
@@ -73,6 +73,27 @@ def repo(monkeypatch):
         ),
     )
     monkeypatch.setattr(repository, "list_maintenance", lambda: state["maintenance"])
+
+    def availability(equipment_ids, start_at, end_at):
+        """Stands in for `public.equipment_availability`: the peak concurrent
+        commitment inside the window, never a plain sum (§6.16 AV-R2, D43)."""
+        def peak(rows, equipment_id):
+            rows = [row for row in _scoped(rows, start_at, end_at, [equipment_id])]
+            moments = {start_at} | {row.start_at for row in rows if row.start_at > start_at}
+            return max((sum(row.quantity for row in rows if row.start_at <= at < row.end_at) for at in moments), default=0)
+
+        result = []
+        for row in state["equipment"]:
+            if row.id not in {str(i) for i in equipment_ids}:
+                continue
+            outage, reserved = peak(state["unavailability"], row.id), peak(state["reservations"], row.id)
+            result.append(AvailabilityRow(
+                equipment_id=row.id, total_quantity=row.total_quantity, outage_quantity=outage,
+                reserved_quantity=reserved, free_quantity=max(0, row.total_quantity - outage - reserved),
+            ))
+        return result
+
+    monkeypatch.setattr(repository, "availability", availability)
     return state
 
 
@@ -159,6 +180,28 @@ class TestAvailability:
 
         assert result.quantity_available == 0
 
+    def test_reservations_that_do_not_overlap_each_other_count_once(self, repo):
+        """D43, §6.16: 10 at the window's start and 10 after it are never 20 at once."""
+        item = _equipment(repo, quantity=20)
+        middle = START + timedelta(hours=1)
+        repo["reservations"].append(_commitment(item, 10, start_at=START, end_at=middle))
+        repo["reservations"].append(_commitment(item, 10, start_at=middle, end_at=END))
+
+        assert _check(item, 10).quantity_available == 10
+
+    def test_the_check_asks_the_database_for_the_window_and_items(self, repo, monkeypatch):
+        item = _equipment(repo, quantity=4)
+        seen = {}
+
+        def availability(equipment_ids, start_at, end_at):
+            seen["args"] = (set(equipment_ids), start_at, end_at)
+            return [AvailabilityRow(item, 4, 0, 1, 3)]
+
+        monkeypatch.setattr(repository, "availability", availability)
+
+        assert _check(item, 3).quantity_available == 3
+        assert seen["args"] == ({item}, START, END)
+
 
 class TestInventory:
     def test_every_equipment_type_is_listed_with_its_breakdown(self, repo):
@@ -170,6 +213,17 @@ class TestInventory:
 
         assert (row.total_quantity, row.reserved_quantity, row.maintenance_quantity) == (10, 3, 2)
         assert row.net_available == 5
+
+    def test_a_window_reports_its_worst_moment(self, repo):
+        """D43: the inventory over a window agrees with the availability check."""
+        item = _equipment(repo, quantity=20)
+        middle = START + timedelta(hours=1)
+        repo["reservations"].append(_commitment(item, 10, start_at=START, end_at=middle))
+        repo["reservations"].append(_commitment(item, 10, start_at=middle, end_at=END))
+
+        row = service.get_equipment_inventory(START, END).items[0]
+
+        assert (row.reserved_quantity, row.net_available) == (10, 10)
 
     def test_without_a_window_every_commitment_counts(self, repo):
         item = _equipment(repo, quantity=10)
