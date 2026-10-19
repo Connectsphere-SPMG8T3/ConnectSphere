@@ -2575,5 +2575,5 @@ AC8's "venue they manage" is every venue (AUTH-R5, QA-44); an inactive venue can
 
 - Raise with the PO: AC8's wording, and whether venue staff should be notified of a block (CAL-R1).
 - Tell Xuan Wei and Jie Ching that CR-95's trigger changed.
-- A Supabase connection failure still answers 500, not 503 (the D10/D18 class); TC-AUTH-049's DNS failure showed it again.
+- A Supabase connection failure still answers 500, not 503: recorded as DEFECTS D42 (related to D10, D18); TC-AUTH-049's DNS failure showed it.
 - PR, review, PO acceptance, merge and the backlog status are the developer's.
