@@ -21,7 +21,7 @@ from tests.test_venue_booking_reject_api import (  # noqa: F401  (bookings is th
 )
 
 RESTORE_URL = f"{URL}/restore"
-AFFECTED = {"status": "approved", "flag": "affected", "flag_reason": "Venue unavailable: maintenance"}
+AFFECTED = {"status": "approved", "flag": "affected", "flag_reason": "Venue unavailable: Maintenance"}
 
 
 @pytest.fixture()
@@ -59,7 +59,7 @@ class TestRestore:
 
         body = client.get(URL, headers=auth_headers).json()
 
-        assert (body["flag"], body["flag_reason"]) == ("affected", "Venue unavailable: maintenance")
+        assert (body["flag"], body["flag_reason"]) == ("affected", "Venue unavailable: Maintenance")
 
     @pytest.mark.parametrize(
         "outcome,message",

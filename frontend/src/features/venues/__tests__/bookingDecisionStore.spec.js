@@ -197,7 +197,7 @@ describe("useBookingDecisionStore approve (SCRUM-36)", () => {
 describe("useBookingDecisionStore.restore (CR-95 AC9)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  const AFFECTED = { ...HELD, status: "approved", flag: "affected", flag_reason: "Venue unavailable: maintenance" };
+  const AFFECTED = { ...HELD, status: "approved", flag: "affected", flag_reason: "Venue unavailable: Maintenance" };
 
   it("restores the booking and shows it unflagged", async () => {
     const store = signedInVenueStaff();

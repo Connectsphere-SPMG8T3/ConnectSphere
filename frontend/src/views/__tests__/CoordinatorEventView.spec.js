@@ -196,7 +196,7 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
   describe("an affected venue booking (CR-95)", () => {
     const AFFECTED = {
       id: "b-affected", event_space_request_id: null, venue_id: "v1", venue_name: "Seminar Room 1",
-      status: "approved", flag: "affected", flag_reason: "Venue unavailable: maintenance",
+      status: "approved", flag: "affected", flag_reason: "Venue unavailable: Maintenance",
     };
     const REPLACEMENT = {
       id: "b-new", event_space_request_id: null, venue_id: "v2", venue_name: "Heritage Hall",
@@ -212,7 +212,7 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
         const panel = el.querySelector('[data-testid="venue-panel"]');
         expect(panel.textContent).toContain("Seminar Room 1");
         expect(panel.textContent).toContain("Needs alternative venue");
-        expect(panel.textContent).toContain("Venue unavailable: maintenance");
+        expect(panel.textContent).toContain("Venue unavailable: Maintenance");
         findReplacement(panel).click();
         const { default: router } = await import("@/router");
         await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("venue-search"));
@@ -253,7 +253,7 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
       const [main, breakout] = spaceCards(el);
       expect(main.textContent).not.toContain("Needs alternative venue");
       expect(breakout.textContent).toContain("Needs alternative venue");
-      expect(breakout.textContent).toContain("Venue unavailable: maintenance");
+      expect(breakout.textContent).toContain("Venue unavailable: Maintenance");
       findReplacement(breakout).click();
       const { default: router } = await import("@/router");
       await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("venue-search"));
