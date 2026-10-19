@@ -579,7 +579,7 @@ def booking_readiness_by_event(event_ids: Iterable[str]) -> dict[str, list[Booki
 # (REQUIREMENTS §6.12, §6.14, §6.4). Wording of the first and fourth is the spec's.
 BOOKING_REFUSALS = {
     "held_by_other": "Venue already held for this time by another event.",
-    "blocked": "Venue blocked for this timing.",
+    "blocked": "Venue blocked for this time.",
     "already_booked": "This event already has a venue booking.",
     "returned": "Requirements are still being amended.",
     "no_period": "This event has no start and end time to hold a venue for.",

@@ -919,7 +919,7 @@ def _(ctx: Context) -> None:
 
     response = request_venue(ctx, ctx.shared("event_coordinator"), event_id, HERITAGE_HALL)
     expect_status(response, 409)
-    expect_detail(response, "Venue blocked for this timing.")
+    expect_detail(response, "Venue blocked for this time.")
 
 
 @check("TC-BOOK-004", "An event that already holds a venue can't request another")
@@ -1678,7 +1678,7 @@ def _(ctx: Context) -> None:
     during = throwaway_event(ctx, "B004-b", "2031-09-04 11:00+08", "2031-09-04 13:00+08")
     refused = request_venue(ctx, coordinator, during, venue_id)
     expect_status(refused, 409)
-    expect_detail(refused, "Venue blocked for this timing.")
+    expect_detail(refused, "Venue blocked for this time.")
     after = throwaway_event(ctx, "B004-c", "2031-09-04 12:00+08", "2031-09-04 14:00+08")
     expect_status(request_venue(ctx, coordinator, after, venue_id), 201)
 
@@ -1931,7 +1931,7 @@ def _(ctx: Context) -> None:
     refused = request_space(ctx, ctx.shared("event_coordinator"), space_id, HERITAGE_HALL)
     expect_status(refused, 409)
     expect(refused.json() == {
-        "detail": "Venue blocked for this timing.",
+        "detail": "Venue blocked for this time.",
         "conflict": {"kind": "block", "event_name": None, "block_reason": "maintenance",
                      "starts_at": "2031-06-17T02:00:00Z", "ends_at": "2031-06-17T04:00:00Z"},
     }, f"refusal was {refused.json()}")
