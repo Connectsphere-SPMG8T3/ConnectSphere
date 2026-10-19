@@ -124,24 +124,6 @@ export function groupUpcomingBookings(bookings = []) {
 }
 
 /**
- * The setup/turnaround time between consecutive bookings, in words (AC1).
- *
- * The customer set it to zero (QA-28), which is why the zero case reads as a
- * statement about back-to-back bookings rather than "0 min" — the figure on
- * its own invites the reader to assume it was never filled in.
- */
-export function formatTurnaround(minutes) {
-  if (!Number.isFinite(minutes)) return "Not recorded";
-  if (minutes === 0) return "None — bookings may run back to back";
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  const parts = [];
-  if (hours > 0) parts.push(`${hours} h`);
-  if (rest > 0) parts.push(`${rest} min`);
-  return `${parts.join(" ")} between bookings`;
-}
-
-/**
  * Who last edited the profile (AC2).
  *
  * `updated_by` is null for every venue edited before the column existed, and
@@ -231,11 +213,21 @@ export function venueToEditForm(venue) {
     opensAt: venue?.opens_at ? venue.opens_at.slice(0, 5) : "",
     closesAt: venue?.closes_at ? venue.closes_at.slice(0, 5) : "",
     description: venue?.description ?? "",
+    setupMinutes: String(venue?.setup_minutes ?? 0),
+    turnaroundMinutes: String(venue?.turnaround_minutes ?? 0),
+    emergencyAccess: venue?.emergency_access ?? "",
+    restrictions: venue?.restrictions ?? "",
   };
 }
 
 /** The edit form's state, as the PATCH body SCRUM-63's endpoint expects. */
 export function editFormToPayload(form, { confirm = false } = {}) {
+  for (const [label, value] of [["Setup", form.setupMinutes], ["Turnaround", form.turnaroundMinutes]]) {
+    // Digits only, up to Postgres `integer`; the customer set no business maximum (VC-R9).
+    if (!/^\d+$/.test(String(value ?? "").trim()) || Number(value) > 2147483647) {
+      throw new Error(`${label} must be a non-negative whole number of minutes.`);
+    }
+  }
   return {
     name: form.name.trim(),
     location: form.location.trim(),
@@ -249,6 +241,10 @@ export function editFormToPayload(form, { confirm = false } = {}) {
     opens_at: `${form.opensAt}:00`,
     closes_at: `${form.closesAt}:00`,
     description: form.description.trim() ? form.description.trim() : null,
+    setup_minutes: Number(form.setupMinutes),
+    turnaround_minutes: Number(form.turnaroundMinutes),
+    emergency_access: form.emergencyAccess.trim() || null,
+    restrictions: form.restrictions.trim() || null,
     confirm,
   };
 }
@@ -294,6 +290,10 @@ const EDIT_HISTORY_FIELD_LABELS = {
   opens_at: "Opens",
   closes_at: "Closes",
   description: "Description",
+  setup_minutes: "Default setup (minutes)",
+  turnaround_minutes: "Default turnaround (minutes)",
+  emergency_access: "Emergency access",
+  restrictions: "Restrictions",
   is_active: "Status",
   inactive_reason: "Inactive reason",
   inactive_note: "Inactive note",

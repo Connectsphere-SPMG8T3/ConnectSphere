@@ -27,7 +27,8 @@ export const LEAD_ACCOUNT = {
   name: "Grace Chua",
   dashboard: "/dashboard/coordinator-lead",
 };
-const W7_ACCOUNTS = { event_coordinator_lead: LEAD_ACCOUNT };
+const W7_ACCOUNTS = { event_coordinator_lead: LEAD_ACCOUNT,
+  safety_officer: { email: "safety.officer@connectsphere.dev", name: "Officer", dashboard: "/dashboard/safety" } };
 
 // Supabase limits sign-ins per IP, and the backend currently reports that
 // refusal as a 401 "Invalid email or password." (DEFECTS D16), so a

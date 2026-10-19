@@ -76,7 +76,7 @@ def repo(monkeypatch):
 
     def availability(equipment_ids, start_at, end_at):
         """Stands in for `public.equipment_availability`: the peak concurrent
-        commitment inside the window, never a plain sum (§6.16 AV-R2, D43)."""
+        commitment inside the window, never a plain sum (§6.16 AV-R2, D45)."""
         def peak(rows, equipment_id):
             rows = [row for row in _scoped(rows, start_at, end_at, [equipment_id])]
             moments = {start_at} | {row.start_at for row in rows if row.start_at > start_at}
@@ -181,7 +181,7 @@ class TestAvailability:
         assert result.quantity_available == 0
 
     def test_reservations_that_do_not_overlap_each_other_count_once(self, repo):
-        """D43, §6.16: 10 at the window's start and 10 after it are never 20 at once."""
+        """D45, §6.16: 10 at the window's start and 10 after it are never 20 at once."""
         item = _equipment(repo, quantity=20)
         middle = START + timedelta(hours=1)
         repo["reservations"].append(_commitment(item, 10, start_at=START, end_at=middle))
@@ -215,7 +215,7 @@ class TestInventory:
         assert row.net_available == 5
 
     def test_a_window_reports_its_worst_moment(self, repo):
-        """D43: the inventory over a window agrees with the availability check."""
+        """D45: the inventory over a window agrees with the availability check."""
         item = _equipment(repo, quantity=20)
         middle = START + timedelta(hours=1)
         repo["reservations"].append(_commitment(item, 10, start_at=START, end_at=middle))

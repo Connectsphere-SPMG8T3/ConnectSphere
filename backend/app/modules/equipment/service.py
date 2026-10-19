@@ -58,7 +58,7 @@ def check_equipment_availability(
     items: Sequence[EquipmentCheckItem],
 ) -> EquipmentAvailabilityResponse:
     """SCRUM-23, by the §6.16 worst-moment rule (AV-R2). The numbers come from
-    `public.equipment_availability`, the calculation reserving uses (D43)."""
+    `public.equipment_availability`, the calculation reserving uses (D45)."""
     equipment_ids = {str(item.equipment_id) for item in items}
 
     names = {row.id: row.name for row in repository.list_equipment(equipment_ids)}
@@ -92,7 +92,7 @@ def get_equipment_inventory(
     # A lone start or end is ignored rather than half-applied: an overlap needs
     # both ends, and filtering on one would misreport stock.
     if start_at and end_at:
-        # A window reports its worst moment, like the availability check (D43).
+        # A window reports its worst moment, like the availability check (D45).
         rows = {row.equipment_id: row for row in repository.availability([row.id for row in equipment], start_at, end_at)}
         breakdown = {
             key: (row.reserved_quantity, row.outage_quantity) for key, row in rows.items()

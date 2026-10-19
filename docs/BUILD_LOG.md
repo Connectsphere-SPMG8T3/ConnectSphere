@@ -2578,7 +2578,99 @@ AC8's "venue they manage" is every venue (AUTH-R5, QA-44); an inactive venue can
 - A Supabase connection failure still answers 500, not 503: recorded as DEFECTS D42 (related to D10, D18); TC-AUTH-049's DNS failure showed it.
 - PR, review, PO acceptance, merge and the backlog status are the developer's.
 
-### 4.66. SCRUM-24 — Manage equipment reservation
+### 4.66. CR-100 — Set venue buffer times and safety details (exact backlog record)
+
+| Field | Value |
+|---|---|
+| ID | `CR-100` (Product backlog row 67, read 2026-10-18) |
+| Title | Set venue buffer times and safety details |
+| Type | US: Core feature |
+| Status | Implemented on `feature/cr-100-venue-buffers-safety-details`; shared migration, live integration, manual acceptance and Claude review pending; not Done |
+| Epic | Venue catalogue |
+| Sprint | 3 (6 October - 20 October) |
+| Estimate | 2 story points |
+| Priority | P1 |
+| Customer clarification | Week 7 CR-01 and CR-06; Session 3 (13/10): QA3-4, QA3-28, QA3-6 and M3. AC7 reworded 17/10 to acting as Venue Staff. |
+
+**User story (verbatim backlog fields):**
+
+> As a… Venue staff
+>
+> I want to be able to… Set a venue's setup and turnaround time, emergency access and known restrictions
+>
+> So that… Availability checks reflect how long the venue is actually occupied, and the Safety Officer can check the venue's safety details
+
+**Acceptance criteria (verbatim from the Product backlog):**
+
+> AC1. [W7 CR-01] Venue Staff can set a venue's default setup and turnaround time in minutes (default 0). Each venue's values are set independently.
+>
+> AC2. Invalid values (negative, non-numeric or empty) are rejected.
+>
+> AC3. [W7 CR-06] Venue Staff can record emergency access (e.g. exits, evacuation routes) and known restrictions (e.g. no open flames, standing limit).
+>
+> AC4. All of these are shown on the venue details page; emergency access and restrictions also show on the safety review page (CR-103).
+>
+> AC5. [QA3-6] Changing a venue's default setup or turnaround applies only to booking requests made afterwards. Existing bookings keep their own values (36).
+>
+> AC6. Changes are recorded in the venue's history.
+>
+> AC7. Only users acting as Venue Staff can change these. Others get 403.
+
+#### How the implementation maps to the ticket
+
+The approved in-chat design extends SCRUM-63's edit/history flow, SCRUM-67's profile, SCRUM-21's booking buffers/conflict checks, and CR-103's safety review. No parallel endpoint or editor was introduced. The backlog was read only and has not been updated. The untracked `docs/proposals/` directory was pre-existing and left untouched.
+
+1. **Independent defaults and validation (AC1, AC2).** New migration `20261018153029_venue_buffers_and_safety_details.sql` adds non-negative integer venue `setup_minutes`/`turnaround_minutes`, default 0, without a business maximum. API validation rejects negative, blank, null, nonnumeric, boolean and fractional values. The existing form loads both defaults, validates before sending, and explains that existing bookings retain their own times. Whole minutes follow the booking columns; VC-R9's labelled **[Team decision]** remains, with customer confirmation still outstanding. PostgreSQL's integer representation remains the technical storage type.
+2. **Safety facts (AC3, AC4).** Optional `emergency_access`/`restrictions` text is trimmed, blank clears to null, and line breaks are preserved on venue details and the safety review. `SafetyReviewVenue` now accepts strings, and the venue embed/service supplies actual recorded facts instead of `None` placeholders. Missing facts say “Not recorded”; they are not inferred from accessibility tags.
+3. **Future requests only (AC5).** Both request functions read defaults while holding their existing shared venue lock, check the expanded occupied window, and insert the unbuffered `booked_period` plus copied buffer integers. Existing booked/occupied windows and buffer values are untouched. Existing replacement, active-venue, capacity, expiry, locking and notification logic is preserved. Story 36 retains responsibility for per-booking adjustments and approval locking.
+4. **Search and displayed booking times (AC4, AC5).** Venue search fetches one envelope using the largest defaults and evaluates each venue against its own candidate occupied window. Stored occupants use their own buffers. Booking profile/dashboard/detail reads now show `booked_period`, avoiding the dormant bug where setup/turnaround would appear as the booking's actual start/end. Overlap filters continue using `occupied_period`.
+5. **Large values without an arbitrary cap.** Independent local review reproduced Python datetime overflow with a valid maximum PostgreSQL integer default. Regression tests first failed, then passed after bounding only application comparison endpoints for BCE/five-digit occupied dates. PostgreSQL retains exact buffer integers and ranges. Conflicts crossing those representational boundaries say “beyond supported dates”; booking screens show their own booked times. SQL verifies the exact maximum-integer snapshot and BCE occupied endpoint. This is a representation safeguard, not a business maximum.
+6. **History and authorisation (AC6, AC7).** Existing snapshots, atomic `update_venue`, audit stamps and history formatting include all four fields, including cleared text. RPC signatures stay unchanged; new edit fields travel in `p_after`, and older direct RPC callers omitting keys preserve their current values. The existing active Venue Staff guard remains the policy gate; tests deny every other active role and a Venue Staff holder acting as coordinator. No new RLS policy, privileged function, table, package or frontend data-access path was added.
+
+#### Verification
+
+- **TDD:** witnessed expected failures for missing API fields/validation, ignored form/history fields, absent profile facts, candidate-only buffer clashes, Python date overflow, occupied-vs-booked display, and the live preflight's error recording; targeted tests passed after minimal fixes. No source-text-only tests were added.
+- **Full unit suites and build:** final counts and coverage are recorded in the CR-100 unit evidence run linked below. One unrelated organiser resubmission test failed in a full parallel run, then passed alone and in the full two-worker run; recorded as D44 (numbered D42 until `main` took D42 for another defect), with no unrelated production fix.
+- **Real database:** the migration plus `venue_buffer_checks.sql` passed inside a single rollback transaction; the pre-migration test failed as expected. Five existing verification scripts also passed with the migration in separate rollback transactions. No shared schema, records or migration history were persisted. See the rollback evidence run below.
+- **Recorded live API/database:** [2026-10-18 23:39](test-cases/runs/2026-10-18-2339-api-db-ade5af0.md): **102 passed, 24 failed, 5 blocked**. CR-100 checks report the missing migration explicitly. Dependent venue requests/read paths fail on absent venue columns; two additional cases (TC-ROLE-006, TC-EQR-001) hit transport resets/disconnects. Failures were retained, not rerun until green.
+- **Recorded browser:** the first run was interrupted when overlapping cleanup was noticed; [its log](test-cases/runs/2026-10-18-2339-e2e-ade5af0.md) is retained and is not a complete regression result. The subsequent [complete sequential run](test-cases/runs/2026-10-18-2349-e2e-ade5af0.md) finished with **62 passed, 6 failed, 2 blocked/skipped**: affected-booking replacement, booking request/conflict, hold-expiry request history, venue dashboard layout and venue deactivation could not complete against the undeployed venue columns. The two CR-100 browser cases explicitly report the missing migration. No visual pass is claimed.
+- **Independent review:** the authorized Claude Code call could not authenticate because OAuth expired; no Claude verdict is claimed. A local independent read-only reviewer found and re-reviewed the date-boundary/booked-time fixes, with no further material findings.
+- **Advisors:** shared-project baseline has the existing leaked-password warning, nine equipment RLS init-plan warnings and three unused-index information notices. Post-deployment comparison remains pending. No migration was persistently applied, in accordance with `DEFINITION_OF_DONE.md` (deployment through the merged PR).
+
+#### Not verified / follow-up
+
+Shared PostgREST and browser data round-trips remain unverified until the migration deploys. Developer manual cases **TC-VENUE-095** (venue edit/profile/history at desktop, tablet and 375 px) and **TC-VENUE-096** (Safety Officer review at desktop and phone width) are pending; no manual case is marked passed. Claude review needs re-authentication. PR/teammate review, PO acceptance, merge, and sprint DoD/backlog ticks remain the developer's steps; no push, PR, merge or sheet write was performed.
+
+Rollback SQL evidence: [CR-100 migration and regression/compatibility checks](test-cases/runs/2026-10-18-2351-cr100-rollback-sql-ade5af0.md).
+
+Full unit/coverage/build evidence: [1,439 backend and 982 frontend tests passed](test-cases/runs/2026-10-18-2357-cr100-unit-build-ade5af0.md); 96.76% / 96.01% total line coverage, no uncovered changed executable lines. Production build passed.
+
+#### Review fixes (2026-10-19)
+
+A code review of `d4854d0` found three things, fixed test first on the same branch:
+
+- **Buffer minutes above Postgres `integer`.** The API accepted them and the `update_venue` cast failed in the database, a 500. `VenueUpdateRequest` now caps both fields at 2147483647 (422), and `editFormToPayload` accepts digits only up to the same limit, which also stops `0x10` and `1e3` passing as numbers. It is a storage limit: the Session 3 answer sets no business maximum (VC-R9), so the far-date handling from item 5 stays. TC-VENUE-090 now also sends 2147483648.
+- **A booking in turnaround dropped off the venue profile.** `list_upcoming_bookings` filtered on the booked end after the switch to `booked_period`. It now filters on the occupied end and still shows the booked window.
+- **Misleading migration comment.** The comment said omitted `p_after` keys keep their values "for older callers"; it now says that only covers a pre-migration backend, and that the full-form API clears an omitted field.
+
+The dashboard's affected-replacement list keeps its booked-end cut-off (an event that is over has nothing to replace); `IMPLEMENTATION_MAP.md` now states which period each booking read returns.
+
+#### Deployment, live runs and manual pass (2026-10-19)
+
+- **Migration applied by hand, against the DoD.** `DEFINITION_OF_DONE.md` has migrations reach the shared project through the merged PR. Jie Ching applied `20261018153029` early so the live runs and manual pass could happen: `supabase db push` refused, because the live project already held four migrations not on this branch (SCRUM-36 `20261018160000`, SCRUM-51 `20261019100000`/`100001`, SCRUM-24 `20261019120000`; none redefines a function CR-100 replaces). The file was run with `supabase db query --linked -f` and recorded with `supabase migration repair --status applied 20261018153029`. A later `db push` from the merged PR will not re-apply it.
+- **Advisors:** no new finding from CR-100 (no new table or index). Against the 2026-10-18 baseline, two are new and come from SCRUM-51's migration: `venue_block_bookings` has RLS with no policy (INFO), and a fourth unused index.
+- **Live API/database:** [2026-10-19 19:55](test-cases/runs/2026-10-19-1955-api-db-04b96c7.md): **128 of 131 passed, 1 failed, 2 blocked**. Every CR-100 check passed (TC-VENUE-090 to 093, including the 2147483648 rejection). TC-BOOK-004 failed and TC-SAFE-002/003 were blocked by fixture drift: seeded hold `…0201` expired at 19:14 that day (its live row never got the seed's 13 Nov expiry), so TC-BOOK-004's request succeeded and left a stray hold. After `event_review_fixture_reset.sql` (run with the developer's approval; it now also restores the expiry) all three passed: [TC-SAFE-001–003](test-cases/runs/2026-10-19-2013-api-db-04b96c7.md), [TC-BOOK-004](test-cases/runs/2026-10-19-2014-api-db-04b96c7.md).
+- **Browser:** [2026-10-19 20:07](test-cases/runs/2026-10-19-2007-e2e-04b96c7.md): **70 passed, 1 failed**. All three CR-100 cases passed, including the new TC-VENUE-096 layout check. TC-BOOK-048/049/050 failed because this branch still expects the old lowercase block label; `main` updated it for SCRUM-51 (`09e7bec`). Merging `main` resolves it; not a CR-100 regression.
+- **Manual pass ([record](test-cases/runs/2026-10-19-1955-manual-04b96c7.md), Jie Ching):** TC-VENUE-095 passed. TC-VENUE-096 failed: long text with no spaces ran out of the Safety Officer's venue card (D43). Fixed with `overflow-wrap: anywhere`, guarded by the TC-VENUE-096 browser check at 1280px and 375px, and re-checked as passing.
+- **Attribution:** earlier run records said "Run by | Jie"; they now say Jie Ching, the developer's full name.
+
+`main` was merged into the branch on 2026-10-19 (SCRUM-36, SCRUM-51, SCRUM-83 and SCRUM-24 work). Both branches had used §4.60, so this entry became §4.66, and the flaky-test defect became D44. The merged VC-R9 carried a 2026-10-17 SCRUM-36 note moving a per-booking setup/turnaround edit into CR-100. Checked against the Product backlog (which still placed it in 36) and the Session 3 written answers, the developer chose to follow QA3-4 ("Once set can't be updated/adjusted"): no per-booking edit is built, VC-R9 and the map say so, and §9 item 74 asks the customer to confirm M3.
+
+**Browser after the merge:** [2026-10-19 20:35](test-cases/runs/2026-10-19-2035-e2e-6a3099a.md) on `6a3099a`: **77 passed, 1 failed**. All three CR-100 cases passed. TC-BOOK-048/049/050 now gets past the label `main` fixed, but hit the 30-second test timeout on the Venue Staff restore step. Run alone without recording, it passed (52.9 s including sign-in and cleanup), so the replacement request through CR-100's `request_venue_booking` works. The test sits close to its timeout because each setup step goes through the Supabase CLI; that is a timing flake for its owner (CR-95), not a CR-100 regression. The recorded failure is kept.
+
+Remaining for the developer: PR and teammate review, PO acceptance, merge, and the DoD and backlog updates.
+
+### 4.67. SCRUM-24 — Manage equipment reservation
 
 On `feature/scrum-24-equipment-reservation`, branched from `feature/scrum-51-block-venue` at `31d21f0` (the developer's choice), 2026-10-19. An earlier empty branch of the same name, at `a6080f9`, was moved here; it had no commits. The Product backlog sheet couldn't be read through a connector, so the story and ACs are as the developer gave them, with their AC plan (rev 3).
 
@@ -2599,16 +2691,17 @@ On `feature/scrum-24-equipment-reservation`, branched from `feature/scrum-51-blo
 
 #### What was built
 
-1. **Database** (`20261019120000`, applied 2026-10-19). `equipment_availability` (§6.16 worst moment; fixes D43, SCRUM-23's sum); `reserve_equipment_line`, which locks the event, then the line, then the catalogue item, so the second of two simultaneous reserves re-reads availability (AC5); `mark_equipment_line_not_available` (reason required, frees any reservation); `set_equipment_line_note`; `set_exit_confirmation`; `recheck_event_reservations` (AC7, for story 37). Technical status is derived (`derive_technical_status`) and cached in `technical_readiness` by `refresh_technical_status`, called from triggers on lines and venue bookings and from every function. Triggers also clear the tick on line or venue changes (D4) and free a removed line's reservation (AC6, story 44). `transition_event` releases equipment on rejection and cancellation (D1, story 84). `event_technical_history` records every change with its actor, passed through a transaction setting so trigger-written rows name who caused them.
+1. **Database** (`20261019120000`, applied 2026-10-19). `equipment_availability` (§6.16 worst moment; fixes D45, SCRUM-23's sum); `reserve_equipment_line`, which locks the event, then the line, then the catalogue item, so the second of two simultaneous reserves re-reads availability (AC5); `mark_equipment_line_not_available` (reason required, frees any reservation); `set_equipment_line_note`; `set_exit_confirmation`; `recheck_event_reservations` (AC7, for story 37). Technical status is derived (`derive_technical_status`) and cached in `technical_readiness` by `refresh_technical_status`, called from triggers on lines and venue bookings and from every function. Triggers also clear the tick on line or venue changes (D4) and free a removed line's reservation (AC6, story 44). `transition_event` releases equipment on rejection and cancellation (D1, story 84). `event_technical_history` records every change with its actor, passed through a transaction setting so trigger-written rows name who caused them.
 2. **Backend.** Five Technical-Support-only routes (reserve, not-available, notes, exit-confirmation, technical view). A refusal answers 409 with `free_quantity`. When an event leaves Ready while in Safety review or Confirmed, the service calls `return_to_planning` (CR-104 AC10). The availability check and windowed inventory read the SQL function. The coordinator's lines carry reason, notes, technical status and tick; the dashboard's equipment readiness follows the lines; the safety review fills `exit_confirmation`.
 3. **Frontend.** `/tech-support/events/:id` (`TechnicalEventView`, `EquipmentLineArrangement`, `technicalEventStore`, `technical.js`), linked from each line on the tech support dashboard; the coordinator's equipment panel and the safety review page show the new information.
 
 #### Decisions
 
-D4, D8, D9, D11 and D14 adopted as [Assumption]s or [Team decision]s (REQUIREMENTS §9 items 74–80): the tick's clearing rules; re-reserve clears re-review; RS-R4 deferred; no equipment holds; AC10 kept despite "no automatic reset". Technical status is a cache written only by the database. One availability calculation (D7/D43), which changes Done story 23. A line can be marked Not available from Reserved too. The exit-confirmation route answers 204. CR-103's "Exit confirmation" heading was kept.
+D4, D8, D9, D11 and D14 adopted as [Assumption]s or [Team decision]s (REQUIREMENTS §9 items 75–81): the tick's clearing rules; re-reserve clears re-review; RS-R4 deferred; no equipment holds; AC10 kept despite "no automatic reset". Technical status is a cache written only by the database. One availability calculation (D7/D45), which changes Done story 23. A line can be marked Not available from Reserved too. The exit-confirmation route answers 204. CR-103's "Exit confirmation" heading was kept.
 
 #### Verification
 
+- **Numbering:** the availability defect was D43 on this branch; `main` took D43 and D44 first (CR-100), so it is **D45**. The applied migration's comments and the live function comment still say D43.
 - **Test-first:** the SQL script failed on the missing function before the migration; the API tests failed on the missing repository functions; the frontend specs before each piece.
 - **Database:** `equipment_reservation_checks.sql` passed in a rolled-back dry run, then live; every existing verification script passed with the migration applied in a dry run. Advisors: nothing new.
 - **Automated suites:** backend 1,606 passed; frontend 1,082 passed, build clean. New code fully covered (the remaining uncovered backend lines predate the story).
@@ -2620,7 +2713,7 @@ D4, D8, D9, D11 and D14 adopted as [Assumption]s or [Team decision]s (REQUIREMEN
 
 - Manual pass TC-EQR-029–032 by the developer.
 - Story 37 must call `equipment.service.recheck_event`; story 44 should set edited reserved lines to `re_review` (EQ-R4); story 84 gets AC6 from `transition_event`.
-- Tell story 23's owner about D43, and Jie Ching that technical status is now derived and `exit_confirmation` is filled.
+- Tell story 23's owner about D45, and Jie Ching that technical status is now derived and `exit_confirmation` is filled.
 - Raise D14 at the consult (AC10 clearing vs "no automatic reset").
 - SCRUM-45's e2e adds and deletes lines on the planning fixture `…0202`; with the triggers each run now leaves `event_technical_history` rows on it. Harmless, but the fixture's history grows.
 - PR, review, PO acceptance, merge, the backlog status and the DoD tab are the developer's.

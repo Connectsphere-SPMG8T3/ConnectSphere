@@ -166,7 +166,7 @@ def list_maintenance() -> list[MaintenanceRow]:
 
 @dataclass(frozen=True)
 class AvailabilityRow:
-    """One item's §6.16 availability over a window (SCRUM-24, D43)."""
+    """One item's §6.16 availability over a window (SCRUM-24, D45)."""
 
     equipment_id: str
     total_quantity: int

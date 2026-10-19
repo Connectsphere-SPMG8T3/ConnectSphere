@@ -98,6 +98,23 @@ const layoutOptions = computed(() => LAYOUTS);
       </BauhausCard>
 
       <BauhausCard background="white" accent="none">
+        <h2 class="mb-4 text-lg font-black uppercase tracking-tight">Booking defaults &amp; safety</h2>
+        <p class="mb-4 text-sm font-medium">Defaults apply to new booking requests only. Existing bookings keep their own setup and turnaround times.</p>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <BauhausInput v-model="form.setupMinutes" type="number" min="0" step="1" label="Default setup (minutes)" required />
+          <BauhausInput v-model="form.turnaroundMinutes" type="number" min="0" step="1" label="Default turnaround (minutes)" required />
+        </div>
+        <label class="mt-4 flex flex-col gap-2">
+          <span class="text-xs font-bold uppercase tracking-widest text-ink">Emergency access</span>
+          <textarea v-model="form.emergencyAccess" rows="3" class="border-2 border-ink bg-canvas p-3 text-base font-medium shadow-hard focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow sm:border-4"></textarea>
+        </label>
+        <label class="mt-4 flex flex-col gap-2">
+          <span class="text-xs font-bold uppercase tracking-widest text-ink">Restrictions</span>
+          <textarea v-model="form.restrictions" rows="3" class="border-2 border-ink bg-canvas p-3 text-base font-medium shadow-hard focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow sm:border-4"></textarea>
+        </label>
+      </BauhausCard>
+
+      <BauhausCard background="white" accent="none">
         <h2 class="mb-4 text-lg font-black uppercase tracking-tight">Layouts</h2>
         <div class="flex flex-col gap-3">
           <div v-for="option in layoutOptions" :key="option.value" class="flex flex-wrap items-center gap-3">

@@ -66,7 +66,7 @@ declare
     v_tech public.technical_readiness;
     v_version integer;
 begin
-    -- ---- TC-EQR-016 (D43, §6.16, AV-R2): free = total − peak outage − peak reserved
+    -- ---- TC-EQR-016 (D45, §6.16, AV-R2): free = total − peak outage − peak reserved
     insert into public.equipment_unavailability (equipment_id, quantity, start_at, end_at, reason)
     values (c_y, 2, '2033-04-01 08:00+08', '2033-04-01 18:00+08', 'Reservation check (rolled back)');
     insert into public.equipment_reservations (equipment_id, event_id, quantity, start_at, end_at)
@@ -85,7 +85,7 @@ begin
         (c_z, c_e4, 10, '2033-04-01 11:00+08', '2033-04-01 13:00+08');
     select a.free_quantity into v_free
       from public.equipment_availability(array[c_z], '2033-04-01 09:00+08', '2033-04-01 13:00+08') a;
-    if v_free <> 10 then raise exception 'EQRES FAIL (D43): worst moment gives % free, expected 10 not 0', v_free; end if;
+    if v_free <> 10 then raise exception 'EQRES FAIL (D45): worst moment gives % free, expected 10 not 0', v_free; end if;
     -- A cancelled reservation holds nothing.
     update public.equipment_reservations set status = 'cancelled' where equipment_id = c_z;
     select a.free_quantity into v_free

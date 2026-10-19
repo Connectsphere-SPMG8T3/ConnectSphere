@@ -339,12 +339,12 @@ describe("BookingRequestView, an affected booking (CR-95 AC9)", () => {
     mountedApps.splice(0).forEach((app) => app.unmount());
   });
 
-  const AFFECTED = booking({ status: "approved", flag: "affected", flag_reason: "Venue unavailable: maintenance" });
+  const AFFECTED = booking({ status: "approved", flag: "affected", flag_reason: "Venue unavailable: Maintenance" });
 
   it("tells venue staff why the booking is affected and offers to restore it", async () => {
     const { el } = await mountView(AFFECTED);
 
-    expect(el.querySelector('[data-testid="booking-affected"]').textContent).toContain("Venue unavailable: maintenance");
+    expect(el.querySelector('[data-testid="booking-affected"]').textContent).toContain("Venue unavailable: Maintenance");
     expect(button("Restore original booking")).not.toBeNull();
   });
 

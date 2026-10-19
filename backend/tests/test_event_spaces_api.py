@@ -587,7 +587,7 @@ def test_an_organiser_does_not_see_a_bookings_flag_or_what_it_replaces(monkeypat
     booking = {
         "id": "booking-1", "event_id": EVENT_ID, "event_space_request_id": None, "venue_id": "venue-1",
         "venue_name": "Innovation Lab", "status": "approved", "flag": flag,
-        "flag_reason": "Venue unavailable: maintenance", "replaces_booking_id": "booking-0",
+        "flag_reason": "Venue unavailable: Maintenance", "replaces_booking_id": "booking-0",
     }
     monkeypatch.setattr(repository, "get_event", lambda event_id: event)
     monkeypatch.setattr(service.venues_service, "active_booking_for_event", lambda event_id: dict(booking))

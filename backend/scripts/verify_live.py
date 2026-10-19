@@ -103,6 +103,7 @@ DB_SCRIPTS = [
     ("event_space_checks.sql", "TC-SPACE-003, 005, 009; TC-HOLD-009 (overdue space holds); TC-BOOK-031–033 (CR-97 database half)"),
     ("equipment_request_checks.sql", "TC-EQR-002, 003, 006, 007, 008, 009 (database half)"),
     ("venue_edit_checks.sql", "TC-VENUE-058, 059, 061 (database half)"),
+    ("venue_buffer_checks.sql", "TC-VENUE-092 (CR-100: defaults copied on new requests, existing bookings unchanged)"),
     ("venue_booking_reject_checks.sql", "TC-BOOK-023"),
     ("venue_booking_approve_checks.sql", "TC-BOOK-056"),
     ("lead_assignment_checks.sql", "CR-101 (database half: assignment columns, reassign_event)"),
@@ -985,6 +986,90 @@ def _(ctx: Context) -> None:
         f"where event_id in ('{left}', '{right}') and status = 'held'"
     )
     expect(count["n"] == 1, f"{count['n']} holds exist")
+
+# --- CR-100: venue defaults, safety facts, history and active-role denial ----
+
+def require_venue_buffer_migration() -> None:
+    rows = db_query("select count(*) = 4 as present from information_schema.columns "
+                    "where table_schema = 'public' and table_name = 'venues' "
+                    "and column_name in ('setup_minutes', 'turnaround_minutes', 'emergency_access', 'restrictions')")
+    if not rows[0]["present"]:
+        raise CheckBlocked("CR-100 venue-buffer migration is not deployed; verify after the merged migration reaches this project.")
+
+
+@check("TC-VENUE-089", "CR-100 edit, read, clear and history on a throwaway venue", needs_db=True)
+def _(ctx: Context) -> None:
+    require_venue_buffer_migration()
+    venue_id = throwaway_venue(ctx, "089")
+    headers = ctx.shared("venue_staff").headers
+    url = f"{ctx.api}/venues/{venue_id}"
+    response = ctx.client.get(url, headers=headers)
+    expect_status(response, 200)
+    venue = response.json()
+    expect(venue["setup_minutes"] == venue["turnaround_minutes"] == 0, "defaults are not zero")
+    payload = {key: venue[key] for key in (
+        "name", "location", "capacity", "opens_at", "closes_at", "description", "layouts", "facilities", "accessibility_features")}
+    payload.update(setup_minutes=30, turnaround_minutes=1000000,
+                   emergency_access="East exit\nCourtyard", restrictions="No flames")
+    response = ctx.client.patch(url, headers=headers, json=payload)
+    expect_status(response, 200)
+    expect(response.json()["saved"], "edit was not saved")
+    response = ctx.client.get(url, headers=ctx.shared("event_coordinator").headers)
+    expect_status(response, 200)
+    for key in ("setup_minutes", "turnaround_minutes", "emergency_access", "restrictions"):
+        expect(response.json()[key] == payload[key], f"{key} did not round-trip")
+    response = ctx.client.get(url + "/history", headers=headers)
+    expect_status(response, 200)
+    entry = response.json()["entries"][0]
+    expect(entry["actor"]["id"] == VENUE_STAFF_ID and entry["at"], "history lacks actor/time")
+    expect(entry["before"]["setup_minutes"] == 0 and entry["after"]["setup_minutes"] == 30,
+           "history lacks buffer change")
+    payload.update(emergency_access="   ", restrictions=None)
+    response = ctx.client.patch(url, headers=headers, json=payload)
+    expect_status(response, 200)
+    expect(response.json()["venue"]["emergency_access"] is None
+           and response.json()["venue"]["restrictions"] is None, "safety facts did not clear")
+
+
+@check("TC-VENUE-091", "CR-100 recorded venue safety facts reach the Safety Officer review", needs_db=True)
+def _(ctx: Context) -> None:
+    require_venue_buffer_migration()
+    venue_id = throwaway_venue(ctx, "091")
+    db_query(f"update public.venues set emergency_access = 'East exit', restrictions = 'No flames' where id = '{venue_id}'")
+    event_id = throwaway_event(ctx, "091", "2035-02-10T10:00:00Z", "2035-02-10T12:00:00Z", status="safety_review")
+    db_query("insert into public.venue_bookings (event_id, venue_id, booked_period, status) values "
+             f"('{event_id}', '{venue_id}', tstzrange('2035-02-10T10:00:00Z', '2035-02-10T12:00:00Z', '[)'), 'approved')")
+    response = ctx.client.get(f"{ctx.api}/events/{event_id}/safety-review", headers=ctx.shared("safety_officer").headers)
+    expect_status(response, 200)
+    [venue] = response.json()["venues"]
+    expect(venue["emergency_access"] == "East exit" and venue["restrictions"] == "No flames", "safety facts missing from review")
+
+
+@check("TC-VENUE-090", "CR-100 invalid default minutes are rejected", needs_db=True)
+def _(ctx: Context) -> None:
+    require_venue_buffer_migration()
+    venue_id = throwaway_venue(ctx, "090")
+    headers = ctx.shared("venue_staff").headers
+    payload = {"name": "live-check venue validation", "location": "Test", "capacity": 50,
+               "opens_at": "08:00:00", "closes_at": "22:00:00", "setup_minutes": 0, "turnaround_minutes": 0}
+    for field in ("setup_minutes", "turnaround_minutes"):
+        for value in (-1, 2147483648, "abc", "", None, True, 1.5):
+            expect_status(ctx.client.patch(f"{ctx.api}/venues/{venue_id}", headers=headers,
+                                          json={**payload, field: value}), 422)
+
+
+@check("TC-VENUE-093", "CR-100 only the active Venue Staff role can edit", needs_db=True)
+def _(ctx: Context) -> None:
+    require_venue_buffer_migration()
+    # The seeded coordinator also holds Venue Staff. Its active coordinator
+    # session must still get 403, including on a raw request bypassing the UI.
+    payload = {"name": "Denied", "location": "Test", "capacity": 50, "opens_at": "08:00:00",
+               "closes_at": "22:00:00", "setup_minutes": 30, "turnaround_minutes": 45,
+               "emergency_access": "East exit", "restrictions": "No flames"}
+    for role in ("event_organiser", "event_coordinator", "event_coordinator_lead", "safety_officer", "tech_support", "attendee"):
+        expect_status(ctx.client.patch(f"{ctx.api}/venues/{INNOVATION_LAB}",
+                                      headers=ctx.shared(role).headers, json=payload), 403)
+
 
 # --- Venue edit re-checks bookings (CR-94) ----------------------------------
 # Each check builds its own "live-check" venue holding throwaway events, so an
@@ -2584,6 +2669,17 @@ def run_db_checks(keyword: str | None) -> list[Result]:
                     "Safety-decision migration table/RPC interfaces are missing; "
                     "SQL verification not run. Apply the migration through the authorised workflow first.",
                 ))
+                print_result(results[-1])
+                continue
+        if script == "venue_buffer_checks.sql":
+            try:
+                require_venue_buffer_migration()
+            except CheckBlocked as error:
+                results.append(Result(script, title, "blocked", str(error)))
+                print_result(results[-1])
+                continue
+            except Exception as error:
+                results.append(Result(script, title, "fail", str(error)))
                 print_result(results[-1])
                 continue
         completed = _supabase_query("-f", str(VERIFICATION_DIR / script))

@@ -136,7 +136,8 @@ export function describeConflict(conflict, timeZone) {
   const starts = new Date(conflict.starts_at);
   const ends = new Date(conflict.ends_at);
   const end = dayOnly.format(starts) === dayOnly.format(ends) ? timeOnly.format(ends) : dateTime.format(ends);
-  const window = `${dateTime.format(starts)} – ${end}`;
+  const window = starts.getUTCFullYear() === 1 || ends.getUTCFullYear() === 9999
+    ? "beyond supported dates" : `${dateTime.format(starts)} – ${end}`;
   if (conflict.kind === "block") {
     const reason = (BLOCK_REASON_LABELS[conflict.block_reason] ?? conflict.block_reason).toLowerCase();
     return `Blocked for ${reason} ${window}.`;
