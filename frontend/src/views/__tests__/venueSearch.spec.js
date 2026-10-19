@@ -172,7 +172,7 @@ describe("VenueSearchView", () => {
   describe("replacing an affected booking (CR-95 AC4)", () => {
     const AFFECTED = {
       id: "booking-affected", event_space_request_id: null, venue_id: "old-venue", venue_name: "Seminar Room 1",
-      status: "approved", flag: "affected", flag_reason: "Venue unavailable: maintenance",
+      status: "approved", flag: "affected", flag_reason: "Venue unavailable: Maintenance",
     };
     const affectedEvent = (status = "confirmed") => ({
       id: "event-affected",

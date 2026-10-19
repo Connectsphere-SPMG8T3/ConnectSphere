@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   REJECTION_TEXT_MAX_LENGTH,
+  canApproveBooking,
   canRejectBooking,
   canRestoreBooking,
   formatBookingPeriod,
@@ -54,6 +55,19 @@ describe("canRejectBooking (AC9, AC11)", () => {
       expect(canRejectBooking({ status }, "venue_staff")).toBe(false);
     }
     expect(canRejectBooking(null, "venue_staff")).toBe(false);
+  });
+});
+
+describe("canApproveBooking (SCRUM-36 AC6, AC8)", () => {
+  it("offers Approve only to a session acting as venue staff, and only on a held booking", () => {
+    expect(canApproveBooking({ status: "held" }, "venue_staff")).toBe(true);
+    for (const role of ["event_coordinator", "event_organiser", "event_coordinator_lead", "safety_officer"]) {
+      expect(canApproveBooking({ status: "held" }, role)).toBe(false);
+    }
+    for (const status of ["approved", "re_review", "rejected", "cancelled", "released", "expired"]) {
+      expect(canApproveBooking({ status }, "venue_staff")).toBe(false);
+    }
+    expect(canApproveBooking(null, "venue_staff")).toBe(false);
   });
 });
 

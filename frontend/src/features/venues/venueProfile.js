@@ -1,4 +1,5 @@
 import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS } from "@/features/venues/venueSearchStore";
+import { blockReasonLabel } from "@/features/venues/dashboard";
 
 /**
  * Pure presentation logic for the venue profile page (SCRUM-67).
@@ -296,9 +297,15 @@ const EDIT_HISTORY_FIELD_LABELS = {
   is_active: "Status",
   inactive_reason: "Inactive reason",
   inactive_note: "Inactive note",
+  block: "Block added",
 };
 
 function formatHistoryValue(field, value) {
+  // SCRUM-51 AC9: a block's row records only what was added.
+  if (field === "block") {
+    if (!value) return "None";
+    return [formatVenuePeriod(value), blockReasonLabel(value.reason), value.notes].filter(Boolean).join(" · ");
+  }
   if (field === "is_active" && typeof value === "boolean") return value ? "Active" : "Inactive";
   if (value == null || value === "") return "None recorded";
   if (field === "inactive_reason") return inactiveReasonLabel(value);

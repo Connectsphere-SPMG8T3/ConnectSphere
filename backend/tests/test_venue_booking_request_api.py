@@ -180,7 +180,7 @@ class TestRequest:
             # AC2, BR-R2 (QA-6, QA-10): first come, first served, no override.
             ("held_by_other", 409, "Venue already held for this time by another event."),
             # AC2, §6.14.
-            ("blocked", 409, "Venue blocked for this timing."),
+            ("blocked", 409, "Venue blocked for this time."),
             # SCRUM-64 AC2: an inactive venue takes no new requests.
             ("venue_inactive", 409, "This venue is inactive."),
             # AC4, BR-R1 (QA-116, QA-135).
@@ -442,7 +442,7 @@ def test_an_affected_booking_and_its_replacement_are_both_listed(monkeypatch):
     affected = {
         "id": AFFECTED_BOOKING_ID, "event_id": EVENT_ID, "event_space_request_id": SPACE_ID, "venue_id": VENUE_ID,
         "status": "approved", "venues": {"name": "Seminar Room 1"}, "flag": "affected",
-        "flag_reason": "Venue unavailable: maintenance", "replaces_booking_id": None,
+        "flag_reason": "Venue unavailable: Maintenance", "replaces_booking_id": None,
     }
     replacement_row = {
         "id": BOOKING_ID, "event_id": EVENT_ID, "event_space_request_id": SPACE_ID, "venue_id": VENUE_ID,
@@ -457,21 +457,21 @@ def test_an_affected_booking_and_its_replacement_are_both_listed(monkeypatch):
         (AFFECTED_BOOKING_ID, "affected", None),
         (BOOKING_ID, None, AFFECTED_BOOKING_ID),
     ]
-    assert shown[0]["flag_reason"] == "Venue unavailable: maintenance"
+    assert shown[0]["flag_reason"] == "Venue unavailable: Maintenance"
 
 
 def test_the_events_single_booking_summary_carries_the_flag(monkeypatch):
     row = {
         "id": AFFECTED_BOOKING_ID, "event_space_request_id": None, "venue_id": VENUE_ID, "status": "approved",
         "expires_at": None, "venues": {"name": "Seminar Room 1"}, "flag": "affected",
-        "flag_reason": "Venue unavailable: maintenance", "replaces_booking_id": None,
+        "flag_reason": "Venue unavailable: Maintenance", "replaces_booking_id": None,
     }
     monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: row)
 
     summary = venues_service.active_booking_for_event(EVENT_ID)
 
     assert (summary["flag"], summary["flag_reason"], summary["replaces_booking_id"]) == (
-        "affected", "Venue unavailable: maintenance", None)
+        "affected", "Venue unavailable: Maintenance", None)
 
 class TestRequestBody:
     def test_the_note_is_optional(self, client, auth_headers, authenticate_as, booking):

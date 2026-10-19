@@ -8,12 +8,13 @@ already have passed the role check in the router.
 
 import re
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timezone
 
 from postgrest.exceptions import APIError
 
 from app.db.supabase import get_supabase_admin_client
 from app.modules.venues.schemas import (
+    BlockAffectedBooking,
     BlockSummary,
     BookingSummary,
     Editor,
@@ -256,6 +257,69 @@ def deactivate_venue(venue_id: str, actor_id: str, expected_version: int, *, rea
     )
     row = (response.data or [])[0]
     return {"outcome": row["outcome"], "event_ids": [str(e) for e in row.get("event_ids") or []]}
+
+
+def list_block_conflicts(venue_id: str, period: Period) -> list[BlockAffectedBooking]:
+    """The held and approved bookings a block on `period` would affect
+    (SCRUM-51 AC5, AC7, AC11), from `public.venue_conflicts`: the same check,
+    on each booking's occupied window, that the trigger links by. Re-review
+    bookings are not flagged by a block, and finished ones are left alone."""
+    response = (
+        get_supabase_admin_client()
+        .rpc("venue_conflicts", {"p_period": _range_literal(period), "p_venue_id": venue_id})
+        .execute()
+    )
+    now = datetime.now(timezone.utc)
+    rows = [
+        BlockAffectedBooking(booking_id=row["booking_id"], event_id=row["event_id"], status=row["booking_status"],
+                             period=_parse_range(row["occupied_period"]))
+        for row in response.data or []
+        if row["kind"] == "booking" and row["booking_status"] in ("held", "approved")
+    ]
+    return [row for row in rows if row.period.ends_at > now]
+
+
+def create_venue_block(venue_id: str, actor_id: str, *, period: Period, reason: str, notes: str | None,
+                       history_after: dict) -> dict:
+    """Run `public.create_venue_block` (SCRUM-51): the venue lock, the block,
+    its history row, and (by trigger) the booking flags, links and notices in
+    one transaction. Returns `{outcome, block_id}`; refusals are outcome codes."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "create_venue_block",
+            {
+                "p_venue_id": venue_id,
+                "p_actor_id": actor_id,
+                "p_starts_at": period.starts_at.isoformat(),
+                "p_ends_at": period.ends_at.isoformat(),
+                "p_reason": reason,
+                "p_notes": notes,
+                "p_history_after": history_after,
+            },
+        )
+        .execute()
+    )
+    row = (response.data or [])[0]
+    return {"outcome": row["outcome"], "block_id": str(row["block_id"]) if row.get("block_id") else None}
+
+
+def list_block_bookings(block_id: str) -> list[BlockAffectedBooking]:
+    """The bookings recorded against a block (SCRUM-51 AC6, AC10), soonest first."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_block_bookings")
+        .select("booking:venue_bookings!venue_block_bookings_booking_id_fkey(id, event_id, status, occupied_period)")
+        .eq("block_id", block_id)
+        .execute()
+    )
+    bookings = [
+        BlockAffectedBooking(booking_id=b["id"], event_id=b["event_id"], status=b["status"],
+                             period=_parse_range(b["occupied_period"]))
+        for b in (row["booking"] for row in response.data or [])
+        if b and b["status"] in ("held", "approved")
+    ]
+    return sorted(bookings, key=lambda b: (b.period.starts_at, b.booking_id))
 
 
 def reactivate_venue(venue_id: str, actor_id: str, expected_version: int, *, before: dict, after: dict) -> str:
@@ -655,6 +719,21 @@ def reject_booking(booking_id: str, actor_id: str, reason: str, suggestion: str 
                 "p_suggestion": suggestion,
                 "p_notify_message": notify_message,
             },
+        )
+        .execute()
+    )
+    return (response.data or [])[0]
+
+
+def approve_booking(booking_id: str, actor_id: str, *, notify_message: str) -> dict:
+    """Run `public.approve_venue_booking` (SCRUM-36): the decision, its history
+    row and the coordinator's notification in one transaction. Returns
+    `{outcome, event_id, from_status}`; every refusal is an outcome code."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "approve_venue_booking",
+            {"p_booking_id": booking_id, "p_actor_id": actor_id, "p_notify_message": notify_message},
         )
         .execute()
     )

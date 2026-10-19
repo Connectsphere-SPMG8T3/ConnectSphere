@@ -96,6 +96,10 @@ export const venuesApi = {
   reactivate(venueId, payload, token) {
     return request(`/venues/${encodeURIComponent(venueId)}/reactivate`, { method: "POST", body: payload, token });
   },
+  // SCRUM-51: `saved: false` means `affected` came back instead of being written.
+  createBlock(venueId, payload, token) {
+    return request(`/venues/${encodeURIComponent(venueId)}/blocks`, { method: "POST", body: payload, token });
+  },
 };
 
 export const venueBookingsApi = {
@@ -118,6 +122,11 @@ export const venueBookingsApi = {
   // SCRUM-38: `payload` is `{ reason, suggestion }`; 409 means it is no longer a live hold.
   reject(bookingId, payload, token) {
     return request(`/venue-bookings/${encodeURIComponent(bookingId)}/reject`, { method: "POST", body: payload, token });
+  },
+  // SCRUM-36: no body; 409 means it is no longer a live hold, a block now
+  // overlaps it, or the venue is inactive.
+  approve(bookingId, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/approve`, { method: "POST", token });
   },
   // CR-95 AC9: venue staff restore an affected booking; 409 says why the venue isn't free yet.
   restore(bookingId, token) {

@@ -312,6 +312,27 @@ describe("CR-100 venue buffers and safety details", () => {
 });
 
 describe("summariseEditHistoryEntry (SCRUM-63, VC-R3)", () => {
+  it("reads a block's history row as one added block (SCRUM-51 AC9)", () => {
+    const entry = {
+      before: {},
+      after: { block: { starts_at: "2031-05-20T01:00:00+00:00", ends_at: "2031-05-20T09:00:00+00:00",
+        reason: "equipment_failure", notes: "Projector down" } },
+    };
+
+    expect(summariseEditHistoryEntry(entry)).toEqual([{
+      field: "block",
+      label: "Block added",
+      before: "None",
+      after: "20 May 2031, 09:00 – 20 May 2031, 17:00 · Equipment failure · Projector down",
+    }]);
+  });
+
+  it("leaves out a missing block detail", () => {
+    const entry = { before: {}, after: { block: { starts_at: "2031-05-20T01:00:00Z", ends_at: "2031-05-20T09:00:00Z",
+      reason: "safety", notes: null } } };
+    expect(summariseEditHistoryEntry(entry)[0].after).toBe("20 May 2031, 09:00 – 20 May 2031, 17:00 · Safety");
+  });
+
   it("reports only the fields that actually changed", () => {
     const entry = {
       before: { capacity: 150, name: "Hall A", facilities: ["projector"] },

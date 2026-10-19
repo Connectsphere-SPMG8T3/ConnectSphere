@@ -10,6 +10,7 @@ import { SINGAPORE_OFFSET_MS, toInstant, toSingaporeIso } from "@/features/venue
 /** Block reasons, labelled in one place (REQUIREMENTS §6.8 controlled list). */
 export const BLOCK_REASON_LABELS = {
   maintenance: "Maintenance",
+  equipment_failure: "Equipment failure",
   renovation: "Renovation",
   safety: "Safety",
   internal_activity: "Internal activity",

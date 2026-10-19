@@ -10,7 +10,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  venuesApi: { search: vi.fn(), get: vi.fn(), history: vi.fn(), deactivate: vi.fn(), reactivate: vi.fn() },
+  venuesApi: { search: vi.fn(), get: vi.fn(), history: vi.fn(), deactivate: vi.fn(), reactivate: vi.fn(), createBlock: vi.fn() },
 }));
 
 const VENUE_ID = "b0000000-0000-4000-8000-000000000001";
@@ -256,5 +256,83 @@ describe("VenueDetailView: deactivation (SCRUM-64)", () => {
     expect(venuesApi.reactivate).toHaveBeenCalledWith(VENUE_ID, { version: 4 }, "access");
     expect(document.querySelector('[data-testid="venue-inactive-banner"]')).toBeNull();
     expect(button("Deactivate venue")).toBeTruthy();
+  });
+});
+
+describe("VenueDetailView: blocking (SCRUM-51)", () => {
+  const BLOCK = { id: "blk-1", period: { starts_at: "2031-05-20T01:00:00Z", ends_at: "2031-05-20T09:00:00Z" },
+    reason: "maintenance", notes: null };
+  const BOOKING = { booking_id: "d-1", event_id: "e-1", event_name: "Partner Summit", status: "approved",
+    period: { starts_at: "2031-05-20T02:00:00Z", ends_at: "2031-05-20T05:00:00Z" }, block_reason: "Maintenance" };
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    apps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  async function fillBlock() {
+    for (const [label, value] of [["Block start", "2031-05-20T09:00"], ["Block end", "2031-05-20T17:00"]]) {
+      const input = document.querySelector(`input[aria-label="${label}"]`);
+      input.value = value;
+      input.dispatchEvent(new Event("input"));
+    }
+    await chooseReason("maintenance");
+  }
+
+  it("offers Block venue to venue staff only", async () => {
+    await mountView("venue_staff", ACTIVE);
+    expect(button("Block venue")).toBeTruthy();
+    apps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+    await mountView("event_coordinator", ACTIVE);
+    expect(button("Block venue")).toBeUndefined();
+  });
+
+  it("previews, confirms, then lists the affected bookings and reloads the venue", async () => {
+    await mountView("venue_staff", ACTIVE);
+    venuesApi.createBlock
+      .mockResolvedValueOnce({ saved: false, block: null, affected: [BOOKING] })
+      .mockResolvedValueOnce({ saved: true, block: BLOCK, affected: [BOOKING] });
+    venuesApi.get.mockResolvedValue({ ...ACTIVE, upcoming_blocks: [BLOCK] });
+
+    button("Block venue").click();
+    await nextTick();
+    await fillBlock();
+    document.querySelector('[role="dialog"] button[aria-label="Block venue"]').click();
+    await drain();
+    expect(venuesApi.createBlock).toHaveBeenLastCalledWith(VENUE_ID, expect.objectContaining({ confirm: false }), "access");
+
+    document.querySelector('[role="dialog"] button[aria-label="Block anyway"]').click();
+    await drain();
+    expect(venuesApi.createBlock).toHaveBeenLastCalledWith(VENUE_ID, expect.objectContaining({ confirm: true }), "access");
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog.textContent).toContain("Venue blocked");
+    expect(dialog.textContent).toContain("Partner Summit");
+
+    document.querySelector('[role="dialog"] button[aria-label="Done"]').click();
+    await drain();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(venuesApi.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the dialog open with the API's message when the block is refused", async () => {
+    await mountView("venue_staff", ACTIVE);
+    venuesApi.createBlock.mockRejectedValue(new Error("End must be in the future."));
+
+    button("Block venue").click();
+    await nextTick();
+    await fillBlock();
+    document.querySelector('[role="dialog"] button[aria-label="Block venue"]').click();
+    await drain();
+
+    expect(document.querySelector('[role="dialog"] [role="alert"]').textContent).toContain("End must be in the future.");
+    document.querySelector('[role="dialog"] button[aria-label="Cancel"]').click();
+    await drain();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 });

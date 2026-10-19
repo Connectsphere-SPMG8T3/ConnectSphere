@@ -49,7 +49,7 @@ describe("venuePanelState", () => {
 
 describe("venuePanelState for an affected booking (CR-95 AC3, AC4)", () => {
   const affected = (overrides = {}) => ({
-    ...booking("approved"), id: "b-affected", flag: "affected", flag_reason: "Venue unavailable: maintenance",
+    ...booking("approved"), id: "b-affected", flag: "affected", flag_reason: "Venue unavailable: Maintenance",
     event_space_request_id: null, ...overrides,
   });
   const replacement = (overrides = {}) => ({
@@ -63,7 +63,7 @@ describe("venuePanelState for an affected booking (CR-95 AC3, AC4)", () => {
       const event = { status, venue_booking: affected(), venue_bookings: [affected()] };
 
       expect(venuePanelState(event)).toEqual({
-        kind: "affected", booking: affected(), reason: "Venue unavailable: maintenance", canReplace: true,
+        kind: "affected", booking: affected(), reason: "Venue unavailable: Maintenance", canReplace: true,
       });
     },
   );

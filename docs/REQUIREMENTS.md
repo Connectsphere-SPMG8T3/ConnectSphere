@@ -75,9 +75,10 @@ The release is judged on **coherent end-to-end workflows** (W4). This is the ref
 | **ACC-R3:** **Internal staff accounts (Coordinator, Venue Staff, Tech Support, Safety Officer, Event Coordinator Lead) are system defaults**: created by seed or migration, never through sign-up. | QA-3, QA2-1, QA3-18 |
 | **ACC-R4:** An account **may hold two or more roles**, except an Event Coordinator Lead, who holds no other role (AUTH-R7, M3), so one person can finish a task that spans both (for example Coordinator and Venue Staff). This **supersedes** Session 1's "strictly one role" (QA-15). How roles are managed in the UI is ours to choose. **[Team decision]** Implemented in SCRUM-74/75 as an explicit, session-scoped active-role switcher rather than a union-of-permissions model: `user_roles` holds the roles an account is allowed to act as; `profiles.role` is that account's default role for a brand-new login session; `session_active_roles` (keyed by the JWT `session_id`) holds the role the caller actively switched to for the current session, so a switch on one device never affects another concurrent session for the same account. A nav dropdown (`Nav.vue`) lets the user pick which held role to act as; the profile page (`ProfileView.vue`, SCRUM-78) separately lists every role the account holds, so a multi-role user has a persistent view of all their roles, not just whichever one is currently active. Access follows the **active** role at both layers (SCRUM-76): `require_roles` in the API and RLS's `private.current_user_role()` both read the role the session is acting as, so holding a role the session is not acting as never grants its access, whether the request comes through the API or straight to the database. `current_user_role()` returns the `session_active_roles` row for the JWT's `session_id` and this user, falling back to `profiles.role` when the session never switched or the token has no `session_id`. (Until SCRUM-76 this function read `profiles.role`, and this rule called that an intentional gap; it stopped being one once a switched role could differ from the default at the database.) Granting an account a second role has no in-app path yet — a system admin inserts directly into `user_roles` via SQL; building a grant UI/endpoint is a follow-up story. Sign-up doesn't add a role to an existing account either: an email that already has an account is refused (409, SCRUM-80), so an organiser who also wants to register for events as an attendee needs `attendee` granted the same way, or a second account with a different email. **[Assumption]** (SCRUM-80). Two composite foreign keys enforce "revoking a role ends access" at the database level rather than by convention alone: `session_active_roles (profile_id, role) → user_roles`, so revoking a role a session actively switched into invalidates that session immediately, and `profiles (id, role) → user_roles`, so `profiles.role` itself can never point at a role the account no longer holds — an admin revoking someone's *default* (never-switched) role must first repoint `profiles.role` to a role they still hold, in the same transaction, or the revoke is rejected. | QA2-24 (supersedes QA-15) |
 | **ACC-R5:** An Organiser records an organisation name at sign-up, which links them to a client profile. ConnectSphere maintains client profiles. **[Assumption]** Until a client-profile story exists, sign-up (SCRUM-80) requires the organisation name and stores it as plain text on `profiles.organisation_name`, with an optional phone number. Nothing links it to a client record yet. | QA-90 |
+| **ACC-R5b:** Attendee sign-up collects a name, email and password only; it does not ask for an organisation name or phone number. | SCRUM-83 AC2 |
 | **ACC-R6:** The authentication mechanism is a team choice. We use Supabase Auth with email and password. **[Team decision]** Users sign in with their **email**; there is no separate username. SCRUM-48's acceptance criteria say "username and password", but Supabase Auth's `sign_in_with_password` is email-based and `profiles.email` is the unique identifying field. If the customer asks for a non-email username, that is a schema and auth-flow change, not a relabelled login field. | QA-50 |
-| **ACC-R7:** A signed-up account can log in immediately. The email address is **not** verified, and an email that already has an account is refused. **[Team decision]** Sign-up creates the account through the Supabase admin API, already confirmed ([ADR-0003](adr/0003-signup-via-admin-api-without-email-confirmation.md)). | SCRUM-80 AC3, AC6 |
-| **ACC-R8:** A password has at least 8 characters, including at least one letter and one digit. **[Team decision]** Checked by the API (`SignupRequest`) and the sign-up page, and matched by Supabase's minimum password length (8). "Digit" means a decimal digit (`str.isdecimal`, `\p{Nd}`), the same on both sides. If Supabase's own policy is ever stricter, its reason is returned as a 422 on `password`. | SCRUM-80 AC4 |
+| **ACC-R7:** A signed-up account can log in immediately. The email address is **not** verified, and an email that already has an account is refused. **[Team decision]** Sign-up creates the account through the Supabase admin API, already confirmed ([ADR-0003](adr/0003-signup-via-admin-api-without-email-confirmation.md)). | SCRUM-80 AC3, AC6; SCRUM-83 AC3, AC7 |
+| **ACC-R8:** A password has at least 8 characters, including at least one letter and one digit. **[Team decision]** Checked by the API (`SignupRequest`) and the sign-up page, and matched by Supabase's minimum password length (8). "Digit" means a decimal digit (`str.isdecimal`, `\p{Nd}`), the same on both sides. If Supabase's own policy is ever stricter, its reason is returned as a 422 on `password`. | SCRUM-80 AC4, SCRUM-83 AC5 |
 | **ACC-R9:** The **Event Coordinator Lead does not administer accounts.** The Lead manages event assignments only: they don't create accounts, assign or change roles, or deactivate users, internal or external. External users keep registering themselves (ACC-R2); internal accounts stay with the existing setup (ACC-R3). | QA3-18, QA3-19, QA3-20, QA3-21 |
 | **ACC-R10:** **No active work may sit with an inactive coordinator.** Before a coordinator account is deactivated, a Lead reassigns every active event it holds to another coordinator (§6.5 LA-R8). **[Team decision]** There is no deactivation screen (ACC-R9), so the rule is enforced where deactivation happens: the database refuses to deactivate a coordinator who still holds an active event, naming the events. This **replaces** CR-101 AC6 ("their active events go back to the unassigned queue"). | QA3-22 |
 
@@ -110,7 +111,7 @@ Access depends on **role** *and* on the user's **relationship to the event** (W4
 **Rules**
 - **AUTH-R1:** Organisers never see events of unrelated clients (QA-25, QA-87). An organiser **views** their own requests **and their organisation's events** (QA2-4, which settles the cross-visibility gap left by QA-25), but **edits only their own requests** (QA2-4); each request has exactly one organiser (QA-38, QA-119). **[Team decision]** Organisation-level visibility shows the same external-safe detail as the owner sees (AUTH-R2); drafts stay private to their owner (DR-R2).
 - **AUTH-R2:** External users (Organisers and Attendees) never see internal planning details (QA-51). **[Team decision, CR-103/104]** Safety decisions are split (QA3-17): the **outcome and the officer's actionable comments** are shown to the organiser; **private internal notes** are readable only by the assigned coordinator and active Safety Officers, never by the organiser, in status-history reasons or in notifications. Attendees receive neither. *(This replaces the earlier team decision that organisers see only a fixed summary; see §6.6.1.)* That covers coordinator notes, booking and equipment state beyond "arranged / pending", staff preparation notes, and internal-only history entries.
-- **AUTH-R3:** Sign-up metadata can never grant a staff role (ACC-R2, ACC-R3). Enforced twice: `handle_new_user()` accepts only `event_organiser` or `attendee` from metadata (DEFECTS D2, fixed), and `POST /auth/signup` refuses any other role with 422 before Supabase is called (SCRUM-80).
+- **AUTH-R3:** Sign-up metadata can never grant a staff role (ACC-R2, ACC-R3). Enforced twice: `handle_new_user()` accepts only `event_organiser` or `attendee` from metadata (DEFECTS D2, fixed), and `POST /auth/signup` refuses any other role with 422 before Supabase is called (SCRUM-80/83).
 - **AUTH-R4:** A request for an existing resource the caller has no relationship to returns `404` for external users (which avoids revealing that the resource exists) and `403` for internal staff. **[Team decision]**
 - **AUTH-R5:** **Staff operate as pools.** All Venue Staff can act on all venues, and all Tech Support can act on all equipment requests. Allocation of staff to venues or clusters is not tracked (QA-44). Tech staff are a single pool with no skill tiers (QA-41).
 - **AUTH-R6:** Every endpoint, RLS policy and route guard authorises by the session's **active** role, never by every role the account holds (ACC-R4, SCRUM-76). A user acting as role Y is denied role-X-only resources even if the account also holds X. **[Team decision]** Enforced by the access-matrix tests in `backend/tests/test_active_role_access.py` and `frontend/src/router/__tests__/activeRoleAccess.spec.js`, and at the database by `supabase/verification/active_role_checks.sql`.
@@ -123,61 +124,83 @@ Access depends on **role** *and* on the user's **relationship to the event** (W4
 
 ### 3.1 Level 1: System context
 
+![C4 Level 1: system context (Release 1)](diagrams/c4-l1-system-context.jpg)
+
+<details>
+<summary>Mermaid text version of this diagram</summary>
+
 ```mermaid
 C4Context
-  title System Context: ConnectSphere Event Planning and Venue Booking System
+  title System Context: ConnectSphere (Release 1)
 
-  Person(organiser, "Event Organiser", "External client representative. Signs up, submits and tracks event requests")
-  Person(attendee, "Attendee", "External participant. Signs up, registers for confirmed events")
-  Person(lead, "Event Coordinator Lead", "Internal. Assigns and reassigns events to coordinators")
-  Person(coordinator, "Event Coordinator", "Internal. Lead-assigned owner of an event's planning")
-  Person(safety, "Safety Officer", "Internal. Operational Safety Check before confirmation")
-  Person(venueStaff, "Venue Staff", "Internal. Manages venues and blocks, decides booking requests")
-  Person(techStaff, "Technical Support Staff", "Internal. Manages equipment, reserves for events")
+  Person_Ext(organiser, "Event Organiser", "External client representative who submits and tracks event requests")
+  Person(lead, "Event Coordinator Lead", "Internal staff who is responsible for overseeing incoming event requests and assigning them to individual Event Coordinators")
+  Person(coordinator, "Event Coordinator", "Internal staff who is responsible for end-to-end event planning")
+  Person(venueStaff, "Venue Staff", "Internal staff who is responsible for the maintenance of the venue catalogue and approval of venue bookings")
+  Person(techStaff, "Technical Support Staff", "Internal staff who is responsible for the maintenance of the equipment catalogue and approval of equipment reservations")
+  Person(safety, "Safety Officer", "Internal staff who is responsible for reviewing the operational safety of planned events")
+  Person_Ext(attendee, "Attendee", "External participant who registers for events")
 
-  System(cs, "ConnectSphere", "Single platform for event requests, review, venue booking, equipment reservation, registration, notifications and change history")
+  System(cs, "ConnectSphere System", "Single platform for event requests, review, venue booking, equipment reservation, safety checks, attendee registration, notifications and change history")
 
-  System_Ext(email, "Email / messaging provider", "P3: channel is a team choice (QA-11), release 1 is in-app")
-  System_Ext(calendar, "Personal calendar apps", "P3: .ics export")
+  System_Ext(auth, "Supabase Authentication", "Handles user authentication, identity and session management")
 
-  Rel(organiser, cs, "Drafts, submits, amends, requests changes and cancellation, tracks status")
-  Rel(lead, cs, "Works the unassigned queue; assigns and reassigns coordinators")
-  Rel(coordinator, cs, "Reviews, returns, approves, rejects; books venues; requests equipment; sends for safety check")
-  Rel(safety, cs, "Reviews safety checklist; approves, requests changes, or rejects a venue arrangement")
-  Rel(venueStaff, cs, "Maintains venues and blocks; approves or rejects bookings; updates venue prep")
-  Rel(techStaff, cs, "Maintains equipment; checks availability; reserves; updates technical prep")
-  Rel(attendee, cs, "Browses, registers, withdraws, joins waitlist")
-  Rel(cs, email, "Sends notifications", "P3")
-  Rel(attendee, calendar, "Imports .ics", "P3")
+  Rel(organiser, cs, "Drafts, submits and amends event requests; tracks status and receives notifications", "HTTPS")
+  Rel(lead, cs, "Views the unassigned queue and assigns/reassigns events to Event Coordinators", "HTTPS")
+  Rel(coordinator, cs, "Views event requests and asks for more information if needed; creates, views and updates venue and equipment requests; sends for safety check and makes changes if needed; receives notifications", "HTTPS")
+  Rel(venueStaff, cs, "Views, accepts/reserves and updates venue requests; maintains venue catalogue; receives notifications", "HTTPS")
+  Rel(techStaff, cs, "Views, accepts and updates equipment reservations; maintains equipment catalogue; receives notifications", "HTTPS")
+  Rel(safety, cs, "Conducts Operational Safety Check; approves the event, rejects the safety arrangement or requests changes; receives notifications", "HTTPS")
+  Rel(attendee, cs, "Registers, withdraws or joins a waitlist; receives notifications", "HTTPS")
+  Rel(cs, auth, "Provides secure user login and identity management; ensures only authorised users can access the internal system and certain functionalities", "HTTPS")
 
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+  UpdateLayoutConfig($c4ShapeInRow="7", $c4BoundaryInRow="1")
 ```
+
+</details>
 
 ### 3.2 Level 2: Containers
 
+![C4 Level 2: containers (Release 1)](diagrams/c4-l2-containers.jpg)
+
+<details>
+<summary>Mermaid text version of this diagram</summary>
+
 ```mermaid
 C4Container
-  title Container Diagram: ConnectSphere
+  title Container Diagram: ConnectSphere (Release 1)
 
-  Person(user, "Any user", "Organiser, Coordinator Lead, Coordinator, Venue Staff, Tech Support, Safety Officer, Attendee")
+  Person_Ext(organiser, "Event Organiser", "External client representative who submits and tracks event requests")
+  Person(lead, "Event Coordinator Lead", "Internal staff who oversees incoming event requests and assigns them to Event Coordinators")
+  Person(coordinator, "Event Coordinator", "Internal staff who is responsible for end-to-end event planning")
+  Person(venueStaff, "Venue Staff", "Internal staff who maintains the venue catalogue and approves venue bookings")
+  Person(techStaff, "Technical Support Staff", "Internal staff who maintains the equipment catalogue and approves equipment reservations")
+  Person(safety, "Safety Officer", "Internal staff who reviews the operational safety of planned events")
+  Person_Ext(attendee, "Attendee", "External participant who registers for events")
 
-  System_Boundary(cs, "ConnectSphere") {
-    Container(spa, "Web SPA", "Vue 3, Vite, Pinia, Vue Router, Tailwind", "Responsive UI for desktop and mobile. Role-based dashboards. Talks only to the API")
-    Container(api, "API Application", "Python 3.11, FastAPI (modular monolith)", "All business rules, role and relationship authorisation, workflow, assignment queue and consistency logic")
-    ContainerDb(db, "Relational Database", "PostgreSQL 15 (Supabase)", "Events, venues, bookings, equipment, registrations, notifications, change history. Enforces no overlapping venue holds and no over-reservation")
+  System_Boundary(cs, "ConnectSphere System") {
+    Container(spa, "Web Application", "Vue 3, Vite, Pinia, Tailwind", "Provides the GUI for every role. Role-based dashboards; desktop and mobile friendly")
+    Container(api, "Backend API", "Python 3.11, FastAPI", "Modular monolith (auth, events, venues, equipment). Business rules, role and relationship authorisation, notifications")
+    ContainerDb(db, "Database", "PostgreSQL 15 (Supabase)", "Events, venues, bookings, equipment, registrations, notifications, history")
   }
 
-  System_Ext(auth, "Supabase Auth (GoTrue)", "Sign-up, sign-in, JWT issuing (ES256) and JWKS")
-  System_Ext(email, "Email provider", "P3")
+  System_Ext(auth, "Supabase Authentication", "Handles user authentication, identity and session management")
 
-  Rel(user, spa, "Uses", "HTTPS")
-  Rel(spa, api, "JSON over REST", "HTTPS, Bearer JWT")
-  Rel(api, auth, "Sign-up, sign-in, sign-out, verify JWT via JWKS", "HTTPS")
-  Rel(api, db, "Reads and writes, calls transactional SQL functions", "PostgREST (supabase-py) / SQL")
-  Rel(api, email, "Sends notification emails", "P3")
+  Rel(organiser, spa, "Drafts, submits and amends event requests; tracks status and receives notifications", "HTTPS")
+  Rel(lead, spa, "Views the unassigned queue and assigns/reassigns events to Event Coordinators", "HTTPS")
+  Rel(coordinator, spa, "Views event requests and asks for more information if needed; creates, views and updates venue and equipment requests; sends for safety check and makes changes if needed; receives notifications", "HTTPS")
+  Rel(venueStaff, spa, "Views, accepts/reserves and updates venue requests; maintains venue catalogue; receives notifications", "HTTPS")
+  Rel(techStaff, spa, "Views, accepts and updates equipment reservations; maintains equipment catalogue; receives notifications", "HTTPS")
+  Rel(safety, spa, "Conducts Operational Safety Check; approves the event, rejects the safety arrangement or requests changes; receives notifications", "HTTPS")
+  Rel(attendee, spa, "Registers, withdraws or joins a waitlist; receives notifications", "HTTPS")
+  Rel(spa, api, "Makes API calls", "JSON/HTTPS, Bearer JWT")
+  Rel(api, auth, "Signs in/out users; verifies JWTs via JWKS", "HTTPS")
+  Rel(api, db, "Reads and writes data", "PostgREST/SQL")
 
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+  UpdateLayoutConfig($c4ShapeInRow="7", $c4BoundaryInRow="1")
 ```
+
+</details>
 
 **Container decisions**
 
@@ -191,9 +214,67 @@ C4Container
 
 ### 3.3 Level 3: Components of the API application
 
+**As built (Release 1).**
+
+![C4 Level 3: components of the Backend API (as built)](diagrams/c4-l3-backend-components.jpg)
+
+Source: [c4-l3-backend-components.drawio](diagrams/c4-l3-backend-components.drawio). Open it in draw.io, edit, and re-export the JPG to the same path.
+
+<details>
+<summary>Mermaid text version of this diagram</summary>
+
 ```mermaid
 C4Component
-  title Component Diagram: API Application (FastAPI modular monolith)
+  title Component Diagram: Backend API (as built)
+
+  Container(spa, "Web Application", "Vue 3, Vite, Pinia, Tailwind", "The GUI for every role")
+  ContainerDb(db, "Database", "PostgreSQL 15 (Supabase)", "Tables, plus transactional SQL functions that also write status history and notifications")
+  System_Ext(auth, "Supabase Auth", "Sign-up, sign-in and sessions; issues JWTs and publishes JWKS")
+
+  Container_Boundary(api, "Backend API (Python 3.11, FastAPI)") {
+    Component(venues, "Venues module", "FastAPI router, service, repository", "Venue catalogue, search, edits and edit history, deactivate and reactivate; booking requests, holds, rejections and restores; venue staff dashboard")
+    Component(events, "Events module", "FastAPI router, service, repository", "Requests, drafts, submit, review, return, approve, reject; Lead reassignment; safety check and decisions; comments, history, dashboards")
+    Component(equipment, "Equipment module", "FastAPI router, service, repository", "Equipment catalogue, inventory and maintenance; availability check; equipment requests and the pending queue")
+    Component(authMod, "Auth module", "FastAPI router, service, dependencies", "Sign-up, login, refresh, logout, current user, switch active role")
+    Component(venueRules, "Venue rules", "pure Python, no I/O", "Search, suitability, impact of a venue edit on bookings")
+    Component(eventRules, "Event rules", "pure Python, no I/O", "Lifecycle transitions, safety readiness, Lead scope")
+    Component(security, "Security", "FastAPI dependencies", "Verifies the JWT; loads profile and active role; require_roles")
+  }
+
+  Rel(spa, venues, "Makes API calls", "JSON/HTTPS, Bearer JWT")
+  Rel(spa, events, "Makes API calls", "JSON/HTTPS, Bearer JWT")
+  Rel(spa, equipment, "Makes API calls", "JSON/HTTPS, Bearer JWT")
+  Rel(spa, authMod, "Makes API calls", "JSON/HTTPS, Bearer JWT")
+  Rel(events, venues, "Reads booking status, readiness")
+  Rel(venues, events, "Checks assignment; reads requirements; returns to planning")
+  Rel(equipment, events, "Checks the coordinator is assigned")
+  Rel(events, equipment, "Reads reservations and request lines")
+  Rel(venues, venueRules, "Applies")
+  Rel(events, eventRules, "Applies")
+  Rel(venues, security, "Every route: authenticate the caller and check the active role")
+  Rel(events, security, "Every route: authenticate the caller and check the active role")
+  Rel(equipment, security, "Every route: authenticate the caller and check the active role")
+  Rel(authMod, security, "Every route: authenticate the caller and check the active role")
+  Rel(authMod, auth, "Sign up, in, out; refresh", "HTTPS")
+  Rel(security, auth, "Verifies JWTs", "get_claims, JWKS, HTTPS")
+  Rel(venues, db, "Reads and writes data; calls SQL functions", "supabase-py, PostgREST")
+  Rel(events, db, "Reads and writes data; calls SQL functions", "supabase-py, PostgREST")
+  Rel(equipment, db, "Reads and writes data; calls SQL functions", "supabase-py, PostgREST")
+  Rel(authMod, db, "Reads and writes data; calls SQL functions", "supabase-py, PostgREST")
+  Rel(security, db, "Reads and writes data; calls SQL functions", "supabase-py, PostgREST")
+
+  UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="1")
+```
+
+</details>
+
+Not built yet: the registrations, notifications and audit modules, and the in-process event bus, from the target design below. Notifications and status history are written today inside the database's SQL functions.
+
+**Target design.** New modules follow this design (AGENTS.md); the status notes under "Module rules" say which parts the team hasn't adopted.
+
+```mermaid
+C4Component
+  title Component Diagram: API Application (target design)
 
   Container(spa, "Web SPA", "Vue 3")
   ContainerDb(db, "PostgreSQL", "Supabase")
@@ -445,16 +526,16 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 
 ### 6.1 User authorisation and authentication *(SCRUM-7; partly done by SCRUM-48 and SCRUM-80)*
 
-**Done:** email and password login, `/auth/me`, logout, role dashboard redirect, route guards. Organiser sign-up (SCRUM-80): `POST /auth/signup` and `/signup`, following ACC-R5, ACC-R7 and ACC-R8.
+**Done:** email and password login, `/auth/me`, logout, role dashboard redirect, route guards. Organiser sign-up (SCRUM-80): `POST /auth/signup` and `/signup`, following ACC-R5, ACC-R7 and ACC-R8. Attendee sign-up (SCRUM-83) extends the same endpoint and page, following ACC-R2 and ACC-R5b.
 
 **Remaining behaviour**
-- **Sign-up** for Organisers and Attendees only (ACC-R2). Organisers also enter an organisation name and phone. Internal staff accounts are seeded (ACC-R3). *Organisers done (SCRUM-80); Attendees are SCRUM-83.*
+- **Sign-up** for Organisers and Attendees only (ACC-R2). Organisers enter an organisation name and may enter a phone number; Attendees enter neither (ACC-R5, ACC-R5b). Internal staff accounts are seeded (ACC-R3). *Organiser sign-up is SCRUM-80; Attendee sign-up is SCRUM-83.*
 - **Logout** revokes only the caller's own session.
 - **Session refresh:** on `401` for an expired token, the SPA calls `POST /auth/refresh` once and retries. If the refresh fails, it logs out with "Your session has expired, please log in again."
 - **Relationship-based authorisation** (§2.2) is enforced by policy functions in every module.
 
 **Acceptance criteria**
-- **Given** I sign up choosing "Event Organiser", **then** my profile role is `event_organiser`. **Given** any sign-up request that asks for `event_coordinator`, `venue_staff`, or `tech_support`, **then** it is rejected or saved as `attendee`.
+- **Given** I sign up choosing "Event Organiser" or "Attendee", **then** my profile role is the selected external role. Attendee sign-up does not require organisation name or phone; Event Organiser sign-up requires organisation name. **Given** any sign-up request that asks for an internal role, **then** it is rejected before Supabase is called.
 - **Given** users A and B are both logged in, **when** A logs out, **then** B's next request still succeeds.
 - **Given** my access token has expired but my refresh token is valid, **when** I perform an action, **then** it succeeds without re-login.
 - **Given** an organiser, **when** they request another organiser's event by ID, **then** they receive `404` and no data.
@@ -703,7 +784,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - **VC-R3:** Every edit is recorded in history (§6.7).
 - **VC-R4 [Team decision, SCRUM-67]:** The profile shows **when** it was last updated and **by whom**. "When" is `venues.updated_at`, maintained by the SCRUM-39 trigger. "By whom" is `venues.updated_by`, a **last-writer stamp, not an audit trail** — the per-field change history VC-R3 asks for is §6.7 / SCRUM-14 and needs its own table. `updated_by` is null for every venue edited before the column existed and for an editor whose account has since been removed; the UI says "Not recorded" in both cases rather than naming anyone. It is written by the venue edit path (SCRUM-63/64), not by a trigger: every API write uses the secret key, so the database cannot see which signed-in user it is acting for.
 - **VC-R5 [Team decision, SCRUM-67]:** The profile **states the setup/turnaround time** rather than leaving the reader to infer it from bookings that sit back to back. Both default figures are served on the response (`setup_minutes`, `turnaround_minutes`) instead of being hard-coded in the SPA. They default to zero and apply to future requests only (CR-100).
-- **VC-R9 (setup and turnaround, W7 CR-01, CR-100):** Venue Staff maintain each venue's **default setup** and **default turnaround** time. Each is a **non-negative** number of minutes (0 is valid), set **per venue** independently, so venues may differ (QA3-4, QA3-28). The customer set no maximum. The defaults aren't fixed windows: **Venue Staff set each booking's own setup and turnaround for that event's needs**, for example longer for a seminar than for a small group discussion (M3). **Once a venue booking is approved, its setup and turnaround can't change** (QA3-6). **[Team decision]** This reconciles the three sources: QA3-4 calls the venue figures *defaults*, M3 has Venue Staff set them per event, and QA3-6 locks them once the venue is confirmed. A booking request copies the venue's defaults. While the booking is still `held`, Venue Staff may change its setup or turnaround (only Venue Staff, AUTH-R5), and the change is re-checked against DB-1, so a buffer that would overlap another booking is refused. After approval the figures are locked. Editing a venue's defaults never changes existing bookings. This **replaces** CR-100 AC5 and CR-94 AC2's setup/turnaround Conflict flag, and adds a per-booking edit to 36. Written answer QA3-4 ("once set can't be updated/adjusted" for one event) is superseded by M3 on this point.
+- **VC-R9 (setup and turnaround, W7 CR-01, CR-100):** Venue Staff maintain each venue's **default setup** and **default turnaround** time. Each is a **non-negative** number of minutes (0 is valid), set **per venue** independently, so venues may differ (QA3-4, QA3-28). The customer set no maximum. The defaults aren't fixed windows: **Venue Staff set each booking's own setup and turnaround for that event's needs**, for example longer for a seminar than for a small group discussion (M3). **Once a venue booking is approved, its setup and turnaround can't change** (QA3-6). **[Team decision]** This reconciles the three sources: QA3-4 calls the venue figures *defaults*, M3 has Venue Staff set them per event, and QA3-6 locks them once the venue is confirmed. A booking request copies the venue's defaults. While the booking is still `held`, Venue Staff may change its setup or turnaround (only Venue Staff, AUTH-R5), and the change is re-checked against DB-1, so a buffer that would overlap another booking is refused. After approval the figures are locked. Editing a venue's defaults never changes existing bookings. This **replaces** CR-100 AC5 and CR-94 AC2's setup/turnaround Conflict flag. The per-booking edit was planned for 36; **[Team decision, SCRUM-36, 2026-10-17]** it moves to CR-100, which adds the figures it edits, and CR-100 refuses the edit once the booking is `approved`. 36's approval leaves the booking's occupied window as it is. Written answer QA3-4 ("once set can't be updated/adjusted" for one event) is superseded by M3 on this point.
 - **VC-R10 [Team decision, CR-100]:** Default buffers use whole minutes, matching the booking columns. Negative, non-numeric, blank, null, boolean and fractional inputs are refused. Zero is valid; there is no business maximum. A value above 2147483647 (Postgres `integer`) is refused with 422 rather than failing in the database; that is a storage limit, not a business cap. Venue Staff edit defaults and safety facts through the existing full venue form, and history records all four fields. A default-only edit does not flag, notify or re-time an existing booking. Both booking request paths snapshot defaults under the same venue lock used for activity checks, so an edit and a request are ordered by that lock. Booking screens show the booking's own window (`booked_period`); availability uses its expanded `occupied_period`. Buffers are never capped in storage. For occupied endpoints beyond Python's years 1–9999, the application bounds comparison endpoints and labels conflict windows “beyond supported dates”; these are representational boundaries, not buffer limits. Per-booking adjustments remain story 36.
 - **VC-R7 [Team decision, SCRUM-67]:** The profile leads with a **photo slideshow** and puts the detail sections behind **tabs** (Capacity & hours, Facilities & access, Upcoming bookings, Blocks). Tabs hide content by design, which is a real cost for VC-R6, so the two time-based tabs **carry a count in the tab itself** — a closed tab never implies there is nothing behind it. The attribute tabs carry no count, because every venue has capacity and hours and a `0` there would read as "none recorded". Inside the bookings tab the three statuses of VC-R6 are **themselves tabs**, each labelled with its own count, and the venue's total is stated once above them so it is never hidden. That tab row **opens on the first status that has bookings**, not always Confirmed: a venue whose only commitment is a hold would otherwise open on an empty Confirmed panel, which reads as "nothing booked".
 - **VC-R8 [Team decision, SCRUM-67]:** There is **no venue photo data**: no column, no `venue_photos` table, and no storage bucket on the project. `VenueDetail.photos` is declared and always empty, and stock imagery is not used — this page exists so staff can *verify current information*, so invented photos would defeat its purpose (the same failure as DEFECTS D8's fabricated dashboard metrics). Instead the carousel shows **one schematic per layout the venue supports**, drawn from `venue_layouts`, which is data we hold. Every such slide is labelled **"Schematic arrangement — not this room's floor plan"**, because the system does not hold the venue's geometry and a generic diagram must not be read as a survey of the actual room. Where the capacity shown is the venue-wide figure rather than one measured for that layout (VS-R6), the slide says so. Real photos, once they exist, lead the carousel and the schematics follow. A photo library is **§8 backlog** and needs a table, a bucket with RLS, and an upload path in SCRUM-63/64.
@@ -726,7 +807,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 
 **Behaviour**
 - Coordinators and venue staff (W4) see a calendar per venue with three distinguishable entry types: **approved booking**, **tentative hold** (a pending request, QA-6), and **block** (with its reason). The exact UI is left to the team (QA-60, QA-61). **[Team decision]** Day, week, and month views, colour plus a pattern for each type.
-- **Blocks:** venue staff create a block with a period and reason (maintenance, renovation, safety, internal activity, other). They can shorten or end it early. Blocks show on the calendar (QA-104).
+- **Blocks:** venue staff create a block with a period and reason (maintenance, equipment failure, renovation, safety, internal activity, other) and an optional detail of at most 1000 characters, required for "other" (SCRUM-51 AC1). The end must be after the start and in the future; the start may be in the past, for an emergency block starting now. They can shorten or end it early (54). Blocks are never deleted (SCRUM-51 AC9). Blocks show on the calendar (QA-104).
 
 **Rules**
 - **CAL-R1:** A block **may** overlap an existing hold or booking, because emergencies happen (QA-102). Saving shows a warning listing the affected events. After saving, those coordinators and venue staff are notified. **Bookings are not automatically cancelled**; resolution is manual (QA-26, QA-97, QA-102).
@@ -807,7 +888,7 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **BR-R5:** The coordinator can cancel a `held` or `approved` booking, which releases the slot and notifies venue staff.
 - **BR-R6:** A booking request can't be made while the event is `under_review` or `returned` (QA-22).
 - **BR-R7 [Team decision, CR-98 / SCRUM-19; schedule clarified by QA3-23]:** The hold covers the selected event-space request's effective `[starts_at, ends_at)` period. An explicit space window is used as stored; if both space bounds are null, the event period is used. The event's overall schedule remains the required envelope. Venue search and booking use the same effective interval and the selected space's pax, layout and facilities; any setup or turnaround rules use that interval too (BR-R15).
-- **BR-R8 [Team decision, SCRUM-19, SCRUM-21]:** Every refusal is decided by `public.request_venue_booking` (or `request_venue_booking_for_space`, CR-97) under a lock on the event. The function first asks the single conflict check (§6.14) what is in the way, so the refusal can name it; DB-1 stays the judge of races, so two coordinators racing for one slot can't both win (QA2-23). A venue block refuses the request too ("Venue blocked for this timing.", §6.14); the block check isn't locked, because a block may overlap a hold anyway (CAL-R1).
+- **BR-R8 [Team decision, SCRUM-19, SCRUM-21]:** Every refusal is decided by `public.request_venue_booking` (or `request_venue_booking_for_space`, CR-97) under a lock on the event. The function first asks the single conflict check (§6.14) what is in the way, so the refusal can name it; DB-1 stays the judge of races, so two coordinators racing for one slot can't both win (QA2-23). A venue block refuses the request too ("Venue blocked for this time.", §6.14, the same wording as approval since SCRUM-51); the block check isn't locked, because a block may overlap a hold anyway (CAL-R1).
 - **BR-R9 [Assumption, SCRUM-19]:** The note for venue staff is optional and capped at **1000 characters** after trimming, like the other free-text fields. See §9.
 - **BR-R10 (W7 CR-04, CR-99 AC1):** Every hold has an expiry date and time. The customer set no default length or extension limit and left both to the team (QA3-31), so **[Team decision]** it defaults to **7 days after the request**, never later than the event start, and is set by the database whatever path writes the hold. **[Assumption]** An event less than 7 days away is held until its start (§9 item 29). Holds that existed before CR-99 got 7 days from the migration, not from their request.
 - **BR-R11 (CR-99 AC2):** Venue Staff (any of them, AUTH-R5) can change or extend a hold's expiry before it passes, to any time after now and no later than the event start; shortening is allowed. Each change is recorded in `venue_booking_history` with who made it and the old and new expiry.
@@ -847,6 +928,8 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **BA-R7 (SCRUM-38):** Every decision is recorded in the booking's history (`venue_booking_history`, from CR-99): who, when, from and to which status, and for a rejection the reason and suggestion (AC12). Rejecting one booking leaves the event's other bookings unchanged (AC8, CR-03).
 - **[Assumption, SCRUM-38]** Only the event's assigned coordinator is notified of a rejection, never the venue-staff actor. The notification names the venue and event but not the reason, which is read on the page (as with CR-104's officer text). See §9 item 43.
 - **BA-R8:** In a multi-venue event, venue staff approve or reject **each booking on its own**. Rejecting one doesn't change the others, which stay approved and attached to the event (QA3-24, QA3-50).
+- **BA-R9 [Team decision, SCRUM-36, 2026-10-17]:** Only a `held` booking can be approved, under the same lock on the booking row as rejection and the expiry job (BA-R6), so an approval racing either is refused, not overwritten. Approval re-checks the two things that can affect a hold after it was made, inside `public.approve_venue_booking`: a **venue block** saved over it (CAL-R1 allows that), found by SCRUM-21's `venue_conflicts` on the booking's occupied window, is refused with "Venue blocked for this time.", and a **deactivated venue** (SCRUM-64 leaves its holds held but flagged) is refused with "This venue is inactive, so the booking can't be approved." DB-1 needs no re-check: an approved booking stays in its exclusion set (BA-R1). The decision, who made it and when are recorded on the booking and in its history (BA-R7), and the assigned coordinator is notified, never the approver. **Approving a replacement** (CR-95) releases the affected booking it stands in for in the same step (CR-95 AC5); if the original was restored first, its replacement was cancelled and can't be approved.
+- **[Team decision, SCRUM-36]** The approved booking's status is `approved` and reads **"Approved"**. SCRUM-36's original AC2 said "Confirmed"; that word is kept for the event status after the safety check (QA3-3), so a booking isn't mistaken for a confirmed event. `CONTEXT.md` already calls an approved booking the confirmed one.
 
 **Acceptance criteria**
 - **Given** a held booking, **when** I approve it, **then** it's `approved`, the calendar shows it as booked, and the coordinator is notified.
@@ -1396,6 +1479,7 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 
 **SCRUM-64 addition:**
 47. **[Assumption]** SCRUM-64 AC3: deactivating a venue flags only its future **held and approved** bookings, as the AC names. A booking already under re-review is left alone, since venue staff are already reviewing it. Confirm with the PO if a `re_review` booking should also be flagged.
+48. **[Assumption]** SCRUM-36: a booking flag (Affected, Conflict, Unsuitable) doesn't stop venue staff approving the booking. Clearing a flag is the coordinator's follow-up (CR-94, CR-95), and the safety check already refuses a flagged booking (SCRUM-82 AC10). Confirm with the PO if a flagged booking should be refused too.
 
 **CR-94 additions (2026-10-16):**
 55. **[Assumption]** CR-94 AC1 re-checks the booking, but only rules the edit **newly** breaks are reported or flagged. A booking that already failed a rule before the edit isn't blamed on it, so an unrelated edit (a description fix) never raises a warning.
@@ -1404,15 +1488,20 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 58. **[Assumption]** CR-94 AC7 "past and completed events": bookings that have ended, and bookings of events in `completed` or `cancelled`, are not re-checked.
 59. **[Assumption]** CR-94 AC3 flags only `held` and `approved` bookings, as AC1 names and as SCRUM-64 does (§9 item 47). A `re_review` booking is still re-checked and listed in the warning (venue staff are already reviewing it), but isn't flagged; its coordinator is notified instead. Confirm with the PO if a booking under re-review should also be flagged.
 60. **[Open]** Nothing clears an `unsuitable` flag yet. **[Team decision, 2026-10-17]** a later venue edit that fixes the problem does not clear it automatically, since clearing is the coordinator's follow-up (VC-R1c) and no AC asks for it. Until a clearing path exists, a flagged event can't pass the safety check even after the venue is fixed. CR-94 AC5's "each flag shows its reason" is met by the stored reason and the coordinator's notification; no page shows the reason yet.
-61. **[Team decision]** CR-95 AC1: a venue block flags the bookings it overlaps with a database trigger on `venue_blocks` (on insert, and when the period or venue changes), through SCRUM-64's `flag_venue_bookings`, rather than a call from the block endpoint (story 51). It flags `held` and `approved` bookings that have not ended and have no flag; a `re_review` booking is not flagged (items 29, 59), and an existing flag is never overwritten. The flag reads "Venue unavailable: <block reason>". Reason: it holds for whichever path writes a block, in the same transaction.
+61. **[Team decision]** CR-95 AC1: a venue block flags the bookings it overlaps with a database trigger on `venue_blocks` (on insert, and when the period or venue changes), through SCRUM-64's `flag_venue_bookings`, rather than a call from the block endpoint (story 51). It flags `held` and `approved` bookings that have not ended and have no flag; a `re_review` booking is not flagged (items 29, 59), and an existing flag is never overwritten. The flag reads "Venue unavailable: <reason label>", such as "Venue unavailable: Maintenance" (since SCRUM-51, item 71; bookings flagged before it keep the raw value, "Venue unavailable: maintenance"). Since SCRUM-51 the trigger also records each booking a block overlaps in `venue_block_bookings` (item 72). Reason: it holds for whichever path writes a block, in the same transaction.
 62. **[Assumption]** CR-95: nothing clears an `affected` flag automatically. Shortening or deleting the block, or reactivating the venue, leaves it; only venue staff restoring the booking (AC9, `restore_affected_booking`) or the booking being released when its replacement is approved (AC5) ends it. Matches VC-R1b and item 60. Confirm with the PO that an unrestored flag should outlive a block that has gone.
 63. **[Team decision]** CR-95 AC4: a replacement is requested through the ordinary venue request, naming the booking it replaces. That booking is the event's own, still `held` or `approved`, and flagged `affected`; anything else is refused. The affected booking is not cancelled and stays beside the replacement until AC5 releases it, so it stops counting as "the event's venue" for the one request that names it (BR-R1, one active booking per space). A request that names no booking is still refused while the event has a venue.
 64. **[Team decision]** CR-95 AC7: a Confirmed or Safety-review event returns to planning as the replacement is requested, before the booking is made, because the booking functions accept only a planning event. If the venue the coordinator picks is then refused, the event stays in planning: asking for a replacement is the decision AC7 describes. If returning it fails, nothing is requested.
-65. **[Assumption]** CR-95 AC3: the organiser is told with a `venue_unavailable_organiser` notification that their event is not cancelled and the coordinator will arrange an alternative; the coordinator gets SCRUM-64's `venue_booking_affected`. Attendees are told nothing (AC10, QA3-7). The flag and the replacement link are hidden from an organiser reading the event until CR-111 gives them their own view (QA3-53). SCRUM-64 deactivation sends the same organiser notice once per newly affected event, excluding the deactivating actor (D40); the message names the venue and gives the same reassurance and next action.
-66. **[Open]** CR-95 AC5: releasing the original is a database function, `release_replaced_booking`, which story 36's approve must call when it approves a replacement. Until 36 exists nothing calls it, so AC5 is not met end to end.
+65. **[Assumption]** CR-95 AC3: the organiser is told with a `venue_unavailable_organiser` notification that their event is not cancelled and the coordinator will arrange an alternative; the coordinator gets SCRUM-64's `venue_booking_affected`. For a block, the organiser's notice does not name the reason and the coordinator's does (SCRUM-51 AC13, item 71). Attendees are told nothing (AC10, QA3-7). The flag and the replacement link are hidden from an organiser reading the event until CR-111 gives them their own view (QA3-53). SCRUM-64 deactivation sends the same organiser notice once per newly affected event, excluding the deactivating actor (D40); the message names the venue and gives the same reassurance and next action.
+66. **[Resolved, SCRUM-36, 2026-10-18]** CR-95 AC5: `approve_venue_booking` calls `release_replaced_booking` in the same transaction when it approves a replacement, after locking the original first (the order `restore_affected_booking` uses), so an approval racing a restore can't deadlock and only one wins (BA-R9).
 67. **[Assumption]** CR-95 AC9: restoring needs the venue free for the booking's full occupied window, which for a booking that was never cancelled means no block covering it and an active venue (a booking cannot have been taken by another event while it still occupied its slot). Restoring cancels any pending replacement but does not change the event's status; an event the replacement request returned to planning stays there. It is refused once a replacement is approved.
 
 68. **[Assumption, 2026-10-18]** CR-104 Mark as revised sends no notification. Venue staff can read the safety rejection reason on the booking page as internal staff (SF-R6). The assigned coordinator clears the flag in Planning only; no event version bump. Confirm notification and visibility expectations with the PO.
+69. **[Team decision, SCRUM-51, 2026-10-19]** SCRUM-51 AC1 and AC8 say Venue Staff block a venue "they manage". Staff-to-venue allocation is not tracked and Venue Staff work as a pool (AUTH-R5, QA-44), so any user acting as Venue Staff may block any venue, as with approval, rejection and deactivation; every other active role gets 403. Raise the AC wording with the PO.
+70. **[Assumption, SCRUM-51]** An inactive venue can still be blocked: the block is a period of unavailability and deactivation a state, and neither depends on the other.
+71. **[Team decision, SCRUM-51]** AC13: the organiser's `venue_unavailable_organiser` notice for a block no longer names the reason; it names the venue, says the event is not cancelled and that the coordinator will arrange an alternative. The coordinator's `venue_booking_affected` notice and the booking's flag keep the reason, now as its label ("Venue unavailable: Equipment failure"). This changes item 65 for blocks; deactivation's notice (D40) is unchanged.
+72. **[Team decision, SCRUM-51]** AC10: each booking a block overlaps when it is saved is recorded against it in `venue_block_bookings`, even when another block or story flagged it first, so story 54 can tell whether ending one block early leaves the booking under another. The flag itself is still set once (item 61).
+73. **[Open question, SCRUM-51]** CAL-R1 says that after a block is saved, the affected coordinators **and venue staff** are notified. SCRUM-51's ACs name only the coordinator (AC5) and the organiser (AC13), so venue staff are not notified. Ask the PO whether they should be.
 
 ## 10. Non-functional requirements
 

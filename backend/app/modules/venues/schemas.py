@@ -649,3 +649,76 @@ class VenueDeactivateResponse(BaseModel):
 
 class VenueReactivateRequest(BaseModel):
     version: int
+
+
+class VenueBlockReason(str, Enum):
+    """Why venue staff blocked a venue (SCRUM-51 AC1). Mirrors
+    `public.venue_block_reason`; any of them makes the venue unavailable (CAL-R3)."""
+
+    maintenance = "maintenance"
+    equipment_failure = "equipment_failure"
+    renovation = "renovation"
+    safety = "safety"
+    internal_activity = "internal_activity"
+    other = "other"
+
+
+BLOCK_REASON_LABELS = {
+    VenueBlockReason.maintenance: "Maintenance",
+    VenueBlockReason.equipment_failure: "Equipment failure",
+    VenueBlockReason.renovation: "Renovation",
+    VenueBlockReason.safety: "Safety",
+    VenueBlockReason.internal_activity: "Internal activity",
+    VenueBlockReason.other: "Other",
+}
+
+BLOCK_DETAIL_MAX_LENGTH = 1000
+
+
+class VenueBlockCreate(BaseModel):
+    """Block a venue for a period (SCRUM-51 AC1). The start may be in the past
+    (an emergency block starting now); the end must be after it and in the
+    future. `confirm` saves past the list of affected bookings (CAL-R1)."""
+
+    starts_at: datetime
+    ends_at: datetime
+    reason: VenueBlockReason
+    detail: str | None = None
+    confirm: bool = False
+
+    @model_validator(mode="after")
+    def _rules(self):
+        if self.starts_at.tzinfo is None or self.ends_at.tzinfo is None:
+            raise ValueError("Start and end must include a timezone.")
+        if self.ends_at <= self.starts_at:
+            raise ValueError("End must be after start.")
+        if self.ends_at <= datetime.now(timezone.utc):
+            raise ValueError("End must be in the future.")
+        self.detail = (self.detail or "").strip() or None
+        if self.detail is not None and len(self.detail) > BLOCK_DETAIL_MAX_LENGTH:
+            raise ValueError(f"The detail can be at most {BLOCK_DETAIL_MAX_LENGTH} characters.")
+        if self.reason is VenueBlockReason.other and self.detail is None:
+            raise ValueError("A detail is required when the reason is Other.")
+        return self
+
+
+class BlockAffectedBooking(BaseModel):
+    """A held or approved booking a block overlaps (SCRUM-51 AC5, AC6), on its
+    occupied window. `block_reason` is the block's label, for venue staff."""
+
+    booking_id: str
+    event_id: str
+    event_name: str | None = None
+    status: Literal["held", "approved"]
+    period: Period
+    block_reason: str | None = None
+
+
+class VenueBlockResponse(BaseModel):
+    """`saved=False` means nothing was written: `affected` lists the bookings
+    the block would affect and the caller had not yet set `confirm=true`.
+    Once saved, `affected` is the bookings recorded against the block."""
+
+    saved: bool
+    block: BlockSummary | None = None
+    affected: list[BlockAffectedBooking] = []

@@ -2327,7 +2327,6 @@ On `feature/cr-95-affected-bookings`, branched from `main` after SCRUM-21 merged
 - **Not verified:** the live advisors were not read in detail (a filtered look at them listed nothing for the CR-95 objects; the local advisors show only pre-existing equipment RLS warnings); frontend line coverage of the changed files was not computed.
 - **Remaining:** story 36's approve calling `release_replaced_booking`; story 51's block endpoint (blocks can be inserted directly today); story 85's cancellation of a pending replacement; CR-111's organiser view of each venue; the PO's agreement to §9 items 61–67.
 
-
 ### 4.57. Bug fix — D40, SCRUM-64 venue deactivation notifies the organiser
 
 | Field | Value |
@@ -2417,8 +2416,169 @@ Codex's sandbox couldn't write git or Supabase CLI state, so Claude reviewed the
 
 **Plan correction in this entry:** the existing booking page showed flag reasons only for Affected bookings, so the planned venue-staff visibility assumption was false. A new view test failed (1 failed, 23 passed) on the missing safety notice before a four-line read-only Safety rejected badge/reason was added to BookingRequestView. Its existing CR-95 restore behaviour is unchanged. The full frontend suite then passed 971 tests; no changed executable lines are uncovered in either layer.
 
+### 4.60. SCRUM-36 — Venue staff approve a booking request
 
-### 4.60. CR-100 — Set venue buffer times and safety details (exact backlog record)
+On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d` (SCRUM-38 merged in PR #56), 2026-10-17. The Product backlog sheet couldn't be read through the connector, so the story and ACs are as the developer gave them. The epic, estimate and priority weren't available.
+
+| Field | Value |
+|---|---|
+| ID | SCRUM-36 |
+| Title | Approve a venue booking request |
+| Status | In review: migration applied, live checks and the developer's manual pass passing (2026-10-18/19) |
+| Sprint | 3 (6–20 October) |
+
+**User story:** As Venue Staff, I want to be able to approve a pending venue booking request, so that I don't end up with a double-booking or an unsuitable setup that I have to scramble to fix later.
+
+**Acceptance criteria (as revised by the developer, 2026-10-17):**
+
+> AC1. Venue Staff can view a Held booking request with the booking's date and time, expected attendance, layout and other requirements (facilities, accessibility, the coordinator's note).
+> AC2. Approving a Held booking sets its status to Approved and notifies the assigned Event Coordinator, never the approver. The label stays "Approved" so it isn't confused with the event's Confirmed status after the safety check.
+> AC3. Approval is refused if a venue block now overlaps the booking: "Venue blocked for this time."
+> AC4. Approval is refused if the venue has been deactivated: "This venue is inactive…"
+> AC5. [M3, QA3-6] Once approved, the booking keeps occupying the venue for its occupied window, so any overlapping request is refused. Until CR-100 and 21 land, the window is the booking's own period (zero setup and turnaround).
+> AC6. [W7 CR-04] Only a Held booking can be approved. An expired hold, including one past its expiry that the minute job hasn't reached yet, is refused with "This hold has expired, so it can't be approved." and shows as Expired. Approved, Rejected, Re-review, Cancelled and Released bookings are also refused.
+> AC7. [QA3-24, QA3-50] In a multi-venue event, each booking is approved on its own. Approving one doesn't change the event's other bookings.
+> AC8. Only a session acting as Venue Staff can approve. Everyone else gets Forbidden (403).
+> AC9. If approval, rejection and expiry happen at the same moment, only one outcome is saved.
+> AC10. The approval, who made it and when are recorded in the booking's history.
+
+#### Decisions
+
+- **The ACs were revised before building.** The developer first pasted six ACs, including "status Confirmed" and a per-booking setup/turnaround edit starting from the venue's defaults (CR-100). CR-100 isn't built on any branch, so no setup or turnaround figures exist to edit. Following SCRUM-38's precedent, the developer rewrote the ACs into the ten above: the edit moves to CR-100 (REQUIREMENTS VC-R9, **[Team decision]**), and the label stays "Approved" (§6.13, **[Team decision]**). The developer records the change in the backlog row.
+- **Approval decides in the database, like rejection.** `approve_venue_booking` takes CR-99's lock first, then refuses an inactive venue and an overlapping block, the way `request_venue_booking` does. DB-1 needs no re-check: an approved booking stays in its exclusion set (BA-R1, BA-R9).
+- AC4's message, cut off in the AC, was completed as "This venue is inactive, so the booking can't be approved."
+- **[Assumption]** A flagged booking can still be approved (REQUIREMENTS §9 item 48).
+
+#### What was built
+
+1. **Database (`20261018160000_venue_booking_approval.sql`).** `approve_venue_booking` is `security definer`, `service_role` only, with no new columns. It returns an outcome code: `ok`, `booking_not_found`, `hold_expired`, `not_held`, `venue_inactive` or `venue_blocked`. On `ok` it sets `approved`, `decided_by`/`decided_at`, writes one `approved` history row and notifies the assigned coordinator (`venue_booking_approved`), never the actor, all in one transaction.
+2. **Backend.** `POST /venue-bookings/{id}/approve` (venue staff only, by active role), `venues.service.approve_booking`, `venues.repository.approve_booking`. It reuses SCRUM-38's errors and not-held labels.
+3. **Frontend.** **Approve** before **Reject** on `BookingRequestView`, confirmed through `ConfirmModal`; `useBookingDecisionStore.approve`, with reject and approve sharing one `decide` helper so either in flight blocks both; `canApproveBooking`; `venueBookingsApi.approve`.
+4. **Tests and checks.** Cases TC-BOOK-051–060 in `docs/test-cases/venues.md`. Live checks TC-BOOK-051–055 in `verify_live.py`, e2e TC-BOOK-057 in `bookings.e2e.js`, and SQL check `venue_booking_approve_checks.sql` (TC-BOOK-056). 38's AC10 row is now traced to approval.
+
+#### Verification
+
+- **Red first, at every layer:** the SQL check failed against the live project with "function `approve_venue_booking` does not exist"; pytest failed on the missing `repository.approve_booking`; Vitest failed on the missing `approve` and `canApproveBooking`.
+- **Database:** the migration plus the SQL check, run against the live project in one rolled-back transaction, printed `BOOKING APPROVE CHECKS PASSED`. A query afterwards confirmed the function isn't there, so nothing was applied.
+- **Full suites:** `pytest --cov` 1227 passed (95.75%); `npm run test:coverage` 907 passed. Every new and changed line in `backend/app/` and `frontend/src/` is covered; the lines still uncovered in the touched files predate this branch. `npm run build` succeeds.
+- **Not verified yet:** nothing ran against the real API or browser, because the migration isn't applied. Next: the developer runs `supabase migration list --linked` and `supabase db push`, then `verify_live.py --record`, `npm run test:e2e:record`, advisors, and the manual pass TC-BOOK-058–060.
+
+**Merged with `main` and two gaps closed (2026-10-18).**
+- `main` gained CR-94, CR-95, CR-97, SCRUM-21 and D40 (PRs #65–#74) while this was built. The merge conflicted where CR-95 added **Restore** beside **Approve**; both are kept. `main` had also taken TC-BOOK-027–036 and 12–19 Jun 2031, so this story's cases are now TC-BOOK-051–061, on 4–13 Aug 2031.
+- **The migration was renumbered twice**, to `20261018160000`. CR-94 had `20261017120000` and D40 `20261018140000` on the live project, and the CR-104 rework holds `20261018150000` there. On any of those versions, `db push` would have taken this migration as already applied and skipped it, as with D26.
+- **CR-95 AC5 needed this story.** Approving a replacement now releases its affected original through `release_replaced_booking`, in the same transaction. The original is locked before the replacement, the order `restore_affected_booking` takes, so an approval racing a restore waits instead of deadlocking (REQUIREMENTS §9 item 66, now resolved).
+- **SCRUM-21's conflict check** replaces this story's own block query: approval calls `venue_conflicts` on the booking's occupied window, leaving the booking out. Only a block can be found there, because DB-1 keeps live bookings apart.
+- **Red first:** the extended `venue_booking_approve_checks.sql` failed against the live project ("approving a replacement left its original approved"), then passed with the updated migration, both in rolled-back transactions. New live check TC-BOOK-061 fires approve and restore at the same instant.
+
+**Applied and checked live (2026-10-18).**
+- The developer ran `supabase db push` after `main` reached PR #76; the ledger then matched the repo exactly, with `approve_venue_booking` present.
+- `verify_live.py --record`, backend on port 8010: **133/133 passed**, including TC-BOOK-051–056 and TC-BOOK-061 ([run](test-cases/runs/2026-10-18-2318-api-db-f99b008.md)). Afterwards no throwaway events, venues or blocks were left.
+- `npm run test:e2e:record`, frontend on port 5183: **70/70 passed**, including both TC-BOOK-057 tests ([run](test-cases/runs/2026-10-18-2327-e2e-f99b008.md)).
+- `supabase db advisors`: nothing on this story's function. The ten warnings are the known leaked-password one and D19's nine.
+
+**Manual pass (2026-10-19).** The developer checked TC-BOOK-058–060 in the browser on throwaway bookings "Booking A", "B" and "C": all three passed ([run](test-cases/runs/2026-10-19-0012-manual-5de792c.md)). The coordinator's approval notification was confirmed in the database, since the app has no screen for notifications yet (SCRUM-27). The test bookings were deleted afterwards.
+
+#### Follow-ups
+
+- CR-100 owns the per-booking setup/turnaround edit and its lock on approval (IMPLEMENTATION_MAP §5).
+- The booking page shows the event's attendance and layout, not a space's own (CR-98). Worth raising with the CR-97/98 owners for multi-venue events.
+- The notification bell still says "Notifications aren't sent yet", though every story now saves them; worth raising with the owners of 69/53.
+- PR, review, PO acceptance, merge and the backlog status are the developer's.
+
+### 4.61. SCRUM-83 — Attendee signs up
+
+On `feature/scrum-83-attendee-signup`, branched from updated `main` at `810bde3`, 2026-10-19. The live Product backlog row (52) records estimate 3, Sprint 3, assignee Wei Ting and status `TO DO 😖`; the story outcome is access to ConnectSphere's attendee features. The backlog was read only and remains unchanged.
+
+**User story:** As an Attendee, I want to sign up for an account, so that I can access ConnectSphere's attendee features.
+
+#### What was built
+
+1. **Backend.** `SignupRequest` accepts only `event_organiser` and `attendee`, requires organisation name only for Organisers, and continues rejecting internal roles at the API boundary. Attendee name, email and password are required; attendee signup omits organisation and phone. The existing confirmed-account creation and `handle_new_user()` profile/role flow are reused; no migration was needed.
+2. **Frontend.** The existing `/signup` page now offers Event Organiser and Attendee. Organisation and optional phone are only shown for Organisers. Both roles retain the existing validation, success confirmation and login flow; successful Attendee login reaches `/dashboard/attendee`.
+3. **Tests and traceability.** Added backend signup tests, Vitest coverage, live check TC-AUTH-050, browser case TC-AUTH-051, and manual visual case TC-AUTH-052. `docs/test-cases/auth.md` maps the seven SCRUM-83 ACs to those cases. No event-registration workflow was added.
+
+#### Verification
+
+- **Test-first:** the new backend/UI tests failed before implementation because the API rejected Attendee and the page had no account-type selector. The implementation made those focused tests pass.
+- **Automated suites:** full backend `pytest --cov=app`: 1,431 passed, 96.36% coverage (92% gate); full frontend coverage: 993 passed, 96.32% line coverage; `npm run build` succeeded.
+- **Live API/database:** TC-AUTH-050 passed, including the profile/role, null organiser-only fields, confirmation and login checks. Overall recorded suite: 133/134. Unrelated TC-VENUE-066 failed because the live venue-deactivation check left its booking `held` rather than `affected`. Evidence: [API/database run](test-cases/runs/2026-10-19-1026-api-db-810bde3.md).
+- **Browser:** full recorded Playwright suite 71/71 passed, including TC-AUTH-051 and Attendee dashboard landing. Evidence: [E2E run](test-cases/runs/2026-10-19-1105-e2e-810bde3.md).
+- **Harness correction:** earlier recorded browser attempts used a frontend origin not allowed by the backend's default CORS list (and initially left the app pointed at its default API port). Those attempts are retained in the run folder; the final focused and full runs used matching ports plus a process-local CORS allowlist and passed.
+- **Not verified:** the developer still needs to complete TC-AUTH-052, visually checking the signup form at desktop and 375px widths, required-field messaging, and switching between roles. This story remains unmerged and the live backlog remains `TO DO 😖` pending the team's workflow.
+
+### 4.62. SCRUM-83 follow-up — role-specific signup pages
+
+On `feature/scrum-83-attendee-signup`, 2026-10-19. Follow-up to §4.61 after the developer clarified that Event Organisers and Attendees need separate signup pages.
+
+1. **Routes and login links.** `/login` now links to `/signup/organiser` and `/signup/attendee`. Each page fixes its role and shows only the applicable fields; the role selector is removed. Legacy `/signup` redirects to `/signup/organiser`.
+2. **Verification.** Focused signup/router tests: 32 passed. Full frontend suite: 995 passed. Recorded signup E2E: 8/8 passed, including both role flows ([run evidence](test-cases/runs/2026-10-19-1153-e2e-810bde3.md)). Production build succeeded. Browser inspection confirmed the Attendee form remains contained at 375px.
+3. **Coverage and manual check.** The coverage-instrumented full suite had four failures in unrelated coordinator/event/organiser tests and did not produce a coverage report; the full suite passed on rerun without instrumentation. TC-AUTH-052 remains for the developer to inspect both forms, required-field feedback and layout at desktop and 375px widths.
+
+### 4.63. SCRUM-83 follow-up — phone-width auth layout and acceptance check
+
+On `feature/scrum-83-attendee-signup`, 2026-10-19. The live TC-AUTH-052 check found the ConnectSphere wordmark clipped at a 375 CSS-pixel viewport.
+
+1. **Fix and regression.** `AuthPageLayout` now allows its content column to shrink and uses a smaller base wordmark size on phones. Added a Playwright assertion for both role routes that checks the heading text and content bounds at 375 CSS pixels.
+2. **Acceptance evidence.** The live signup API rejected all five internal roles with HTTP 422 at `body.role` ([focused API run](test-cases/runs/2026-10-19-1217-api-db-810bde3.md)). The recorded signup browser suite passed 9/9, including organiser and attendee creation/login, validation, and the responsive guard ([E2E run](test-cases/runs/2026-10-19-1214-e2e-810bde3.md)).
+3. **Verification.** At 375 CSS pixels, both forms showed the expected fields and required-field messages, no signup request was sent on empty submission, and the wordmark fit. The full frontend suite passed 995/995; the production build succeeded.
+4. **Manual remainder.** TC-AUTH-052 stays open for the developer's visual judgment of wording, legibility and overall layout at desktop and phone widths; the automated overflow portion is passing.
+
+### 4.64. SCRUM-83 follow-up — manual pass and final verification
+
+On `feature/scrum-83-attendee-signup`, 2026-10-19. Follow-up to §4.63 recording the developer's manual check and final suite results.
+
+1. **Manual acceptance check.** The developer confirmed the items they checked in TC-AUTH-052 were all okay. The recorded browser check covered both signup links and forms, role-specific fields, empty-submit feedback, no account request, and desktop/375px layout ([manual run](test-cases/runs/2026-10-19-1238-manual-810bde3.md)).
+2. **Coverage.** Full backend suite: 1,432 passed; 96.36% total coverage, above the 92% gate. Full frontend suite: 995 passed; 96.33% line, 88.51% branch and 80.27% function coverage. The changed frontend production files `AuthPageLayout.vue`, `SignupView.vue` and the router are at 100%; `LoginView.vue` is 69.47% overall, with the new signup links covered and uncovered lines in its existing sign-in behavior. `auth/schemas.py` is at 98%; its single uncovered line (56) predates this story. The new live-check decoder option is covered by `test_supabase_cli_output_is_decoded_as_utf8`.
+3. **TC-VENUE-066 harness correction.** The 12:49 live run failed because Windows decoded the Unicode venue reason using the console code page, although the live booking had the expected `affected` flag and `held` status ([initial rerun](test-cases/runs/2026-10-19-1249-api-db-810bde3.md)). `verify_live.py::_supabase_query` now explicitly decodes subprocess output as UTF-8. The regression test passed, the targeted live check passed 1/1 ([rerun](test-cases/runs/2026-10-19-1251-api-db-810bde3.md)), and the full backend suite passed 1,432/1,432.
+4. **Workflow status.** No commit or push was made. The story remains on its feature branch; review, PO acceptance, merge and backlog status remain with the developer/team.
+
+### 4.65. SCRUM-51 — Venue Staff block a venue for maintenance or operational reasons
+
+On `feature/scrum-51-block-venue`, branched from `main` at `810bde3` and merged with `main` at `77b8522` (SCRUM-83), 2026-10-19. The Product backlog sheet couldn't be read through the connector, so the story and ACs are as the developer gave them.
+
+| Field | Value |
+|---|---|
+| ID | SCRUM-51 |
+| Title | Block venue for maintenance or operational reasons |
+| Status | In review: migrations applied, live checks, e2e and the developer's manual pass passing (2026-10-19) |
+| Sprint | 3 (6–20 October) |
+
+**User story:** As Venue Staff, I want to block a venue for maintenance or operational reasons, so that I don't receive booking requests for a venue that isn't available.
+
+**Acceptance criteria (as given by the developer, 2026-10-19):** AC1 block with a period, a reason category (maintenance, equipment failure, renovation, safety, internal activity, other) and a detail (≤ 1000, required for other); end after start and in the future, start may be past; named refusals. AC2 not in overlapping searches. AC3 requests and approval refused: "Venue blocked for this time." AC4 available again when the block ends, no manual step. AC5 overlapping held/approved bookings flagged Affected with the reason, coordinator notified, event not cancelled. AC6 venue staff see the affected bookings with event, status and reason. AC7 found through the conflict check (21) on occupied windows. AC8 only Venue Staff for that venue; others 403. AC9 recorded in the venue's history; blocks never deleted. AC10 a booking under two blocks flagged and notified once, each block recorded. AC11 rejected, cancelled, released, expired and ended bookings not flagged. AC12 multi-venue: only the blocked venue's booking. AC13 organiser told without the reason; attendees not told.
+
+#### What was there already
+
+`venue_blocks` (Sprint 1), its place in SCRUM-21's `venue_conflicts` (so search, both request functions and 36's approval already refused a blocked time: AC2–AC4), and CR-95's `venue_blocks_flag_bookings` trigger, which flagged overlapping held/approved bookings through SCRUM-64's `flag_venue_bookings` and told the coordinator and organiser (most of AC5, AC11). Nothing created a block.
+
+#### What was built
+
+1. **Database** (`20261019100000`, `20261019100001`). The `equipment_failure` reason; `venue_blocks.created_by` and the detail checks; `venue_block_bookings`, written by the trigger for every held or approved, not-ended booking a block overlaps (through `venue_conflicts`, AC7), even one flagged earlier, so AC10 holds and story 54 can tell whether another block still covers a booking. The trigger now writes the reason's label and leaves it out of the organiser's notice (AC13). `create_venue_block` locks the venue `for update` (requests and approval take it `for share`, so a block and a request can't race), refuses a bad period or detail, expires overdue holds, inserts the block and writes the history row (AC9). API roles can't delete blocks or read the links.
+2. **Backend.** `POST /venues/{venue_id}/blocks`, Venue Staff only, any venue. It validates (AC1), previews the affected bookings through `venue_conflicts` without `confirm` (CAL-R1, the deactivation pattern), and on confirm returns the block and the bookings linked to it with event name, status and reason label (AC6). It never returns an event to planning (CR-95 AC7).
+3. **Frontend.** **Block venue** on the venue page opens `BlockVenueModal`: the form with per-field errors, the preview, then the saved list. `blockForm.js` holds the rules; the History tab reads the new entry as "Block added".
+4. **Wording.** At the manual pass the developer chose "Venue blocked for this time." for booking-request refusals too (was "for this timing", TC-BOOK-042), so requests and approval match AC3.
+
+#### Decisions
+
+AC8's "venue they manage" is every venue (AUTH-R5, QA-44); an inactive venue can still be blocked; the organiser's notice omits the reason while the coordinator's keeps it; venue staff are not notified, although CAL-R1 says they should be (REQUIREMENTS §9 items 69–73).
+
+#### Verification
+
+- **Test-first:** the API, repository, form, modal, store, summariser and view specs failed on missing code before each piece was written.
+- **Automated suites:** backend 1,481 passed, 96.45% coverage; frontend 1,025 passed; build clean. New code fully covered.
+- **Live API/database:** [141/142](test-cases/runs/2026-10-19-1546-api-db-558bcfd.md). TC-BLOCK-001–007 (including the block/request race) and the new SQL script TC-BLOCK-008–013 passed, as did CR-95's scripts with the changed trigger. TC-AUTH-049 failed once on a local DNS lookup error (`Errno 8`); on another network it [passed](test-cases/runs/2026-10-19-1614-api-db-fff946e.md). After the wording change the block-related checks re-ran [13/13](test-cases/runs/2026-10-19-1631-api-db-6c190fd.md).
+- **Browser:** the first run caught CR-95's TC-BOOK-048/050 expecting the old raw reason text; fixed in `09e7bec`, the re-run passed [75/75](test-cases/runs/2026-10-19-1602-e2e-09e7bec.md), including TC-BLOCK-014–016.
+- **Manual:** TC-BLOCK-017–019 (layout at desktop and 375 px, wording, History entry) [passed](test-cases/runs/2026-10-19-1633-manual-8d19d25.md).
+- **Harness:** the SQL script's multi-venue event first collided with `venue_bookings_one_active_per_space` (an unspaced booking is linked to the event's first space); it now gives each venue its own space.
+
+#### Follow-ups
+
+- Raise with the PO: AC8's wording, and whether venue staff should be notified of a block (CAL-R1).
+- Tell Xuan Wei and Jie Ching that CR-95's trigger changed.
+- A Supabase connection failure still answers 500, not 503: recorded as DEFECTS D42 (related to D10, D18); TC-AUTH-049's DNS failure showed it.
+- PR, review, PO acceptance, merge and the backlog status are the developer's.
+
+### 4.66. CR-100 — Set venue buffer times and safety details (exact backlog record)
 
 | Field | Value |
 |---|---|
@@ -2470,7 +2630,7 @@ The approved in-chat design extends SCRUM-63's edit/history flow, SCRUM-67's pro
 #### Verification
 
 - **TDD:** witnessed expected failures for missing API fields/validation, ignored form/history fields, absent profile facts, candidate-only buffer clashes, Python date overflow, occupied-vs-booked display, and the live preflight's error recording; targeted tests passed after minimal fixes. No source-text-only tests were added.
-- **Full unit suites and build:** final counts and coverage are recorded in the CR-100 unit evidence run linked below. One unrelated organiser resubmission test failed in a full parallel run, then passed alone and in the full two-worker run; recorded as D42, with no unrelated production fix.
+- **Full unit suites and build:** final counts and coverage are recorded in the CR-100 unit evidence run linked below. One unrelated organiser resubmission test failed in a full parallel run, then passed alone and in the full two-worker run; recorded as D44 (numbered D42 until `main` took D42 for another defect), with no unrelated production fix.
 - **Real database:** the migration plus `venue_buffer_checks.sql` passed inside a single rollback transaction; the pre-migration test failed as expected. Five existing verification scripts also passed with the migration in separate rollback transactions. No shared schema, records or migration history were persisted. See the rollback evidence run below.
 - **Recorded live API/database:** [2026-10-18 23:39](test-cases/runs/2026-10-18-2339-api-db-ade5af0.md): **102 passed, 24 failed, 5 blocked**. CR-100 checks report the missing migration explicitly. Dependent venue requests/read paths fail on absent venue columns; two additional cases (TC-ROLE-006, TC-EQR-001) hit transport resets/disconnects. Failures were retained, not rerun until green.
 - **Recorded browser:** the first run was interrupted when overlapping cleanup was noticed; [its log](test-cases/runs/2026-10-18-2339-e2e-ade5af0.md) is retained and is not a complete regression result. The subsequent [complete sequential run](test-cases/runs/2026-10-18-2349-e2e-ade5af0.md) finished with **62 passed, 6 failed, 2 blocked/skipped**: affected-booking replacement, booking request/conflict, hold-expiry request history, venue dashboard layout and venue deactivation could not complete against the undeployed venue columns. The two CR-100 browser cases explicitly report the missing migration. No visual pass is claimed.
@@ -2504,5 +2664,6 @@ The dashboard's affected-replacement list keeps its booked-end cut-off (an event
 - **Manual pass ([record](test-cases/runs/2026-10-19-1955-manual-04b96c7.md), Jie Ching):** TC-VENUE-095 passed. TC-VENUE-096 failed: long text with no spaces ran out of the Safety Officer's venue card (D43). Fixed with `overflow-wrap: anywhere`, guarded by the TC-VENUE-096 browser check at 1280px and 375px, and re-checked as passing.
 - **Attribution:** earlier run records said "Run by | Jie"; they now say Jie Ching, the developer's full name.
 
-Remaining for the developer: merge `main` into the branch (31 commits behind), PR and teammate review, PO acceptance, merge, and the DoD and backlog updates.
+`main` was merged into the branch on 2026-10-19 (SCRUM-36, SCRUM-51, SCRUM-83 and SCRUM-24 work). Both branches had used §4.60, so this entry became §4.66, and the flaky-test defect became D44. SCRUM-36's decision in REQUIREMENTS VC-R9 moves per-booking setup/turnaround edits into CR-100; this entry and VC-R10 still leave them to 36, pending the developer's decision.
 
+Remaining for the developer: PR and teammate review, PO acceptance, merge, and the DoD and backlog updates.

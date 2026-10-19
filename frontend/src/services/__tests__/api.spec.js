@@ -197,6 +197,20 @@ describe("SCRUM-38 venueBookingsApi", () => {
       expect.objectContaining({ method: "POST", body: JSON.stringify(payload) }),
     );
   });
+
+  it("SCRUM-36 posts an approval with no body to the encoded id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ status: "approved" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(venueBookingsApi.approve("b/1", "token")).resolves.toEqual({ status: "approved" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/venue-bookings/b%2F1/approve",
+      expect.objectContaining({
+        method: "POST", body: undefined, headers: expect.objectContaining({ Authorization: "Bearer token" }),
+      }),
+    );
+  });
 });
 
 describe("eventsApi Lead calls (CR-101)", () => {

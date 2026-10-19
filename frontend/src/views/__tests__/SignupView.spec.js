@@ -22,6 +22,17 @@ const CREATED_PROFILE = {
   roles: ["event_organiser"],
 };
 
+const CREATED_ATTENDEE_PROFILE = {
+  id: "new-attendee",
+  email: "avery@connectsphere.dev",
+  full_name: "Avery Attendee",
+  role: "attendee",
+  organisation_name: null,
+  department: null,
+  phone_number: null,
+  roles: ["attendee"],
+};
+
 const mountedApps = [];
 
 // Several ticks: navigation resolves a lazily imported view before it renders.
@@ -114,6 +125,43 @@ describe("SignupView", () => {
     await vi.waitFor(() => expect(el.textContent).toContain("Account created. Please sign in."));
     expect(router.currentRoute.value.name).toBe("login");
     expect(field(el, "Email").value).toBe("olivia@connectsphere.dev");
+  });
+
+  it("signs up an attendee on the attendee-specific page without organiser fields", async () => {
+    authApi.signup.mockResolvedValue(CREATED_ATTENDEE_PROFILE);
+    const { el, router } = await mountAt("/signup/attendee");
+
+    expect(el.textContent).toContain("Create an Attendee Account");
+    expect(() => field(el, "Account Type")).toThrow();
+    expect(() => field(el, "Organisation Name")).toThrow();
+    expect(() => field(el, "Phone Number")).toThrow();
+    fill(el, "Full Name", "Avery Attendee");
+    fill(el, "Email", "avery@connectsphere.dev");
+    fill(el, "Password", "Secure123");
+    await submit(el);
+
+    expect(authApi.signup).toHaveBeenCalledWith({
+      role: "attendee",
+      full_name: "Avery Attendee",
+      email: "avery@connectsphere.dev",
+      password: "Secure123",
+    });
+    await vi.waitFor(() => expect(el.textContent).toContain("Account created. Please sign in."));
+    expect(router.currentRoute.value.name).toBe("login");
+    expect(field(el, "Email").value).toBe("avery@connectsphere.dev");
+  });
+
+  it("shows the attendee's missing required fields without requiring organiser fields", async () => {
+    const { el } = await mountAt("/signup/attendee");
+
+    await submit(el);
+
+    expect(errorFor(el, "Full Name")).toBe("Full name is required.");
+    expect(errorFor(el, "Email")).toBe("Email is required.");
+    expect(errorFor(el, "Password")).toBe("Password is required.");
+    expect(() => field(el, "Organisation Name")).toThrow();
+    expect(() => field(el, "Phone Number")).toThrow();
+    expect(authApi.signup).not.toHaveBeenCalled();
   });
 
   it("shows which required fields are empty and does not submit", async () => {
@@ -231,8 +279,34 @@ describe("SignupView", () => {
   it("is reachable from the login page", async () => {
     const { el, router } = await mountAt("/login");
 
-    el.querySelector('a[href="/signup"]').dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
+    el.querySelector('a[href="/signup/organiser"]').dispatchEvent(
+      new MouseEvent("click", { bubbles: true, button: 0 }),
+    );
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("signup"));
+    expect(el.textContent).toContain("Create an Event Organiser Account");
+  });
+
+  it("offers separate organiser and attendee signup pages from login", async () => {
+    const { el, router } = await mountAt("/login");
+
+    expect([...el.querySelectorAll('a[href^="/signup"]')].map((link) => link.getAttribute("href"))).toEqual([
+      "/signup/organiser",
+      "/signup/attendee",
+    ]);
+
+    el.querySelector('a[href="/signup/attendee"]').dispatchEvent(
+      new MouseEvent("click", { bubbles: true, button: 0 }),
+    );
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe("/signup/attendee"));
+    expect(el.textContent).toContain("Sign up as an Attendee to use ConnectSphere.");
+    expect(() => field(el, "Account Type")).toThrow();
+  });
+
+  it("redirects the legacy signup URL to organiser signup", async () => {
+    const { router } = await mountAt("/signup");
+
+    expect(router.currentRoute.value.path).toBe("/signup/organiser");
+    expect(router.currentRoute.value.name).toBe("signup");
   });
 
   it("sends someone already signed in to their dashboard instead", async () => {

@@ -132,6 +132,18 @@ def test_reject_booking_calls_the_database_function_with_every_argument(monkeypa
     assert result == {"outcome": "ok", "event_id": "e1", "from_status": "held"}
 
 
+def test_approve_booking_calls_the_database_function_with_every_argument(monkeypatch):
+    # SCRUM-36: the actor comes from the session; the function decides the rest.
+    client = use(monkeypatch, [{"outcome": "venue_blocked", "event_id": "e1", "from_status": "held"}])
+
+    result = repository.approve_booking("d1", "u1", notify_message="Approved.")
+
+    assert client.rpcs == [("approve_venue_booking", {
+        "p_booking_id": "d1", "p_actor_id": "u1", "p_notify_message": "Approved.",
+    })]
+    assert result == {"outcome": "venue_blocked", "event_id": "e1", "from_status": "held"}
+
+
 def test_list_rejected_bookings_reads_only_this_events_rejections_newest_first(monkeypatch):
     client = use(monkeypatch, [
         {"id": "d2", "venue_id": "v2", "decision_reason": "Closed", "suggestion_note": None,

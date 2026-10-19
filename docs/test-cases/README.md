@@ -8,7 +8,7 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 
 | File | Stories | ID prefixes |
 |---|---|---|
-| [auth.md](auth.md) | SCRUM-48 login, session, logout; SCRUM-80 organiser sign-up | TC-AUTH |
+| [auth.md](auth.md) | SCRUM-48 login, session, logout; SCRUM-80 Organiser and SCRUM-83 Attendee sign-up | TC-AUTH |
 | [roles-and-access.md](roles-and-access.md) | SCRUM-48 routing and data-layer security; SCRUM-74/75/76/78 role switching | TC-RBAC, TC-ROLE, TC-DATA |
 | [venues.md](venues.md) | SCRUM-39 venue search, SCRUM-67 venue profile, SCRUM-19 venue booking request, CR-99 hold expiry, SCRUM-38 booking rejection, CR-98 space-scoped venue selection, CR-94 venue-edit re-check and Unsuitable flag, CR-97 several venues per event, SCRUM-21 booking conflict detection, CR-95 affected bookings and replacements, CR-100 venue defaults and safety details | TC-VENUE, TC-BOOK, TC-HOLD, TC-SPACE |
 | [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment, SCRUM-61 comments, CR-98 event-space requirements | TC-EVENT, TC-REV, TC-AMD, TC-CMT, TC-SAFE, TC-SPACE |
