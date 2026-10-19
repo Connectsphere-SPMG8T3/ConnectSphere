@@ -401,7 +401,7 @@ sequenceDiagram
   C->>API: POST /events/{id}/equipment-requests
   T->>API: GET availability, then POST reserve (full quantity only)
   API->>DB: reserve_equipment() locks and checks
-  T->>API: PATCH technical readiness = ready
+  T->>API: PUT exit-confirmation (technical status becomes Ready by itself)
   C->>API: POST /events/{id}/send-for-safety-check
   API->>DB: guard: every required booking approved, tech ready; planning to safety_review
   API-->>S: notify safety review waiting
@@ -682,7 +682,7 @@ See §5 for the state machine.
 | Item | Ready when | Who updates it |
 |---|---|---|
 | Venue | At least one active booking (`held`, `approved`, `re_review`), and **every required venue booking** `approved` and not flagged Affected, Conflict, Unsuitable, Safety rejected, Needs re-review or Expired (SCRUM-82 AC9, AC10, QA3-24). Each booking has its own approval and availability state; the event-level item is the aggregate (QA3-50). **CR-97:** an event with event spaces is checked **space by space**: each space needs its own active booking, approved and unflagged, and every blocker names the space ("Breakout room: no approved venue booking.", "…: awaiting venue staff approval.", "…: under re-review.", "…: flagged Affected."). A space whose only booking was rejected, cancelled, released or expired counts as having none. An event without spaces keeps the event-wide wording ("No venue booking is approved."). If one venue is rejected, the event stays in `planning` while the coordinator arranges a replacement or revises the plan, and the approved venues stay on the event (QA3-24). The at-least-one rule is an **[Assumption]**, §9 item 23. | Venue staff, by approving the booking (QA-128). The flags come from CR-94, CR-95 and CR-99. |
-| Technical status | `ready` or `not_required` (SCRUM-82 AC1, AC3). Read only through `events.service.technical_status(row)`, which reads `technical_readiness` until story 24 derives it from equipment lines (24 AC11: no lines gives `not_required`). Equipment is not a separate item: the 8 Oct clarification folds it into 24's technical status, so it isn't checked twice. | Tech support (QA-128), through story 24 |
+| Technical status | `ready` or `not_required` (SCRUM-82 AC1, AC3). Read only through `events.service.technical_status(row)`, which reads `technical_readiness`; since story 24 that column is derived from the equipment lines and the exit check (24 AC11, §6.17) and kept current by the database. Equipment is not a separate item: the 8 Oct clarification folds it into 24's technical status, so it isn't checked twice. | Derived from tech support's line decisions and exit check (story 24 AC11) |
 | Programme, registration setup | Shown for information only; **not blocking** (QA-17, QA-133). Programmes arrive as attachments with non-core story 89. | Organiser or coordinator |
 
 - **RD-R1:** "Send for safety check" is enabled only when every blocking item is ready. The server repeats the check and names every missing item. **No override** (QA-118). Only the Safety Officer's approval confirms an event (CR-104).
@@ -1015,13 +1015,17 @@ available(type, W) = total_quantity
 
 ### 6.17 Equipment reservation *(SCRUM-24)*
 
-**Behaviour:** from a pending line, tech support click **Reserve**. `reserve_equipment` (DB-4) runs atomically. On success, the line is `reserved` and the coordinator is notified. When all equipment is arranged, tech support set **technical readiness = ready** (§6.6, QA-128).
+**Behaviour:** from a pending line, tech support click **Reserve**. `reserve_equipment_line` (DB-4) runs atomically. On success, the line is `reserved`, the reservation is linked to the event and line, and the coordinator assigned at that moment is notified. If not enough is free, the reservation is refused with how many are free and the line stays as it was; tech support may then mark it **Not available** (`rejected`) with a required reason. Tech support keep internal **technical notes** on each line; the assigned coordinator sees status, reason and notes, organisers and attendees never do.
+
+**Technical status is derived, not set by hand (SCRUM-24 AC11, [Team decision] 8 Oct merging story 87):** Not required when the event has no equipment lines (released lines don't count); Issue when any line is Not available; Ready when every line is Reserved **and** tech support ticked "Equipment does not block exits or walkways" (AC10, W7 CR-06); otherwise Pending (a line pending or flagged for re-review, or the box unticked). Issue takes precedence. An event in Safety review or Confirmed that stops being Ready returns to Planning (CR-104 AC10). Every line status change, tick and technical-status change is recorded with who made it and when (AC13).
 
 **Rules**
 - **RS-R1:** A reservation immediately reduces availability for overlapping windows, and stays linked to its event (W4).
 - **RS-R2:** Simultaneous reservations are first-come-first-served (QA-113). Two reservations that together exceed availability can't both succeed.
 - **RS-R3:** Reservations are **freed** only when the event is cancelled (QA-33), rejected, or completed, or when a line is deleted or rejected. They are **never auto-released** because of a change (QA-2, QA-32).
-- **RS-R4:** If an outage (damage or maintenance) drops availability below what's already reserved, reservations are kept, affected events show "Equipment issue", and tech support and coordinators are notified. There is no automatic substitution (QA-31).
+- **RS-R4:** If an outage (damage or maintenance) drops availability below what's already reserved, reservations are kept, affected events show "Equipment issue", and tech support and coordinators are notified. There is no automatic substitution (QA-31). **[Assumption, SCRUM-24 D9]** Not built in SCRUM-24: none of its 13 ACs ask for it; deferred (§9 item 77).
+- **RS-R5 (SCRUM-24 AC7):** when an event's date or time changes (story 37), each reservation moves to the new window and is re-checked. One that no longer fits is kept and still counts as taken; its line goes to `re_review` and the coordinator is notified. **[Assumption, D8]** Tech support clear it by reserving the line again, or by marking it Not available (§9 item 75).
+- **RS-R6 (SCRUM-24 AC10):** the exit check is cleared when a line is added or removed, a line's item or quantity changes, or the event's venue booking changes (a new booking, a different venue or space, or a booking that stops occupying). Approving a booking, flags, and note-only edits don't clear it (§9 item 74).
 
 **Acceptance criteria**
 - **Given** 5 available, **when** two tech staff simultaneously reserve 3 for two overlapping events, **then** exactly one succeeds and the other sees "Insufficient: 2 available."
@@ -1188,7 +1192,7 @@ Ties break by **soonest event date**, then by longest wait, then by ID for stabl
 
 **What the server derives** (`GET /events/dashboard/coordinator`, `events.service.coordinator_dashboard`). Only events assigned to the caller, never drafts (DR-R2). `awaiting_review` is an `under_review` event with no answered amendment; `resubmitted` is one whose latest amendment has `resubmitted_at`. Kinds with no data source yet (change and cancellation requests, booking and equipment decisions, re-review outcomes) are never produced, so their widgets stay empty rather than invented.
 
-- **[Assumption]** `arrangement_issue` is produced for a `planning`, `safety_review` or `confirmed` event whose `technical_readiness` is `issue`, the one arrangement problem the system records today. The event also carries the flag `technical_issue`. See §9 item 16.
+- **[Assumption]** `arrangement_issue` is produced for a `planning`, `safety_review` or `confirmed` event whose technical status is `issue`, i.e. a line tech support marked Not available (SCRUM-24 AC11). The dashboard's equipment column follows the lines alone (Not required, Pending, Ready, Issue); the technical column adds the exit check. The event also carries the flag `technical_issue`. See §9 item 16.
 - **[Assumption]** Equipment readiness is `not_required` when the event lists no preliminary equipment needs, `ready` once it has at least one `confirmed` or `completed` reservation, and `pending` otherwise. §6.6's "every request reserved" needs SCRUM-24's per-event equipment requests, which don't exist yet. See §9 item 17.
 - **Unassigned events are not shown.** The coordinator dashboard carries no unassigned count or alert: unassigned events are the Event Coordinator Lead's queue (customer clarification of 2026-10-05, QA row to be added, §6.5). This replaces the earlier [Assumption] about counting them (§9 item 18).
 
@@ -1501,6 +1505,13 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 71. **[Team decision, SCRUM-51]** AC13: the organiser's `venue_unavailable_organiser` notice for a block no longer names the reason; it names the venue, says the event is not cancelled and that the coordinator will arrange an alternative. The coordinator's `venue_booking_affected` notice and the booking's flag keep the reason, now as its label ("Venue unavailable: Equipment failure"). This changes item 65 for blocks; deactivation's notice (D40) is unchanged.
 72. **[Team decision, SCRUM-51]** AC10: each booking a block overlaps when it is saved is recorded against it in `venue_block_bookings`, even when another block or story flagged it first, so story 54 can tell whether ending one block early leaves the booking under another. The flag itself is still set once (item 61).
 73. **[Open question, SCRUM-51]** CAL-R1 says that after a block is saved, the affected coordinators **and venue staff** are notified. SCRUM-51's ACs name only the coordinator (AC5) and the organiser (AC13), so venue staff are not notified. Ask the PO whether they should be.
+74. **[Assumption, SCRUM-24 D4/D14]** AC10's "changing the event's equipment or venue" clears the exit check on: adding or removing a line; changing a line's item or quantity; a new venue booking, a different venue or space, or a booking that stops occupying. Note-only edits, approval and flags don't. The customer said a change causes no automatic reset of *other* sign-offs; AC10 is kept as written because it is the Week 7 safety rule. Raise at the consult.
+75. **[Assumption, SCRUM-24 D8]** A line flagged for re-review (AC7) is cleared by tech support reserving it again (it keeps its reservation meanwhile) or marking it Not available. The ACs don't say how.
+76. **[Assumption, SCRUM-24 D11]** Equipment has no hold or expiry (holds are venue-only, Week 7); an expired venue hold does not release equipment reservations. The customer's reply doesn't say the second part outright.
+77. **[Team decision, SCRUM-24 D9]** RS-R4 (outages after a reservation) is not in SCRUM-24's ACs and is deferred.
+78. **[Team decision, SCRUM-24]** Technical status is cached in `events.technical_readiness` and written only by the database whenever a line, the exit check or the venue changes, so every existing reader sees the derived value without recomputing it.
+79. **[Team decision, SCRUM-24 D7, D43]** Availability (SCRUM-23's check and reserving) uses one database calculation with §6.16's worst-moment rule, replacing a sum that refused valid requests. This changes Done story 23's behaviour.
+80. **[Assumption, SCRUM-24]** A line can be marked Not available from Pending, Reserved or Re-review (equipment can fail after it was reserved); doing so frees any reservation (RS-R3). The ACs only describe it from Pending.
 
 ## 10. Non-functional requirements
 
