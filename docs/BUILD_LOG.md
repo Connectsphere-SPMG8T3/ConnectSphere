@@ -2742,7 +2742,7 @@ On `fix/inventory-window`, branched from `feature/scrum-24-equipment-reservation
 
 | | |
 |---|---|
-| Defect | D46 (found by the developer after the SCRUM-24 manual pass) |
+| Defect | D46 (found by the developer after the SCRUM-24 manual pass); D47 (found while fixing it) |
 | Status | Fixed on branch; tests and the new browser check pass; manual TC-EQR-036 outstanding |
 
 **Problem.** Tech support's Inventory & status table counted reservations in the Availability tab's window (today 9 am–5 pm by default) and said so only in small print, so reserving equipment for a future event left the table unchanged.
@@ -2760,6 +2760,12 @@ On `fix/inventory-window`, branched from `feature/scrum-24-equipment-reservation
 - New browser check TC-EQR-035 against the live project: a 2031 reservation of 2 of 3 shows 0 reserved for today and 2 reserved, 1 net available for its day. Equipment e2e 5/5 ([run](test-cases/runs/2026-10-19-2345-e2e-57b1725.md); named for the base commit, since the fix was uncommitted when it ran).
 - Screenshots at 1280 px and 375 px: no sideways page scroll; the fields stack on a phone.
 
-**Found on the way:** D47, the availability check's item picker is a hard-coded list of the first five items. Logged, not fixed here.
 
 **Not verified:** TC-EQR-036 (how it reads and looks) is the developer's.
+
+#### D47: the availability check offers the live catalogue (developer's request)
+
+- **Problem.** The Availability tab's picker was a hard-coded list of the first five seeded items, so the nine added on 2026-10-19 (and anything added later) couldn't be checked.
+- **Change.** The picker loads `GET /equipment/catalogue` (already open to Technical Support for SCRUM-45) when the availability view first opens; new rows default to its first item. While it loads the picker says "Loading equipment…"; if it fails, the page says the check can't run and the check button is disabled. The view calls `equipmentApi.checkEquipmentAvailability` like its other calls; the unused wrapper export in `services/api.js` was removed (the spec's mock couldn't see through it, which is how it was found).
+- **Verification.** Four dashboard tests first (three failed against the fixed list as expected; the fourth guards that the inventory view doesn't load the catalogue). Frontend 1,126 passed; build clean. New browser check TC-EQR-037 picks Sound System and checks it against the live catalogue; equipment e2e 6/6 ([run](test-cases/runs/2026-10-19-2353-e2e-050c5ed.md)).
+- **Not verified:** how the loading and failure states read in a browser; part of the developer's TC-EQR-036 look.

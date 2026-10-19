@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  equipmentApi: { checkEquipmentAvailability: vi.fn(), inventory: vi.fn(), maintenance: vi.fn(), requestList: vi.fn() },
+  equipmentApi: { checkEquipmentAvailability: vi.fn(), inventory: vi.fn(), maintenance: vi.fn(), requestList: vi.fn(), catalogue: vi.fn() },
 }));
 
 const mountedApps = [];
@@ -288,5 +288,75 @@ describe("TechSupportDashboard inventory window (D46)", () => {
     await settle();
 
     expect(field(el, "Start date and time").value).not.toBe("2031-09-01T09:00");
+  });
+});
+
+describe("TechSupportDashboard availability check items (D47)", () => {
+  const CATALOGUE = [
+    { equipment_id: "p1", name: "4K Projector", equipment_type: "projector", total_quantity: 14 },
+    { equipment_id: "s1", name: "Sound System", equipment_type: "audio", total_quantity: 10 },
+    { equipment_id: "x1", name: "Extension Cords", equipment_type: "power", total_quantity: 40 },
+  ];
+  const pickers = (el) => [...el.querySelectorAll("label")].filter((l) => l.textContent.includes("Equipment ID / type")).map((l) => l.querySelector("select"));
+  const button = (el, text) => [...el.querySelectorAll("button")].find((b) => b.textContent.includes(text));
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+    equipmentApi.inventory.mockResolvedValue({ items: [] });
+    equipmentApi.maintenance.mockResolvedValue({ items: [] });
+    equipmentApi.requestList.mockResolvedValue({ lines: [] });
+    equipmentApi.catalogue.mockResolvedValue({ items: CATALOGUE });
+    equipmentApi.checkEquipmentAvailability.mockResolvedValue({ sufficient: true, items: [] });
+  });
+
+  it("offers every item in the live catalogue, not a fixed list", async () => {
+    const { el } = await mountDashboard({ tab: "availability" });
+    await vi.waitFor(() => expect(pickers(el)[0].options).toHaveLength(3));
+
+    expect(equipmentApi.catalogue).toHaveBeenCalledTimes(1);
+    expect([...pickers(el)[0].options].map((o) => o.textContent.trim())).toEqual([
+      "4K Projector · projector", "Sound System · audio", "Extension Cords · power",
+    ]);
+    expect(pickers(el)[0].value).toBe("p1");
+  });
+
+  it("checks an item added after the original five", async () => {
+    const { el } = await mountDashboard({ tab: "availability" });
+    await vi.waitFor(() => expect(pickers(el)[0].options).toHaveLength(3));
+    pickers(el)[0].value = "s1";
+    pickers(el)[0].dispatchEvent(new Event("change"));
+    button(el, "Add item").click();
+    await settle();
+
+    expect(pickers(el)[1].value).toBe("p1");
+    button(el, "Check real-time availability").click();
+    await vi.waitFor(() => expect(equipmentApi.checkEquipmentAvailability).toHaveBeenCalled());
+
+    const [payload] = equipmentApi.checkEquipmentAvailability.mock.calls[0];
+    expect(payload.items).toEqual([
+      { equipment_id: "s1", quantity_needed: 1 },
+      { equipment_id: "p1", quantity_needed: 1 },
+    ]);
+  });
+
+  it("says so, and won't check, when the catalogue can't load", async () => {
+    equipmentApi.catalogue.mockRejectedValue(new Error("down"));
+    const { el } = await mountDashboard({ tab: "availability" });
+    await vi.waitFor(() => expect(el.textContent).toContain("The equipment catalogue could not be loaded"));
+
+    expect(button(el, "Check real-time availability").disabled).toBe(true);
+    expect(equipmentApi.checkEquipmentAvailability).not.toHaveBeenCalled();
+  });
+
+  it("loads the catalogue only for the availability check", async () => {
+    await mountDashboard();
+    await settle();
+
+    expect(equipmentApi.catalogue).not.toHaveBeenCalled();
   });
 });

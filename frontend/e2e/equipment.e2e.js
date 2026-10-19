@@ -72,3 +72,17 @@ test("TC-EQR-008 an event under review offers no equipment form", async ({ page,
   await expect(panel.getByText("New equipment can only be requested while the event is in planning.")).toBeVisible();
   await expect(panel.getByRole("button", { name: "Submit equipment request" })).toHaveCount(0);
 });
+
+test("TC-EQR-037 the availability check offers items added after the original five (D47)", async ({ page, sharedSessions }) => {
+  await seedSession(page, await sharedSessions("tech_support"));
+  await page.goto("/dashboard/tech-support?tab=availability");
+
+  // supabase/seed.sql: Sound System (b…0006) was added on 2026-10-19. Read-only: nothing is reserved.
+  const picker = page.getByLabel("Equipment ID / type").first();
+  await expect(picker.locator("option", { hasText: "Sound System · audio" })).toHaveCount(1);
+  await picker.selectOption("b0000000-0000-4000-8000-000000000006");
+  await page.getByRole("button", { name: "Check real-time availability" }).click();
+
+  const row = page.locator('section[aria-labelledby="result-heading"] tbody tr').filter({ hasText: "Sound System" });
+  await expect(row).toContainText("Sufficient");
+});

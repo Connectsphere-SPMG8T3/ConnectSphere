@@ -291,8 +291,4 @@ export const equipmentApi = {
   },
 };
 
-export function checkEquipmentAvailability(payload, token) {
-  return equipmentApi.checkEquipmentAvailability(payload, token);
-}
-
 export { ApiError };
