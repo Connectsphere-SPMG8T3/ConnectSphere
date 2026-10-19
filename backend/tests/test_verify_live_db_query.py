@@ -58,6 +58,20 @@ def test_a_failed_query_still_reports_the_cli_error(monkeypatch):
         verify_live.db_query("select 1")
 
 
+def test_supabase_cli_output_is_decoded_as_utf8(monkeypatch):
+    options = {}
+
+    def run(*args, **kwargs):
+        options.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, "[]", "")
+
+    monkeypatch.setattr(verify_live.subprocess, "run", run)
+
+    verify_live._supabase_query("select 1")
+
+    assert options["encoding"] == "utf-8"
+
+
 def test_failed_rows_reads_the_bare_list_form():
     assert verify_live._failed_rows('[{"check": "grants", "ok": true}, {"check": "rls", "ok": false}]') == ["rls"]
 

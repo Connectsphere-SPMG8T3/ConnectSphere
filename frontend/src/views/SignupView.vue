@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from "vue";
+import { ref, toRef } from "vue";
 import { useRouter } from "vue-router";
 
 import AuthPageLayout from "@/components/common/AuthPageLayout.vue";
@@ -9,7 +9,12 @@ import BauhausInput from "@/components/common/BauhausInput.vue";
 import { ApiError, authApi } from "@/services/api";
 
 // Sign-up creates no session, so it calls the API directly rather than
-// through the auth store (SCRUM-80). SCRUM-83 adds an Attendee option.
+// through the auth store (SCRUM-80/83). The route fixes the account role.
+const props = defineProps({
+  role: { type: String, required: true },
+});
+
+const role = toRef(props, "role");
 const form = ref({
   full_name: "",
   email: "",
@@ -25,7 +30,6 @@ const REQUIRED_FIELDS = {
   full_name: "Full name is required.",
   email: "Email is required.",
   password: "Password is required.",
-  organisation_name: "Organisation name is required.",
 };
 
 // A shape check only; the backend's EmailStr is the authority.
@@ -43,6 +47,9 @@ function validate() {
   const errors = {};
   for (const [name, message] of Object.entries(REQUIRED_FIELDS)) {
     if (!form.value[name].trim()) errors[name] = message;
+  }
+  if (role.value === "event_organiser" && !form.value.organisation_name.trim()) {
+    errors.organisation_name = "Organisation name is required.";
   }
   if (!errors.email && !EMAIL_PATTERN.test(form.value.email.trim())) {
     errors.email = "Enter a valid email address.";
@@ -72,12 +79,18 @@ async function handleSubmit() {
   formError.value = "";
   isSubmitting.value = true;
   try {
-    await authApi.signup({
-      role: "event_organiser",
-      ...form.value,
+    const details = {
+      role: role.value,
+      full_name: form.value.full_name,
+      email: form.value.email.trim(),
+      password: form.value.password,
+    };
+    if (role.value === "event_organiser") {
+      details.organisation_name = form.value.organisation_name;
       // Optional: an unfilled field means no phone number, not "".
-      phone_number: form.value.phone_number.trim() || null,
-    });
+      details.phone_number = form.value.phone_number.trim() || null;
+    }
+    await authApi.signup(details);
     // History state, not the query string, so the email stays out of the URL.
     router.push({ name: "login", state: { signedUpEmail: form.value.email } });
   } catch (error) {
@@ -96,8 +109,12 @@ async function handleSubmit() {
     <BauhausCard background="white" accent="square" accent-color="bauhaus-blue">
       <form class="flex flex-col gap-6" novalidate @submit.prevent="handleSubmit">
         <div>
-          <h2 class="text-2xl font-black uppercase tracking-tight">Create an Account</h2>
-          <p class="mt-1 text-sm font-medium text-ink/70">Sign up as an Event Organiser to request events.</p>
+          <h2 class="text-2xl font-black uppercase tracking-tight">
+            {{ role === "attendee" ? "Create an Attendee Account" : "Create an Event Organiser Account" }}
+          </h2>
+          <p class="mt-1 text-sm font-medium text-ink/70">
+            {{ role === "attendee" ? "Sign up as an Attendee to use ConnectSphere." : "Sign up as an Event Organiser to request events." }}
+          </p>
         </div>
 
         <div
@@ -134,6 +151,7 @@ async function handleSubmit() {
           autocomplete="new-password"
         />
         <BauhausInput
+          v-if="role === 'event_organiser'"
           v-model="form.organisation_name"
           :error="fieldErrors.organisation_name"
           label="Organisation Name"
@@ -141,6 +159,7 @@ async function handleSubmit() {
           autocomplete="organization"
         />
         <BauhausInput
+          v-if="role === 'event_organiser'"
           v-model="form.phone_number"
           :error="fieldErrors.phone_number"
           label="Phone Number"

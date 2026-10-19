@@ -1,5 +1,5 @@
-// Organiser sign-up (SCRUM-80), against the real backend and Supabase.
-// Cases: docs/test-cases/auth.md, "Sign-up — SCRUM-80". Accounts made here are
+// Organiser and Attendee sign-up (SCRUM-80/83), against the real backend and Supabase.
+// Cases: docs/test-cases/auth.md, the SCRUM-80 and SCRUM-83 signup sections. Accounts made here are
 // live-check+… throwaways, deleted by global setup/teardown (support/throwaway.js).
 import { ACCOUNTS, expect, seedSession, skipIfSignInRefused, test } from "./support/fixtures.js";
 import { THROWAWAY_PASSWORD, throwawayEmail } from "./support/throwaway.js";
@@ -24,8 +24,8 @@ test("TC-AUTH-037 TC-AUTH-038 an organiser signs up, signs in and opens a new ev
   skipIfSignInRefused();
   const email = throwawayEmail("037");
   await page.goto("/login");
-  await page.getByRole("link", { name: "Create an account" }).click();
-  await expect(page).toHaveURL("/signup");
+  await page.getByRole("link", { name: "Create organiser account" }).click();
+  await expect(page).toHaveURL("/signup/organiser");
 
   await fillSignup(page, { email });
   await page.getByRole("button", { name: "Create Account" }).click();
@@ -44,9 +44,40 @@ test("TC-AUTH-037 TC-AUTH-038 an organiser signs up, signs in and opens a new ev
   await expect(page.getByRole("heading", { name: "Start an event" })).toBeVisible();
 });
 
+test("TC-AUTH-051 an attendee signs up without organiser fields and lands on the attendee dashboard", async ({ page }) => {
+  skipIfSignInRefused();
+  const email = throwawayEmail("051");
+  await page.goto("/signup/attendee");
+  await expect(page.getByRole("heading", { name: "Create an Attendee Account" })).toBeVisible();
+  await expect(page.getByLabel("Account Type")).toHaveCount(0);
+  await expect(page.getByLabel("Organisation Name")).toHaveCount(0);
+  await expect(page.getByLabel("Phone Number")).toHaveCount(0);
+  await page.getByLabel("Full Name").fill("Avery Attendee");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(THROWAWAY_PASSWORD);
+
+  const [request] = await Promise.all([
+    page.waitForRequest((item) => item.url().endsWith("/auth/signup")),
+    page.getByRole("button", { name: "Create Account" }).click(),
+  ]);
+  expect(request.postDataJSON()).toEqual({
+    role: "attendee",
+    full_name: "Avery Attendee",
+    email,
+    password: THROWAWAY_PASSWORD,
+  });
+
+  await expect(page).toHaveURL("/login");
+  await expect(page.getByText("Account created. Please sign in.")).toBeVisible();
+  await expect(page.getByLabel("Email")).toHaveValue(email);
+  await page.getByLabel("Password").fill(THROWAWAY_PASSWORD);
+  await page.getByRole("button", { name: "Sign In" }).click();
+  await expect(page).toHaveURL(ACCOUNTS.attendee.dashboard);
+});
+
 test("TC-AUTH-039 empty required fields are named before anything is sent", async ({ page }) => {
   const signups = trackSignupRequests(page);
-  await page.goto("/signup");
+  await page.goto("/signup/organiser");
 
   await page.getByLabel("Full Name").fill("   ");
   await page.getByRole("button", { name: "Create Account" }).click();
@@ -65,7 +96,7 @@ test("TC-AUTH-039 empty required fields are named before anything is sent", asyn
 
 test("TC-AUTH-040 a malformed email is explained before anything is sent", async ({ page }) => {
   const signups = trackSignupRequests(page);
-  await page.goto("/signup");
+  await page.goto("/signup/organiser");
   await fillSignup(page, { email: throwawayEmail("040") });
 
   for (const bad of ["not-an-email", "olivia@", "@connectsphere.dev"]) {
@@ -78,7 +109,7 @@ test("TC-AUTH-040 a malformed email is explained before anything is sent", async
 
 test("TC-AUTH-041 a password that breaks the rule is explained before anything is sent", async ({ page }) => {
   const signups = trackSignupRequests(page);
-  await page.goto("/signup");
+  await page.goto("/signup/organiser");
   await fillSignup(page, { email: throwawayEmail("041") });
 
   for (const bad of ["Abc" + "1234", "Pass" + "word", "1234" + "5678"]) {
@@ -90,20 +121,20 @@ test("TC-AUTH-041 a password that breaks the rule is explained before anything i
 });
 
 test("TC-AUTH-042 an email that already has an account is refused under Email", async ({ page }) => {
-  await page.goto("/signup");
+  await page.goto("/signup/organiser");
   await fillSignup(page, { email: ACCOUNTS.event_organiser.email });
 
   await page.getByRole("button", { name: "Create Account" }).click();
 
   await expect(page.getByText("An account with this email already exists.")).toBeVisible();
-  await expect(page).toHaveURL("/signup");
+  await expect(page).toHaveURL("/signup/organiser");
   await expect(page.getByLabel("Full Name")).toHaveValue("Olivia Organiser");
   await expect(page.getByLabel("Organisation Name")).toHaveValue("SMU Events Club");
 });
 
 test("TC-AUTH-046 the sign-up page is only for signed-out visitors", async ({ page, browser, sharedSessions }) => {
   await seedSession(page, await sharedSessions("attendee"));
-  await page.goto("/signup");
+  await page.goto("/signup/attendee");
   await expect(page).toHaveURL(ACCOUNTS.attendee.dashboard);
 
   const signedOut = await browser.newContext();
@@ -111,8 +142,17 @@ test("TC-AUTH-046 the sign-up page is only for signed-out visitors", async ({ pa
     const visitor = await signedOut.newPage();
     await visitor.goto("/login");
     await expect(visitor.getByText("New Event Organiser?")).toBeVisible();
-    await visitor.getByRole("link", { name: "Create an account" }).click();
-    await expect(visitor).toHaveURL("/signup");
+    await expect(visitor.getByRole("link", { name: "Create organiser account" })).toHaveAttribute(
+      "href",
+      "/signup/organiser",
+    );
+    await expect(visitor.getByRole("link", { name: "Create attendee account" })).toHaveAttribute(
+      "href",
+      "/signup/attendee",
+    );
+    await visitor.getByRole("link", { name: "Create attendee account" }).click();
+    await expect(visitor).toHaveURL("/signup/attendee");
+    await expect(visitor.getByRole("heading", { name: "Create an Attendee Account" })).toBeVisible();
   } finally {
     await signedOut.close();
   }
@@ -121,7 +161,7 @@ test("TC-AUTH-046 the sign-up page is only for signed-out visitors", async ({ pa
 test("TC-AUTH-047 an email typed with spaces is sent trimmed and signs in", async ({ page }) => {
   skipIfSignInRefused();
   const email = throwawayEmail("047");
-  await page.goto("/signup");
+  await page.goto("/signup/organiser");
   await fillSignup(page, { email: `  ${email}  ` });
 
   const [request] = await Promise.all([
@@ -135,4 +175,24 @@ test("TC-AUTH-047 an email typed with spaces is sent trimmed and signs in", asyn
   await page.getByLabel("Password").fill(THROWAWAY_PASSWORD);
   await page.getByRole("button", { name: "Sign In" }).click();
   await expect(page).toHaveURL(ACCOUNTS.event_organiser.dashboard);
+});
+
+test("TC-AUTH-052 role-specific signup pages fit a 375px viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const viewportWidth = page.viewportSize().width;
+
+  for (const [path, heading] of [
+    ["/signup/organiser", "Create an Event Organiser Account"],
+    ["/signup/attendee", "Create an Attendee Account"],
+  ]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    const rightmostContent = await page.locator("h1, h2, input, button").evaluateAll((nodes) =>
+      Math.max(...nodes.map((node) => node.getBoundingClientRect().right)),
+    );
+    const wordmarkOverflows = await page.locator("h1").evaluate((heading) => heading.scrollWidth > heading.clientWidth);
+
+    expect(rightmostContent, path).toBeLessThanOrEqual(viewportWidth);
+    expect(wordmarkOverflows, path).toBe(false);
+  }
 });

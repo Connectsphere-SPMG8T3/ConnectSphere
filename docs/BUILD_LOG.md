@@ -2484,3 +2484,50 @@ On `feature/scrum-36-approve-booking-request`, branched from `main` at `90c7e6d`
 - The booking page shows the event's attendance and layout, not a space's own (CR-98). Worth raising with the CR-97/98 owners for multi-venue events.
 - The notification bell still says "Notifications aren't sent yet", though every story now saves them; worth raising with the owners of 69/53.
 - PR, review, PO acceptance, merge and the backlog status are the developer's.
+
+### 4.61. SCRUM-83 — Attendee signs up
+
+On `feature/scrum-83-attendee-signup`, branched from updated `main` at `810bde3`, 2026-10-19. The live Product backlog row (52) records estimate 3, Sprint 3, assignee Wei Ting and status `TO DO 😖`; the story outcome is access to ConnectSphere's attendee features. The backlog was read only and remains unchanged.
+
+**User story:** As an Attendee, I want to sign up for an account, so that I can access ConnectSphere's attendee features.
+
+#### What was built
+
+1. **Backend.** `SignupRequest` accepts only `event_organiser` and `attendee`, requires organisation name only for Organisers, and continues rejecting internal roles at the API boundary. Attendee name, email and password are required; attendee signup omits organisation and phone. The existing confirmed-account creation and `handle_new_user()` profile/role flow are reused; no migration was needed.
+2. **Frontend.** The existing `/signup` page now offers Event Organiser and Attendee. Organisation and optional phone are only shown for Organisers. Both roles retain the existing validation, success confirmation and login flow; successful Attendee login reaches `/dashboard/attendee`.
+3. **Tests and traceability.** Added backend signup tests, Vitest coverage, live check TC-AUTH-050, browser case TC-AUTH-051, and manual visual case TC-AUTH-052. `docs/test-cases/auth.md` maps the seven SCRUM-83 ACs to those cases. No event-registration workflow was added.
+
+#### Verification
+
+- **Test-first:** the new backend/UI tests failed before implementation because the API rejected Attendee and the page had no account-type selector. The implementation made those focused tests pass.
+- **Automated suites:** full backend `pytest --cov=app`: 1,431 passed, 96.36% coverage (92% gate); full frontend coverage: 993 passed, 96.32% line coverage; `npm run build` succeeded.
+- **Live API/database:** TC-AUTH-050 passed, including the profile/role, null organiser-only fields, confirmation and login checks. Overall recorded suite: 133/134. Unrelated TC-VENUE-066 failed because the live venue-deactivation check left its booking `held` rather than `affected`. Evidence: [API/database run](test-cases/runs/2026-10-19-1026-api-db-810bde3.md).
+- **Browser:** full recorded Playwright suite 71/71 passed, including TC-AUTH-051 and Attendee dashboard landing. Evidence: [E2E run](test-cases/runs/2026-10-19-1105-e2e-810bde3.md).
+- **Harness correction:** earlier recorded browser attempts used a frontend origin not allowed by the backend's default CORS list (and initially left the app pointed at its default API port). Those attempts are retained in the run folder; the final focused and full runs used matching ports plus a process-local CORS allowlist and passed.
+- **Not verified:** the developer still needs to complete TC-AUTH-052, visually checking the signup form at desktop and 375px widths, required-field messaging, and switching between roles. This story remains unmerged and the live backlog remains `TO DO 😖` pending the team's workflow.
+
+### 4.62. SCRUM-83 follow-up — role-specific signup pages
+
+On `feature/scrum-83-attendee-signup`, 2026-10-19. Follow-up to §4.61 after the developer clarified that Event Organisers and Attendees need separate signup pages.
+
+1. **Routes and login links.** `/login` now links to `/signup/organiser` and `/signup/attendee`. Each page fixes its role and shows only the applicable fields; the role selector is removed. Legacy `/signup` redirects to `/signup/organiser`.
+2. **Verification.** Focused signup/router tests: 32 passed. Full frontend suite: 995 passed. Recorded signup E2E: 8/8 passed, including both role flows ([run evidence](test-cases/runs/2026-10-19-1153-e2e-810bde3.md)). Production build succeeded. Browser inspection confirmed the Attendee form remains contained at 375px.
+3. **Coverage and manual check.** The coverage-instrumented full suite had four failures in unrelated coordinator/event/organiser tests and did not produce a coverage report; the full suite passed on rerun without instrumentation. TC-AUTH-052 remains for the developer to inspect both forms, required-field feedback and layout at desktop and 375px widths.
+
+### 4.63. SCRUM-83 follow-up — phone-width auth layout and acceptance check
+
+On `feature/scrum-83-attendee-signup`, 2026-10-19. The live TC-AUTH-052 check found the ConnectSphere wordmark clipped at a 375 CSS-pixel viewport.
+
+1. **Fix and regression.** `AuthPageLayout` now allows its content column to shrink and uses a smaller base wordmark size on phones. Added a Playwright assertion for both role routes that checks the heading text and content bounds at 375 CSS pixels.
+2. **Acceptance evidence.** The live signup API rejected all five internal roles with HTTP 422 at `body.role` ([focused API run](test-cases/runs/2026-10-19-1217-api-db-810bde3.md)). The recorded signup browser suite passed 9/9, including organiser and attendee creation/login, validation, and the responsive guard ([E2E run](test-cases/runs/2026-10-19-1214-e2e-810bde3.md)).
+3. **Verification.** At 375 CSS pixels, both forms showed the expected fields and required-field messages, no signup request was sent on empty submission, and the wordmark fit. The full frontend suite passed 995/995; the production build succeeded.
+4. **Manual remainder.** TC-AUTH-052 stays open for the developer's visual judgment of wording, legibility and overall layout at desktop and phone widths; the automated overflow portion is passing.
+
+### 4.64. SCRUM-83 follow-up — manual pass and final verification
+
+On `feature/scrum-83-attendee-signup`, 2026-10-19. Follow-up to §4.63 recording the developer's manual check and final suite results.
+
+1. **Manual acceptance check.** The developer confirmed the items they checked in TC-AUTH-052 were all okay. The recorded browser check covered both signup links and forms, role-specific fields, empty-submit feedback, no account request, and desktop/375px layout ([manual run](test-cases/runs/2026-10-19-1238-manual-810bde3.md)).
+2. **Coverage.** Full backend suite: 1,432 passed; 96.36% total coverage, above the 92% gate. Full frontend suite: 995 passed; 96.33% line, 88.51% branch and 80.27% function coverage. The changed frontend production files `AuthPageLayout.vue`, `SignupView.vue` and the router are at 100%; `LoginView.vue` is 69.47% overall, with the new signup links covered and uncovered lines in its existing sign-in behavior. `auth/schemas.py` is at 98%; its single uncovered line (56) predates this story. The new live-check decoder option is covered by `test_supabase_cli_output_is_decoded_as_utf8`.
+3. **TC-VENUE-066 harness correction.** The 12:49 live run failed because Windows decoded the Unicode venue reason using the console code page, although the live booking had the expected `affected` flag and `held` status ([initial rerun](test-cases/runs/2026-10-19-1249-api-db-810bde3.md)). `verify_live.py::_supabase_query` now explicitly decodes subprocess output as UTF-8. The regression test passed, the targeted live check passed 1/1 ([rerun](test-cases/runs/2026-10-19-1251-api-db-810bde3.md)), and the full backend suite passed 1,432/1,432.
+4. **Workflow status.** No commit or push was made. The story remains on its feature branch; review, PO acceptance, merge and backlog status remain with the developer/team.
