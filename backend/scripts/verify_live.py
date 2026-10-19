@@ -1921,10 +1921,36 @@ def _(ctx: Context) -> None:
     expect_detail(response, "An account with this email already exists.")
 
 
-@check("TC-AUTH-043", "Sign-up refuses every role but event_organiser")
+@check("TC-AUTH-043", "Sign-up refuses internal roles")
 def _(ctx: Context) -> None:
-    for role in ("event_coordinator", "venue_staff", "tech_support", "attendee"):
+    for role in ("event_coordinator", "event_coordinator_lead", "venue_staff", "tech_support", "safety_officer"):
         expect_field_error(ctx.signup(email=ctx.throwaway_email("043"), role=role), "role")
+
+
+@check("TC-AUTH-050", "Attendee signup stores only the attendee role and allows immediate login", creates_accounts=True)
+def _(ctx: Context) -> None:
+    email = ctx.throwaway_email("050")
+    response = ctx.signup(
+        role="attendee",
+        full_name="Avery Attendee",
+        email=email,
+        organisation_name=None,
+        phone_number=None,
+    )
+    expect_status(response, 201)
+    body = response.json()
+    expect(body["role"] == "attendee", f"response role is {body['role']!r}")
+    expect(body["roles"] == ["attendee"], f"response roles are {body['roles']}")
+
+    stored = stored_account(email)
+    expect(stored["role"] == "attendee", f"profiles.role is {stored['role']!r}")
+    expect(stored["roles"] == "attendee", f"user_roles holds {stored['roles']!r}")
+    expect(stored["organisation_name"] is None, "attendee organisation_name is not NULL")
+    expect(stored["phone_number"] is None, "attendee phone_number is not NULL")
+    expect(stored["confirmed"] is True, "email_confirmed_at is not set (ADR-0003)")
+
+    session = ctx.login("attendee", email=email, password=THROWAWAY_PASSWORD)
+    expect(session.body["profile"]["role"] == "attendee", "logged in with the wrong role")
 
 
 @check("TC-AUTH-044", "A blank phone number is stored as NULL", creates_accounts=True)
@@ -2134,6 +2160,7 @@ def _supabase_query(*args: str) -> subprocess.CompletedProcess:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
 
 

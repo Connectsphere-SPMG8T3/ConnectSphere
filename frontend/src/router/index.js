@@ -23,8 +23,14 @@ const routes = [
   },
   {
     path: "/signup",
+    redirect: "/signup/organiser",
+    meta: { requiresAuth: false },
+  },
+  {
+    path: "/signup/:role(organiser|attendee)",
     name: "signup",
     component: () => import("@/views/SignupView.vue"),
+    props: (route) => ({ role: route.params.role === "attendee" ? "attendee" : "event_organiser" }),
     meta: { requiresAuth: false },
   },
   {

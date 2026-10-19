@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, EmailStr, Field, StringConstraints, field_validator
+from pydantic import BaseModel, EmailStr, Field, StringConstraints, ValidationInfo, field_validator
 from pydantic_core import PydanticCustomError
 
 # Trimmed first, so a whitespace-only value counts as empty.
@@ -17,13 +17,20 @@ class UserLoginRequest(BaseModel):
 
 class SignupRequest(BaseModel):
     # Staff roles are system defaults (ACC-R3); SCRUM-83 adds "attendee".
-    role: Literal["event_organiser"]
+    role: Literal["event_organiser", "attendee"]
     full_name: RequiredText
     email: EmailStr
     # Never trimmed: surrounding spaces are part of the password.
     password: str
-    organisation_name: RequiredText
+    organisation_name: RequiredText | None = Field(default=None, validate_default=True)
     phone_number: str | None = None
+
+    @field_validator("organisation_name")
+    @classmethod
+    def _organisation_required_for_organisers(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if info.data.get("role") == "event_organiser" and value is None:
+            raise PydanticCustomError("required", "Organisation name is required.")
+        return value
 
     @field_validator("password")
     @classmethod

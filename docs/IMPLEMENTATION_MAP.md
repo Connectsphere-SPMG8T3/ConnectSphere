@@ -9,11 +9,9 @@ This file describes the **current state** of the codebase, so a developer (or AI
 
 **Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current").
 
-_Last updated: 2026-10-18 — `feature/scrum-36-approve-booking-request`, merged with `main` through PR #76: venue staff approve a held booking (`POST /venue-bookings/{id}/approve`, `approve_venue_booking`, migration `20261018160000`, applied 2026-10-18) beside Reject and CR-95's Restore, under the same booking-row lock. Approval refuses an inactive venue and a block (via SCRUM-21's `venue_conflicts`), and approving a CR-95 replacement releases its original (`release_replaced_booking`). The per-booking setup/turnaround edit moved to CR-100._
+_Last updated: 2026-10-19 — SCRUM-83 role-specific signup pages, responsive layout, manual pass, and live verification recorded._
 
 **Migration status last checked 2026-10-13:** the linked ledger contained remote-only versions through `20261012140000`; D32 migration `20261013100000_revoke_event_space_trigger_execution.sql` was local-only then. QA3-23 migration `20261013110000_event_spaces_allow_individual_schedules.sql` was added afterward and is pending deployment; its linked-ledger status has not been rechecked. The dated 9 October drift notes below are historical. CR-101's `20261013120000_lead_assignment.sql` and `20261013130000_reassign_event_without_status_history.sql` are newer than both and were applied to the live project on 2026-10-13/14; the two older local-only files above now sit before them in the ledger, so deploying them needs `supabase db push --include-all`.
-
-This line names the latest change only. Replace it rather than adding to it: the history of each change is in [`BUILD_LOG.md`](BUILD_LOG.md).
 
 ---
 
@@ -22,7 +20,8 @@ This line names the latest change only. Replace it rather than adding to it: the
 | Story | Status | Backend | Frontend | Database |
 |---|---|---|---|---|
 | SCRUM-48 Basic user authentication | Done | `modules/auth` | `LoginView`, `stores/auth.js`, router guards | `profiles` |
-| SCRUM-80 Event organiser signup | On `feature/scrum-80-organiser-signup`, not yet merged. Verified against the live project | `POST /auth/signup` (`service.signup`, `SignupRequest`); accounts created confirmed through the admin API (ADR-0003) | `SignupView` at `/signup`; `LoginView` shows the sign-up confirmation and links to `/signup` | none new (the existing `handle_new_user()` trigger writes `profiles` and `user_roles`) |
+| SCRUM-80 Event organiser signup | Done in the Product backlog; code is on `main` and verified against the live project | `POST /auth/signup` (`service.signup`, `SignupRequest`); accounts created confirmed through the admin API (ADR-0003) | `SignupView` at `/signup/organiser` (`/signup` redirects here); `LoginView` links to the role-specific pages, with the Attendee page added in SCRUM-83 | none new (the existing `handle_new_user()` trigger writes `profiles` and `user_roles`) |
+| SCRUM-83 Attendee signup | Implemented on `feature/scrum-83-attendee-signup`; backend, frontend, live and manual checks recorded; pending team workflow | Reuses `POST /auth/signup`; `SignupRequest` accepts `event_organiser` or `attendee`, requires organisation only for organisers, and rejects internal roles before Supabase | Login links to role-specific `/signup/organiser` and `/signup/attendee` pages, both reuse `SignupView` with a fixed role; `/signup` redirects to Organiser signup; success returns to login and the existing role redirect lands Attendees on their dashboard | none new; live `profiles.organisation_name` and `phone_number` are nullable, and `public.user_role` already contains `attendee` |
 | SCRUM-50 See my own profile | Done in Jira; see open defect D7 in §5 | `GET /auth/me` | `ProfileView` (also lists every held role for a multi-role account — see SCRUM-78 below) | `profiles` |
 | SCRUM-74 View assigned roles in nav dropdown, SCRUM-75 Select active role from nav dropdown | Done (merged in PR #12) (ACC-R4) | `POST /auth/active-role`, `roles` on `ProfileResponse`, session-scoped active role in `get_current_user` | Role switcher in `Nav.vue`, `roles`/`hasMultipleRoles`/`setActiveRole` in `stores/auth.js` | `user_roles`, `session_active_roles` |
 | SCRUM-78 View all assigned roles on profile page | Done (merged with SCRUM-74/75) (ACC-R4); implemented ahead of ticket creation during SCRUM-74/75's code review, ticket opened retroactively for traceability | none (reuses `roles` on `ProfileResponse`) | "All Roles" section in `ProfileView.vue`, shown only via `authStore.hasMultipleRoles` | none (reuses `user_roles`) |
@@ -65,7 +64,7 @@ This line names the latest change only. Replace it rather than adding to it: the
 
 | Method and path | Guard | What it does |
 |---|---|---|
-| `POST /auth/signup` | public | Creates an Event Organiser account that can log in immediately (SCRUM-80). 201 with the profile; 409 if the email has an account; 422 per field, including any role but `event_organiser` (SCRUM-83 adds `attendee`) |
+| `POST /auth/signup` | public | Creates an Event Organiser or Attendee account that can log in immediately (SCRUM-80/83). 201 with the profile; 409 if the email has an account; 422 per field and for every role except those two external roles |
 | `POST /auth/login` | public | Signs in and returns tokens and profile (`role` = this session's active role, `roles` = every role the account holds) |
 | `POST /auth/refresh` | public (refresh token) | Rotates the session |
 | `GET /auth/me` | authenticated | Returns the current user's profile, including `roles` |
@@ -167,7 +166,7 @@ This line names the latest change only. Replace it rather than adding to it: the
 | Path | Allowed roles | View |
 |---|---|---|
 | `/login` | public (a signed-in user goes to their dashboard) | `LoginView`; shows "Account created" and pre-fills the email when arriving from sign-up (history state `signedUpEmail`) |
-| `/signup` | public (a signed-in user goes to their dashboard) | `SignupView` (SCRUM-80) |
+| `/signup/organiser`, `/signup/attendee` | public (a signed-in user goes to their dashboard) | Role-specific `SignupView` routes; `/signup` redirects to `/signup/organiser` (SCRUM-80/83) |
 | `/profile/me` | any signed-in user | `ProfileView` |
 | `/dashboard/organiser`, `/coordinator`, `/venue-staff`, `/tech-support`, `/attendee` | that role (`meta.allowedRoles`) | `views/dashboards/*Dashboard.vue` |
 | `/dashboard/coordinator-lead`, `/dashboard/safety` | `event_coordinator_lead`, `safety_officer` respectively | `CoordinatorLeadDashboard`: CR-101 (replaces the 12 AC12 placeholder). `SafetyDashboard`: CR-103 queue replacing the placeholder on this branch; live verification incomplete |
@@ -184,6 +183,7 @@ This line names the latest change only. Replace it rather than adding to it: the
 
 | Component | Props and events |
 |---|---|
+| `AuthPageLayout` | No props; shared public frame for login and signup, with a centered slot and responsive ConnectSphere wordmark; mobile content is constrained to prevent text clipping |
 | `BauhausButton` | `variant`: `primary` (red), `secondary` (blue), `yellow`, `outline`; `type`, `disabled`, `fullWidth`; default slot |
 | `BauhausCard` | `background`: `white`, `red`, `blue`, `yellow`; `accent`: `circle`, `square`, `triangle`, `none`; `accentColor`; `compact`; `clickable` (adds `role="button"` and `tabindex="0"`, and emits `click` on a click or on Enter pressed on the card itself); default slot. Enter pressed in a field or button inside any card is left to the browser, so a form inside a card submits on Enter (D13) |
 | `BauhausSummaryCard` | Dashboard metric tile built on `BauhausCard`: required `label`, `value` (string/number); optional `detail` or named `detail` slot. Two-line minimum label/detail space and `h-full`; appearance props, ARIA attributes and click listeners fall through to `BauhausCard`. Used by all five role dashboards; wrapped content may grow without truncation (D20/D21) |
