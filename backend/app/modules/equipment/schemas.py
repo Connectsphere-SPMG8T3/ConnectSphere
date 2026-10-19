@@ -144,6 +144,8 @@ class EquipmentRequestLinesResponse(BaseModel):
 class PendingEquipmentLine(EquipmentRequestLine):
     event_name: str
     event_starts_at: datetime | None
+    # Tech support sort their requests by type (REQUIREMENTS §6.15).
+    equipment_type: str | None = None
 
 
 class PendingEquipmentLinesResponse(BaseModel):

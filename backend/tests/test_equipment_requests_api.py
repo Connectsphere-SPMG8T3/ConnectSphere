@@ -22,6 +22,7 @@ NOT_PLANNING = ["safety_review", "submitted", "under_review", "confirmed", "reje
 SUBMIT_URL = "/api/v1/equipment/requests"
 EVENT_URL = f"/api/v1/equipment/requests/event/{EVENT_ID}"
 PENDING_URL = "/api/v1/equipment/requests/pending"
+QUEUE_URL = "/api/v1/equipment/requests"
 CATALOGUE_URL = "/api/v1/equipment/catalogue"
 
 CATALOGUE = [
@@ -80,12 +81,13 @@ def store(monkeypatch):
         return "ok", written
 
     names = {row["id"]: row["name"] for row in CATALOGUE}
+    types = {row["id"]: row["equipment_type"] for row in CATALOGUE}
 
     def _embedded(row):
         event = state["events"].get(row["event_id"], {})
         return {
             **deepcopy(row),
-            "equipment": {"name": names[row["equipment_id"]]},
+            "equipment": {"name": names[row["equipment_id"]], "equipment_type": types[row["equipment_id"]]},
             "requester": {"id": row["requested_by"], "full_name": "Marcus Lim"},
             "event": {"name": event.get("name"), "starts_at": event.get("starts_at"), "status": event.get("status")},
         }
@@ -93,14 +95,15 @@ def store(monkeypatch):
     def list_event_requests(event_id):
         return [_embedded(row) for row in state["lines"] if row["event_id"] == event_id]
 
-    def list_pending_requests():
-        return [_embedded(row) for row in state["lines"] if row["status"] == "pending"]
+    def list_requests(statuses=None):
+        state["queue_statuses"] = statuses
+        return [_embedded(row) for row in state["lines"] if statuses is None or row["status"] in statuses]
 
     monkeypatch.setattr(events_repository, "get_event", lambda event_id: deepcopy(state["events"].get(event_id)))
     monkeypatch.setattr(repository, "list_catalogue", list_catalogue)
     monkeypatch.setattr(repository, "submit_request", submit_request)
     monkeypatch.setattr(repository, "list_event_requests", list_event_requests)
-    monkeypatch.setattr(repository, "list_pending_requests", list_pending_requests)
+    monkeypatch.setattr(repository, "list_requests", list_requests)
     monkeypatch.setattr(repository, "get_event_technical", lambda event_id: None)
     return state
 
@@ -424,6 +427,47 @@ class TestTechSupportQueue:
         acting_as_another_role(monkeypatch, TECH_ID, holds="tech_support", acts_as="event_coordinator")
 
         assert client.get(PENDING_URL, headers=auth_headers).status_code == 403
+
+
+class TestTechSupportRequestList:
+    """Every line on an open event, for tech support's requests page, whatever its
+    status, so resolved lines stay available for reference (as venue staff's)."""
+
+    def test_every_status_is_listed_with_the_equipment_type(self, client, auth_headers, act_as, store):
+        act_as("event_coordinator", COORDINATOR_ID)
+        submit(client, auth_headers, [item(PROJECTOR_ID, 1), item(MIC_ID, 2)])
+        store["lines"][1]["status"] = "reserved"
+        act_as("tech_support", TECH_ID)
+
+        response = client.get(QUEUE_URL, headers=auth_headers)
+
+        assert response.status_code == 200
+        lines = response.json()["lines"]
+        assert {(l["equipment_name"], l["equipment_type"], l["status"]) for l in lines} == {
+            ("Projector", "AV", "pending"), ("Wireless microphone", "Audio", "reserved"),
+        }
+        assert store["queue_statuses"] is None
+
+    def test_lines_on_a_closed_event_are_left_out(self, client, auth_headers, act_as, store):
+        act_as("event_coordinator", COORDINATOR_ID)
+        submit(client, auth_headers)
+        store["events"][EVENT_ID]["status"] = "completed"
+        act_as("tech_support", TECH_ID)
+
+        assert client.get(QUEUE_URL, headers=auth_headers).json()["lines"] == []
+
+    def test_the_pending_queue_asks_only_for_waiting_lines(self, client, auth_headers, act_as, store):
+        act_as("tech_support", TECH_ID)
+
+        client.get(PENDING_URL, headers=auth_headers)
+
+        assert store["queue_statuses"] == ["pending", "re_review"]
+
+    @pytest.mark.parametrize("role", ["event_organiser", "event_coordinator", "venue_staff", "attendee"])
+    def test_only_tech_support_see_the_list(self, client, auth_headers, act_as, store, role):
+        act_as(role, COORDINATOR_ID)
+
+        assert client.get(QUEUE_URL, headers=auth_headers).status_code == 403
 
 
 def test_safety_review_keeps_pending_equipment_visible(client, auth_headers, act_as, store):

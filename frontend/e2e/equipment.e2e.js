@@ -54,8 +54,9 @@ test("TC-EQR-005 TC-EQR-006 a coordinator submits above inventory and tech suppo
   try {
     const techPage = await techContext.newPage();
     await seedSession(techPage, await sharedSessions("tech_support"));
-    await techPage.goto("/dashboard/tech-support");
-    const queue = techPage.locator('section[aria-labelledby="incoming-requests-heading"]').locator("li", { hasText: note });
+    // SCRUM-24 moved the list from the dashboard to its own requests page.
+    await techPage.goto("/dashboard/tech-support/requests");
+    const queue = techPage.locator('section[aria-labelledby="equipment-requests-heading"]').locator("li", { hasText: note });
     await expect(queue).toContainText("Pending");
     await expect(queue).toContainText("× 5");
   } finally {

@@ -68,12 +68,14 @@ Read-only checks on the assigned coordinator's planning event `/coordinator/even
 | TC-EQR-030 | Wording on the technical page and the coordinator's panel | Manual | As TC-EQR-029, plus the event opened as the coordinator | Read every label, message and history entry on both screens | — | Wording is clear and consistent: "Not available", "Re-review", "Equipment does not block exits or walkways", "Technical Support notes", history entries | 🟡 | 2026-10-19 | Not run yet |
 | TC-EQR-031 | The safety review page shows who ticked the exit check | Manual | An event in Safety review whose lines are reserved and ticked | Open `/safety/events/<id>` as the Safety Officer | — | Under "Exit confirmation": "Equipment does not block exits or walkways." and "Confirmed by <name> · <time>" | 🟠 | 2026-10-19 | Not run yet |
 | TC-EQR-032 | Nothing flashes or jumps while acting | Manual | As TC-EQR-029 | Reserve a line, tick and untick the box, save a note | — | Buttons show "Working…" and are disabled while busy; the page reloads in place without jumping to the top or flashing empty | 🟡 | 2026-10-19 | Not run yet |
+| TC-EQR-033 | The Active requests tile counts waiting lines and opens the requests page | E2E | A throwaway pending line | Open `/dashboard/tech-support`; read the first tile; click it | — | "Active requests" shows the number of pending and re-review lines ("—" if they can't load); clicking opens `/dashboard/tech-support/requests`. Out-of-stock items remain badged and filterable in the inventory table | 🟠 | 2026-10-19 | Not run yet |
+| TC-EQR-034 | The requests page filters and sorts like venue staff's booking requests | Manual | Several lines in different statuses (the developer's test data) | Open `/dashboard/tech-support/requests`; change Status, Equipment, Sort by, From and To date | — | Opens on "Waiting on you"; "All statuses" adds reserved, not available and released lines for reference; each filter and sort behaves as labelled; each card opens its event's technical page. Reads well at desktop and 375 px and matches venue staff's page | 🟠 | 2026-10-19 | Not run yet |
 
 ### Traceability — SCRUM-24
 
 | Acceptance criterion | Covered by | Automated equivalent |
 |---|---|---|
-| AC1 reserve if enough is available, using 23's check | TC-EQR-017, TC-EQR-027 | `test_equipment_reservation_api.py::TestReserve`; `equipment_reservation_checks.sql`; `EquipmentLineArrangement.spec.js` |
+| AC1 reserve if enough is available, using 23's check | TC-EQR-017, TC-EQR-027, TC-EQR-033, TC-EQR-034 | `test_equipment_reservation_api.py::TestReserve`; `equipment_reservation_checks.sql`; `EquipmentLineArrangement.spec.js` |
 | AC2 overlapping events see the reduction, others don't | TC-EQR-016, TC-EQR-018 | `equipment_reservation_checks.sql`; `test_equipment_availability.py` |
 | AC3 refused with the free count; stays Pending or Not available | TC-EQR-018, TC-EQR-019, TC-EQR-028 | `TestReserve::test_not_enough_is_refused_with_the_free_count`, `TestNotAvailable`; `technicalEventStore.spec.js` |
 | AC4 linked to event and line; Reserved; coordinator notified | TC-EQR-017 | `equipment_reservation_checks.sql` |

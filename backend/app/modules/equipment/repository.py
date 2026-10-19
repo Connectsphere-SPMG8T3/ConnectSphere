@@ -202,7 +202,7 @@ REQUESTABLE_EQUIPMENT_STATUSES = ("active", "maintenance")
 REQUEST_LINE_SELECT = (
     "id, submission_id, event_id, equipment_id, quantity, technical_requirements, status, "
     "technical_notes, not_available_reason, requested_by, created_at, "
-    "equipment:equipment!equipment_requests_equipment_id_fkey(name), "
+    "equipment:equipment!equipment_requests_equipment_id_fkey(name, equipment_type), "
     "requester:profiles!equipment_requests_requested_by_fkey(id, full_name), "
     "event:events!equipment_requests_event_id_fkey(name, starts_at, status)"
 )
@@ -253,18 +253,14 @@ def list_event_requests(event_id: str) -> list[dict]:
     return response.data or []
 
 
-def list_pending_requests() -> list[dict]:
-    """Every line waiting on tech support across all events: pending, or
-    flagged for re-review (SCRUM-24 AC7). Tech support are a pool (AUTH-R5)."""
-    response = (
-        get_supabase_admin_client()
-        .table("equipment_requests")
-        .select(REQUEST_LINE_SELECT)
-        .in_("status", ["pending", "re_review"])
-        .order("created_at")
-        .execute()
-    )
-    return response.data or []
+def list_requests(statuses: list[str] | None = None) -> list[dict]:
+    """Lines across all events (tech support are a pool, AUTH-R5), oldest
+    first; only those in `statuses` when given. The pending queue asks for
+    `pending` and `re_review` (SCRUM-24 AC7); the requests page for all."""
+    query = get_supabase_admin_client().table("equipment_requests").select(REQUEST_LINE_SELECT)
+    if statuses is not None:
+        query = query.in_("status", list(statuses))
+    return query.order("created_at").execute().data or []
 
 
 # --- SCRUM-24 reservation ------------------------------------------------------

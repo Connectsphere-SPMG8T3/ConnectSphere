@@ -1,16 +1,18 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { RouterLink, useRoute } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
-import PendingEquipmentRequests from "@/components/equipment/PendingEquipmentRequests.vue";
+import { useEquipmentQueueStore } from "@/features/equipment/equipmentQueueStore";
 import { ApiError, checkEquipmentAvailability, equipmentApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
 const route = useRoute();
+// SCRUM-24: the lines waiting on tech support, counted on the first tile.
+const queue = useEquipmentQueueStore();
 // The tabs live in the sidebar (Nav.vue), which links here with ?tab=.
 // Inventory is the main view, so it is what a tech support login lands on.
 const activeTab = computed(() => (route.query.tab === "availability" ? "availability" : "inventory"));
@@ -86,13 +88,16 @@ const tiles = computed(() => {
   const units = inventoryItems.value.reduce((sum, item) => sum + item.total_quantity, 0);
   return [
     {
-      key: "out-of-stock",
-      label: "Out of stock",
-      value: show(count("out-of-stock")),
-      detail: "Nothing left to reserve",
-      background: "red",
-      accent: "triangle",
-      accentColor: "ink",
+      // SCRUM-24: as venue staff's "Pending requests" tile, it opens the full
+      // list. Out-of-stock items are still badged and filterable in the table.
+      key: "requests",
+      label: "Active requests",
+      value: queue.isLoaded ? queue.waitingCount : "—",
+      detail: "Awaiting your decision",
+      to: { name: "dashboard-tech-support-requests" },
+      background: "yellow",
+      accent: "circle",
+      accentColor: "bauhaus-red",
     },
     {
       key: "maintenance",
@@ -129,6 +134,7 @@ const filteredInventory = computed(() => {
     const status = inventoryStatus(item);
     const matchesSearch = !query || item.name.toLowerCase().includes(query);
     const matchesFilter = inventoryFilter.value === "all"
+      || (inventoryFilter.value === "out-of-stock" && status.filter === "out-of-stock")
       || (inventoryFilter.value === "maintenance" && status.filter === "maintenance")
       || (inventoryFilter.value === "partial" && status.filter === "partial")
       || (inventoryFilter.value === "available" && status.filter === "available");
@@ -224,6 +230,7 @@ watch(
   activeTab,
   (tab) => {
     if (tab === "inventory" && inventoryItems.value.length === 0) loadInventory();
+    if (tab === "inventory" && !queue.isLoaded && !queue.isLoading) queue.load();
   },
   { immediate: true },
 );
@@ -245,17 +252,35 @@ function formatDate(value) {
       </p>
 
       <div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-        <BauhausSummaryCard
+        <!-- The one tile that leads anywhere is a link, with the same hover cue
+             as venue staff's Pending requests tile. -->
+        <component
+          :is="tile.to ? RouterLink : 'div'"
           v-for="tile in tiles"
           :key="tile.key"
+          :to="tile.to"
           data-testid="tile"
-          :label="tile.label"
-          :value="tile.value"
-          :detail="tile.detail"
-          :background="tile.background"
-          :accent="tile.accent"
-          :accent-color="tile.accentColor"
-        />
+          class="block"
+          :class="tile.to ? 'group transition-shadow hover:shadow-hard focus-visible:shadow-hard active-press' : ''"
+        >
+          <BauhausSummaryCard
+            :label="tile.label"
+            :value="tile.value"
+            :background="tile.background"
+            :accent="tile.accent"
+            :accent-color="tile.accentColor"
+          >
+            <template #detail>
+              {{ tile.detail }}
+              <span
+                v-if="tile.to"
+                class="font-bold uppercase tracking-widest text-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              >
+                See the list →
+              </span>
+            </template>
+          </BauhausSummaryCard>
+        </component>
       </div>
 
       <section class="mb-6" aria-labelledby="inventory-heading">
@@ -280,6 +305,7 @@ function formatDate(value) {
             Status filter
             <select v-model="inventoryFilter" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4">
               <option value="all">All statuses</option>
+              <option value="out-of-stock">Out of stock</option>
               <option value="available">Fully available</option>
               <option value="partial">Partially reserved</option>
               <option value="maintenance">Under maintenance / repair</option>
@@ -320,15 +346,7 @@ function formatDate(value) {
         </div>
       </section>
 
-      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section aria-labelledby="incoming-requests-heading">
-          <h2 id="incoming-requests-heading" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
-            Active requests
-          </h2>
-          <p class="mb-4 text-xs font-medium text-ink/60">Pending equipment lines from coordinators, soonest event first.</p>
-          <PendingEquipmentRequests />
-        </section>
-
+      <div class="grid grid-cols-1 gap-6">
         <section aria-labelledby="maintenance-heading">
           <h2 id="maintenance-heading" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
             Scheduled maintenance

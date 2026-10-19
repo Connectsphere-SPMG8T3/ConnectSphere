@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  equipmentApi: { checkEquipmentAvailability: vi.fn(), inventory: vi.fn(), maintenance: vi.fn(), pendingRequests: vi.fn() },
+  equipmentApi: { checkEquipmentAvailability: vi.fn(), inventory: vi.fn(), maintenance: vi.fn(), requestList: vi.fn() },
 }));
 
 const mountedApps = [];
@@ -61,7 +61,7 @@ describe("TechSupportDashboard tabs", () => {
       ],
     });
     equipmentApi.maintenance.mockResolvedValue({ items: [] });
-    equipmentApi.pendingRequests.mockResolvedValue({ lines: [] });
+    equipmentApi.requestList.mockResolvedValue({ lines: [] });
   });
 
   it("opens on the inventory, loads it, and has no tab bar or welcome card of its own", async () => {
@@ -99,7 +99,7 @@ describe("TechSupportDashboard tabs", () => {
     await settle();
     const tile = (label) => [...el.querySelectorAll("[data-testid=tile]")].find((t) => t.textContent.includes(label));
 
-    expect(tile("Out of stock").textContent).toContain("0");
+    expect(tile("Under repair").textContent).toContain("0");
     expect(tile("Equipment types").textContent).toContain("1");
 
     mountedApps.splice(0).forEach((app) => app.unmount());
@@ -107,7 +107,7 @@ describe("TechSupportDashboard tabs", () => {
     equipmentApi.inventory.mockRejectedValue(new Error("down"));
     const failed = await mountDashboard();
     await settle();
-    const failedTile = [...failed.el.querySelectorAll("[data-testid=tile]")].find((t) => t.textContent.includes("Out of stock"));
+    const failedTile = [...failed.el.querySelectorAll("[data-testid=tile]")].find((t) => t.textContent.includes("Under repair"));
     expect(failedTile.textContent).toContain("—");
   });
 
@@ -121,13 +121,13 @@ describe("TechSupportDashboard tabs", () => {
   });
 });
 
-describe("TechSupportDashboard active requests (SCRUM-45)", () => {
-  const PENDING = {
-    id: "l1", submission_id: "s1", event_id: "event-1", equipment_id: "e1", equipment_name: "4K Projector",
-    quantity: 4, technical_requirements: "HDMI to the lectern", status: "pending",
-    requested_by: { id: "m1", full_name: "Marcus Lim" }, created_at: "2026-10-06T02:00:00Z",
-    event_name: "Year-End Dinner", event_starts_at: "2026-11-05T10:00:00Z",
-  };
+describe("TechSupportDashboard active requests tile (SCRUM-24)", () => {
+  const line = (status) => ({
+    id: `l-${status}`, submission_id: "s1", event_id: "event-1", equipment_id: "e1", equipment_name: "4K Projector",
+    quantity: 4, technical_requirements: null, status, requested_by: { id: "m1", full_name: "Marcus Lim" },
+    created_at: "2026-10-06T02:00:00Z", event_name: "Year-End Dinner", event_starts_at: "2026-11-05T10:00:00Z",
+  });
+  const activeTile = (el) => [...el.querySelectorAll("[data-testid=tile]")].find((t) => t.textContent.includes("Active requests"));
 
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
@@ -140,49 +140,53 @@ describe("TechSupportDashboard active requests (SCRUM-45)", () => {
     equipmentApi.maintenance.mockResolvedValue({ items: [] });
   });
 
-  it("lists each pending line with its event, quantity and technical requirements", async () => {
-    equipmentApi.pendingRequests.mockResolvedValue({ lines: [PENDING] });
+  it("counts the lines waiting on tech support and links to the requests page", async () => {
+    equipmentApi.requestList.mockResolvedValue({ lines: [line("pending"), line("re_review"), line("reserved")] });
 
     const { el } = await mountDashboard();
-    await vi.waitFor(() => expect(el.textContent).toContain("Year-End Dinner"));
+    await vi.waitFor(() => expect(activeTile(el).textContent).toContain("2"));
 
-    const section = el.querySelector('[aria-labelledby="incoming-requests-heading"]');
-    expect(section.textContent).toContain("4K Projector");
-    expect(section.textContent).toContain("× 4");
-    expect(section.textContent).toContain("Pending");
-    expect(section.textContent).toContain("HDMI to the lectern");
-    expect(section.textContent).toContain("Marcus Lim");
-    expect(section.textContent).not.toContain("No request workflow yet");
-    // SCRUM-24: each line opens its event, where it is arranged.
-    const link = [...section.querySelectorAll("a")].find((a) => a.textContent.includes("Year-End Dinner"));
-    expect(link.getAttribute("href")).toBe(`/tech-support/events/${PENDING.event_id}`);
+    expect(activeTile(el).textContent).toContain("Awaiting your decision");
+    expect(activeTile(el).getAttribute("href")).toBe("/dashboard/tech-support/requests");
+    const tileLabels = [...el.querySelectorAll("[data-testid=tile]")].map((t) => t.textContent);
+    expect(tileLabels.some((text) => text.includes("Out of stock"))).toBe(false);
   });
 
-  it("labels a line flagged for re-review (SCRUM-24 AC7)", async () => {
-    equipmentApi.pendingRequests.mockResolvedValue({ lines: [{ ...PENDING, status: "re_review" }] });
+  it("shows a dash, not a zero, when the requests can't load", async () => {
+    equipmentApi.requestList.mockRejectedValue(new Error("Service unavailable"));
 
     const { el } = await mountDashboard();
-    await vi.waitFor(() => expect(el.textContent).toContain("Year-End Dinner"));
-
-    expect(el.querySelector('[aria-labelledby="incoming-requests-heading"]').textContent).toContain("Re-review");
-  });
-
-  it("says when nothing is waiting", async () => {
-    equipmentApi.pendingRequests.mockResolvedValue({ lines: [] });
-
-    const { el } = await mountDashboard();
-    await vi.waitFor(() => expect(equipmentApi.pendingRequests).toHaveBeenCalled());
+    await vi.waitFor(() => expect(equipmentApi.requestList).toHaveBeenCalled());
     await settle();
 
-    expect(el.textContent).toContain("No pending requests");
+    expect(activeTile(el).textContent).toContain("—");
   });
 
-  it("shows the error, not an empty queue, when the requests can't load (D15)", async () => {
-    equipmentApi.pendingRequests.mockRejectedValue(new Error("Service unavailable"));
+  it("the full list is no longer on the dashboard", async () => {
+    equipmentApi.requestList.mockResolvedValue({ lines: [line("pending")] });
 
     const { el } = await mountDashboard();
-    await vi.waitFor(() => expect(el.textContent).toContain("Service unavailable"));
+    await settle();
 
-    expect(el.textContent).not.toContain("No pending requests");
+    expect(el.querySelector('[aria-labelledby="equipment-requests-heading"]')).toBeNull();
+  });
+
+  it("the inventory can still be filtered to out-of-stock items", async () => {
+    equipmentApi.requestList.mockResolvedValue({ lines: [] });
+    equipmentApi.inventory.mockResolvedValue({ items: [
+      { equipment_id: "x", name: "Projector", total_quantity: 2, reserved_quantity: 2, maintenance_quantity: 0, net_available: 0 },
+      { equipment_id: "y", name: "Speaker", total_quantity: 2, reserved_quantity: 0, maintenance_quantity: 0, net_available: 2 },
+    ] });
+
+    const { el } = await mountDashboard();
+    await vi.waitFor(() => expect(el.textContent).toContain("Speaker"));
+    const select = [...el.querySelectorAll("select")].find((s) => [...s.options].some((o) => o.value === "out-of-stock"));
+    select.value = "out-of-stock";
+    select.dispatchEvent(new Event("change"));
+    await settle();
+
+    const table = el.querySelector("table").textContent;
+    expect(table).toContain("Projector");
+    expect(table).not.toContain("Speaker");
   });
 });

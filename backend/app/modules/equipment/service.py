@@ -279,10 +279,13 @@ def event_requests(event_id: str, coordinator_id: str) -> EquipmentRequestLinesR
     )
 
 
-def pending_queue() -> PendingEquipmentLinesResponse:
-    """Pending and re-review lines across every open event, soonest event first."""
+# The lines waiting on tech support (SCRUM-24 AC7 adds re-review).
+WAITING_LINE_STATUSES = ["pending", "re_review"]
+
+
+def _queue(statuses: list[str] | None) -> PendingEquipmentLinesResponse:
     lines = []
-    for row in repository.list_pending_requests():
+    for row in repository.list_requests(statuses):
         event = _one(row.get("event")) or {}
         if event.get("status") not in QUEUE_EVENT_STATUSES:
             continue
@@ -291,11 +294,23 @@ def pending_queue() -> PendingEquipmentLinesResponse:
                 **_embedded_line_fields(row),
                 event_name=event.get("name") or "",
                 event_starts_at=event.get("starts_at"),
+                equipment_type=(_one(row.get("equipment")) or {}).get("equipment_type"),
             )
         )
     far_future = datetime.max.replace(tzinfo=timezone.utc)
     lines.sort(key=lambda line: (line.event_starts_at or far_future, line.created_at))
     return PendingEquipmentLinesResponse(lines=lines)
+
+
+def pending_queue() -> PendingEquipmentLinesResponse:
+    """Pending and re-review lines across every open event, soonest event first."""
+    return _queue(WAITING_LINE_STATUSES)
+
+
+def request_list() -> PendingEquipmentLinesResponse:
+    """Every line on every open event, any status, soonest event first: tech
+    support's requests page, where resolved lines stay for reference."""
+    return _queue(None)
 
 
 def event_request_ids(event_id: str) -> set[str]:

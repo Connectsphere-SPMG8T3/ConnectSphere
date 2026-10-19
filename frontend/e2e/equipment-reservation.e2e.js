@@ -10,8 +10,11 @@ test("TC-EQR-027 tech support reserve a line, tick the exit check, and the coord
   createThrowawayLine(event, item, 2);
 
   await seedSession(page, await sharedSessions("tech_support"));
-  // AC1: from the dashboard's list, open the event and reserve the line.
+  // AC1: the dashboard's Active requests tile opens the requests page; from
+  // there, open the event and reserve the line.
   await page.goto("/dashboard/tech-support");
+  await page.getByTestId("tile").filter({ hasText: "Active requests" }).click();
+  await expect(page).toHaveURL("/dashboard/tech-support/requests");
   await page.getByRole("link", { name: new RegExp(event.name) }).click();
   await expect(page).toHaveURL(`/tech-support/events/${event.id}`);
   const line = page.locator("article").filter({ hasText: item.name });

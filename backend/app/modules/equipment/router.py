@@ -45,6 +45,11 @@ def submit_request(body: EquipmentRequestCreate, current_user: EquipmentRequeste
     return service.submit_request(current_user.id, current_user.full_name, body)
 
 
+@router.get("/requests", response_model=PendingEquipmentLinesResponse, status_code=status.HTTP_200_OK)
+def request_list(current_user: EquipmentReader) -> PendingEquipmentLinesResponse:
+    return service.request_list()
+
+
 @router.get("/requests/pending", response_model=PendingEquipmentLinesResponse, status_code=status.HTTP_200_OK)
 def pending_requests(current_user: EquipmentReader) -> PendingEquipmentLinesResponse:
     return service.pending_queue()

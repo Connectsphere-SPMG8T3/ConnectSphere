@@ -13,7 +13,7 @@ vi.mock("@/services/api", async (importOriginal) => ({
     catalogue: vi.fn(),
     eventRequests: vi.fn(),
     submitRequest: vi.fn(),
-    pendingRequests: vi.fn(),
+    requestList: vi.fn(),
   },
 }));
 
@@ -135,27 +135,32 @@ describe("useEquipmentRequestStore (SCRUM-45)", () => {
   });
 });
 
-describe("useEquipmentQueueStore (SCRUM-45)", () => {
-  it("loads tech support's pending lines", async () => {
+describe("useEquipmentQueueStore (SCRUM-45, SCRUM-24)", () => {
+  it("loads every line on open events and counts those waiting", async () => {
     const pending = { ...LINE, event_name: "Year-End Dinner", event_starts_at: "2026-11-05T10:00:00Z" };
-    equipmentApi.pendingRequests.mockResolvedValue({ lines: [pending] });
+    const reserved = { ...pending, id: "l2", status: "reserved" };
+    equipmentApi.requestList.mockResolvedValue({ lines: [pending, reserved] });
     const store = useEquipmentQueueStore();
+    expect(store.isLoaded).toBe(false);
 
     await store.load();
 
-    expect(equipmentApi.pendingRequests).toHaveBeenCalledWith("access");
-    expect(store.lines).toEqual([pending]);
+    expect(equipmentApi.requestList).toHaveBeenCalledWith("access");
+    expect(store.lines).toEqual([pending, reserved]);
+    expect(store.waitingCount).toBe(1);
+    expect(store.isLoaded).toBe(true);
     expect(store.error).toBeNull();
     expect(store.isLoading).toBe(false);
   });
 
   it("reports a failure instead of an empty queue", async () => {
-    equipmentApi.pendingRequests.mockRejectedValue(new Error("Service unavailable"));
+    equipmentApi.requestList.mockRejectedValue(new Error("Service unavailable"));
     const store = useEquipmentQueueStore();
 
     await store.load();
 
     expect(store.lines).toEqual([]);
+    expect(store.isLoaded).toBe(false);
     expect(store.error).toBe("Service unavailable");
   });
 });

@@ -265,8 +265,9 @@ export const equipmentApi = {
   eventRequests(eventId, token) {
     return request(`/equipment/requests/event/${encodeURIComponent(eventId)}`, { token });
   },
-  pendingRequests(token) {
-    return request("/equipment/requests/pending", { token });
+  // Every line on every open event, any status (SCRUM-24 requests page).
+  requestList(token) {
+    return request("/equipment/requests", { token });
   },
   // SCRUM-24 equipment reservation (tech support only).
   technicalView(eventId, token) {

@@ -146,13 +146,18 @@ class TestReads:
         assert repository.list_line_statuses([]) == []
         client.table.assert_not_called()
 
-    def test_the_tech_support_queue_holds_pending_and_re_review_lines(self, client):
-        answer(client, [])
+    def test_the_request_list_filters_by_status_only_when_asked(self, client):
+        answer(client, [{"id": "l1"}])
 
-        repository.list_pending_requests()
-
+        assert repository.list_requests(["pending", "re_review"]) == [{"id": "l1"}]
         client.query.in_.assert_called_with("status", ["pending", "re_review"])
 
-    def test_lines_carry_notes_and_reason(self):
+        client.query.in_.reset_mock()
+        answer(client, None)
+        assert repository.list_requests() == []
+        client.query.in_.assert_not_called()
+
+    def test_lines_carry_notes_reason_and_equipment_type(self):
+        assert "equipment_type" in repository.REQUEST_LINE_SELECT
         assert "technical_notes" in repository.REQUEST_LINE_SELECT
         assert "not_available_reason" in repository.REQUEST_LINE_SELECT

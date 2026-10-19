@@ -2709,6 +2709,14 @@ D4, D8, D9, D11 and D14 adopted as [Assumption]s or [Team decision]s (REQUIREMEN
 - **Browser:** the existing suite passed [75/75](test-cases/runs/2026-10-19-1906-e2e-b8a1356.md). The new spec's first run [failed TC-EQR-027](test-cases/runs/2026-10-19-1909-e2e-b8a1356.md) because the test reused one tab for a second role (`seedSession` seeds a tab once); with its own context it [passed 2/2](test-cases/runs/2026-10-19-1910-e2e-b8a1356.md).
 - **Manual:** TC-EQR-029–032 not yet run.
 
+#### Addendum: requests page (developer's request before the manual pass)
+
+The developer asked for the tech support dashboard to follow venue staff's: an **Active requests** tile (pending and re-review lines) in place of **Out of stock**, opening a page listing every request that can be filtered and sorted. Built on the same branch:
+- **Backend:** `GET /equipment/requests` (tech support): every line on open events, any status, with `equipment_type`; one repository read `list_requests(statuses)` now backs it and the pending queue.
+- **Frontend:** `/dashboard/tech-support/requests` (`TechSupportEquipmentRequestsView`, `EquipmentRequestQueue`, `requestList.js`), a sidebar link, and the tile. The dashboard's request list moved to the page (as venue staff's did); `PendingEquipmentRequests` was removed. Out of stock is now an inventory filter option, so that information isn't lost.
+- **Verification:** tests first; backend 1,662, frontend 1,113 passed, build clean; equipment e2e 4/4 (the first try failed only because the running backend hadn't been restarted with the new route). Manual TC-EQR-034 outstanding.
+- This goes beyond SCRUM-24's ACs (it is §6.15's "sortable queue", deferred by SCRUM-45). Record it on the backlog as the developer prefers.
+
 #### Follow-ups
 
 - Manual pass TC-EQR-029–032 by the developer.
