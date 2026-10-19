@@ -182,3 +182,9 @@ export function deleteThrowawayVenues() {
   query(`delete from public.venue_bookings where venue_id in (select id from public.venues where name like '${VENUE_PREFIX}%')`);
   query(`delete from public.venues where name like '${VENUE_PREFIX}%'`);
 }
+
+/** CR-100's schema is a deployment prerequisite for its live browser cases. */
+export function venueBufferMigrationPresent() {
+  return query("select count(*) = 4 as present from information_schema.columns where table_schema = 'public' " +
+    "and table_name = 'venues' and column_name in ('setup_minutes', 'turnaround_minutes', 'emergency_access', 'restrictions')")[0].present;
+}

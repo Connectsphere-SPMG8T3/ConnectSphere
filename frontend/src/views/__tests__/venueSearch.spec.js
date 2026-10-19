@@ -529,7 +529,8 @@ describe("VenueDetailView (SCRUM-67)", () => {
     const capacity = el.querySelector("[role='tabpanel']");
     expect(capacity.textContent).toContain("150 pax");
     expect(capacity.textContent).toMatch(/08:00.22:00/);
-    expect(capacity.textContent).toContain("bookings may run back to back");
+    expect(capacity.textContent).toContain("Default turnaround");
+    expect(capacity.textContent).toContain("0 minutes");
     expect(capacity.textContent).toContain("Theatre");
 
     const facilities = await openTab(el, "Facilities & access");

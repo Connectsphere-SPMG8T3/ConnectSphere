@@ -206,3 +206,9 @@ describe('CR-104 Safety rejected panel', () => {
     expect(venuePanelState({status:'planning',venue_booking:rejected}).kind).toBe('safety-rejected');
   });
 });
+
+it("CR-100 labels an occupied window beyond supported dates without presenting clipped dates as exact", () => {
+  expect(describeConflict({ kind: "booking", event_name: "Long setup",
+    starts_at: "0001-01-01T00:00:00Z", ends_at: "9999-12-31T23:59:59Z" }, "Asia/Singapore"))
+    .toBe('"Long setup" occupies it beyond supported dates, including setup and turnaround.');
+});

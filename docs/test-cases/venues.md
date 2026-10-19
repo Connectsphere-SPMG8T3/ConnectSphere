@@ -464,6 +464,36 @@ Venue selection and booking for each proposed space are downstream of CR-98's co
 | AC9 Venue staff restore the original when the venue is free; the flag is cleared, a pending replacement cancelled | TC-BOOK-047, TC-BOOK-050; `pytest` `test_venue_booking_restore_api.py`; Vitest `BookingRequestView.spec.js` |
 | AC10 Attendees told only once a replacement is confirmed | No code in this story: attendees are never notified here (TC-BOOK-044); story 53 owns the later notice |
 
+
+## CR-100 — Set venue buffer times and safety details
+
+Defaults are whole, non-negative minutes, independently per venue, default 0, with no business maximum (QA3-4, QA3-28). Existing bookings retain their own values (AC5, M3/QA3-6). Per-booking editing/approval locking belongs to 36, not this story. Optional safety text clears to null; history records the clearing.
+
+| ID | Scenario | Type | Preconditions | Steps | Test data | Expected result | Priority | Created | Last run |
+|---|---|---|---|---|---|---|---|---|---|
+| TC-VENUE-089 | Save, read and clear defaults/safety facts, with history (AC1, AC3, AC6) | Integration | CR-100 migration deployed; active Venue Staff | Recorded live script creates a throwaway venue, edits, reads as coordinator, reads history, then clears text | 0, 30 and 1,000,000 minutes; multiline emergency access; restrictions | Independent zero defaults; values round-trip; blank/null safety text clears; actor/time/before/after in history; no shared records edited | 🔴 | 2026-10-18 | Blocked: shared migration pending |
+| TC-VENUE-090 | Invalid minutes are refused (AC2) | Integration | As above | Raw PATCH each invalid value for each buffer | -1, 2147483648, abc, empty, null, boolean, fractional | 422 before write; existing values/history unchanged | 🔴 | 2026-10-18 | 2026-10-19 · Pass (incl. 2147483648) · [run](runs/2026-10-19-1955-api-db-04b96c7.md) |
+| TC-VENUE-091 | Safety Officer sees recorded venue safety facts (AC4) | Integration / E2E | As above; throwaway event in Safety review with approved booking | Read safety-review API and open `/safety/events/:id` as Safety Officer | Emergency access: East exit / Courtyard; Restrictions: No open flames | Actual venue text appears, preserving line breaks; missing text says Not recorded | 🔴 | 2026-10-18 | 2026-10-19 · Pass (API and browser) · [run](runs/2026-10-19-1955-api-db-04b96c7.md), [run](runs/2026-10-19-2035-e2e-6a3099a.md) |
+| TC-VENUE-092 | Defaults snapshot only into future event/space requests (AC1, AC2, AC5, AC6) | SQL | CR-100 migration available | Run `supabase/verification/venue_buffer_checks.sql` in a rollback transaction, after the migration | Zero, 30/45 then 60/15; touching and overlapping buffers; maximum integer | Both paths preserve own booked window and copy current defaults; old rows unchanged; setup-only conflict refused; touching accepted; other venue unchanged; exact large buffer retained | 🔴 | 2026-10-18 | 2026-10-19 · Pass (live SQL, rolled back) · [run](runs/2026-10-19-1955-api-db-04b96c7.md) |
+| TC-VENUE-093 | Only active Venue Staff edits (AC7) | Integration | CR-100 migration deployed | Raw PATCH as every other role, including seeded coordinator who also holds Venue Staff | Valid four-field edit | Every disallowed active role gets 403; no writes | 🔴 | 2026-10-18 | 2026-10-19 · Pass · [run](runs/2026-10-19-1955-api-db-04b96c7.md) |
+| TC-VENUE-094 | Existing edit/profile/history flow carries the four fields (AC1, AC3, AC4, AC6) | E2E | CR-100 migration deployed; throwaway venue | Edit at `/venues/:id/edit`, save, open Capacity & hours, Facilities & access, History | 30/45; multiline emergency access; restrictions | Profile shows both defaults and safety facts; history names fields and values; existing bookings keep their own times | 🔴 | 2026-10-18 | 2026-10-19 · Pass · [run](runs/2026-10-19-2035-e2e-6a3099a.md) |
+| TC-VENUE-095 | Venue edit/profile/history wording and layout (AC1–4, AC6) | Manual | Deployed migration and branch servers; active Venue Staff, then coordinator | Open a venue's edit and detail pages at desktop, tablet and 375 px; inspect both attribute tabs and History; clear a safety field | Zero/positive defaults; long multiline safety text | Labels distinguish defaults from booked times; future-only explanation reads clearly; text wraps without clipping/overflow; clearing and history are clear; coordinator has no edit action; no flash/jump | 🟠 | 2026-10-18 | 2026-10-19 · Pass (Jie Ching) · [run](runs/2026-10-19-1955-manual-04b96c7.md) |
+| TC-VENUE-096 | Safety review readability (AC4) | Manual | As above; active Safety Officer; event in Safety review with recorded and unrecorded safety facts | Open `/safety/events/:id` at desktop and 375 px | Long multiline emergency access/restrictions, one empty value | Facts belong to the correct venue, line breaks and wording read clearly, Not recorded is honest, no clipping/overflow or flash | 🟠 | 2026-10-18 | 2026-10-19 · Fail (D43), then Pass after the fix (Jie Ching); layout also automated · [run](runs/2026-10-19-1955-manual-04b96c7.md), [run](runs/2026-10-19-2035-e2e-6a3099a.md) |
+
+### Traceability — CR-100
+
+| AC | Files and automated tests | Live / manual verification |
+|---|---|---|
+| AC1 Independent zero/default minutes | venue schemas/repository/service; `test_venue_buffers_and_safety.py`; form mapping and `VenueEditView.spec.js` | TC-VENUE-089, 092, 094, 095 |
+| AC2 Invalid input rejected | `VenueUpdateRequest`; `editFormToPayload`; parameterized API/form tests | TC-VENUE-090, 092 |
+| AC3 Safety facts recorded | Existing edit form, snapshot and RPC; API save/clear tests | TC-VENUE-089, 094, 095 |
+| AC4 Venue and Safety Officer display | `SafetyReviewVenue`, venue embed/service, both views; `VenueDetailView.spec.js`, `SafetyViews.spec.js` | TC-VENUE-091, 094–096 |
+| AC5 Only future requests use new defaults | New migration replaces both request functions; search includes candidate defaults; booking reads display `booked_period`; Python/JS date-limit regressions | TC-VENUE-092; SQL run passed, HTTP/browser integration pending deployment |
+| AC6 Venue history | Existing `_snapshot`, `update_venue`, history formatter; save and clearing tests | TC-VENUE-089, 092, 094, 095 |
+| AC7 Active Venue Staff only | Existing role guard; every other active role plus multi-role denial regression and endpoint/route matrices | TC-VENUE-093 |
+
+For buffers extending beyond Python's supported years, comparison endpoints are bounded at years 1/9999; conflict text says “beyond supported dates” instead of showing those endpoints as exact. Stored integers and PostgreSQL occupied ranges are never capped. Booking screens use the actual `booked_period`.
+
 ## Block a venue (SCRUM-51)
 
 **Preconditions for every case in this section:** migrations `20261019100000_venue_block_reason_equipment_failure.sql` and `20261019100001_create_venue_block.sql` applied. Automated cases run on throwaway venues and events in 2031, deleted when the run ends; the SQL script rolls back.

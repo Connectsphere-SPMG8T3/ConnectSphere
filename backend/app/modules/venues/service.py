@@ -72,7 +72,14 @@ def search_venues(criteria: VenueSearchCriteria) -> VenueSearchResponse:
     """Evaluate every venue against the criteria (and the period, if given)."""
     venues = repository.list_venues()
     period = criteria.period
-    occupants = repository.list_occupants(period) if period is not None else {}
+    # Fetch one envelope wide enough for every venue, then evaluate each venue
+    # against its own defaults. Otherwise a setup-only clash is never fetched.
+    envelope = search.buffered_period(
+        period,
+        max((venue.setup_minutes for venue in venues), default=0),
+        max((venue.turnaround_minutes for venue in venues), default=0),
+    ) if period is not None else None
+    occupants = repository.list_occupants(envelope) if envelope is not None else {}
 
     evaluated = search.search(venues, criteria, occupants)
     excluded_count = sum(1 for r in evaluated if r.excluded)
@@ -146,6 +153,10 @@ def _snapshot(venue: VenueSummary) -> dict:
         "opens_at": venue.opens_at.isoformat(),
         "closes_at": venue.closes_at.isoformat(),
         "description": venue.description,
+        "setup_minutes": venue.setup_minutes,
+        "turnaround_minutes": venue.turnaround_minutes,
+        "emergency_access": venue.emergency_access,
+        "restrictions": venue.restrictions,
         "is_active": venue.is_active,
         "inactive_reason": venue.inactive_reason.value if venue.inactive_reason else None,
         "inactive_note": venue.inactive_note,
@@ -225,6 +236,10 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
         closes_at=current.closes_at,
         is_active=current.is_active,
         description=current.description,
+        setup_minutes=current.setup_minutes,
+        turnaround_minutes=current.turnaround_minutes,
+        emergency_access=current.emergency_access,
+        restrictions=current.restrictions,
         inactive_reason=current.inactive_reason,
         inactive_note=current.inactive_note,
     )
@@ -240,6 +255,10 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
         closes_at=body.closes_at,
         is_active=current.is_active,
         description=body.description,
+        setup_minutes=body.setup_minutes,
+        turnaround_minutes=body.turnaround_minutes,
+        emergency_access=body.emergency_access,
+        restrictions=body.restrictions,
         inactive_reason=current.inactive_reason,
         inactive_note=current.inactive_note,
     )
@@ -740,7 +759,8 @@ def event_bookings_with_venues(event_id: str) -> list[dict]:
         items.append(dict(booking_id=row["id"], venue_id=row["venue_id"], booking_status=row["status"],
                           venue_name=venue.get("name"), capacity=venue.get("capacity"),
                           layouts=[layout["layout"] for layout in venue.get("venue_layouts") or []],
-                          accessibility_features=venue.get("accessibility_features") or []))
+                          accessibility_features=venue.get("accessibility_features") or [],
+                          emergency_access=venue.get("emergency_access"), restrictions=venue.get("restrictions")))
     return items
 
 

@@ -24,12 +24,13 @@ from app.modules.venues.schemas import (
     VenueStaffBlock,
     VenueStaffBooking,
     VenueSummary,
+    parse_occupied_datetime,
 )
 from app.modules.venues.search import OCCUPYING_STATUSES
 
 _VENUE_COLUMNS = (
     "id, name, location, capacity, accessibility_features, opens_at, closes_at, is_active, description, "
-    "inactive_reason, inactive_note, "
+    "inactive_reason, inactive_note, setup_minutes, turnaround_minutes, emergency_access, restrictions, "
     "venue_layouts(layout, capacity_for_layout), venue_facilities(facility)"
 )
 
@@ -49,7 +50,7 @@ def _parse_range(value: str) -> Period:
     match = _RANGE_PATTERN.match(value)
     if match is None:
         raise ValueError(f"Unrecognised range literal from PostgREST: {value!r}")
-    return Period(starts_at=datetime.fromisoformat(match.group(1)), ends_at=datetime.fromisoformat(match.group(2)))
+    return Period(starts_at=parse_occupied_datetime(match.group(1)), ends_at=parse_occupied_datetime(match.group(2)))
 
 
 def _range_literal(period: Period) -> str:
@@ -114,6 +115,10 @@ def _to_venue(row: dict) -> VenueSummary:
         closes_at=row["closes_at"],
         is_active=row["is_active"],
         description=row.get("description"),
+        setup_minutes=row.get("setup_minutes", 0),
+        turnaround_minutes=row.get("turnaround_minutes", 0),
+        emergency_access=row.get("emergency_access"),
+        restrictions=row.get("restrictions"),
         inactive_reason=row.get("inactive_reason"),
         inactive_note=row.get("inactive_note"),
     )
@@ -211,7 +216,7 @@ def list_flaggable_bookings(venue_id: str, since: datetime) -> list[BookingSumma
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_id, occupied_period, status")
+        .select("id, event_id, booked_period, status")
         .eq("venue_id", venue_id)
         .in_("status", ["approved", "held"])
         .is_("flag", "null")
@@ -220,7 +225,7 @@ def list_flaggable_bookings(venue_id: str, since: datetime) -> list[BookingSumma
     )
     bookings = [
         BookingSummary(
-            id=row["id"], event_id=row["event_id"], period=_parse_range(row["occupied_period"]), status=row["status"]
+            id=row["id"], event_id=row["event_id"], period=_parse_range(row["booked_period"]), status=row["status"]
         )
         for row in response.data or []
     ]
@@ -392,22 +397,24 @@ def list_upcoming_bookings(venue_id: str, since: datetime) -> list[BookingSummar
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_id, event_space_request_id, occupied_period, status")
+        .select("id, event_id, event_space_request_id, booked_period, occupied_period, status")
         .eq("venue_id", venue_id)
         .in_("status", sorted(OCCUPYING_STATUSES))
         .execute()
     )
+    # Shown by its booked window, but kept while its turnaround still occupies the venue.
     bookings = [
         BookingSummary(
             id=row["id"],
             event_id=row["event_id"],
             event_space_request_id=row.get("event_space_request_id"),
-            period=_parse_range(row["occupied_period"]),
+            period=_parse_range(row["booked_period"]),
             status=row["status"],
         )
         for row in response.data or []
+        if _parse_range(row["occupied_period"]).ends_at > since
     ]
-    return sorted((b for b in bookings if b.period.ends_at > since), key=lambda b: b.period.starts_at)
+    return sorted(bookings, key=lambda b: b.period.starts_at)
 
 
 # The two functions above scope to one venue and drop past rows in Python,
@@ -457,7 +464,7 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
         # Every relationship is named because bookings have multiple venue,
         # event and profile foreign keys.
         .select(
-            "id, event_id, venue_id, occupied_period, status, created_at, expires_at, flag, "
+            "id, event_id, venue_id, booked_period, status, created_at, expires_at, flag, "
             "decision_reason, suggestion_note, decided_at, "
             "venues!venue_bookings_venue_id_fkey(name), "
             "events!venue_bookings_event_id_fkey(name, coordinator:profiles!events_coordinator_id_fkey(full_name)), "
@@ -474,7 +481,7 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
             event_id=row["event_id"],
             venue_id=row["venue_id"],
             venue_name=_embedded_venue_name(row),
-            period=_parse_range(row["occupied_period"]),
+            period=_parse_range(row["booked_period"]),
             status=row["status"],
             requested_at=datetime.fromisoformat(row["created_at"]),
             expires_at=datetime.fromisoformat(row["expires_at"]) if row.get("expires_at") else None,
@@ -590,7 +597,7 @@ def list_event_booking_ids(event_id: str) -> list[dict]:
 
 def list_event_bookings_with_venues(event_id: str) -> list[dict]:
     response = (get_supabase_admin_client().table("venue_bookings")
-                .select("id, venue_id, status, venues!venue_bookings_venue_id_fkey(name, capacity, venue_layouts(layout), accessibility_features)")
+                .select("id, venue_id, status, venues!venue_bookings_venue_id_fkey(name, capacity, venue_layouts(layout), accessibility_features, emergency_access, restrictions)")
                 .eq("event_id", event_id).in_("status", ["held", "approved", "re_review"]).execute())
     return response.data or []
 
@@ -613,7 +620,7 @@ def set_hold_expiry(booking_id: str, actor_id: str, expires_at: datetime) -> dic
 # SCRUM-38. `venue_bookings` has two foreign keys to `venues` and two to
 # `profiles` (requester and decider), so every embed names its constraint.
 _BOOKING_DETAIL_COLUMNS = (
-    "id, event_id, venue_id, occupied_period, status, request_note, created_at, "
+    "id, event_id, venue_id, booked_period, status, request_note, created_at, "
     "decision_reason, suggestion_note, decided_at, flag, flag_reason, "
     "venue:venues!venue_bookings_venue_id_fkey(name), "
     "requester:profiles!venue_bookings_requested_by_fkey(full_name), "
@@ -656,7 +663,7 @@ def get_booking(booking_id: str) -> dict | None:
         "event_id": row["event_id"],
         "venue_id": row["venue_id"],
         "venue_name": _embedded_name(row, "venue", "name"),
-        "period": _parse_range(row["occupied_period"]),
+        "period": _parse_range(row["booked_period"]),
         "status": row["status"],
         "request_note": row.get("request_note"),
         "requested_at": datetime.fromisoformat(row["created_at"]),

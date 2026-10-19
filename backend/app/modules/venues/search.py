@@ -5,11 +5,11 @@ coordinator set and whether it is free for the requested period; `search`
 runs it over the catalogue and orders the results. Nothing here touches
 Supabase, so the boundaries are unit-testable (tests/test_venue_search.py).
 
-Deliberately absent: setup/turnaround buffers (zero, QA-28) and the
-operating-hours / suitability warnings, which belong to SCRUM-18.
+Candidate windows use the venue defaults (CR-100); stored occupants already
+include each booking's own buffers (SCRUM-21).
 """
 
-from datetime import tzinfo
+from datetime import datetime, timedelta, tzinfo
 
 from app.modules.venues.schemas import (
     Availability,
@@ -28,7 +28,22 @@ from app.modules.venues.suitability import effective_capacity
 OCCUPYING_STATUSES = frozenset({"held", "approved", "re_review"})
 
 
+def buffered_period(period: Period, setup_minutes: int, turnaround_minutes: int) -> Period:
+    """The window a new booking would occupy, including its copied defaults."""
+    try:
+        starts = period.starts_at - timedelta(minutes=setup_minutes)
+    except OverflowError:
+        starts = datetime.min.replace(tzinfo=period.starts_at.tzinfo)
+    try:
+        ends = period.ends_at + timedelta(minutes=turnaround_minutes)
+    except OverflowError:
+        ends = datetime.max.replace(tzinfo=period.ends_at.tzinfo)
+    return Period(starts_at=starts, ends_at=ends)
+
+
 def _format_period(period: Period, tz: tzinfo) -> str:
+    if period.starts_at.year == 1 or period.ends_at.year == 9999:
+        return "beyond supported dates"
     start = period.starts_at.astimezone(tz)
     end = period.ends_at.astimezone(tz)
     if start.date() == end.date():
@@ -114,7 +129,7 @@ def evaluate(venue: VenueSummary, criteria: VenueSearchCriteria, occupants: list
     if period is None:
         availability = Availability.not_checked
     else:
-        conflicts = _availability_reasons(period, occupants)
+        conflicts = _availability_reasons(buffered_period(period, venue.setup_minutes, venue.turnaround_minutes), occupants)
         reasons.extend(conflicts)
         availability = Availability.unavailable if conflicts else Availability.available
 

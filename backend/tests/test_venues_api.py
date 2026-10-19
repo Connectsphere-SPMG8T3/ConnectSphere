@@ -737,7 +737,8 @@ class TestVenueEdit:
         assert call["layouts"] == edit["layouts"]
         assert call["facilities"] == ["stage"]
         assert call["accessibility_features"] == ["hearing_loop"]
-        assert call["after"] == {**edit, "is_active": True, "inactive_reason": None, "inactive_note": None}
+        assert call["after"] == {**edit, "is_active": True, "inactive_reason": None, "inactive_note": None,
+                                 "setup_minutes": 0, "turnaround_minutes": 0, "emergency_access": None, "restrictions": None}
         assert call["before"] == {
             "name": "Hall A",
             "location": "Bukit Timah Campus",
@@ -748,6 +749,10 @@ class TestVenueEdit:
             "opens_at": "08:00:00",
             "closes_at": "22:00:00",
             "description": "Main hall.",
+            "setup_minutes": 0,
+            "turnaround_minutes": 0,
+            "emergency_access": None,
+            "restrictions": None,
             "is_active": True,
             "inactive_reason": None,
             "inactive_note": None,

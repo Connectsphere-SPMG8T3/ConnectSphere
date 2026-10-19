@@ -5,7 +5,6 @@ import {
   VENUE_PROFILE_TABS,
   defaultBookingGroupKey,
   editFormToPayload,
-  formatTurnaround,
   groupUpcomingBookings,
   lastEditorName,
   stepIndex,
@@ -66,23 +65,6 @@ describe("groupUpcomingBookings (SCRUM-67 AC3)", () => {
     const shown = groups.flatMap((g) => g.bookings.map((b) => b.id));
 
     expect(shown).toContain("9");
-  });
-});
-
-describe("formatTurnaround (QA-28)", () => {
-  it("says back-to-back is allowed when the buffer is zero", () => {
-    expect(formatTurnaround(0)).toBe("None — bookings may run back to back");
-  });
-
-  it("words a real buffer in hours and minutes", () => {
-    expect(formatTurnaround(30)).toBe("30 min between bookings");
-    expect(formatTurnaround(60)).toBe("1 h between bookings");
-    expect(formatTurnaround(90)).toBe("1 h 30 min between bookings");
-  });
-
-  it("says nothing rather than guessing when the figure is missing", () => {
-    expect(formatTurnaround(null)).toBe("Not recorded");
-    expect(formatTurnaround(undefined)).toBe("Not recorded");
   });
 });
 
@@ -267,6 +249,10 @@ describe("venueToEditForm / editFormToPayload (SCRUM-63)", () => {
       opens_at: "08:00:00",
       closes_at: "22:00:00",
       description: "The main hall.",
+      setup_minutes: 0,
+      turnaround_minutes: 0,
+      emergency_access: null,
+      restrictions: null,
       confirm: false,
     });
   });
@@ -290,6 +276,38 @@ describe("venueToEditForm / editFormToPayload (SCRUM-63)", () => {
   it("handles a venue with no layouts or facilities recorded", () => {
     const form = venueToEditForm({ ...venue, layouts: [], facilities: [], accessibility_features: [] });
     expect(editFormToPayload(form).layouts).toEqual([]);
+  });
+});
+
+describe("CR-100 venue buffers and safety details", () => {
+  it("loads defaults and safety details into the existing edit form", () => {
+    const form = venueToEditForm({ setup_minutes: 30, turnaround_minutes: 45,
+      emergency_access: "East exit", restrictions: "No flames" });
+    expect(form).toMatchObject({ setupMinutes: "30", turnaroundMinutes: "45",
+      emergencyAccess: "East exit", restrictions: "No flames" });
+    expect(venueToEditForm(null)).toMatchObject({ setupMinutes: "0", turnaroundMinutes: "0",
+      emergencyAccess: "", restrictions: "" });
+  });
+
+  it("sends numeric buffers and trimmed safety text, including cleared fields", () => {
+    const form = { ...venueToEditForm(null), setupMinutes: "0", turnaroundMinutes: "2147483647",
+      emergencyAccess: "  East exit\nCourtyard  ", restrictions: "   " };
+    expect(editFormToPayload(form)).toMatchObject({ setup_minutes: 0, turnaround_minutes: 2147483647,
+      emergency_access: "East exit\nCourtyard", restrictions: null });
+  });
+
+  it.each(["", " ", "abc", "-1", "1.5", "0x10", "1e3", "2147483648"])("rejects invalid minutes %j before sending", (value) => {
+    for (const field of ["setupMinutes", "turnaroundMinutes"]) {
+      expect(() => editFormToPayload({ ...venueToEditForm(null), [field]: value })).toThrow(/whole number/);
+    }
+  });
+
+  it("includes buffers and cleared safety facts in the visible history", () => {
+    expect(summariseEditHistoryEntry({ before: { setup_minutes: 0, restrictions: "No flames" },
+      after: { setup_minutes: 30, restrictions: null } })).toEqual([
+      { field: "setup_minutes", label: "Default setup (minutes)", before: "0", after: "30" },
+      { field: "restrictions", label: "Restrictions", before: "No flames", after: "None recorded" },
+    ]);
   });
 });
 
