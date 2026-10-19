@@ -1,3 +1,5 @@
+"""Auth API tests, including Attendee signup (SCRUM-83)."""
+
 import threading
 import time
 from types import SimpleNamespace
@@ -663,16 +665,35 @@ NEW_ORGANISER_PROFILE_ROW = {
     "phone_number": "+65 9123 4567",
 }
 
+NEW_ATTENDEE_ID = "44444444-4444-4444-4444-444444444444"
+NEW_ATTENDEE_EMAIL = "attendee.new@connectsphere.dev"
+ATTENDEE_SIGNUP = {
+    "role": "attendee",
+    "full_name": "Avery Attendee",
+    "email": NEW_ATTENDEE_EMAIL,
+    "password": "Secure123",
+}
+NEW_ATTENDEE_PROFILE_ROW = {
+    "id": NEW_ATTENDEE_ID,
+    "email": NEW_ATTENDEE_EMAIL,
+    "full_name": "Avery Attendee",
+    "role": "attendee",
+    "organisation_name": None,
+    "department": None,
+    "phone_number": None,
+}
+
 
 def _admin_client_for_signup(
     monkeypatch,
     *,
+    role: str = "event_organiser",
     create_user_raises: Exception | None = None,
     profile_row: dict | None = NEW_ORGANISER_PROFILE_ROW,
 ) -> MagicMock:
     """The admin client as sign-up sees it: `auth.admin.create_user` plus the
     `profiles` / `user_roles` rows `handle_new_user()` would have written."""
-    admin_client = _make_table_mock(profile_row, user_roles=[{"role": "event_organiser"}])
+    admin_client = _make_table_mock(profile_row, user_roles=[{"role": role}])
     if create_user_raises is not None:
         admin_client.auth.admin.create_user.side_effect = create_user_raises
     else:
@@ -706,6 +727,51 @@ class TestSignup:
                 },
             }
         )
+
+    def test_attendee_signup_creates_an_account_without_organiser_fields(self, client, monkeypatch):
+        admin_client = _admin_client_for_signup(
+            monkeypatch,
+            role="attendee",
+            profile_row=NEW_ATTENDEE_PROFILE_ROW,
+        )
+
+        response = client.post("/api/v1/auth/signup", json=ATTENDEE_SIGNUP)
+
+        assert response.status_code == 201
+        assert response.json() == {**NEW_ATTENDEE_PROFILE_ROW, "roles": ["attendee"]}
+        admin_client.auth.admin.create_user.assert_called_once_with(
+            {
+                "email": NEW_ATTENDEE_EMAIL,
+                "password": "Secure123",
+                "email_confirm": True,
+                "user_metadata": {
+                    "role": "attendee",
+                    "full_name": "Avery Attendee",
+                    "organisation_name": None,
+                    "phone_number": None,
+                },
+            }
+        )
+
+    @pytest.mark.parametrize("field", ["full_name", "email", "password"])
+    @pytest.mark.parametrize("value", [None, "", "   "], ids=["missing", "empty", "blank"])
+    def test_attendee_signup_with_a_required_field_left_empty_returns_422(
+        self, client, monkeypatch, field, value
+    ):
+        admin_client = _admin_client_for_signup(
+            monkeypatch,
+            role="attendee",
+            profile_row=NEW_ATTENDEE_PROFILE_ROW,
+        )
+        body = {**ATTENDEE_SIGNUP, field: value}
+        if value is None:
+            del body[field]
+
+        response = client.post("/api/v1/auth/signup", json=body)
+
+        assert response.status_code == 422
+        assert [error["loc"] for error in response.json()["detail"]] == [["body", field]]
+        admin_client.auth.admin.create_user.assert_not_called()
 
     def test_signup_with_an_already_registered_email_returns_409(self, client, monkeypatch):
         _admin_client_for_signup(
@@ -769,10 +835,9 @@ class TestSignup:
 
     @pytest.mark.parametrize(
         "role",
-        # Staff roles are system defaults (ACC-R3); attendee sign-up is SCRUM-83.
-        ["event_coordinator", "event_coordinator_lead", "venue_staff", "tech_support", "safety_officer", "attendee"],
+        ["event_coordinator", "event_coordinator_lead", "venue_staff", "tech_support", "safety_officer"],
     )
-    def test_signup_for_any_role_but_event_organiser_is_rejected_before_reaching_supabase(
+    def test_signup_for_an_internal_role_is_rejected_before_reaching_supabase(
         self, client, monkeypatch, role
     ):
         admin_client = _admin_client_for_signup(monkeypatch)

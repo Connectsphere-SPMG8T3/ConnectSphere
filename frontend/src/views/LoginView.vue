@@ -90,12 +90,20 @@ async function handleSubmit() {
           {{ authStore.isLoading ? "Signing In…" : "Sign In" }}
         </BauhausButton>
 
-        <p class="text-center text-sm font-medium text-ink/70">
-          New Event Organiser?
-          <RouterLink to="/signup" class="font-bold uppercase tracking-wide text-bauhaus-blue underline">
-            Create an account
-          </RouterLink>
-        </p>
+        <div class="flex flex-col gap-2 border-t-2 border-ink pt-4 text-center text-sm font-medium text-ink/70">
+          <p>
+            New Event Organiser?
+            <RouterLink to="/signup/organiser" class="font-bold uppercase tracking-wide text-bauhaus-blue underline">
+              Create organiser account
+            </RouterLink>
+          </p>
+          <p>
+            New Attendee?
+            <RouterLink to="/signup/attendee" class="font-bold uppercase tracking-wide text-bauhaus-blue underline">
+              Create attendee account
+            </RouterLink>
+          </p>
+        </div>
       </form>
     </BauhausCard>
   </AuthPageLayout>
