@@ -42,7 +42,7 @@ values
      'b0000000-0000-4000-8000-000000000003', tstzrange('2031-09-05 10:00+08', '2031-09-05 12:00+08', '[)'), 'approved');
 
 update public.venue_bookings
-   set flag = 'affected', flag_reason = 'Venue unavailable: maintenance', flagged_at = now()
+   set flag = 'affected', flag_reason = 'Venue unavailable: Maintenance', flagged_at = now()
  where id in ('d0000000-0000-4000-8000-0000000095c1', 'd0000000-0000-4000-8000-0000000095c4',
               'd0000000-0000-4000-8000-0000000095c5');
 
