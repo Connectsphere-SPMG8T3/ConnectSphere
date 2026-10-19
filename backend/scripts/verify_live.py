@@ -2044,7 +2044,7 @@ def _(ctx: Context) -> None:
 
 # --- Equipment requests (SCRUM-45) ----------------------------------------
 
-PROJECTOR_ID = "b0000000-0000-4000-8000-000000000001"  # supabase/seed.sql: 4K Projector, 4 in total
+PROJECTOR_ID = "b0000000-0000-4000-8000-000000000001"  # supabase/seed.sql: 4K Projector, 14 in total
 EQUIPMENT_REQUESTS = "/equipment/requests"
 LIVE_CHECK_NOTE = "live-check SCRUM-45"  # marks the lines TC-EQR-002 writes, so only those are deleted
 
@@ -2082,14 +2082,14 @@ def _(ctx: Context) -> None:
     coordinator = ctx.shared("event_coordinator")
     note = f"{LIVE_CHECK_NOTE} {ctx.run_id}: HDMI to the lectern"
     try:
-        # 5 is above the 4 that exist: EQ-R1 allows it.
+        # 15 is above the 14 that exist: EQ-R1 allows it.
         response = submit_equipment(ctx, coordinator, PLANNING_FIXTURE, [
-            {"equipment_id": PROJECTOR_ID, "quantity": 5, "technical_requirements": note},
+            {"equipment_id": PROJECTOR_ID, "quantity": 15, "technical_requirements": note},
         ])
         expect_status(response, 201)
         [line] = response.json()["lines"]
         expect(line["status"] == "pending", f"status is {line['status']!r}")
-        expect(line["quantity"] == 5, f"quantity is {line['quantity']}")
+        expect(line["quantity"] == 15, f"quantity is {line['quantity']}")
 
         mine = ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/event/{PLANNING_FIXTURE}", headers=coordinator.headers)
         expect_status(mine, 200)
@@ -2103,7 +2103,7 @@ def _(ctx: Context) -> None:
         expect(seen[0]["event_name"], "tech support line has no event name")
 
         stored = db_query(f"select status::text as status, quantity from public.equipment_requests where id = '{line['id']}'")
-        expect(stored == [{"status": "pending", "quantity": 5}], f"stored row is {stored}")
+        expect(stored == [{"status": "pending", "quantity": 15}], f"stored row is {stored}")
     finally:
         delete_live_check_lines()
 

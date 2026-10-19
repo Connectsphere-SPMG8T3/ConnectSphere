@@ -2717,6 +2717,11 @@ The developer asked for the tech support dashboard to follow venue staff's: an *
 - **Verification:** tests first; backend 1,662, frontend 1,113 passed, build clean; equipment e2e 4/4 (the first try failed only because the running backend hadn't been restarted with the new route). Manual TC-EQR-034 outstanding.
 - This goes beyond SCRUM-24's ACs (it is §6.15's "sortable queue", deferred by SCRUM-45). Record it on the backlog as the developer prefers.
 
+#### Addendum: a fuller equipment catalogue (developer's request before the manual pass)
+
+- **Seed:** the five seeded items now hold 10–24 units each (4K Projector 14, Wireless Mics 24, PA Systems 10, Stage Lighting 16, HDMI Switchers 12), and nine items were added (`b…0006`–`b…000e`): Sound System, Speaker Stands, Whiteboards, Flip Chart Stands, Projector Screens, Lecterns, Extension Cords, Presentation Laptops, Wireless Presenters. The same rows were upserted into the live project by ID (no truncate), so reservations and requests on the old items kept their references.
+- **Checks:** TC-EQR-002 (`verify_live.py`) and TC-EQR-005 (`equipment.e2e.js`) relied on "5 is above the 4 that exist"; they now submit 15 of 14, and TC-EQR-005's expected note reads "Only 14 exist in the catalogue." Both passed (`runs/2026-10-19-2223-api-db-744f444.md`, `runs/2026-10-19-2224-e2e-744f444.md`).
+
 #### Follow-ups
 
 - Manual pass TC-EQR-029–032 by the developer.
