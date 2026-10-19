@@ -5,11 +5,11 @@
 // Mirrors the API's TECHNICAL_REQUIREMENTS_MAX_LENGTH.
 export const TECHNICAL_REQUIREMENTS_MAX_LENGTH = 1000;
 
-// The full §6.15 line lifecycle; SCRUM-45 only creates `pending` lines.
+// The full §6.15 line lifecycle. AC9 (SCRUM-24): `rejected` reads "Not available".
 export const REQUEST_STATUS_LABELS = {
   pending: "Pending",
   reserved: "Reserved",
-  rejected: "Rejected",
+  rejected: "Not available",
   re_review: "Re-review",
   released: "Released",
 };

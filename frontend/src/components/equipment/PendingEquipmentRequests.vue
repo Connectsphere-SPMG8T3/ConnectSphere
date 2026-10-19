@@ -1,12 +1,13 @@
 <script setup>
 import { onMounted } from "vue";
+import { RouterLink } from "vue-router";
 
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import { REQUEST_STATUS_LABELS } from "@/features/equipment/equipmentRequest";
 import { useEquipmentQueueStore } from "@/features/equipment/equipmentQueueStore";
 
-// SCRUM-45: tech support's read-only view of pending equipment request lines.
-// Reserving and rejecting them is SCRUM-24's.
+// SCRUM-45: tech support's list of lines waiting on them, pending or flagged for
+// re-review (SCRUM-24 AC7). Each opens its event, where it is arranged (SCRUM-24).
 const store = useEquipmentQueueStore();
 
 const formatter = new Intl.DateTimeFormat("en-SG", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Singapore" });
@@ -35,13 +36,18 @@ onMounted(() => store.load());
             {{ REQUEST_STATUS_LABELS[line.status] ?? line.status }}
           </span>
         </div>
-        <span class="text-sm font-bold">{{ line.event_name }} · {{ formatTime(line.event_starts_at) }}</span>
+        <RouterLink
+          :to="{ name: 'tech-support-event', params: { id: line.event_id } }"
+          class="active-press self-start text-sm font-bold underline decoration-2 underline-offset-4 hover:text-bauhaus-blue"
+        >
+          {{ line.event_name }} · {{ formatTime(line.event_starts_at) }}
+        </RouterLink>
         <p v-if="line.technical_requirements" class="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm font-medium text-ink/75">{{ line.technical_requirements }}</p>
         <span class="text-xs font-bold uppercase tracking-widest text-ink/55">
           {{ line.requested_by?.full_name ?? "Unknown user" }} · Submitted {{ formatTime(line.created_at) }}
         </span>
       </li>
     </ul>
-    <BauhausEmptyState v-else title="No pending requests" detail="Equipment requests from coordinators appear here once submitted." />
+    <BauhausEmptyState v-else title="No pending requests" detail="Equipment requests from coordinators appear here once submitted, and lines needing re-review after a time change." />
   </div>
 </template>

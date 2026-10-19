@@ -98,6 +98,13 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["tech_support"] },
   },
   {
+    // SCRUM-24: arrange one event's equipment.
+    path: "/tech-support/events/:id",
+    name: "tech-support-event",
+    component: () => import("@/views/events/TechnicalEventView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["tech_support"] },
+  },
+  {
     path: "/dashboard/coordinator-lead",
     name: "dashboard-coordinator-lead",
     component: () => import("@/views/dashboards/CoordinatorLeadDashboard.vue"),

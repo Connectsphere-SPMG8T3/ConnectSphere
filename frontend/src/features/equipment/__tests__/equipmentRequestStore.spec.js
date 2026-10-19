@@ -39,6 +39,22 @@ beforeEach(() => {
 });
 
 describe("useEquipmentRequestStore (SCRUM-45)", () => {
+  it("keeps the event's technical status and exit check (SCRUM-24 AC9)", async () => {
+    const exit = { confirmed_by_name: "Tan Wei", confirmed_at: "2026-10-19T03:00:00Z" };
+    equipmentApi.catalogue.mockResolvedValue({ items: [] });
+    equipmentApi.eventRequests.mockResolvedValueOnce({ lines: [LINE], technical_status: "ready", exit_confirmation: exit });
+    const store = useEquipmentRequestStore();
+
+    await store.load("event-1");
+    expect(store.technicalStatus).toBe("ready");
+    expect(store.exitConfirmation).toEqual(exit);
+
+    equipmentApi.eventRequests.mockResolvedValueOnce({ lines: [] });
+    await store.load("event-2");
+    expect(store.technicalStatus).toBeNull();
+    expect(store.exitConfirmation).toBeNull();
+  });
+
   it("loads the catalogue and the event's lines", async () => {
     equipmentApi.catalogue.mockResolvedValue({ items: [PROJECTOR] });
     equipmentApi.eventRequests.mockResolvedValue({ lines: [LINE] });

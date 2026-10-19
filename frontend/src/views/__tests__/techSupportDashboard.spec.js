@@ -153,6 +153,18 @@ describe("TechSupportDashboard active requests (SCRUM-45)", () => {
     expect(section.textContent).toContain("HDMI to the lectern");
     expect(section.textContent).toContain("Marcus Lim");
     expect(section.textContent).not.toContain("No request workflow yet");
+    // SCRUM-24: each line opens its event, where it is arranged.
+    const link = [...section.querySelectorAll("a")].find((a) => a.textContent.includes("Year-End Dinner"));
+    expect(link.getAttribute("href")).toBe(`/tech-support/events/${PENDING.event_id}`);
+  });
+
+  it("labels a line flagged for re-review (SCRUM-24 AC7)", async () => {
+    equipmentApi.pendingRequests.mockResolvedValue({ lines: [{ ...PENDING, status: "re_review" }] });
+
+    const { el } = await mountDashboard();
+    await vi.waitFor(() => expect(el.textContent).toContain("Year-End Dinner"));
+
+    expect(el.querySelector('[aria-labelledby="incoming-requests-heading"]').textContent).toContain("Re-review");
   });
 
   it("says when nothing is waiting", async () => {
