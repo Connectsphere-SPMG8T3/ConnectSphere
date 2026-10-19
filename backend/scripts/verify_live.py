@@ -113,6 +113,7 @@ DB_SCRIPTS = [
     ("venue_release_checks.sql", "TC-BOOK-046 (CR-95: release the original when its replacement is approved)"),
     ("venue_restore_checks.sql", "TC-BOOK-047 (CR-95: restore an affected booking)"),
     ("venue_block_create_checks.sql", "TC-BLOCK-008–013 (SCRUM-51 database half: refusals, history, flags, links, notices, RLS)"),
+    ("equipment_reservation_checks.sql", "TC-EQR-016–020, 022–025 (SCRUM-24 database half)"),
 ]
 
 
@@ -722,6 +723,9 @@ def delete_throwaway_bookings() -> int:
     db_query(f"delete from public.venue_bookings where event_id in (select id from public.events where name like {like})")
     db_query(f"delete from public.venue_blocks where notes = '{THROWAWAY_BLOCK_NOTE}'")
     deleted = len(db_query(f"delete from public.events where name like {like} returning id"))
+    # SCRUM-24's throwaway equipment, after its events' lines (that foreign key
+    # restricts); its reservations cascade.
+    db_query(f"delete from public.equipment where name like {like}")
     # CR-94's throwaway venues: their layouts, facilities and edit history cascade.
     db_query(f"delete from public.venues where name like {like}")
     return deleted
@@ -2050,6 +2054,170 @@ def _(ctx: Context) -> None:
     response = ctx.client.post(f"{ctx.api}/auth/active-role", json={"role": "venue_staff"}, headers=session.headers)
     expect_status(response, 200)
     expect_status(submit_equipment(ctx, session, PLANNING_FIXTURE, item), 403)
+
+
+# --- SCRUM-24 equipment reservation -------------------------------------------
+# Each check uses its own "live-check equipment" item on throwaway 2031 events,
+# so seeded stock is never reserved. The items (and, by cascade, their
+# reservations) are deleted with the throwaway events.
+
+THROWAWAY_EQUIPMENT_PREFIX = "live-check equipment "
+
+
+def throwaway_equipment(ctx: Context, case: str, quantity: int) -> str:
+    rows = db_query(
+        "insert into public.equipment (name, equipment_type, total_quantity, status) values "
+        f"('{THROWAWAY_EQUIPMENT_PREFIX}{ctx.run_id} {case}', 'live-check', {quantity}, 'active') returning id"
+    )
+    return rows[0]["id"]
+
+
+def throwaway_line(event_id: str, equipment_id: str, quantity: int) -> str:
+    rows = db_query(
+        "insert into public.equipment_requests (event_id, equipment_id, submission_id, quantity, requested_by) values "
+        f"('{event_id}', '{equipment_id}', gen_random_uuid(), {quantity}, '{COORDINATOR_ID}') returning id"
+    )
+    return rows[0]["id"]
+
+
+def reserve(ctx: Context, session: Session, line_id: str) -> httpx.Response:
+    return ctx.client.post(f"{ctx.api}{EQUIPMENT_REQUESTS}/{line_id}/reserve", headers=session.headers)
+
+
+@check("TC-EQR-017", "Tech support reserve a pending line; it is linked, Reserved, and the coordinator is told", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EQR017", "2031-08-01 09:00+08", "2031-08-01 12:00+08")
+    item = throwaway_equipment(ctx, "017", 5)
+    line_id = throwaway_line(event_id, item, 3)
+
+    response = reserve(ctx, ctx.shared("tech_support"), line_id)
+    expect_status(response, 200)
+    expect(response.json() == {"line_id": line_id, "status": "reserved", "free_quantity": 2}, response.text)
+    [row] = db_query(
+        "select count(*)::int as n from public.equipment_reservations "
+        f"where request_line_id = '{line_id}' and event_id = '{event_id}' and status = 'confirmed' "
+        "and start_at = '2031-08-01 09:00+08' and end_at = '2031-08-01 12:00+08'"
+    )
+    expect(row["n"] == 1, "the reservation is not linked to its line, event and window")
+    [notice] = db_query(
+        "select count(*)::int as n from public.notifications "
+        f"where event_id = '{event_id}' and recipient_id = '{COORDINATOR_ID}' and type = 'equipment_reserved'"
+    )
+    expect(notice["n"] == 1, f"the coordinator got {notice['n']} reserve notices")
+    lines = ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/event/{event_id}", headers=ctx.shared("event_coordinator").headers)
+    expect_status(lines, 200)
+    expect(lines.json()["lines"][0]["status"] == "reserved", "the coordinator does not see Reserved")
+    expect(lines.json()["technical_status"] == "pending", "reserved but unticked is not Pending")
+
+
+@check("TC-EQR-018", "An overlapping event is refused with how many are free; another time is unaffected", needs_db=True)
+def _(ctx: Context) -> None:
+    first = throwaway_event(ctx, "EQR018-a", "2031-08-02 09:00+08", "2031-08-02 12:00+08")
+    overlapping = throwaway_event(ctx, "EQR018-b", "2031-08-02 11:00+08", "2031-08-02 13:00+08")
+    back_to_back = throwaway_event(ctx, "EQR018-c", "2031-08-02 12:00+08", "2031-08-02 14:00+08")
+    item = throwaway_equipment(ctx, "018", 4)
+    tech = ctx.shared("tech_support")
+
+    expect_status(reserve(ctx, tech, throwaway_line(first, item, 3)), 200)
+    refused_line = throwaway_line(overlapping, item, 2)
+    refused = reserve(ctx, tech, refused_line)
+    expect_status(refused, 409)
+    expect(refused.json() == {
+        "detail": "Not enough available: 1 free for this event's time. The line stays Pending.", "free_quantity": 1,
+    }, refused.text)
+    [line] = db_query(f"select status::text as status from public.equipment_requests where id = '{refused_line}'")
+    expect(line["status"] == "pending", f"the refused line is {line['status']}")
+    expect_status(reserve(ctx, tech, throwaway_line(back_to_back, item, 4)), 200)
+
+
+@check("TC-EQR-019", "Not available needs a reason; the coordinator sees it and the notes, the organiser can't", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EQR019", "2031-08-03 09:00+08", "2031-08-03 12:00+08")
+    line_id = throwaway_line(event_id, throwaway_equipment(ctx, "019", 2), 1)
+    tech = ctx.shared("tech_support")
+    url = f"{ctx.api}{EQUIPMENT_REQUESTS}/{line_id}"
+
+    expect_status(ctx.client.post(f"{url}/not-available", headers=tech.headers, json={"reason": "  "}), 422)
+    expect_status(ctx.client.put(f"{url}/notes", headers=tech.headers, json={"note": "live check note"}), 200)
+    expect_status(ctx.client.post(f"{url}/not-available", headers=tech.headers, json={"reason": "Only 0 in stock"}), 200)
+    body = ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/event/{event_id}", headers=ctx.shared("event_coordinator").headers).json()
+    [line] = body["lines"]
+    expect((line["status"], line["not_available_reason"], line["technical_notes"])
+           == ("rejected", "Only 0 in stock", "live check note"), f"coordinator sees {line}")
+    expect(body["technical_status"] == "issue", f"technical status is {body['technical_status']}")
+    organiser = ctx.shared("event_organiser")
+    expect_status(ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/event/{event_id}", headers=organiser.headers), 403)
+    expect_status(ctx.client.get(f"{ctx.api}/equipment/events/{event_id}/technical", headers=organiser.headers), 403)
+
+
+@check("TC-EQR-021", "Two tech staff reserving the last units at once: exactly one succeeds", needs_db=True)
+def _(ctx: Context) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    left = throwaway_event(ctx, "EQR021-a", "2031-08-04 09:00+08", "2031-08-04 12:00+08")
+    right = throwaway_event(ctx, "EQR021-b", "2031-08-04 10:00+08", "2031-08-04 13:00+08")
+    item = throwaway_equipment(ctx, "021", 2)
+    lines = [throwaway_line(left, item, 2), throwaway_line(right, item, 2)]
+    sessions = [ctx.login("tech_support"), ctx.login("tech_support")]
+
+    # Separate clients and sessions, so the two reserves really are in flight together.
+    def fire(pair) -> int:
+        line_id, session = pair
+        with httpx.Client(timeout=30) as client:
+            return client.post(f"{ctx.api}{EQUIPMENT_REQUESTS}/{line_id}/reserve", headers=session.headers).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes = sorted(pool.map(fire, zip(lines, sessions)))
+    expect(codes == [200, 409], f"expected one 200 and one 409, got {codes}")
+    [row] = db_query(
+        "select coalesce(sum(quantity), 0)::int as held from public.equipment_reservations "
+        f"where equipment_id = '{item}' and status = 'confirmed'"
+    )
+    expect(row["held"] == 2, f"{row['held']} units are reserved of 2")
+
+
+@check("TC-EQR-022", "Every line Reserved plus the exit tick is Ready, with who ticked it; a new line clears it", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EQR022", "2031-08-05 09:00+08", "2031-08-05 12:00+08")
+    item = throwaway_equipment(ctx, "022", 3)
+    tech = ctx.shared("tech_support")
+    technical = f"{ctx.api}/equipment/events/{event_id}/technical"
+    expect_status(reserve(ctx, tech, throwaway_line(event_id, item, 1)), 200)
+
+    expect_status(ctx.client.put(f"{ctx.api}/equipment/events/{event_id}/exit-confirmation",
+                                 headers=tech.headers, json={"confirmed": True}), 204)
+    body = ctx.client.get(technical, headers=tech.headers).json()
+    expect(body["technical_status"] == "ready", f"technical status is {body['technical_status']}")
+    expect(body["exit_confirmation"] and body["exit_confirmation"]["confirmed_by_name"],
+           f"no confirmer: {body['exit_confirmation']}")
+    expect(any(e["action"] == "technical_status" and e["to_status"] == "ready" and e["actor_name"]
+               for e in body["history"]), "the change to Ready is not in history with who made it")
+
+    throwaway_line(event_id, item, 1)
+    body = ctx.client.get(technical, headers=tech.headers).json()
+    expect(body["exit_confirmation"] is None, "adding a line did not clear the exit tick")
+    expect(body["technical_status"] == "pending", f"technical status is {body['technical_status']}")
+
+
+@check("TC-EQR-026", "Only Technical Support reserve, mark, annotate and tick; every other role gets 403", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EQR026", "2031-08-06 09:00+08", "2031-08-06 12:00+08")
+    line_id = throwaway_line(event_id, throwaway_equipment(ctx, "026", 2), 1)
+    calls = [
+        ("POST", f"{EQUIPMENT_REQUESTS}/{line_id}/reserve", None),
+        ("POST", f"{EQUIPMENT_REQUESTS}/{line_id}/not-available", {"reason": "x"}),
+        ("PUT", f"{EQUIPMENT_REQUESTS}/{line_id}/notes", {"note": "x"}),
+        ("PUT", f"/equipment/events/{event_id}/exit-confirmation", {"confirmed": True}),
+        ("GET", f"/equipment/events/{event_id}/technical", None),
+    ]
+    roles = [r for r in ACCOUNTS if r != "tech_support"] + list(W7_STAFF_ACCOUNTS)
+    for role in roles:
+        session = ctx.shared(role)
+        for method, path, body in calls:
+            response = ctx.client.request(method, f"{ctx.api}{path}", headers=session.headers, json=body)
+            expect(response.status_code == 403, f"{role} {method} {path} answered {response.status_code}")
+    [line] = db_query(f"select status::text as status from public.equipment_requests where id = '{line_id}'")
+    expect(line["status"] == "pending", f"a refused role changed the line to {line['status']}")
 
 
 def expect_field_error(response: httpx.Response, field_name: str, msg: str | None = None) -> None:

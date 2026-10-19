@@ -162,6 +162,28 @@ export function setThrowawayBookingBuffers(bookingId, setupMinutes, turnaroundMi
 export function deleteThrowawayEvents() {
   query(`delete from public.venue_bookings where event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);
   query(`delete from public.events where name like '${EVENT_PREFIX}%'`);
+  // SCRUM-24's throwaway equipment, after its events' lines (that foreign key
+  // restricts); its reservations cascade.
+  query(`delete from public.equipment where name like '${EVENT_PREFIX}%'`);
+}
+
+/** A throwaway catalogue item (SCRUM-24), so seeded stock is never reserved.
+ * Deleted by deleteThrowawayEvents. */
+export function createThrowawayEquipment(tag, quantity) {
+  const [row] = query(
+    "insert into public.equipment (name, equipment_type, total_quantity, status) values " +
+      `('${EVENT_PREFIX}equipment e2e-${runId} ${tag}', 'live-check', ${quantity}, 'active') returning id, name`,
+  );
+  return row;
+}
+
+/** A pending request line on a throwaway event, requested by the seeded coordinator. */
+export function createThrowawayLine(event, equipment, quantity) {
+  const [row] = query(
+    "insert into public.equipment_requests (event_id, equipment_id, submission_id, quantity, requested_by) values " +
+      `('${event.id}', '${equipment.id}', gen_random_uuid(), ${quantity}, 'a0000000-0000-4000-8000-000000000002') returning id`,
+  );
+  return row;
 }
 
 // Same "live-check venue " prefix as backend/scripts/verify_live.py (SCRUM-64).
