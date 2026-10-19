@@ -2494,3 +2494,15 @@ A code review of `d4854d0` found three things, fixed test first on the same bran
 - **Misleading migration comment.** The comment said omitted `p_after` keys keep their values "for older callers"; it now says that only covers a pre-migration backend, and that the full-form API clears an omitted field.
 
 The dashboard's affected-replacement list keeps its booked-end cut-off (an event that is over has nothing to replace); `IMPLEMENTATION_MAP.md` now states which period each booking read returns.
+
+#### Deployment, live runs and manual pass (2026-10-19)
+
+- **Migration applied by hand, against the DoD.** `DEFINITION_OF_DONE.md` has migrations reach the shared project through the merged PR. Jie Ching applied `20261018153029` early so the live runs and manual pass could happen: `supabase db push` refused, because the live project already held four migrations not on this branch (SCRUM-36 `20261018160000`, SCRUM-51 `20261019100000`/`100001`, SCRUM-24 `20261019120000`; none redefines a function CR-100 replaces). The file was run with `supabase db query --linked -f` and recorded with `supabase migration repair --status applied 20261018153029`. A later `db push` from the merged PR will not re-apply it.
+- **Advisors:** no new finding from CR-100 (no new table or index). Against the 2026-10-18 baseline, two are new and come from SCRUM-51's migration: `venue_block_bookings` has RLS with no policy (INFO), and a fourth unused index.
+- **Live API/database:** [2026-10-19 19:55](test-cases/runs/2026-10-19-1955-api-db-04b96c7.md): **128 of 131 passed, 1 failed, 2 blocked**. Every CR-100 check passed (TC-VENUE-090 to 093, including the 2147483648 rejection). TC-BOOK-004 failed and TC-SAFE-002/003 were blocked by fixture drift: seeded hold `…0201` expired at 19:14 that day (its live row never got the seed's 13 Nov expiry), so TC-BOOK-004's request succeeded and left a stray hold. After `event_review_fixture_reset.sql` (run with the developer's approval; it now also restores the expiry) all three passed: [TC-SAFE-001–003](test-cases/runs/2026-10-19-2013-api-db-04b96c7.md), [TC-BOOK-004](test-cases/runs/2026-10-19-2014-api-db-04b96c7.md).
+- **Browser:** [2026-10-19 20:07](test-cases/runs/2026-10-19-2007-e2e-04b96c7.md): **70 passed, 1 failed**. All three CR-100 cases passed, including the new TC-VENUE-096 layout check. TC-BOOK-048/049/050 failed because this branch still expects the old lowercase block label; `main` updated it for SCRUM-51 (`09e7bec`). Merging `main` resolves it; not a CR-100 regression.
+- **Manual pass ([record](test-cases/runs/2026-10-19-1955-manual-04b96c7.md), Jie Ching):** TC-VENUE-095 passed. TC-VENUE-096 failed: long text with no spaces ran out of the Safety Officer's venue card (D43). Fixed with `overflow-wrap: anywhere`, guarded by the TC-VENUE-096 browser check at 1280px and 375px, and re-checked as passing.
+- **Attribution:** earlier run records said "Run by | Jie"; they now say Jie Ching, the developer's full name.
+
+Remaining for the developer: merge `main` into the branch (31 commits behind), PR and teammate review, PO acceptance, merge, and the DoD and backlog updates.
+
