@@ -20,6 +20,12 @@ select ('e0000000-0000-4000-8000-0000000051' || n)::uuid, 'a0000000-0000-4000-80
        now() + interval '30 days', now() + interval '30 days 2 hours'
   from unnest(array['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'b1', 'b2']) n;
 
+-- a2's event books two venues (CR-97), so it has a space for each; a booking
+-- with no space would be linked to the event's first one.
+insert into public.event_space_requests (id, event_id, label)
+values ('c0000000-0000-4000-8000-0000000051c1', 'e0000000-0000-4000-8000-0000000051a2', 'Main hall'),
+       ('c0000000-0000-4000-8000-0000000051c2', 'e0000000-0000-4000-8000-0000000051a2', 'Breakout');
+
 -- Inside the first block, [+30d 00:00, +30d 12:00):
 --   a1 held, a2 approved                        -> flagged and linked
 --   a3 rejected, a4 cancelled, a5 released       -> neither
@@ -29,31 +35,31 @@ select ('e0000000-0000-4000-8000-0000000051' || n)::uuid, 'a0000000-0000-4000-80
 -- a9: ends exactly when the block starts, no turnaround -> only touches it, untouched
 -- b1: approved, ended an hour ago, under the emergency block -> not flagged (AC11)
 -- b2: held under both the first and the second block -> flagged once, linked twice (AC10)
-insert into public.venue_bookings (id, event_id, venue_id, booked_period, status, setup_minutes, expires_at)
+insert into public.venue_bookings (id, event_id, venue_id, booked_period, status, setup_minutes, expires_at, event_space_request_id)
 values
     ('d0000000-0000-4000-8000-0000000051a1', 'e0000000-0000-4000-8000-0000000051a1', 'b0000000-0000-4000-8000-000000000003',
-     tstzrange(date_trunc('hour', now()) + interval '30 days 1 hour', date_trunc('hour', now()) + interval '30 days 2 hours', '[)'), 'held', 0, null),
+     tstzrange(date_trunc('hour', now()) + interval '30 days 1 hour', date_trunc('hour', now()) + interval '30 days 2 hours', '[)'), 'held', 0, null, null),
     ('d0000000-0000-4000-8000-0000000051a2', 'e0000000-0000-4000-8000-0000000051a2', 'b0000000-0000-4000-8000-000000000003',
-     tstzrange(date_trunc('hour', now()) + interval '30 days 3 hours', date_trunc('hour', now()) + interval '30 days 4 hours', '[)'), 'approved', 0, null),
+     tstzrange(date_trunc('hour', now()) + interval '30 days 3 hours', date_trunc('hour', now()) + interval '30 days 4 hours', '[)'), 'approved', 0, null, 'c0000000-0000-4000-8000-0000000051c1'),
     ('d0000000-0000-4000-8000-0000000051a3', 'e0000000-0000-4000-8000-0000000051a3', 'b0000000-0000-4000-8000-000000000003',
-     tstzrange(date_trunc('hour', now()) + interval '30 days 5 hours', date_trunc('hour', now()) + interval '30 days 6 hours', '[)'), 'rejected', 0, null),
+     tstzrange(date_trunc('hour', now()) + interval '30 days 5 hours', date_trunc('hour', now()) + interval '30 days 6 hours', '[)'), 'rejected', 0, null, null),
     ('d0000000-0000-4000-8000-0000000051a4', 'e0000000-0000-4000-8000-0000000051a4', 'b0000000-0000-4000-8000-000000000003',
-     tstzrange(date_trunc('hour', now()) + interval '30 days 5 hours', date_trunc('hour', now()) + interval '30 days 6 hours', '[)'), 'cancelled', 0, null),
+     tstzrange(date_trunc('hour', now()) + interval '30 days 5 hours', date_trunc('hour', now()) + interval '30 days 6 hours', '[)'), 'cancelled', 0, null, null),
     ('d0000000-0000-4000-8000-0000000051a5', 'e0000000-0000-4000-8000-0000000051a5', 'b0000000-0000-4000-8000-000000000003',
-     tstzrange(date_trunc('hour', now()) + interval '30 days 5 hours', date_trunc('hour', now()) + interval '30 days 6 hours', '[)'), 'released', 0, null),
+     tstzrange(date_trunc('hour', now()) + interval '30 days 5 hours', date_trunc('hour', now()) + interval '30 days 6 hours', '[)'), 'released', 0, null, null),
     ('d0000000-0000-4000-8000-0000000051a6', 'e0000000-0000-4000-8000-0000000051a6', 'b0000000-0000-4000-8000-000000000003',
      tstzrange(date_trunc('hour', now()) + interval '30 days 7 hours', date_trunc('hour', now()) + interval '30 days 8 hours', '[)'), 'held', 0,
-     now() - interval '1 minute'),
+     now() - interval '1 minute', null),
     ('d0000000-0000-4000-8000-0000000051a7', 'e0000000-0000-4000-8000-0000000051a2', 'b0000000-0000-4000-8000-000000000001',
-     tstzrange(date_trunc('hour', now()) + interval '30 days 3 hours', date_trunc('hour', now()) + interval '30 days 4 hours', '[)'), 'approved', 0, null),
+     tstzrange(date_trunc('hour', now()) + interval '30 days 3 hours', date_trunc('hour', now()) + interval '30 days 4 hours', '[)'), 'approved', 0, null, 'c0000000-0000-4000-8000-0000000051c2'),
     ('d0000000-0000-4000-8000-0000000051a8', 'e0000000-0000-4000-8000-0000000051a8', 'b0000000-0000-4000-8000-000000000003',
-     tstzrange(date_trunc('hour', now()) + interval '30 days 13 hours', date_trunc('hour', now()) + interval '30 days 14 hours', '[)'), 'approved', 120, null),
+     tstzrange(date_trunc('hour', now()) + interval '30 days 13 hours', date_trunc('hour', now()) + interval '30 days 14 hours', '[)'), 'approved', 120, null, null),
     ('d0000000-0000-4000-8000-0000000051a9', 'e0000000-0000-4000-8000-0000000051a9', 'b0000000-0000-4000-8000-000000000003',
-     tstzrange(date_trunc('hour', now()) + interval '29 days 18 hours', date_trunc('hour', now()) + interval '30 days', '[)'), 'held', 0, null),
+     tstzrange(date_trunc('hour', now()) + interval '29 days 18 hours', date_trunc('hour', now()) + interval '30 days', '[)'), 'held', 0, null, null),
     ('d0000000-0000-4000-8000-0000000051b1', 'e0000000-0000-4000-8000-0000000051b1', 'b0000000-0000-4000-8000-000000000003',
-     tstzrange(now() - interval '3 hours', now() - interval '1 hour', '[)'), 'approved', 0, null),
+     tstzrange(now() - interval '3 hours', now() - interval '1 hour', '[)'), 'approved', 0, null, null),
     ('d0000000-0000-4000-8000-0000000051b2', 'e0000000-0000-4000-8000-0000000051b2', 'b0000000-0000-4000-8000-000000000003',
-     tstzrange(date_trunc('hour', now()) + interval '30 days 9 hours', date_trunc('hour', now()) + interval '30 days 10 hours', '[)'), 'held', 0, null);
+     tstzrange(date_trunc('hour', now()) + interval '30 days 9 hours', date_trunc('hour', now()) + interval '30 days 10 hours', '[)'), 'held', 0, null, null);
 
 create temporary table scrum51_results (label text primary key, outcome text, block_id uuid) on commit drop;
 
