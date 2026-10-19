@@ -46,3 +46,33 @@ test("TC-VENUE-091 Safety Officer reads the venue's recorded safety facts", asyn
   await expect(page.getByText("East exit", { exact: false })).toBeVisible();
   await expect(page.getByText("No open flames", { exact: false })).toBeVisible();
 });
+
+test("TC-VENUE-096 long unbroken safety text wraps inside the Safety Officer's venue card", async ({ page, sharedSessions }) => {
+  const venue = createThrowawayVenue("096");
+  const staff = await sharedSessions("venue_staff");
+  const unbroken = "sajhjkashdjh".repeat(20);
+  const saved = await fetch(`${API_URL}/venues/${venue.id}`, { method: "PATCH",
+    headers: { Authorization: `Bearer ${staff.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: venue.name, location: "Live check", capacity: 50, opens_at: "08:00:00",
+      closes_at: "22:00:00", setup_minutes: 0, turnaround_minutes: 0,
+      emergency_access: unbroken, restrictions: unbroken }) });
+  expect(saved.status).toBe(200);
+  const event = createThrowawayEvent("096", "2035-02-11T10:00:00Z", "2035-02-11T12:00:00Z");
+  createThrowawayBooking(event, venue.id, "2035-02-11T10:00:00Z", "2035-02-11T12:00:00Z", "approved");
+  setThrowawayEventStatus(event, "safety_review");
+  await seedSession(page, await sharedSessions("safety_officer"));
+  for (const width of [1280, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/safety/events/${event.id}`);
+    // The BauhausCard root that holds this venue's facts.
+    const card = page.locator("h3", { hasText: venue.name })
+      .locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' relative ')][1]");
+    const facts = card.locator("dd", { hasText: unbroken.slice(0, 24) });
+    await expect(facts).toHaveCount(2);
+    const cardBox = await card.boundingBox();
+    for (const box of [await facts.nth(0).boundingBox(), await facts.nth(1).boundingBox()]) {
+      expect(box.x + box.width, `facts overflow the card at ${width}px`).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1);
+      expect(box.x + box.width, `facts overflow the screen at ${width}px`).toBeLessThanOrEqual(width + 1);
+    }
+  }
+});
