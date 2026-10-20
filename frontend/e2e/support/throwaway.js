@@ -111,6 +111,11 @@ export function setThrowawayEventStatus(event, status) {
   query(`update public.events set status = '${status}' where id = '${event.id}'`);
 }
 
+/** Free-text accessibility needs on a throwaway event (SCRUM-18). */
+export function setThrowawayEventAccessibilityNeeds(event, needs) {
+  query(`update public.events set accessibility_needs = '${needs}' where id = '${event.id}'`);
+}
+
 // Same note as backend/scripts/verify_live.py's THROWAWAY_BLOCK_NOTE, so either
 // run's cleanup removes both runs' leftovers.
 const BLOCK_NOTE = "live-check";

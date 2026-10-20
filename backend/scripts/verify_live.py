@@ -2869,6 +2869,56 @@ def _(ctx: Context) -> None:
            f"a held venue read {hall['suitability']['verdict']}")
 
 
+@check("TC-SUIT-010", "A request for an Unsuitable venue is refused and leaves no hold (BR-R3)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "SUIT-007", "2031-07-14 09:00+08", "2031-07-14 12:00+08")
+    db_query(f"update public.events set expected_attendance = 10, facilities_required = '{{projector}}' "
+             f"where id = '{event_id}'")
+    bare = throwaway_venue(ctx, "SUIT-007 bare")
+
+    for body in ({}, {"acknowledge_warnings": True}):  # acknowledging never excuses a hard failure
+        response = ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=ctx.shared("event_coordinator").headers,
+                                   json={"event_id": event_id, "venue_id": bare, **body})
+        expect_status(response, 409)
+        expect_detail(response, "This venue is unsuitable for this event: Missing facilities this event needs: projector.")
+    expect(not db_query(f"select 1 from public.venue_bookings where event_id = '{event_id}'"),
+           "a refused request left a booking behind")
+
+
+@check("TC-SUIT-011", "A venue with warnings is held only once the coordinator acknowledges them (BR-R3)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "SUIT-008", "2031-07-15 10:00+08", "2031-07-15 12:00+08")
+    db_query(f"update public.events set expected_attendance = 10, layout_preference = 'banquet' where id = '{event_id}'")
+    venue = throwaway_venue(ctx, "SUIT-008 theatre only")  # no banquet layout: a warning, not a failure
+    coordinator = ctx.shared("event_coordinator")
+
+    refused = ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=coordinator.headers,
+                              json={"event_id": event_id, "venue_id": venue})
+    expect_status(refused, 409)
+    expect_detail(refused, "This venue is suitable with warnings: The banquet layout this event needs is not supported. "
+                           "Acknowledge the warnings to request it.")
+    expect(not db_query(f"select 1 from public.venue_bookings where event_id = '{event_id}'"),
+           "an unacknowledged request left a booking behind")
+
+    held = ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=coordinator.headers,
+                           json={"event_id": event_id, "venue_id": venue, "acknowledge_warnings": True})
+    expect_status(held, 201)
+    expect(len(db_query(f"select 1 from public.venue_bookings where event_id = '{event_id}' and status = 'held'")) == 1,
+           "the acknowledged request did not hold the venue")
+
+
+@check("TC-SUIT-012", "A suitable venue needs no acknowledgement (BR-R3)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "SUIT-010", "2031-07-16 10:00+08", "2031-07-16 12:00+08")
+    db_query(f"update public.events set expected_attendance = 10, layout_preference = 'theatre' where id = '{event_id}'")
+    venue = throwaway_venue(ctx, "SUIT-010 suits")
+
+    response = ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=ctx.shared("event_coordinator").headers,
+                               json={"event_id": event_id, "venue_id": venue})
+    expect_status(response, 201)
+
+
 # --- Helpers ---------------------------------------------------------------
 
 
