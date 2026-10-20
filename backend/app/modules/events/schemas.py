@@ -543,6 +543,10 @@ class LeadEvent(BaseModel):
     expected_attendance: int | None = None
     coordinator: EventCoordinator | None = None
     assigned_at: datetime | None = None
+    # Queue entries (SCRUM-12 AC10): when it was submitted, and what it needs from a venue.
+    submitted_at: datetime | None = None
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] = []
     # The Lead sends it back on reassign, so a screen that is behind can't overwrite a newer change.
     version: int
 
@@ -554,6 +558,10 @@ class LeadDashboard(BaseModel):
     unassigned: list[LeadEvent] = []
     active_events: list[LeadEvent] = []
     coordinators: list[LeadCoordinator] = []
+
+
+class EventAssignRequest(BaseModel):
+    coordinator_id: UUID
 
 
 class EventReassignRequest(BaseModel):

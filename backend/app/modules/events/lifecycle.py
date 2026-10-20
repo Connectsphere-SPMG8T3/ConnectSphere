@@ -9,7 +9,10 @@ from app.modules.events.schemas import EventStatus
 
 TRANSITIONS: dict[str, tuple[frozenset[EventStatus], EventStatus]] = {
     # The organiser's submission.
-    "submit": (frozenset({EventStatus.draft}), EventStatus.under_review),
+    # It waits in the Lead's unassigned queue until a coordinator is assigned (SCRUM-12, QA3-2).
+    "submit": (frozenset({EventStatus.draft}), EventStatus.submitted),
+    # An Event Coordinator Lead assigns a coordinator; review starts (SCRUM-12 AC6).
+    "assign": (frozenset({EventStatus.submitted}), EventStatus.under_review),
     # Initial feasibility decision, not confirmation (SCRUM-34, QA2-8).
     "approve": (frozenset({EventStatus.under_review}), EventStatus.planning),
     # Only before confirmation; a confirmed event is cancelled instead (QA2-6).

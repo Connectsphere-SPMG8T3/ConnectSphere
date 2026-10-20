@@ -52,9 +52,10 @@ def test_the_blocked_message_names_the_status_in_words():
     assert raised.value.detail == "Cannot approve an event that is returned"
 
 
-def test_submit_moves_draft_to_under_review():
-    """Submission is a lifecycle transition so it reaches event_status_history."""
-    assert lifecycle.target("submit", "draft") == EventStatus.under_review
+def test_submit_moves_draft_to_submitted():
+    """Submission is a lifecycle transition so it reaches event_status_history; the event
+    then waits in the Lead's unassigned queue (SCRUM-12)."""
+    assert lifecycle.target("submit", "draft") == EventStatus.submitted
 
 
 @pytest.mark.parametrize("status", [s for s in ALL_STATUSES if s != "draft"])
