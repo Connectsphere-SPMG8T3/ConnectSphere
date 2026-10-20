@@ -2789,4 +2789,6 @@ On `chore/seed-second-lead-account`, branched from `main` at `15ca304`, 2026-10-
 
 **Verified.** The live API and database run on 2026-10-20 passed **155/155** (`runs/2026-10-20-1323-api-db-46b5250.md`). That includes TC-LEAD-015, so with two Leads each dashboard matches `events.assigned_by` in the database, and it means the new account can sign in, since the check signs in as it.
 
-**Not verified.** TC-LEAD-012, the manual two-Lead pass in a browser, is still the developer's to run. The browser suite was not re-run for this chore.
+**Manual pass (2026-10-20).** The developer ran TC-LEAD-012 in a browser as both Leads and it passed (`runs/2026-10-20-manual-88f7fcf.md`).
+
+**Not verified.** The browser suite (`npm run test:e2e:record`) was not re-run for this chore.
