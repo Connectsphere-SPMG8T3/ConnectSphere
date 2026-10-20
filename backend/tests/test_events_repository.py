@@ -452,9 +452,11 @@ def test_list_recent_safety_decisions_reads_the_window_and_flattens_names(monkey
     since = datetime(2026, 9, 9, tzinfo=timezone.utc)
     assert repository.list_recent_safety_decisions(since) == [
         {"id": "d1", "event_id": "e1", "event_name": "Dinner", "decision": "approved", "comment": "ok",
-         "decided_at": "2026-10-09T01:00:00Z", "decided_by_name": "Hafiz Ismail"},
+         "decided_at": "2026-10-09T01:00:00Z", "decided_by_name": "Hafiz Ismail",
+         "affected_booking_ids": [], "affected_equipment_request_ids": [], "rejected_venue_ids": []},
         {"id": "d2", "event_id": "e2", "event_name": "", "decision": "withdrawn", "comment": None,
-         "decided_at": "2026-10-08T01:00:00Z", "decided_by_name": None},
+         "decided_at": "2026-10-08T01:00:00Z", "decided_by_name": None,
+         "affected_booking_ids": [], "affected_equipment_request_ids": [], "rejected_venue_ids": []},
     ]
     assert ("table", ("event_safety_decisions",), {}) in calls
     assert ("gte", ("decided_at", "2026-09-09T00:00:00+00:00"), {}) in calls

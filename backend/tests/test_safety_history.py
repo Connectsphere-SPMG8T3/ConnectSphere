@@ -45,7 +45,8 @@ def test_officer_reads_every_recent_decision_newest_first(client, auth_headers, 
     assert items[0]["decided_by_name"] is None and items[0]["comment"] is None
     assert items[1] == dict(id="a0000000-0000-4000-8000-0000000000a2", event_id="e0000000-0000-4000-8000-000000000831",
                             event_name="Year-End Dinner", decision="arrangement_rejected", comment="Crowd near exit",
-                            decided_by_name="Hafiz Ismail", decided_at="2026-10-05T01:00:00Z")
+                            decided_by_name="Hafiz Ismail", decided_at="2026-10-05T01:00:00Z",
+                            affected_bookings=[], affected_equipment=[], rejected_venues=[], revision=None)
 
 
 def test_reads_only_the_last_30_days(client, auth_headers, authenticate_as, state):
