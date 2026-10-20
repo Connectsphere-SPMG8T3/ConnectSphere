@@ -280,11 +280,11 @@ describe("venueBookingsApi.restore (CR-95 AC9)", () => {
 
 describe('CR-104 mark revised API', () => {
   afterEach(() => vi.unstubAllGlobals());
-  it('POSTs the encoded booking id without a body', async () => {
+  it('POSTs the encoded booking id with the revision note', async () => {
     const fetchMock=vi.fn().mockResolvedValue({status:200,ok:true,json:async()=>({id:'b1',flag:null})});
     vi.stubGlobal('fetch',fetchMock);
     expect(venueBookingsApi.markRevised).toBeTypeOf('function');
-    await expect(venueBookingsApi.markRevised('b/1','token')).resolves.toEqual({id:'b1',flag:null});
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/api/v1/venue-bookings/b%2F1/mark-revised',expect.objectContaining({method:'POST',body:undefined,headers:expect.objectContaining({Authorization:'Bearer token'})}));
+    await expect(venueBookingsApi.markRevised('b/1','Moved the barriers','token')).resolves.toEqual({id:'b1',flag:null});
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/api/v1/venue-bookings/b%2F1/mark-revised',expect.objectContaining({method:'POST',body:JSON.stringify({note:'Moved the barriers'}),headers:expect.objectContaining({Authorization:'Bearer token'})}));
   });
 });

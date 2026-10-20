@@ -79,7 +79,10 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     eventsApi.get.mockResolvedValue({...response,venue_booking:{...rejected,flag:null},venue_bookings:[{...rejected,flag:null},other]});
     const previous=eventsApi.get.mock.calls.length;
     el.querySelector('[data-testid=venue-safety-rejected] button').click();
-    await vi.waitFor(()=>expect(venueBookingsApi.markRevised).toHaveBeenCalledWith('b1','access'));
+    await nextTick();
+    const input=el.querySelector('[role=dialog] textarea'); input.value='Moved the barriers'; input.dispatchEvent(new Event('input')); await nextTick();
+    [...el.querySelectorAll('[role=dialog] button')].find(b=>b.textContent==='Mark as revised').click();
+    await vi.waitFor(()=>expect(venueBookingsApi.markRevised).toHaveBeenCalledWith('b1','Moved the barriers','access'));
     await vi.waitFor(()=>expect(eventsApi.get.mock.calls.length).toBeGreaterThan(previous));
     await vi.waitFor(()=>expect(el.querySelector('[data-testid=venue-safety-rejected]')).toBeNull());
     expect(toastState.value.message).toBe('Marked revised. Send the event for safety check when everything is ready.');
@@ -89,6 +92,9 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     const el=await mountView(eventResponse({status:'planning',venue_booking:rejected,venue_bookings:[rejected]}));
     venueBookingsApi.markRevised.mockRejectedValue(new ApiError('Only in Planning',409));
     el.querySelector('[data-testid=venue-safety-rejected] button').click();
+    await nextTick();
+    const input=el.querySelector('[role=dialog] textarea'); input.value='Moved the barriers'; input.dispatchEvent(new Event('input')); await nextTick();
+    [...el.querySelectorAll('[role=dialog] button')].find(b=>b.textContent==='Mark as revised').click();
     await vi.waitFor(()=>expect(el.querySelector('[role=alert]').textContent).toBe('Only in Planning'));
   });
   it("SCRUM-38 AC6, AC7 shows why venue staff rejected a booking and still offers another venue", async () => {
@@ -119,22 +125,22 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
 
   it("CR-104 shows the latest private decision and the full decision history", async () => {
     const latest = { id: "d1", decision: "arrangement_rejected", comment: "Replace this venue", decided_by_name: "Officer Lee",
-      decided_at: "2026-10-08T02:00:00Z", affected_booking_ids: ["b1"], affected_equipment_request_ids: ["q1"], rejected_venue_ids: ["v1"] };
+      decided_at: "2026-10-08T02:00:00Z", affected_booking_ids: ["b1"], affected_equipment_request_ids: ["q1"], rejected_venue_ids: ["v1"], rejected_venues: [{venue_id:"v1",venue_name:"Town Hall"}], affected_bookings:[{booking_id:"b1",venue_name:"Town Hall"}], affected_equipment:[{id:"q1",equipment_name:"Projector"}] };
     const earlier = { ...latest, id: "d0", decision: "changes_requested", comment: "Keep the aisle clear" };
     eventsApi.safetyDecisions.mockResolvedValue([latest, earlier]);
     const el = await mountView(eventResponse({ status: "planning", latest_safety_decision: latest,
       venue_booking: { id: "b1", venue_id: "v1", venue_name: "Town Hall", status: "released" } }));
     await vi.waitFor(() => expect(el.textContent).toContain("Keep the aisle clear"));
-    for (const text of ["Safety Officer's decision", "Arrangement rejected", "Replace this venue", "Officer Lee", "8 Oct", "Affected bookings: 1", "Affected equipment requests: 1", "Rejected by the Safety Officer"]) expect(el.textContent).toContain(text);
+    for (const text of ["Safety Officer's decision", "Arrangement rejected", "Replace this venue", "Officer Lee", "8 Oct", "Rejected venue: Town Hall", "Concerns: Town Hall · Projector"]) expect(el.textContent).toContain(text);
     expect(eventsApi.safetyDecisions).toHaveBeenCalledWith("event-1", "access");
   });
   it("CR-104 identifies rejected bookings even when the released booking is absent from the event read", async () => {
-    const decision = { id: "d1", decision: "arrangement_rejected", comment: "Replace it", decided_by_name: "Officer Lee", decided_at: "2026-10-08T02:00:00Z", affected_booking_ids: ["released-booking"], affected_equipment_request_ids: [], rejected_venue_ids: ["v1"] };
+    const decision = { id: "d1", decision: "arrangement_rejected", comment: "Replace it", decided_by_name: "Officer Lee", decided_at: "2026-10-08T02:00:00Z", affected_booking_ids: ["released-booking"], affected_equipment_request_ids: [], rejected_venue_ids: ["v1"], rejected_venues: [{venue_id:"v1",venue_name:null}] };
     eventsApi.safetyDecisions.mockResolvedValue([decision]);
     const el = await mountView(eventResponse({ status: "planning", latest_safety_decision: decision, venue_booking: null }));
     await vi.waitFor(() => expect(el.textContent).toContain("Safety decision history"));
-    const banner = [...el.querySelectorAll('div')].find((item) => item.textContent.includes("Safety Officer's decision") && item.textContent.includes('Affected bookings: 1'));
-    expect(banner?.textContent).toContain("Rejected by the Safety Officer");
+    const banner = [...el.querySelectorAll('div')].find((item) => item.textContent.includes("Safety Officer's decision") && item.textContent.includes('Rejected venue: a booking that no longer exists'));
+    expect(banner?.textContent).toContain("Rejected venue: a booking that no longer exists");
     expect(el.textContent).not.toContain('released-booking');
     expect(el.textContent).not.toContain('v1');
   });

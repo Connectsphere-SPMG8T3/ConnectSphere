@@ -108,13 +108,14 @@ export const useEventReviewStore = defineStore("eventReview", {
       }
     },
 
-    async markBookingRevised(bookingId) {
+    async markBookingRevised(bookingId, note) {
+      if (this.isActing) return;
       const auth = useAuthStore();
       const eventId = this.event.id;
       this.isActing = true;
       this.error = null;
       try {
-        await auth.withSession((token) => venueBookingsApi.markRevised(bookingId, token));
+        await auth.withSession((token) => venueBookingsApi.markRevised(bookingId, note, token));
         await this.load(eventId);
       } catch (error) {
         this.error = error.message;
