@@ -71,3 +71,29 @@ test("TC-EQR-028 a refused reserve shows how many are free; Not available needs 
   await expect(line).toContainText("Not available: Only 1 in stock");
   await expect(page.getByText("Technical status", { exact: true }).locator("..")).toContainText("Issue");
 });
+
+test("TC-EQR-035 the inventory counts a reservation once its window covers the event (D46)", async ({ page, sharedSessions }) => {
+  const event = createThrowawayEvent("EQR035", "2031-08-12 09:00+08", "2031-08-12 12:00+08");
+  const item = createThrowawayEquipment("035", 3);
+  createThrowawayLine(event, item, 2);
+
+  await seedSession(page, await sharedSessions("tech_support"));
+  await page.goto(`/tech-support/events/${event.id}`);
+  const line = page.locator("article").filter({ hasText: item.name });
+  await line.getByRole("button", { name: "Reserve", exact: true }).click();
+  await expect(line).toContainText("Reserved");
+
+  // Today's default window doesn't cover 2031, so nothing is reserved yet.
+  await page.goto("/dashboard/tech-support");
+  const row = page.locator("tbody tr").filter({ hasText: item.name });
+  await expect(row.locator("td").nth(2)).toHaveText("0");
+  await expect(page.getByTestId("inventory-window")).toContainText("Showing stock for");
+
+  // The whole day, so the check holds whatever the browser's time zone.
+  await page.getByLabel("Window start").fill("2031-08-12T00:00");
+  await page.getByLabel("Window end").fill("2031-08-12T23:59");
+  await expect(page.getByTestId("inventory-window")).toContainText("Showing stock for 12 Aug 2031, 12:00 am – 11:59 pm");
+  await expect(row.locator("td").nth(2)).toHaveText("2");
+  await expect(row.locator("td").nth(4)).toHaveText("1");
+  await expect(row).toContainText("PARTIALLY RESERVED");
+});

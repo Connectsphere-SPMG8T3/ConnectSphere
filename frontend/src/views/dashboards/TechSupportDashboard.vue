@@ -6,7 +6,12 @@ import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import { useEquipmentQueueStore } from "@/features/equipment/equipmentQueueStore";
-import { ApiError, checkEquipmentAvailability, equipmentApi } from "@/services/api";
+import {
+  defaultInventoryWindow,
+  describeInventoryWindow,
+  inventoryWindowError,
+} from "@/features/equipment/inventoryWindow";
+import { ApiError, equipmentApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 const authStore = useAuthStore();
@@ -26,14 +31,12 @@ function localDateTime(hour) {
 
 const startAt = ref(localDateTime(9));
 const endAt = ref(localDateTime(17));
-const equipmentCatalog = [
-  { id: "b0000000-0000-4000-8000-000000000001", name: "4K Projector", type: "Projector" },
-  { id: "b0000000-0000-4000-8000-000000000002", name: "Wireless Mics", type: "Microphone" },
-  { id: "b0000000-0000-4000-8000-000000000003", name: "PA Systems", type: "Audio" },
-  { id: "b0000000-0000-4000-8000-000000000004", name: "Stage Lighting", type: "Lighting" },
-  { id: "b0000000-0000-4000-8000-000000000005", name: "HDMI Switchers", type: "Video" },
-];
-const items = ref([{ equipmentId: equipmentCatalog[0].id, quantityNeeded: 1 }]);
+// D47: the check offers the live catalogue (GET /equipment/catalogue), loaded
+// when the availability view first opens, rather than a fixed list.
+const catalogue = ref([]);
+const catalogueLoading = ref(false);
+const catalogueError = ref("");
+const items = ref([{ equipmentId: null, quantityNeeded: 1 }]);
 const results = ref(null);
 const isLoading = ref(false);
 const errorMessage = ref("");
@@ -46,6 +49,21 @@ const inventoryError = ref("");
 // Set only once an inventory response has arrived, so a failed or pending
 // load shows a dash rather than a zero the page cannot stand behind.
 const inventoryLoaded = ref(false);
+// D46: the table counts one window, its own rather than the availability
+// check's, and says which. shownWindow is the window the rows were loaded for.
+const initialWindow = defaultInventoryWindow();
+const inventoryStartAt = ref(initialWindow.startAt);
+const inventoryEndAt = ref(initialWindow.endAt);
+const shownWindow = ref(null);
+const inventoryWindowMessage = computed(() => inventoryWindowError(inventoryStartAt.value, inventoryEndAt.value));
+const inventoryWindowText = computed(() => {
+  const window = shownWindow.value ?? { startAt: inventoryStartAt.value, endAt: inventoryEndAt.value };
+  const label = describeInventoryWindow(window.startAt, window.endAt);
+  return shownWindow.value ? `Showing stock for ${label}` : `Loading stock for ${label}`;
+});
+// Only the latest load may fill the table, so changing the window quickly
+// can't leave an earlier window's numbers under the new label.
+let latestInventoryLoad = 0;
 const maintenanceItems = ref([]);
 const maintenanceLoading = ref(false);
 const maintenanceError = ref("");
@@ -142,8 +160,24 @@ const filteredInventory = computed(() => {
   });
 });
 
+const firstItemId = () => catalogue.value[0]?.equipment_id ?? null;
+
+async function loadCatalogue() {
+  catalogueLoading.value = true;
+  catalogueError.value = "";
+  try {
+    const response = await authStore.withSession((token) => equipmentApi.catalogue(token));
+    catalogue.value = response.items;
+    for (const item of items.value) if (!item.equipmentId) item.equipmentId = firstItemId();
+  } catch {
+    catalogueError.value = "The equipment catalogue could not be loaded, so availability can't be checked. Refresh the page to try again.";
+  } finally {
+    catalogueLoading.value = false;
+  }
+}
+
 function addItem() {
-  items.value.push({ equipmentId: equipmentCatalog[0].id, quantityNeeded: 1 });
+  items.value.push({ equipmentId: firstItemId(), quantityNeeded: 1 });
 }
 
 function removeItem(index) {
@@ -157,7 +191,7 @@ function validateForm() {
     validationMessage.value = "End time must be later than the start time.";
     return false;
   }
-  if (items.value.some((item) => !equipmentCatalog.some((equipment) => equipment.id === item.equipmentId) || !Number.isInteger(Number(item.quantityNeeded)) || Number(item.quantityNeeded) < 1)) {
+  if (items.value.some((item) => !catalogue.value.some((equipment) => equipment.equipment_id === item.equipmentId) || !Number.isInteger(Number(item.quantityNeeded)) || Number(item.quantityNeeded) < 1)) {
     validationMessage.value = "Choose equipment and enter a quantity of at least 1 for every item.";
     return false;
   }
@@ -179,7 +213,7 @@ async function checkAvailability() {
         quantity_needed: Number(item.quantityNeeded),
       })),
     };
-    results.value = await authStore.withSession((token) => checkEquipmentAvailability(payload, token));
+    results.value = await authStore.withSession((token) => equipmentApi.checkEquipmentAvailability(payload, token));
   } catch (error) {
     if (error instanceof ApiError && error.status === 403) {
       errorMessage.value = "Access denied. Only Technical Support Staff can check equipment availability.";
@@ -194,7 +228,9 @@ async function checkAvailability() {
 }
 
 async function loadInventory() {
-  if (inventoryLoading.value) return;
+  if (inventoryWindowMessage.value) return;
+  const window = { startAt: inventoryStartAt.value, endAt: inventoryEndAt.value };
+  const load = ++latestInventoryLoad;
   inventoryError.value = "";
   maintenanceError.value = "";
   inventoryLoading.value = true;
@@ -203,34 +239,42 @@ async function loadInventory() {
     const response = await authStore.withSession(async (token) => {
       const [inventory, maintenance] = await Promise.all([
         equipmentApi.inventory(
-          new Date(startAt.value).toISOString(),
-          new Date(endAt.value).toISOString(),
+          new Date(window.startAt).toISOString(),
+          new Date(window.endAt).toISOString(),
           token,
         ),
         equipmentApi.maintenance(token),
       ]);
       return { inventory, maintenance };
     });
+    if (load !== latestInventoryLoad) return;
     inventoryItems.value = response.inventory.items;
     inventoryLoaded.value = true;
+    shownWindow.value = window;
     maintenanceItems.value = response.maintenance.items;
   } catch (error) {
+    if (load !== latestInventoryLoad) return;
     const message = error instanceof ApiError
       ? error.message
       : "Unable to load equipment status. Please try again.";
     inventoryError.value = message;
     maintenanceError.value = message;
   } finally {
-    inventoryLoading.value = false;
-    maintenanceLoading.value = false;
+    if (load === latestInventoryLoad) {
+      inventoryLoading.value = false;
+      maintenanceLoading.value = false;
+    }
   }
 }
+
+watch([inventoryStartAt, inventoryEndAt], () => loadInventory());
 
 watch(
   activeTab,
   (tab) => {
     if (tab === "inventory" && inventoryItems.value.length === 0) loadInventory();
     if (tab === "inventory" && !queue.isLoaded && !queue.isLoading) queue.load();
+    if (tab === "availability" && !catalogue.value.length && !catalogueLoading.value) loadCatalogue();
   },
   { immediate: true },
 );
@@ -289,12 +333,27 @@ function formatDate(value) {
             <h2 id="inventory-heading" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
               Inventory &amp; status
             </h2>
-            <p class="text-xs font-medium text-ink/60">Every piece of equipment, with how much is reserved or in maintenance for the event window set under Availability.</p>
+            <p class="text-xs font-medium text-ink/60">Every piece of equipment, with the most reserved or in maintenance at any one moment in the window below.</p>
           </div>
           <BauhausButton type="button" variant="outline" :disabled="inventoryLoading" @click="loadInventory">
             Refresh inventory
           </BauhausButton>
         </div>
+
+        <div class="mb-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
+            Window start
+            <input v-model="inventoryStartAt" type="datetime-local" :aria-invalid="inventoryWindowMessage ? 'true' : undefined" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" />
+          </label>
+          <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
+            Window end
+            <input v-model="inventoryEndAt" type="datetime-local" :aria-invalid="inventoryWindowMessage ? 'true' : undefined" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" />
+          </label>
+        </div>
+        <p v-if="inventoryWindowMessage" data-testid="inventory-window-error" role="alert" class="mb-2 text-sm font-bold text-bauhaus-red">
+          {{ inventoryWindowMessage }}
+        </p>
+        <p data-testid="inventory-window" class="mb-4 text-sm font-bold" aria-live="polite">{{ inventoryWindowText }}</p>
 
         <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[1fr_14rem]">
           <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
@@ -411,9 +470,10 @@ function formatDate(value) {
           <li v-for="(item, index) in items" :key="index" class="grid grid-cols-1 gap-4 border-2 border-ink bg-canvas p-4 shadow-hard sm:grid-cols-[1fr_1fr_7rem_auto] sm:items-end sm:border-4">
             <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
               Equipment ID / type
-              <select v-model="item.equipmentId" class="border-2 border-ink bg-canvas px-3 py-3 text-sm font-medium outline-none focus:bg-bauhaus-yellow/20">
-                <option v-for="equipment in equipmentCatalog" :key="equipment.id" :value="equipment.id">
-                  {{ equipment.name }} · {{ equipment.type }}
+              <select v-model="item.equipmentId" :disabled="!catalogue.length" class="border-2 border-ink bg-canvas px-3 py-3 text-sm font-medium outline-none focus:bg-bauhaus-yellow/20 disabled:opacity-60">
+                <option v-if="!catalogue.length" :value="null">{{ catalogueLoading ? "Loading equipment…" : "No equipment available" }}</option>
+                <option v-for="equipment in catalogue" :key="equipment.equipment_id" :value="equipment.equipment_id">
+                  {{ equipment.name }} · {{ equipment.equipment_type }}
                 </option>
               </select>
             </label>
@@ -429,10 +489,11 @@ function formatDate(value) {
       </section>
 
       <div class="flex flex-col gap-4">
+        <p v-if="catalogueError" class="border-2 border-ink bg-bauhaus-red px-5 py-4 text-sm font-bold text-canvas shadow-hard sm:border-4" role="alert">{{ catalogueError }}</p>
         <p v-if="validationMessage" class="border-2 border-ink bg-bauhaus-red px-5 py-4 text-sm font-bold text-canvas shadow-hard sm:border-4" role="alert">{{ validationMessage }}</p>
         <p v-if="errorMessage" class="border-2 border-ink bg-bauhaus-red px-5 py-4 text-sm font-bold text-canvas shadow-hard sm:border-4" role="alert">{{ errorMessage }}</p>
 
-        <BauhausButton type="button" variant="secondary" full-width :disabled="isLoading" @click="checkAvailability">
+        <BauhausButton type="button" variant="secondary" full-width :disabled="isLoading || !catalogue.length" @click="checkAvailability">
           <span v-if="isLoading" class="h-4 w-4 animate-spin rounded-full border-2 border-canvas border-t-transparent" aria-hidden="true"></span>
           {{ isLoading ? "Checking availability" : "Check real-time availability" }}
         </BauhausButton>

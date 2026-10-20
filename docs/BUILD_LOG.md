@@ -2735,3 +2735,40 @@ The developer asked for the tech support dashboard to follow venue staff's: an *
 - Raise D14 at the consult (AC10 clearing vs "no automatic reset").
 - SCRUM-45's e2e adds and deletes lines on the planning fixture `…0202`; with the triggers each run now leaves `event_technical_history` rows on it. Harmless, but the fixture's history grows.
 - PR, review, PO acceptance, merge, the backlog status and the DoD tab are the developer's.
+
+### 4.68. D46 — The inventory table names and owns its window
+
+On `fix/inventory-window`, branched from `feature/scrum-24-equipment-reservation` at `57b1725` (SCRUM-24 awaits review), 2026-10-19.
+
+| | |
+|---|---|
+| Defect | D46 (found by the developer after the SCRUM-24 manual pass); D47 (found while fixing it) |
+| Status | Fixed on branch; tests, browser checks and the developer's manual pass (TC-EQR-036) passing (2026-10-19) |
+
+**Problem.** Tech support's Inventory & status table counted reservations in the Availability tab's window (today 9 am–5 pm by default) and said so only in small print, so reserving equipment for a future event left the table unchanged.
+
+**Change** (`TechSupportDashboard.vue`, new `features/equipment/inventoryWindow.js`; the developer chose this over an "upcoming reservations" column, which would add units across different dates and could exceed the stock):
+
+1. The table has its own **Window start** and **Window end** above search and filter, defaulting to today 9 am–5 pm. The Availability tab keeps its own window.
+2. "Showing stock for 19 Oct 2026, 9:00 am – 5:00 pm" names the window the rows were loaded for. The figures are still each window's busiest moment (§6.16, D45).
+3. Changing either end reloads. An end before the start shows a red message and keeps the last rows and label. A load that answers after a later one is ignored, so the label and the rows always match.
+
+**Verification.**
+
+- Tests first: `inventoryWindow.spec.js` and five dashboard tests failed for the expected reasons, then passed. The out-of-order-load test was checked to fail with the guard removed (it first passed without it, because it asserted before the stale answer arrived; it now waits).
+- Frontend 1,122 passed; build clean.
+- New browser check TC-EQR-035 against the live project: a 2031 reservation of 2 of 3 shows 0 reserved for today and 2 reserved, 1 net available for its day. Equipment e2e 5/5 ([run](test-cases/runs/2026-10-19-2345-e2e-57b1725.md); named for the base commit, since the fix was uncommitted when it ran).
+- Screenshots at 1280 px and 375 px: no sideways page scroll; the fields stack on a phone.
+
+
+**Not verified:** TC-EQR-036 (how it reads and looks) is the developer's.
+
+#### D47: the availability check offers the live catalogue (developer's request)
+
+- **Problem.** The Availability tab's picker was a hard-coded list of the first five seeded items, so the nine added on 2026-10-19 (and anything added later) couldn't be checked.
+- **Change.** The picker loads `GET /equipment/catalogue` (already open to Technical Support for SCRUM-45) when the availability view first opens; new rows default to its first item. While it loads the picker says "Loading equipment…"; if it fails, the page says the check can't run and the check button is disabled. The view calls `equipmentApi.checkEquipmentAvailability` like its other calls; the unused wrapper export in `services/api.js` was removed (the spec's mock couldn't see through it, which is how it was found).
+- **Verification.** Four dashboard tests first (three failed against the fixed list as expected; the fourth guards that the inventory view doesn't load the catalogue). Frontend 1,126 passed; build clean. New browser check TC-EQR-037 picks Sound System and checks it against the live catalogue; equipment e2e 6/6 ([run](test-cases/runs/2026-10-19-2353-e2e-050c5ed.md)).
+
+#### Manual pass
+
+- TC-EQR-036 passed ([record](test-cases/runs/2026-10-19-2356-manual-bc3a9d4.md)): the inventory window, its refusal and 375px layout, and the availability picker's full catalogue, a new item's check and the failure state.
