@@ -2799,3 +2799,21 @@ On `chore/seed-second-lead-account`, branched from `main` at `15ca304`, 2026-10-
 **Fix:** Added `is_primary` to the response-only `EventSpaceRequest` model. The organiser create/update request schemas remain unchanged and reject attempts to set the coordinator-controlled primary flag.
 
 **Verification:** The focused regression test failed first with the reported Pydantic `extra_forbidden` error, then passed after the schema fix. All 30 tests in `backend/tests/test_event_spaces_api.py` pass, including a check that organiser input containing `is_primary` is rejected with 422.
+
+### 4.71. CR-98 — choose a space purpose in the organiser form
+
+**Change:** Replaced free-form space-label entry with purpose presets (Main venue, Breakout room, Workshop room, Registration/check-in, Catering area and Networking area) plus Other with required custom text. The selected purpose is still stored in the existing `label` field, so no API or database contract changed; historical custom labels reopen as Other with their text preserved.
+
+**Verification:** Added frontend coverage for the custom-purpose payload, required Other text and editing a saved custom label. The full frontend suite passes (1,041 tests across 72 files) with one worker; `npm run build` succeeds. The manual browser check remains pending because the browser session is unauthenticated.
+
+### 4.72. CR-98 — use the event date for space-specific times
+
+**Change:** Removed per-space date inputs. Organisers now enter a space start time and end time on the event date; values are composed with the event timezone into the existing timestamp API fields. The event schedule remains the outer bound, and spaces can still inherit its full duration.
+
+**Verification:** The focused event-request and event-store specs pass (41 tests), `npm run build` succeeds, and the full backend suite passes (1,529 tests). The full frontend suite has one unrelated failure in `SafetyViews.spec.js` because `URL.revokeObjectURL` is unavailable in the test environment (1,040/1,041 pass). Manual browser verification for TC-SPACE-003 remains pending.
+
+### 4.73. CR-98 — copy a space request
+
+**Change:** Added a Copy space action to every space card. It creates a separate unsaved request with the source's purpose, attendance, layout, facilities and schedule; the existing save flow creates the new record without replacing the source.
+
+**Verification:** `EventRequestView.spec.js` covers copying a persisted custom-purpose space, independent editing, and creation with the copied facilities and schedule. A browser smoke check confirmed the action appears on each card and adds a fourth card without saving. The full manual persistence check for TC-SPACE-011 remains pending.

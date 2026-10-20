@@ -17,6 +17,17 @@ import { getEarliestEventDate, getRegistrationClosingError, getRegistrationOpeni
 import { EVENT_TIMEZONES, toZonedIso } from "@/features/events/timezones";
 import { FACILITIES, LAYOUTS, emptyEvent, emptySpace, spaceToPayload, useEventsStore } from "@/stores/events";
 
+const SPACE_PURPOSES = [
+  { value: "main_venue", label: "Main venue" },
+  { value: "breakout_room", label: "Breakout room" },
+  { value: "workshop_room", label: "Workshop room" },
+  { value: "registration", label: "Registration/check-in" },
+  { value: "catering", label: "Catering area" },
+  { value: "networking", label: "Networking area" },
+  { value: "other", label: "Other" },
+];
+const OTHER_SPACE_PURPOSE = "other";
+
 const router = useRouter();
 const route = useRoute();
 const eventsStore = useEventsStore();
@@ -143,30 +154,27 @@ function validateSubmission() {
 
 function validateSpace(space, event = form) {
   const errors = {};
-  if (!space.label.trim()) errors.label = "Enter a space label.";
+  if (!space.purposeSelection) errors.label = "Choose a space purpose.";
+  else if (space.purposeSelection === OTHER_SPACE_PURPOSE && !space.customPurpose.trim()) {
+    errors.label = "Enter a custom purpose.";
+  }
   if (!space.expectedPax || Number(space.expectedPax) < 1) errors.expectedPax = "Enter expected pax of at least 1.";
   if (!space.layoutPreference) errors.layoutPreference = "Choose a layout.";
   if (!space.useEventSchedule) {
-    if (!space.startsAt) errors.startsAt = "Enter when this space starts.";
-    if (!space.endsAt) errors.endsAt = "Enter when this space ends.";
-    if (space.startsAt && space.endsAt) {
-      const [spaceStartDate, spaceStartTime] = space.startsAt.split("T");
-      const [spaceEndDate, spaceEndTime] = space.endsAt.split("T");
-      const spaceStartsAt = toZonedIso(spaceStartDate, spaceStartTime, event.eventTimezone);
-      const spaceEndsAt = toZonedIso(spaceEndDate, spaceEndTime, event.eventTimezone);
-      if (Date.parse(spaceEndsAt) <= Date.parse(spaceStartsAt)) {
-        errors.endsAt = "Space end time must be after its start time.";
+    if (!space.startTime) errors.startTime = "Enter a start time for this space.";
+    if (!space.endTime) errors.endTime = "Enter an end time for this space.";
+    if (space.startTime && space.endTime) {
+      if (space.endTime <= space.startTime) {
+        errors.endTime = "Space end time must be after its start time.";
       }
       if (!event.date || !event.startTime || !event.endTime) {
-        errors.startsAt = "Set the overall event schedule before this space schedule.";
+        errors.startTime = "Set the overall event schedule before this space schedule.";
       } else {
-        const eventStartsAt = toZonedIso(event.date, event.startTime, event.eventTimezone);
-        const eventEndsAt = toZonedIso(event.date, event.endTime, event.eventTimezone);
-        if (Date.parse(spaceStartsAt) < Date.parse(eventStartsAt)) {
-          errors.startsAt = "Space schedule must be within the event's overall schedule.";
+        if (space.startTime < event.startTime) {
+          errors.startTime = "Space times must be within the event's overall schedule.";
         }
-        if (Date.parse(spaceEndsAt) > Date.parse(eventEndsAt)) {
-          errors.endsAt = "Space schedule must be within the event's overall schedule.";
+        if (space.endTime > event.endTime) {
+          errors.endTime = "Space times must be within the event's overall schedule.";
         }
       }
     }
@@ -175,7 +183,57 @@ function validateSpace(space, event = form) {
 }
 
 function addSpace() {
-  form.spaces.push(emptySpace());
+  form.spaces.push(newSpace());
+}
+
+function copySpace(space) {
+  form.spaces.push(Object.assign(newSpace(), {
+    label: space.label,
+    expectedPax: space.expectedPax,
+    layoutPreference: space.layoutPreference,
+    facilitiesRequired: [...(space.facilitiesRequired ?? [])],
+    useEventSchedule: space.useEventSchedule,
+    purposeSelection: space.purposeSelection,
+    customPurpose: space.customPurpose,
+    startTime: space.startTime,
+    endTime: space.endTime,
+  }));
+}
+
+function newSpace() {
+  return { ...emptySpace(), purposeSelection: "", customPurpose: "", startTime: "", endTime: "" };
+}
+
+function spaceWithPurpose(space) {
+  const purpose = SPACE_PURPOSES.find(
+    (option) => option.value !== OTHER_SPACE_PURPOSE && option.label === space.label,
+  );
+  return {
+    ...space,
+    purposeSelection: purpose?.value ?? OTHER_SPACE_PURPOSE,
+    customPurpose: purpose ? "" : space.label ?? "",
+    startTime: space.startsAt?.split("T")[1] ?? "",
+    endTime: space.endsAt?.split("T")[1] ?? "",
+  };
+}
+
+function setSpacePurpose(space, value) {
+  space.purposeSelection = value;
+  if (value === OTHER_SPACE_PURPOSE) {
+    space.label = space.customPurpose;
+    return;
+  }
+  space.label = SPACE_PURPOSES.find((option) => option.value === value)?.label ?? "";
+}
+
+function setCustomPurpose(space, value) {
+  space.customPurpose = value;
+  space.label = value;
+}
+
+function setFormEvent(event) {
+  Object.assign(form, event);
+  form.spaces = (event.spaces ?? []).map(spaceWithPurpose);
 }
 
 async function removeSpace(space) {
@@ -189,7 +247,7 @@ async function removeSpace(space) {
   try {
     await eventsStore.removeSpace(form.id, space.id);
     const refreshed = await eventsStore.get(form.id);
-    Object.assign(form, refreshed);
+    setFormEvent(refreshed);
   } catch {
     // The store exposes the API message in the form alert.
   } finally {
@@ -200,7 +258,12 @@ async function removeSpace(space) {
 async function persistSpaces(eventId, spaces) {
   for (const space of spaces) {
     if (Object.keys(validateSpace(space, form)).length) continue;
-    const payload = spaceToPayload(space, form.eventTimezone);
+    const spaceWithEventDate = {
+      ...space,
+      startsAt: space.startTime ? `${form.date}T${space.startTime}` : "",
+      endsAt: space.endTime ? `${form.date}T${space.endTime}` : "",
+    };
+    const payload = spaceToPayload(spaceWithEventDate, form.eventTimezone);
     if (space.id) await eventsStore.updateSpace(eventId, space.id, { ...payload, version: space.version });
     else await eventsStore.createSpace(eventId, payload);
   }
@@ -233,7 +296,7 @@ async function save() {
       await router.push({ name: "dashboard-organiser" });
     } else {
       showToast(isReturned.value ? "Changes saved" : "Draft saved");
-      Object.assign(form, event);
+      setFormEvent(event);
       pristineSnapshot.value = serializeForm(form);
       fieldErrors.value = {};
     }
@@ -274,9 +337,9 @@ onMounted(async () => {
       await router.replace({ name: "event-detail", params: { id: event.id } });
       return;
     }
-    Object.assign(form, event);
+    setFormEvent(event);
   }
-  if (!form.spaces.length) form.spaces.push(emptySpace());
+  if (!form.spaces.length) form.spaces.push(newSpace());
   pristineSnapshot.value = serializeForm(form);
 });
 
@@ -342,39 +405,58 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
             <div class="mt-6 grid gap-4">
               <div v-for="(space, index) in form.spaces" :key="space.id || `draft-space-${index}`" class="border-2 border-dashed border-ink bg-bauhaus-yellow/20 p-4">
                 <div class="grid gap-4 sm:grid-cols-2">
-                  <BauhausInput v-model="space.label" label="Space label" required placeholder="Main venue" :error="fieldErrors.spaces?.[index]?.label" />
+                  <BauhausSelect
+                    :model-value="space.purposeSelection"
+                    label="Purpose"
+                    aria-label="Space purpose"
+                    required
+                    :options="SPACE_PURPOSES"
+                    placeholder="Choose a purpose"
+                    :error="!space.purposeSelection ? fieldErrors.spaces?.[index]?.label : ''"
+                    @update:model-value="setSpacePurpose(space, $event)"
+                  />
+                  <BauhausInput
+                    v-if="space.purposeSelection === OTHER_SPACE_PURPOSE"
+                    :model-value="space.customPurpose"
+                    label="Custom purpose"
+                    required
+                    placeholder="Describe this space"
+                    :error="fieldErrors.spaces?.[index]?.label"
+                    @update:model-value="setCustomPurpose(space, $event)"
+                  />
                   <BauhausInput v-model="space.expectedPax" label="Expected pax" type="number" required :error="fieldErrors.spaces?.[index]?.expectedPax" />
                   <BauhausSelect v-model="space.layoutPreference" label="Preferred layout" required :options="LAYOUTS" placeholder="Choose a layout" :error="fieldErrors.spaces?.[index]?.layoutPreference" />
                   <div class="sm:col-span-2"><BauhausCheckboxGroup v-model="space.facilitiesRequired" label="Venue facilities required" :options="FACILITIES" /></div>
                   <div class="sm:col-span-2">
                     <label class="inline-flex items-center gap-2 border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold uppercase tracking-wide shadow-hard">
                       <input v-model="space.useEventSchedule" data-testid="space-schedule-toggle" type="checkbox" class="h-4 w-4 accent-bauhaus-red" />
-                      Use event schedule
+                      Use full event duration
                     </label>
                     <p v-if="space.useEventSchedule" class="mt-2 text-sm font-medium">
                       Uses {{ form.date || "the event date" }} · {{ form.startTime || "start" }}–{{ form.endTime || "end" }} ({{ form.eventTimezone }})
                     </p>
                     <div v-else class="mt-4 grid gap-4 sm:grid-cols-2">
                       <BauhausInput
-                        v-model="space.startsAt"
-                        label="Space starts"
-                        type="datetime-local"
-                        :min="form.date && form.startTime ? `${form.date}T${form.startTime}` : undefined"
-                        :max="form.date && form.endTime ? `${form.date}T${form.endTime}` : undefined"
-                        :error="fieldErrors.spaces?.[index]?.startsAt"
+                        v-model="space.startTime"
+                        label="Start time"
+                        type="time"
+                        :min="form.startTime || undefined"
+                        :max="form.endTime || undefined"
+                        :error="fieldErrors.spaces?.[index]?.startTime"
                       />
                       <BauhausInput
-                        v-model="space.endsAt"
-                        label="Space ends"
-                        type="datetime-local"
-                        :min="form.date && form.startTime ? `${form.date}T${form.startTime}` : undefined"
-                        :max="form.date && form.endTime ? `${form.date}T${form.endTime}` : undefined"
-                        :error="fieldErrors.spaces?.[index]?.endsAt"
+                        v-model="space.endTime"
+                        label="End time"
+                        type="time"
+                        :min="form.startTime || undefined"
+                        :max="form.endTime || undefined"
+                        :error="fieldErrors.spaces?.[index]?.endTime"
                       />
                     </div>
                   </div>
                 </div>
                 <div class="mt-4 flex flex-wrap gap-3">
+                  <BauhausButton type="button" variant="yellow" :disabled="isSavingSpace" @click="copySpace(space)">Copy space</BauhausButton>
                   <BauhausButton v-if="form.spaces.length > 1" type="button" variant="yellow" :disabled="isSavingSpace" @click="removeSpace(space)">Remove space</BauhausButton>
                 </div>
               </div>
