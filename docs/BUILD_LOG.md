@@ -2787,4 +2787,6 @@ On `chore/seed-second-lead-account`, branched from `main` at `15ca304`, 2026-10-
 
 **What the live data should show** (read-only query, 2026-10-20): of the 18 active events, 8 have no coordinator (the shared queue), 7 were assigned before the Lead role existed (visible to both Leads), and 3 were last assigned by Grace Chua. Grace should therefore see 8 + 7 + 3 and Daniel 8 + 7, not Grace's three.
 
-**Not verified.** A sign-in as the new account was not tried, TC-LEAD-015 has not been run (it needs a backend with the project's secret key), and TC-LEAD-012 is still a manual case for the developer.
+**Verified.** The live API and database run on 2026-10-20 passed **155/155** (`runs/2026-10-20-1323-api-db-46b5250.md`). That includes TC-LEAD-015, so with two Leads each dashboard matches `events.assigned_by` in the database, and it means the new account can sign in, since the check signs in as it.
+
+**Not verified.** TC-LEAD-012, the manual two-Lead pass in a browser, is still the developer's to run. The browser suite was not re-run for this chore.
