@@ -258,9 +258,24 @@ HISTORY_ROWS = [
 ]
 
 
+REASSIGNMENT_ROWS = [
+    {"id": "a1", "at": "2026-09-23T05:00:00+00:00",
+     "actor": {"id": "lead-1", "full_name": "Joyce Lim"},
+     "from_coordinator": {"id": COORDINATOR_ID, "full_name": "Marcus Lim"},
+     "to_coordinator": {"id": "c2", "full_name": "Priya Nair"}},
+]
+
+
 @pytest.fixture()
 def history(monkeypatch, events):
     monkeypatch.setattr(repository, "list_status_history", lambda event_id: deepcopy(HISTORY_ROWS))
+    monkeypatch.setattr(repository, "list_assignment_history", lambda event_id: [])
+
+
+@pytest.fixture()
+def reassigned_history(monkeypatch, events):
+    monkeypatch.setattr(repository, "list_status_history", lambda event_id: deepcopy(HISTORY_ROWS))
+    monkeypatch.setattr(repository, "list_assignment_history", lambda event_id: deepcopy(REASSIGNMENT_ROWS))
 
 
 class TestHistory:
@@ -280,6 +295,22 @@ class TestHistory:
         act_as("event_coordinator")
 
         assert client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers).status_code == 200
+
+    def test_a_reassignment_appears_in_order_with_who_from_and_to(self, client, auth_headers, act_as, reassigned_history):
+        """SCRUM-12 (reused by 81): a reassignment is not a status change, so it comes from its own
+        table and is merged by time into the status history."""
+        act_as("event_organiser", user_id=ORGANISER_ID)
+
+        entries = client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers).json()["entries"]
+
+        assert [entry["id"] for entry in entries] == ["h2", "a1", "h1"]
+        moved = entries[1]
+        assert moved["kind"] == "reassignment"
+        assert moved["actor"] == {"id": "lead-1", "full_name": "Joyce Lim"}
+        assert moved["from_coordinator"]["full_name"] == "Marcus Lim"
+        assert moved["to_coordinator"]["full_name"] == "Priya Nair"
+        assert moved["to_status"] is None
+        assert [entry["kind"] for entry in (entries[0], entries[2])] == ["status", "status"]
 
     def test_a_coordinator_cannot_read_draft_history(self, client, auth_headers, act_as, events, history):
         events["store"][EVENT_ID]["status"] = "draft"

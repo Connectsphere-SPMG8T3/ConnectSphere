@@ -70,6 +70,22 @@ export function createThrowawayEvent(tag, startsAt, endsAt) {
   return row;
 }
 
+/** A submitted event waiting in the Lead's unassigned queue (SCRUM-12): no coordinator. */
+export function createQueuedThrowawayEvent(tag, startsAt, endsAt) {
+  const [row] = query(
+    "insert into public.events (organiser_id, coordinator_id, status, name, starts_at, ends_at, expected_attendance, layout_preference, facilities_required, submitted_at) values " +
+      "('a0000000-0000-4000-8000-000000000001', null, 'submitted', " +
+      `'${EVENT_PREFIX}e2e-${runId} ${tag}', '${startsAt}', '${endsAt}', 64, 'theatre', '{projector}', now()) returning id, name`,
+  );
+  return row;
+}
+
+/** The event's status and coordinator, read straight from the database. */
+export function readThrowawayEvent(eventId) {
+  const [row] = query(`select status, coordinator_id from public.events where id = '${eventId}'`);
+  return row;
+}
+
 /** A booking on a throwaway event with a chosen status and expiry (CR-99), for
  * states a request alone can't reach. Deleted with the event's bookings. */
 export function createThrowawayHold(event, venueId, startsAt, endsAt, status, expiresAt, spaceId = null) {

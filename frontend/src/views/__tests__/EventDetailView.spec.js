@@ -259,6 +259,6 @@ describe("EventDetailView sidebar (D23, D24)", () => {
   it("says a coordinator is still to be assigned when there is none (D24)", async () => {
     const el = await mountDetail(eventResponse({ coordinator_id: null, coordinator: null }));
 
-    expect(el.textContent).toContain("Coordinator: To be assigned");
+    expect(el.textContent).toContain("Coordinator: Unassigned");
   });
 });

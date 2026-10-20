@@ -7,7 +7,7 @@ import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  eventsApi: { leadDashboard: vi.fn(), reassign: vi.fn() },
+  eventsApi: { leadDashboard: vi.fn(), reassign: vi.fn(), assign: vi.fn() },
 }));
 
 const PAYLOAD = {
@@ -108,6 +108,41 @@ describe("lead dashboard store", () => {
     expect(eventsApi.leadDashboard).toHaveBeenCalledTimes(1);
     expect(store.reassignError).toBeNull();
     expect(store.isReassigning).toBe(false);
+  });
+
+  it("assigns a queued event, then reloads, and returns true (SCRUM-12)", async () => {
+    signedInLead();
+    eventsApi.leadDashboard.mockResolvedValue(PAYLOAD);
+    eventsApi.assign.mockResolvedValue({ id: "e1" });
+    const store = useLeadDashboardStore();
+
+    expect(await store.assign("e1", "c1")).toBe(true);
+
+    expect(eventsApi.assign).toHaveBeenCalledWith("e1", "c1", "access-token");
+    expect(eventsApi.leadDashboard).toHaveBeenCalledTimes(1);
+    expect(store.reassignError).toBeNull();
+    expect(store.isReassigning).toBe(false);
+  });
+
+  it("shows why an assignment was refused, such as an event another Lead assigned first", async () => {
+    signedInLead();
+    eventsApi.assign.mockRejectedValue(new ApiError("This event is already assigned.", 409));
+    const store = useLeadDashboardStore();
+
+    expect(await store.assign("e1", "c1")).toBe(false);
+
+    expect(store.reassignError).toBe("This event is already assigned.");
+    expect(eventsApi.leadDashboard).not.toHaveBeenCalled();
+  });
+
+  it("reports a network failure while assigning", async () => {
+    signedInLead();
+    eventsApi.assign.mockRejectedValue(new TypeError("Failed to fetch"));
+    const store = useLeadDashboardStore();
+
+    expect(await store.assign("e1", "c1")).toBe(false);
+
+    expect(store.reassignError).toBe("Unable to reach the server. Please try again.");
   });
 
   it("keeps the server's reason when a reassign is refused, and returns false", async () => {

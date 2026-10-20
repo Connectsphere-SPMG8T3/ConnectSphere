@@ -68,4 +68,31 @@ describe("EventStatusHistory (QA-70)", () => {
 
     expect(el.textContent).toContain("No status changes recorded yet.");
   });
+
+  it("says who an event was reassigned from and to, and who did it (SCRUM-12)", async () => {
+    const el = await mountHistory([
+      { id: "a1", kind: "reassignment", from_status: null, to_status: null, reason: null,
+        at: "2026-09-24T06:05:00Z", actor: { id: "l1", full_name: "Joyce Lim" },
+        from_coordinator: { id: "c1", full_name: "Marcus Lim" }, to_coordinator: { id: "c2", full_name: "Priya Nair" } },
+      { id: "h1", kind: "status", from_status: "submitted", to_status: "under_review", reason: "Assigned to Marcus Lim",
+        at: "2026-09-23T03:00:00Z", actor: { id: "l1", full_name: "Joyce Lim" } },
+    ]);
+
+    const [reassigned, assigned] = el.querySelectorAll("li");
+    expect(reassigned.textContent).toContain("Reassigned to Priya Nair");
+    expect(reassigned.textContent).toContain("from Marcus Lim");
+    expect(reassigned.textContent).toContain("by Joyce Lim");
+    expect(reassigned.textContent).not.toContain("Unknown");
+    expect(assigned.textContent).toContain("Under review");
+  });
+
+  it("reads a reassignment with no previous coordinator as an assignment", async () => {
+    const el = await mountHistory([
+      { id: "a1", kind: "reassignment", from_status: null, to_status: null, reason: null,
+        at: "2026-09-24T06:05:00Z", actor: null, from_coordinator: null, to_coordinator: { id: "c2", full_name: "Priya Nair" } },
+    ]);
+
+    expect(el.textContent).toContain("Assigned to Priya Nair");
+    expect(el.textContent).not.toContain("from ");
+  });
 });

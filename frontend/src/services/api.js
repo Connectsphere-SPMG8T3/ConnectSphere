@@ -163,6 +163,14 @@ export const eventsApi = {
   leadDashboard(token) {
     return request("/events/dashboard/lead", { token });
   },
+  // SCRUM-12: a Lead assigns a coordinator to a queued (submitted) event.
+  assign(eventId, coordinatorId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/assign`, {
+      method: "POST",
+      body: { coordinator_id: coordinatorId },
+      token,
+    });
+  },
   // `expectedVersion` is the event version the Lead was looking at: a screen that is behind is refused.
   reassign(eventId, coordinatorId, expectedVersion, token) {
     return request(`/events/${encodeURIComponent(eventId)}/reassign`, {

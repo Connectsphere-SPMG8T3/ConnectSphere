@@ -25,6 +25,7 @@ import {
   LEAD_STATUS_OPTIONS,
   coordinatorFilterOptions,
   filterLeadEvents,
+  queueVenueNeeds,
   sortLeadEvents,
 } from "@/features/events/leadDashboard";
 import { useLeadDashboardStore } from "@/features/events/leadDashboardStore";
@@ -45,7 +46,8 @@ const status = ref([]);
 const search = ref("");
 
 const coordinatorOptionsForFilter = computed(() => coordinatorFilterOptions(store.coordinators));
-const queue = computed(() => sortLeadEvents(store.unassigned));
+// Oldest submission first, as the API orders it (SCRUM-12 AC10): not re-sorted by event date.
+const queue = computed(() => store.unassigned);
 const visibleActive = computed(() =>
   sortLeadEvents(
     filterLeadEvents(store.activeEvents, {
@@ -157,6 +159,9 @@ const rowClasses =
               <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/70">
                 {{ STATUS_LABELS[event.status] }} · {{ formatDate(event.starts_at) }}
                 <template v-if="event.organiser_name"> · {{ event.organiser_name }}</template>
+              </p>
+              <p class="mt-2 text-sm font-medium">
+                <template v-if="event.expected_attendance != null">{{ event.expected_attendance }} expected · </template>{{ queueVenueNeeds(event) }}
               </p>
             </RouterLink>
           </li>

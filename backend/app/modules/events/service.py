@@ -539,9 +539,11 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
 
 def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
     _visible_event(event_id, user_id, role)
-    return EventHistoryResponse(
-        entries=[EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
-    )
+    entries = [EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
+    entries += [EventHistoryEntry(kind="reassignment", **row) for row in repository.list_assignment_history(event_id)]
+    # Stable, so entries sharing a time keep the repository's order (the creation row last).
+    entries.sort(key=lambda entry: entry.at, reverse=True)
+    return EventHistoryResponse(entries=entries)
 
 
 def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventResponse:
@@ -690,6 +692,9 @@ def _lead_event(row: dict) -> LeadEvent:
         expected_attendance=row.get("expected_attendance"),
         coordinator=row.get("coordinator"),
         assigned_at=row.get("assigned_at"),
+        submitted_at=row.get("submitted_at"),
+        layout_preference=row.get("layout_preference"),
+        facilities_required=row.get("facilities_required") or [],
         version=row["version"],
     )
 
@@ -701,18 +706,54 @@ def lead_dashboard(lead_id: str) -> LeadDashboard:
     lead_ids = repository.list_lead_ids()
     rows = [
         row
-        for row in repository.list_lead_events(ACTIVE_COORDINATOR_STATUSES)
+        for row in repository.list_lead_events(("submitted", *ACTIVE_COORDINATOR_STATUSES))
         if lead_scope.in_lead_scope(row, lead_id, lead_ids)
     ]
     counts = lead_scope.active_counts(rows)
     return LeadDashboard(
-        unassigned=[_lead_event(r) for r in rows if r.get("coordinator_id") is None],
+        unassigned=[
+            _lead_event(r)
+            for r in sorted(
+                (r for r in rows if r.get("coordinator_id") is None),
+                key=lambda r: r.get("submitted_at") or "",
+            )
+        ],
         active_events=[_lead_event(r) for r in rows if r.get("coordinator_id") is not None],
         coordinators=[
             LeadCoordinator(id=c["id"], full_name=c["full_name"], active_count=counts.get(c["id"], 0))
             for c in repository.list_coordinators()
         ],
     )
+
+
+ALREADY_ASSIGNED_MESSAGE = "This event is already assigned."
+
+
+def assign(event_id: str, lead_id: str, coordinator_id: str) -> EventResponse:
+    """A Lead assigns a coordinator to a queued event (SCRUM-12). Only a `submitted` event
+    can be assigned here; changing an assignment is `reassign` (story 81). The database
+    repeats the status check under a lock, so of two simultaneous assignments one wins."""
+    row = repository.get_lead_event(event_id)
+    if not row or row.get("status") == "draft":
+        raise EventNotFoundError()
+    if row.get("coordinator_id") is not None or row["status"] in ACTIVE_COORDINATOR_STATUSES:
+        raise EventConflictError(ALREADY_ASSIGNED_MESSAGE)
+    target_status = lifecycle.target("assign", row["status"])
+    target = repository.get_coordinator(coordinator_id)
+    if target is None:
+        raise CoordinatorNotEligibleError()
+    name = row["name"]
+    updated = repository.assign_event(
+        event_id, lead_id, coordinator_id,
+        from_statuses=lifecycle.allowed_from("assign"),
+        to_status=target_status.value,
+        reason=f"Assigned to {target['full_name']}",
+        notify_assigned=f'"{name}" has been assigned to you.',
+        notify_organiser=f'Your event "{name}" is now coordinated by {target["full_name"]}.',
+    )
+    if not updated:
+        raise EventConflictError(ALREADY_ASSIGNED_MESSAGE)
+    return _to_response(updated)
 
 
 def reassign(event_id: str, lead_id: str, coordinator_id: str, expected_version: int) -> EventResponse:

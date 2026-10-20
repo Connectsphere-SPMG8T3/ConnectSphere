@@ -9,7 +9,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { leadDashboard: vi.fn(), reassign: vi.fn() },
+  eventsApi: { leadDashboard: vi.fn(), reassign: vi.fn(), assign: vi.fn() },
 }));
 
 const QUEUE_ID = "e0000000-0000-4000-8000-000000000301";
@@ -18,7 +18,7 @@ const ASSIGNED_ID = "e0000000-0000-4000-8000-000000000302";
 const PAYLOAD = {
   unassigned: [
     {
-      event_id: QUEUE_ID, event_name: "Partner Summit", status: "under_review", starts_at: "2026-11-12T02:00:00Z", version: 3,
+      event_id: QUEUE_ID, event_name: "Partner Summit", status: "submitted", starts_at: "2026-11-12T02:00:00Z", version: 3,
       organiser_name: "Olivia Tan", purpose: "Quarterly partner meeting", expected_attendance: 12,
       coordinator: null, assigned_at: null,
     },
@@ -94,7 +94,7 @@ describe("LeadEventView (CR-101 AC3)", () => {
 
     expect(eventsApi.leadDashboard).toHaveBeenCalledTimes(1);
     expect(el.textContent).toContain("Partner Summit");
-    expect(el.textContent).toContain("Under review");
+    expect(el.textContent).toContain("Awaiting assignment");
     expect(el.textContent).toContain("Olivia Tan");
     expect(el.textContent).toContain("Quarterly partner meeting");
     expect(el.textContent).toContain("Unassigned");
@@ -104,7 +104,7 @@ describe("LeadEventView (CR-101 AC3)", () => {
     eventsApi.leadDashboard.mockReturnValue(new Promise(() => {}));
 
     const { el } = await mountView(QUEUE_ID, (store) => {
-      store.unassigned = [{ event_id: QUEUE_ID, event_name: "Another Lead's Event", status: "under_review", coordinator: null }];
+      store.unassigned = [{ event_id: QUEUE_ID, event_name: "Another Lead's Event", status: "submitted", coordinator: null }];
       store.hasSettled = true;
     });
 
@@ -163,8 +163,8 @@ describe("LeadEventView (CR-101 AC3)", () => {
   });
 
   it("asks for confirmation, then reassigns, announces it and returns to the dashboard", async () => {
-    eventsApi.reassign.mockResolvedValue({ id: QUEUE_ID });
-    const { el, router } = await mountView(QUEUE_ID);
+    eventsApi.reassign.mockResolvedValue({ id: ASSIGNED_ID });
+    const { el, router } = await mountView(ASSIGNED_ID);
     choose(el, "c2");
     await flush();
 
@@ -172,21 +172,78 @@ describe("LeadEventView (CR-101 AC3)", () => {
     await flush();
     expect(eventsApi.reassign).not.toHaveBeenCalled();
     const dialog = document.querySelector('[role="dialog"]');
-    expect(dialog.textContent).toContain("Partner Summit");
+    expect(dialog.textContent).toContain("Year-End Dinner");
     expect(dialog.textContent).toContain("Priya Nair");
 
     document.querySelector('button[aria-label="Reassign"]').click();
     await flush();
 
-    // The version the Lead saw (3), so a screen that is behind is refused rather than overwriting.
-    expect(eventsApi.reassign).toHaveBeenCalledWith(QUEUE_ID, "c2", 3, "access");
+    // The version the Lead saw (8), so a screen that is behind is refused rather than overwriting.
+    expect(eventsApi.reassign).toHaveBeenCalledWith(ASSIGNED_ID, "c2", 8, "access");
     expect(toastState.value.tone).toBe("success");
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-coordinator-lead"));
   });
 
+  it("assigns a queued event through the assign endpoint, not reassign (SCRUM-12)", async () => {
+    eventsApi.assign.mockResolvedValue({ id: QUEUE_ID });
+    const { el, router } = await mountView(QUEUE_ID);
+    choose(el, "c2");
+    await flush();
+    expect(el.querySelector("h2").textContent).toContain("Assign coordinator");
+
+    reassignButton(el).click();
+    await flush();
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog.textContent).toContain("Assign event?");
+    expect(dialog.textContent).toContain("Priya Nair");
+
+    document.querySelector('button[aria-label="Assign"]').click();
+    await flush();
+
+    expect(eventsApi.assign).toHaveBeenCalledWith(QUEUE_ID, "c2", "access");
+    expect(eventsApi.reassign).not.toHaveBeenCalled();
+    expect(toastState.value.tone).toBe("success");
+    expect(toastState.value.message).toContain("assigned to Priya Nair");
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-coordinator-lead"));
+  });
+
+  it("calls an old event with no coordinator Assign, and sends it through reassign, which accepts it", async () => {
+    eventsApi.reassign.mockResolvedValue({ id: QUEUE_ID });
+    eventsApi.leadDashboard.mockResolvedValue({ ...PAYLOAD, unassigned: [{ ...PAYLOAD.unassigned[0], status: "planning" }] });
+    const { el } = await mountView(QUEUE_ID);
+    expect(el.querySelector("h2").textContent).toContain("Assign coordinator");
+    expect(reassignButton(el).textContent).toContain("Assign");
+
+    choose(el, "c2");
+    await flush();
+    reassignButton(el).click();
+    await flush();
+    expect(document.querySelector('[role="dialog"]').textContent).toContain("Assign event?");
+    document.querySelector('button[aria-label="Assign"]').click();
+    await flush();
+
+    expect(eventsApi.reassign).toHaveBeenCalledWith(QUEUE_ID, "c2", 3, "access");
+    expect(eventsApi.assign).not.toHaveBeenCalled();
+  });
+
+  it("shows the second Lead why an event someone else just assigned is refused", async () => {
+    eventsApi.assign.mockRejectedValue(new ApiError("This event is already assigned.", 409));
+    const { el, router } = await mountView(QUEUE_ID);
+    choose(el, "c2");
+    await flush();
+    reassignButton(el).click();
+    await flush();
+
+    document.querySelector('button[aria-label="Assign"]').click();
+    await flush();
+
+    expect(el.querySelector('[role="alert"]').textContent).toContain("already assigned");
+    expect(router.currentRoute.value.name).toBe("lead-event");
+  });
+
   it("stays on the page and shows why when the server refuses", async () => {
     eventsApi.reassign.mockRejectedValue(new ApiError("This event was updated by someone else. Reload.", 409));
-    const { el, router } = await mountView(QUEUE_ID);
+    const { el, router } = await mountView(ASSIGNED_ID);
     choose(el, "c2");
     await flush();
     reassignButton(el).click();

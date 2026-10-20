@@ -22,6 +22,7 @@ def state(monkeypatch):
     monkeypatch.setattr(repository,'list_safety_decisions',lambda _:deepcopy(state['decisions']),raising=False)
     monkeypatch.setattr(repository,'list_safety_queue',lambda:deepcopy(state['queue']),raising=False)
     monkeypatch.setattr(repository,'list_status_history',lambda _:[])
+    monkeypatch.setattr(repository,'list_assignment_history',lambda _:[])
     monkeypatch.setattr(repository,'list_events',lambda _:[deepcopy(state['event'])])
     monkeypatch.setattr(repository,'list_comments',lambda _:[])
     monkeypatch.setattr(venues,'active_booking_for_event',lambda _:None)

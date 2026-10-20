@@ -53,7 +53,7 @@ def data(monkeypatch):
 class TestScopeAndStatuses:
     def test_reads_only_active_statuses(self, data):
         service.lead_dashboard(LEAD)
-        assert data.statuses == set(ACTIVE_COORDINATOR_STATUSES)
+        assert data.statuses == {"submitted", *ACTIVE_COORDINATOR_STATUSES}
         assert not data.statuses & {"draft", "rejected", "cancelled", "completed"}
 
     def test_empty_system_is_an_empty_dashboard(self, data):
@@ -62,7 +62,7 @@ class TestScopeAndStatuses:
         assert dashboard.unassigned == [] and dashboard.active_events == [] and dashboard.coordinators == []
 
     def test_unassigned_queue_and_assigned_events_are_separated_with_coordinator_and_status(self, data):
-        data.events = [event("e1", "under_review"), event("e2", "planning", C1, LEAD)]
+        data.events = [event("e1", "submitted"), event("e2", "planning", C1, LEAD)]
         dashboard = service.lead_dashboard(LEAD)
         assert [e.event_id for e in dashboard.unassigned] == ["e1"]
         [assigned] = dashboard.active_events
@@ -73,7 +73,7 @@ class TestScopeAndStatuses:
     def test_every_lead_sees_the_queue_but_only_their_own_assigned_events(self, data):
         data.lead_ids = {LEAD, OTHER_LEAD}
         data.events = [
-            event("q", "under_review"),
+            event("q", "submitted"),
             event("mine", "planning", C1, LEAD),
             event("theirs", "planning", C1, OTHER_LEAD),
             event("legacy", "planning", C2, None),
@@ -95,6 +95,32 @@ class TestScopeAndStatuses:
         ]
         counts = {c.id: c.active_count for c in service.lead_dashboard(LEAD).coordinators}
         assert counts == {"c1": 2, "c2": 0}
+
+
+class TestQueue:
+    """SCRUM-12 AC10: the queue is the submitted events, oldest first, with basic information."""
+
+    def test_the_queue_is_oldest_submission_first(self, data):
+        data.events = [
+            event("new", "submitted", submitted_at="2026-10-12T09:00:00+08:00"),
+            event("old", "submitted", submitted_at="2026-10-10T09:00:00+08:00"),
+            event("mid", "submitted", submitted_at="2026-10-11T09:00:00+08:00"),
+        ]
+        assert [e.event_id for e in service.lead_dashboard(LEAD).unassigned] == ["old", "mid", "new"]
+
+    def test_each_entry_carries_name_date_attendance_and_venue_needs(self, data):
+        data.events = [event("q", "submitted", layout_preference="theatre", facilities_required=["projector"],
+                             submitted_at="2026-10-10T09:00:00+08:00")]
+        [entry] = service.lead_dashboard(LEAD).unassigned
+        assert entry.event_name == "Event q"
+        assert entry.starts_at is not None and entry.expected_attendance == 80
+        assert entry.layout_preference.value == "theatre"
+        assert [f.value for f in entry.facilities_required] == ["projector"]
+
+    def test_an_assigned_event_is_never_in_the_queue(self, data):
+        data.events = [event("a", "under_review", C1, LEAD)]
+        dashboard = service.lead_dashboard(LEAD)
+        assert dashboard.unassigned == [] and len(dashboard.active_events) == 1
 
 
 class TestEndpointAccess:

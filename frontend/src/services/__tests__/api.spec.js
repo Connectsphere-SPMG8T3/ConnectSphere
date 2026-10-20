@@ -245,6 +245,17 @@ describe("eventsApi Lead calls (CR-101)", () => {
       expect.objectContaining({ method: "POST", body: JSON.stringify({ coordinator_id: "c2", expected_version: 4 }) }),
     );
   });
+
+  it("assigns a queued event with only the coordinator id (SCRUM-12)", async () => {
+    const fetchMock = stubFetch({ id: "event/one" });
+
+    await eventsApi.assign("event/one", "c2", "access-token");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/events/event%2Fone/assign",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ coordinator_id: "c2" }) }),
+    );
+  });
 });
 
 describe("venueBookingsApi.restore (CR-95 AC9)", () => {
