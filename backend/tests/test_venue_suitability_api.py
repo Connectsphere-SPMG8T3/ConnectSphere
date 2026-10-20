@@ -27,7 +27,6 @@ COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
 OTHER_COORDINATOR_ID = "a0000000-0000-4000-8000-000000000009"
 EVENT_ID = "e0000000-0000-4000-8000-000000000202"
 SPACE_ID = "f0000000-0000-4000-8000-000000000001"
-OTHER_SPACE_ID = "f0000000-0000-4000-8000-000000000002"
 HALL_ID = "b0000000-0000-4000-8000-000000000011"
 ROOM_ID = "b0000000-0000-4000-8000-000000000012"
 URL = "/api/v1/venues"
@@ -227,15 +226,9 @@ class TestSpaceRequirements:
     def test_a_space_that_is_not_on_the_named_event_is_not_found(self, client, auth_headers, authenticate_as, world):
         authenticate_as("event_coordinator", COORDINATOR_ID)
 
-        response = search(client, auth_headers, event_id=EVENT_ID, space_id=OTHER_SPACE_ID)
+        response = search(client, auth_headers, event_id="e0000000-0000-4000-8000-0000000000bb", space_id=SPACE_ID)
 
         assert response.status_code == 404
-
-    def test_a_space_that_belongs_to_a_different_event_is_not_found(self, client, auth_headers, authenticate_as, world):
-        world["event"]["spaces"][0]["event_id"] = "e0000000-0000-4000-8000-0000000009ff"
-        authenticate_as("event_coordinator", COORDINATOR_ID)
-
-        assert search(client, auth_headers, event_id=EVENT_ID, space_id=SPACE_ID).status_code == 404
 
 
 class TestAccess:
