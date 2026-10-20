@@ -2,6 +2,8 @@
 import { ref, watch } from "vue";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
+import SuitabilityBadge from "@/components/venues/SuitabilityBadge.vue";
+import SuitabilityFindings from "@/components/venues/SuitabilityFindings.vue";
 import { BOOKING_NOTE_MAX_LENGTH } from "@/features/venues/venueBookingStore";
 
 const props = defineProps({
@@ -17,6 +19,8 @@ const props = defineProps({
   // requesting it sends the event back to Planning.
   replacesVenueName: { type: String, default: "" },
   returnsToPlanning: { type: Boolean, default: false },
+  // The venue's suitability for this event or space (SCRUM-18 AC9), as the search returned it.
+  suitability: { type: Object, default: null },
 });
 
 const emit = defineEmits(["confirm", "cancel"]);
@@ -55,6 +59,10 @@ function confirm() {
           book it for this time in the meantime.
         </p>
         <p class="mt-3 border-2 border-ink bg-surface px-3 py-2 text-sm font-bold">{{ props.period }}</p>
+        <div v-if="props.suitability" class="mt-3 flex flex-col gap-2">
+          <div><SuitabilityBadge :suitability="props.suitability" /></div>
+          <SuitabilityFindings :suitability="props.suitability" />
+        </div>
         <p v-if="props.replacesVenueName" class="mt-3 text-sm font-medium" data-testid="replaces-venue">
           This replaces {{ props.replacesVenueName }}, which is no longer available. It stays on the event until your
           replacement is approved.

@@ -48,6 +48,9 @@ const RESPONSE = {
   excluded_count: 1,
 };
 
+// Apps from earlier tests would otherwise still react to the shared router.
+const mountedApps = [];
+
 async function mountView(component, { route } = {}) {
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -62,6 +65,7 @@ async function mountView(component, { route } = {}) {
   document.body.appendChild(el);
   const app = createApp(component).use(pinia).use(router);
   app.mount(el);
+  mountedApps.push(app);
   await nextTick();
   await nextTick();
   return { el, venuesStore: useVenuesStore() };
@@ -75,6 +79,7 @@ async function settle() {
 
 describe("VenueSearchView", () => {
   beforeEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
     document.body.innerHTML = "";
     vi.clearAllMocks();
     eventsApi.get.mockReset();
@@ -741,5 +746,95 @@ describe("VenueDetailView (SCRUM-67)", () => {
 
     expect(el.textContent).toContain("Nothing to show");
     expect(el.querySelector("[aria-roledescription='carousel']")).toBeNull();
+  });
+});
+
+describe("VenueSearchView suitability (SCRUM-18)", () => {
+  const EVENT = {
+    id: "event-1",
+    name: "Partner Summit",
+    status: "planning",
+    event_timezone: "Asia/Singapore",
+    starts_at: "2026-10-10T06:00:00Z",
+    ends_at: "2026-10-10T09:00:00Z",
+    expected_attendance: 100,
+    layout_preference: "theatre",
+    facilities_required: ["projector"],
+    spaces: [{ id: "space-1", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: [] }],
+    venue_bookings: [],
+  };
+  const SUITABILITY = {
+    verdict: "suitable_with_warnings",
+    reasons: [{ code: "outside_operating_hours", severity: "warning", message: "The booking's time falls outside the venue's operating hours (08:00–22:00)." }],
+  };
+  const WITH_SUITABILITY = {
+    ...RESPONSE,
+    results: [{ ...RESPONSE.results[0], suitability: SUITABILITY }, RESPONSE.results[1]],
+  };
+
+  beforeEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+    eventsApi.get.mockReset();
+    eventsApi.get.mockResolvedValue(EVENT);
+    venuesApi.search.mockResolvedValue(WITH_SUITABILITY);
+  });
+
+  it("asks for the selected space's suitability and shows it on each result (AC9)", async () => {
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView, { route: { name: "venue-search", query: { event: EVENT.id, space: "space-1" } } });
+
+    await vi.waitFor(() => expect(venuesApi.search).toHaveBeenCalled());
+    expect(venuesApi.search.mock.calls.at(-1)[0]).toMatchObject({ event_id: "event-1", space_id: "space-1" });
+    await vi.waitFor(() => expect(el.querySelector("[data-testid='suitability-badge']")?.textContent.trim()).toBe("Suitable with warnings"));
+    expect(el.textContent).toContain("outside the venue's operating hours");
+  });
+
+  it("asks for the event's suitability when no space is selected", async () => {
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    await mountView(VenueSearchView, { route: { name: "venue-search", query: { event: EVENT.id } } });
+
+    await vi.waitFor(() => expect(venuesApi.search).toHaveBeenCalled());
+    const params = venuesApi.search.mock.calls.at(-1)[0];
+    expect(params.event_id).toBe("event-1");
+    expect(params).not.toHaveProperty("space_id");
+  });
+
+  it("carries the verdict into the request dialog (AC9)", async () => {
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView, { route: { name: "venue-search", query: { event: EVENT.id, space: "space-1" } } });
+    await vi.waitFor(() => expect(el.querySelector('[aria-label="Request Hall A"]')).not.toBeNull());
+
+    el.querySelector('[aria-label="Request Hall A"]').click();
+    await settle();
+
+    const dialog = document.querySelector("[role='dialog']");
+    expect(dialog.querySelector("[data-testid='suitability-badge']").textContent.trim()).toBe("Suitable with warnings");
+  });
+
+  it("drops the event context, and its verdicts, when the search is opened without one", async () => {
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView, { route: { name: "venue-search", query: { event: EVENT.id } } });
+    await vi.waitFor(() => expect(venuesApi.search).toHaveBeenCalled());
+    venuesApi.search.mockClear();
+    venuesApi.search.mockResolvedValue(RESPONSE);
+
+    const { default: router } = await import("@/router");
+    await router.push({ name: "venue-search", query: {} });
+    await vi.waitFor(() => expect(venuesApi.search).toHaveBeenCalled());
+
+    const params = venuesApi.search.mock.calls.at(-1)[0];
+    expect(params).not.toHaveProperty("event_id");
+    await vi.waitFor(() => expect(el.querySelector("[data-testid='suitability-badge']")).toBeNull());
+  });
+
+  it("searches without an event when the event could not be read", async () => {
+    eventsApi.get.mockRejectedValue(new Error("Event not found."));
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    await mountView(VenueSearchView, { route: { name: "venue-search", query: { event: EVENT.id } } });
+
+    await vi.waitFor(() => expect(venuesApi.search).toHaveBeenCalled());
+    expect(venuesApi.search.mock.calls.at(-1)[0]).not.toHaveProperty("event_id");
   });
 });
