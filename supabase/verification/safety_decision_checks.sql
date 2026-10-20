@@ -11,7 +11,7 @@ begin
        or to_regprocedure('public.safety_approve_event(uuid,uuid,integer,text,text,text)') is null
        or to_regprocedure('public.safety_return_event(uuid,uuid,integer,text,text,uuid[],uuid[],text)') is null
        or to_regprocedure('public.return_event_to_planning(uuid,integer,text,text,text,text)') is null
-       or to_regprocedure('public.mark_safety_revision(uuid,uuid)') is null
+       or to_regprocedure('public.mark_safety_revision(uuid,uuid,text)') is null
        or not exists (select 1 from pg_enum e join pg_type t on t.oid=e.enumtypid
                       where t.typnamespace='public'::regnamespace and t.typname='venue_booking_flag' and e.enumlabel='safety_rejected') then
         raise exception 'SAFETY FAIL: Task 1 table/RPC interfaces are missing';
@@ -21,6 +21,7 @@ end $$;
 create temporary table safety_fixture (key text primary key, id uuid not null) on commit drop;
 insert into safety_fixture select key, gen_random_uuid() from unnest(array[
     'organiser','coordinator','officer','other_coordinator','staff','equipment',
+    'replace_event','booking_replace_old','booking_replace_new','replace_venue_new','booking_plain',
     'approve','held','empty','stale','changes','reject','invalid','withdraw_review','withdraw_confirmed',
     'booking_approve','booking_held','booking_stale','booking_changes','booking_unticked',
     'booking_reject','reject_multi','reject_held','reject_flagged','booking_multi_a','booking_multi_b','booking_reject_held','booking_reject_flagged','booking_invalid','booking_inactive','booking_withdraw_review','booking_withdraw_confirmed','line_changes','line_unticked','line_reject','line_foreign','line_inactive','line_withdraw_review','line_withdraw_confirmed'
@@ -50,7 +51,7 @@ select f.id,o.id,c.id,case when f.key='withdraw_confirmed' then 'confirmed' else
        'Safety fixture ' || f.key, '2099-01-01 10:00+00','2099-01-01 12:00+00'
 from safety_fixture f cross join safety_fixture o cross join safety_fixture c
 where o.key='organiser' and c.key='coordinator'
-  and f.key in ('approve','held','empty','stale','changes','reject','reject_multi','reject_held','reject_flagged','invalid','withdraw_review','withdraw_confirmed');
+  and f.key in ('replace_event','approve','held','empty','stale','changes','reject','reject_multi','reject_held','reject_flagged','invalid','withdraw_review','withdraw_confirmed');
 -- Each booking gets its own venue and explicit space; all periods match the event.
 -- Requires the live event_space_requests migrations (20261008100000/20261009100000).
 do $$
@@ -224,24 +225,25 @@ begin
     e := (select id from safety_fixture where key='reject');
     b := (select id from safety_fixture where key='booking_reject');
     before_state := pg_temp.snapshot(e);
-    perform pg_temp.assert(public.mark_safety_revision(gen_random_uuid(),coordinator)='booking_not_found','revision missing');
-    perform pg_temp.assert(public.mark_safety_revision(b,(select id from safety_fixture where key='other_coordinator'))='not_assigned','revision assignment');
+    perform pg_temp.assert(public.mark_safety_revision(gen_random_uuid(),coordinator,'Moved the barriers')='booking_not_found','revision missing');
+    perform pg_temp.assert(public.mark_safety_revision(b,(select id from safety_fixture where key='other_coordinator'),'Moved the barriers')='not_assigned','revision assignment');
     perform pg_temp.assert(pg_temp.snapshot(e)=before_state,'unassigned revision unchanged');
     foreach source in array array['safety_review','confirmed'] loop
         update public.events set status=source::public.event_status where id=e;
         before_state := pg_temp.snapshot(e);
-        perform pg_temp.assert(public.mark_safety_revision(b,coordinator)='not_planning','revision only planning: '||source);
+        perform pg_temp.assert(public.mark_safety_revision(b,coordinator,'Moved the barriers')='not_planning','revision only planning: '||source);
         perform pg_temp.assert(pg_temp.snapshot(e)=before_state,'nonplanning revision unchanged');
     end loop;
     update public.events set status='planning' where id=e;
     select version into v from public.events where id=e;
     select count(*) into n from public.notifications where event_id=e;
-    perform pg_temp.assert(public.mark_safety_revision(b,coordinator)='ok','revision succeeds');
+    perform pg_temp.assert(public.mark_safety_revision(b,coordinator,'Moved the barriers')='ok','revision succeeds');
+    perform pg_temp.assert((select reason from public.venue_booking_history where booking_id=b and action='safety_revised')='Moved the barriers','revision note stored');
     perform pg_temp.assert((select flag is null and flag_reason is null and flagged_at is null and status='approved' from public.venue_bookings where id=b),'revision clears all flag columns');
     perform pg_temp.assert((select count(*) from public.venue_booking_history where booking_id=b and action='safety_revised' and actor_id=coordinator and from_status='approved' and to_status='approved')=1,'revision history');
     perform pg_temp.assert((select version from public.events where id=e)=v and (select count(*) from public.notifications where event_id=e)=n,'revision no version bump or notification');
     before_state := pg_temp.snapshot(e);
-    perform pg_temp.assert(public.mark_safety_revision(b,coordinator)='not_safety_rejected','revision twice refused');
+    perform pg_temp.assert(public.mark_safety_revision(b,coordinator,'Moved the barriers')='not_safety_rejected','revision twice refused');
     perform pg_temp.assert(pg_temp.snapshot(e)=before_state,'second revision unchanged');
 
     foreach source in array array['safety_review','confirmed'] loop
@@ -294,7 +296,7 @@ begin
     foreach sig in array array['public.safety_approve_event(uuid,uuid,integer,text,text,text)',
         'public.safety_return_event(uuid,uuid,integer,text,text,uuid[],uuid[],text)',
         'public.return_event_to_planning(uuid,integer,text,text,text,text)',
-        'public.mark_safety_revision(uuid,uuid)'] loop
+        'public.mark_safety_revision(uuid,uuid,text)'] loop
         foreach role_name in array array['anon','authenticated'] loop
             perform pg_temp.assert(not has_function_privilege(role_name,sig,'EXECUTE'),'RPC denied: '||role_name||' '||sig);
         end loop;
@@ -326,5 +328,58 @@ begin
         perform pg_temp.assert(n=s.expected,'RLS active role '||s.role||' profile '||s.profile_id);
     end loop;
 end $$;
+do $$
+declare coordinator uuid := (select id from safety_fixture where key='coordinator');
+        e uuid := (select id from safety_fixture where key='replace_event');
+        old_b uuid := (select id from safety_fixture where key='booking_replace_old');
+        plain uuid := (select id from safety_fixture where key='booking_plain');
+        new_venue uuid := (select id from safety_fixture where key='replace_venue_new');
+        space uuid := gen_random_uuid(); old_venue uuid := gen_random_uuid();
+        outcome text; new_id uuid;
+begin
+    update public.events set status='planning' where id=e;
+    insert into public.venues(id,name,location,capacity,opens_at,closes_at) values
+        (old_venue,'Safety fixture old '||old_venue,'Verification',100,'08:00','23:00'),
+        (new_venue,'Safety fixture new '||new_venue,'Verification',100,'08:00','23:00');
+    insert into public.event_space_requests(id,event_id,label,starts_at,ends_at)
+        values(space,e,'Safety fixture replace','2099-01-01 10:00+00','2099-01-01 12:00+00');
+    insert into public.venue_bookings(id,event_id,venue_id,event_space_request_id,occupied_period,status,flag,flag_reason,flagged_at)
+        values(old_b,e,old_venue,space,tstzrange('2099-01-01 10:00+00','2099-01-01 12:00+00','[)'),'approved','safety_rejected','Exits blocked',now());
+
+    -- F1: blank and over-long notes refused, nothing changed.
+    perform pg_temp.assert(public.mark_safety_revision(old_b,coordinator,null)='note_required','note null');
+    perform pg_temp.assert(public.mark_safety_revision(old_b,coordinator,'   ')='note_required','note blank');
+    begin
+        perform public.mark_safety_revision(old_b,coordinator,repeat('x',1001));
+        raise exception 'SAFETY FAIL: 1001-char note accepted';
+    exception when check_violation then null; end;
+    perform pg_temp.assert((select flag from public.venue_bookings where id=old_b)='safety_rejected','refused note leaves flag');
+
+    -- F3: a Safety-rejected booking can be replaced; the index lets the replacement sit beside it.
+    select o.outcome, o.booking_id into outcome, new_id
+      from public.request_venue_booking_for_space(space,new_venue,coordinator,null,'msg',old_b) o;
+    perform pg_temp.assert(outcome='ok','replacement of safety_rejected accepted: '||coalesce(outcome,'null'));
+    perform pg_temp.assert((select replaces_booking_id from public.venue_bookings where id=new_id)=old_b,'replacement links');
+
+    -- F4: revision refused while the replacement is live; allowed once it is rejected.
+    perform pg_temp.assert(public.mark_safety_revision(old_b,coordinator,'Kept it')='replacement_pending','pending blocks revision');
+    update public.venue_bookings set status='rejected' where id=new_id;
+    perform pg_temp.assert(public.mark_safety_revision(old_b,coordinator,repeat('y',1000))='ok','1000-char note after replacement rejected');
+
+    -- Null-flag trap: an unflagged approved booking is still not replaceable.
+    -- It gets its own space: old_b is now an unflagged live booking on `space`,
+    -- so a second live booking there would break the unique index.
+    -- Its own venue too: DB-1 refuses two live bookings on one venue at once.
+    space := gen_random_uuid(); old_venue := gen_random_uuid();
+    insert into public.venues(id,name,location,capacity,opens_at,closes_at)
+        values(old_venue,'Safety fixture plain '||old_venue,'Verification',100,'08:00','23:00');
+    insert into public.event_space_requests(id,event_id,label,starts_at,ends_at)
+        values(space,e,'Safety fixture plain','2099-01-01 10:00+00','2099-01-01 12:00+00');
+    insert into public.venue_bookings(id,event_id,venue_id,event_space_request_id,occupied_period,status)
+        values(plain,e,old_venue,space,tstzrange('2099-01-01 10:00+00','2099-01-01 12:00+00','[)'),'approved');
+    select o.outcome into outcome from public.request_venue_booking_for_space(space,new_venue,coordinator,null,'msg',plain) o;
+    perform pg_temp.assert(outcome='replaced_booking_invalid','unflagged booking not replaceable: '||coalesce(outcome,'null'));
+end $$;
+
 select 'SAFETY DECISION CHECKS PASSED' as result;
 rollback;
