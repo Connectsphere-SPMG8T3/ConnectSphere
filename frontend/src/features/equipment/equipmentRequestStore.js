@@ -15,6 +15,9 @@ export const useEquipmentRequestStore = defineStore("equipmentRequest", {
     eventId: null,
     catalogue: [],
     lines: [],
+    // SCRUM-24 AC9-AC11: the event's derived technical status and exit tick.
+    technicalStatus: null,
+    exitConfirmation: null,
     isLoading: false,
     isSubmitting: false,
     error: null,
@@ -26,6 +29,8 @@ export const useEquipmentRequestStore = defineStore("equipmentRequest", {
       const auth = useAuthStore();
       if (this.eventId !== eventId) {
         this.lines = [];
+        this.technicalStatus = null;
+        this.exitConfirmation = null;
         this.isSubmitting = false;
         this.submitError = null;
       }
@@ -40,6 +45,8 @@ export const useEquipmentRequestStore = defineStore("equipmentRequest", {
         if (this.eventId !== eventId) return;
         this.catalogue = catalogue?.items ?? [];
         this.lines = requests?.lines ?? [];
+        this.technicalStatus = requests?.technical_status ?? null;
+        this.exitConfirmation = requests?.exit_confirmation ?? null;
       } catch (error) {
         if (this.eventId !== eventId) return;
         this.lines = [];

@@ -212,3 +212,44 @@ class EventServiceUnavailableError(HTTPException):
     def __init__(self) -> None:
         super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                          detail="The event service is temporarily unavailable. Please try again.")
+
+
+class EquipmentServiceUnavailableError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                         detail="The equipment service is temporarily unavailable. Please try again.")
+
+
+class EquipmentLineNotFoundError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail="Equipment line not found.")
+
+
+class EquipmentArrangementConflictError(HTTPException):
+    """The line or event is in a state that refuses this action (SCRUM-24)."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+class EquipmentInsufficientError(HTTPException):
+    """Not enough is free for the event's window (SCRUM-24 AC3). `free_quantity`
+    is sent beside `detail`; see the handler in app.main."""
+
+    def __init__(self, free_quantity: int, line_status_label: str) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Not enough available: {free_quantity} free for this event's time. "
+                   f"The line stays {line_status_label}.",
+        )
+        self.free_quantity = free_quantity
+
+
+class EquipmentNotAvailableReasonError(HTTPException):
+    """EQ-R3: marking a line Not available needs a reason (SCRUM-24 AC3)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[{"loc": ["body", "reason"], "msg": "Give a reason the line is not available.", "type": "value_error"}],
+        )

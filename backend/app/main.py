@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
-from app.core.exceptions import BookingConflictError
+from app.core.exceptions import BookingConflictError, EquipmentInsufficientError
 from app.modules.auth.router import router as auth_router
 from app.modules.equipment.router import router as equipment_router
 from app.modules.events.router import router as events_router
@@ -41,6 +41,13 @@ def booking_conflict_handler(request: Request, exc: BookingConflictError) -> JSO
     if exc.conflict is not None:
         body["conflict"] = exc.conflict
     return JSONResponse(status_code=exc.status_code, content=body)
+
+
+@app.exception_handler(EquipmentInsufficientError)
+def equipment_insufficient_handler(request: Request, exc: EquipmentInsufficientError) -> JSONResponse:
+    """A refused reservation says how many are free (SCRUM-24 AC3)."""
+    return JSONResponse(status_code=exc.status_code,
+                        content={"detail": exc.detail, "free_quantity": exc.free_quantity})
 
 
 @app.get("/health", tags=["health"])

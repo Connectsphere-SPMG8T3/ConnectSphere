@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.modules.equipment.schemas import ExitConfirmation
 from app.modules.venues.schemas import Facility, VenueLayout
 
 
@@ -667,5 +668,6 @@ class SafetyReviewResponse(BaseModel):
     event: SafetyReviewEvent
     venues: list[SafetyReviewVenue]
     equipment_lines: list[SafetyEquipmentLine]
-    exit_confirmation: None = None
+    # SCRUM-24 AC10: who ticked "Equipment does not block exits or walkways", and when.
+    exit_confirmation: ExitConfirmation | None = None
     decisions: list[SafetyDecision]

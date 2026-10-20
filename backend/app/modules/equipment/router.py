@@ -15,6 +15,11 @@ from app.modules.equipment.schemas import (
     EquipmentAvailabilityResponse,
     EquipmentInventoryResponse,
     EquipmentMaintenanceResponse,
+    ExitConfirmationRequest,
+    LineActionResponse,
+    LineNoteRequest,
+    NotAvailableRequest,
+    TechnicalEventResponse,
 )
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
@@ -25,6 +30,9 @@ EquipmentReader = Annotated[CurrentUser, Depends(require_roles(["tech_support"])
 # SCRUM-45: coordinators pick request items from the catalogue too.
 CatalogueReader = Annotated[CurrentUser, Depends(require_roles(["event_coordinator", "tech_support"]))]
 EquipmentRequester = Annotated[CurrentUser, Depends(require_roles(["event_coordinator"]))]
+# SCRUM-24 AC8: only Technical Support arrange equipment; every other active
+# role gets 403, whatever else the account holds (SCRUM-76).
+EquipmentArranger = Annotated[CurrentUser, Depends(require_roles(["tech_support"]))]
 
 
 @router.get("/catalogue", response_model=CatalogueResponse, status_code=status.HTTP_200_OK)
@@ -35,6 +43,11 @@ def catalogue(current_user: CatalogueReader) -> CatalogueResponse:
 @router.post("/requests", response_model=EquipmentRequestLinesResponse, status_code=status.HTTP_201_CREATED)
 def submit_request(body: EquipmentRequestCreate, current_user: EquipmentRequester) -> EquipmentRequestLinesResponse:
     return service.submit_request(current_user.id, current_user.full_name, body)
+
+
+@router.get("/requests", response_model=PendingEquipmentLinesResponse, status_code=status.HTTP_200_OK)
+def request_list(current_user: EquipmentReader) -> PendingEquipmentLinesResponse:
+    return service.request_list()
 
 
 @router.get("/requests/pending", response_model=PendingEquipmentLinesResponse, status_code=status.HTTP_200_OK)
@@ -49,6 +62,31 @@ def pending_requests(current_user: EquipmentReader) -> PendingEquipmentLinesResp
 )
 def event_requests(event_id: UUID, current_user: EquipmentRequester) -> EquipmentRequestLinesResponse:
     return service.event_requests(str(event_id), current_user.id)
+
+
+@router.post("/requests/{line_id}/reserve", response_model=LineActionResponse, status_code=status.HTTP_200_OK)
+def reserve_line(line_id: UUID, current_user: EquipmentArranger) -> LineActionResponse:
+    return service.reserve_line(str(line_id), current_user.id)
+
+
+@router.post("/requests/{line_id}/not-available", response_model=LineActionResponse, status_code=status.HTTP_200_OK)
+def mark_not_available(line_id: UUID, body: NotAvailableRequest, current_user: EquipmentArranger) -> LineActionResponse:
+    return service.mark_not_available(str(line_id), current_user.id, body.reason)
+
+
+@router.put("/requests/{line_id}/notes", response_model=LineActionResponse, status_code=status.HTTP_200_OK)
+def set_note(line_id: UUID, body: LineNoteRequest, current_user: EquipmentArranger) -> LineActionResponse:
+    return service.set_note(str(line_id), current_user.id, body.note)
+
+
+@router.put("/events/{event_id}/exit-confirmation", status_code=status.HTTP_204_NO_CONTENT)
+def set_exit_confirmation(event_id: UUID, body: ExitConfirmationRequest, current_user: EquipmentArranger) -> None:
+    service.set_exit_confirmation(str(event_id), current_user.id, body.confirmed)
+
+
+@router.get("/events/{event_id}/technical", response_model=TechnicalEventResponse, status_code=status.HTTP_200_OK)
+def technical_view(event_id: UUID, current_user: EquipmentArranger) -> TechnicalEventResponse:
+    return service.technical_view(str(event_id))
 
 
 @router.get("/maintenance", response_model=EquipmentMaintenanceResponse, status_code=status.HTTP_200_OK)

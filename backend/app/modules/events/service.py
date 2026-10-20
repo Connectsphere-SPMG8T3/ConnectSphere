@@ -599,16 +599,10 @@ def _venue_readiness(booking_statuses: list[str], affected: bool = False) -> Rea
     return ReadinessState.ready if "approved" in booking_statuses else ReadinessState.pending
 
 
-def _equipment_readiness(row: dict, reserved: set[str]) -> ReadinessState:
-    # [Assumption] REQUIREMENTS §6.21.1: no equipment asked for means nothing to
-    # wait on; otherwise ready once tech support has reserved some.
-    if not (row.get("preliminary_equipment_needs") or "").strip():
-        return ReadinessState.not_required
-    return ReadinessState.ready if row["id"] in reserved else ReadinessState.pending
-
-
 def technical_status(row: dict) -> ReadinessState:
-    """Single reader of technical status; SCRUM-24 replaces this with derived status."""
+    """Single reader of technical status. The column is SCRUM-24's derived status
+    (AC11), kept current by the database whenever a line, the exit tick or the
+    venue changes, so reading it is reading the derived value."""
     return ReadinessState(row["technical_readiness"])
 
 
@@ -622,8 +616,8 @@ def _action_kind(row: dict, resubmitted_at: str | None, venue_affected: bool = F
         # A resubmission is the organiser's answer to a return (QA-22, QA-77):
         # SCRUM-72's "clarification response", not a first review.
         return CoordinatorActionKind.resubmitted if resubmitted_at else CoordinatorActionKind.awaiting_review
-    # [Assumption] REQUIREMENTS §6.21.1: tech support marking technical readiness
-    # as `issue` is the one arrangement problem the system records today.
+    # REQUIREMENTS §6.21.1: technical status is Issue when tech support marked a
+    # line Not available (SCRUM-24 AC11).
     if status in ("planning", "safety_review", "confirmed") and technical_status(row) == ReadinessState.issue:
         return CoordinatorActionKind.arrangement_issue
     # `returned` is waiting on the organiser, not the coordinator.
@@ -646,7 +640,7 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
     resubmissions = repository.list_latest_resubmissions(under_review_ids)
     bookings = venues_service.booking_statuses_by_event(event_ids) if event_ids else {}
     affected = venues_service.affected_event_ids(event_ids) if event_ids else set()
-    reserved = equipment_service.reserved_event_ids(event_ids) if event_ids else set()
+    equipment = equipment_service.equipment_readiness_by_event(event_ids) if event_ids else {}
 
     action_items: list[CoordinatorActionItem] = []
     active_events: list[CoordinatorActiveEvent] = []
@@ -676,7 +670,7 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
                 + (["venue_affected"] if row["id"] in affected else []),
                 readiness=Readiness(
                     venue=_venue_readiness(bookings.get(row["id"], []), row["id"] in affected),
-                    equipment=_equipment_readiness(row, reserved),
+                    equipment=equipment.get(row["id"], ReadinessState.not_required),
                     technical=technical,
                 ),
             )
@@ -942,5 +936,6 @@ def safety_review(event_id: str) -> SafetyReviewResponse:
                    registration=dict(enabled=row["registration_enabled"], capacity=row.get("registration_capacity"),
                                      opens_at=row.get("registration_opens_at"), closes_at=row.get("registration_closes_at"))),
         venues=venues, equipment_lines=equipment_service.event_lines(event_id),
+        exit_confirmation=equipment_service.exit_confirmation(event_id),
         decisions=[SafetyDecision(**decision) for decision in repository.list_safety_decisions(event_id)],
     )

@@ -12,8 +12,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.modules.equipment import rules as equipment_rules
 from app.modules.equipment import service as equipment_service
 from app.modules.events import repository, service
+from app.modules.events.schemas import ReadinessState
 from app.modules.events.service import ACTIVE_COORDINATOR_STATUSES
 from app.modules.venues import service as venues_service
 
@@ -44,7 +46,7 @@ def data(monkeypatch):
         resubmissions={},
         bookings={},
         affected=set(),
-        reserved=set(),
+        line_statuses={},
         calls={},
     )
 
@@ -56,7 +58,10 @@ def data(monkeypatch):
     monkeypatch.setattr(repository, "list_latest_resubmissions", lambda ids: state.resubmissions)
     monkeypatch.setattr(venues_service, "booking_statuses_by_event", lambda ids: state.bookings)
     monkeypatch.setattr(venues_service, "affected_event_ids", lambda ids: state.affected)
-    monkeypatch.setattr(equipment_service, "reserved_event_ids", lambda ids: state.reserved)
+    monkeypatch.setattr(
+        equipment_service, "equipment_readiness_by_event",
+        lambda ids: {i: equipment_rules.equipment_readiness(state.line_statuses.get(i, [])) for i in ids},
+    )
     return state
 
 
@@ -189,18 +194,21 @@ class TestReadiness:
         assert self.readiness(data, event_row("e-011", "planning")).venue.value == "pending"
         assert self.readiness(data, event_row("e-012", "planning")).venue.value == "pending"
 
-    def test_equipment_not_required_when_the_event_asked_for_none(self, data):
-        for needs in (None, "", "   "):
-            row = event_row("e-013", "planning", preliminary_equipment_needs=needs)
-            assert self.readiness(data, row).equipment.value == "not_required"
+    def test_equipment_not_required_without_lines_even_if_needs_were_described(self, data):
+        """SCRUM-24 AC11: readiness follows the request lines, not the free text."""
+        row = event_row("e-013", "planning", preliminary_equipment_needs="2 projectors")
+        assert self.readiness(data, row).equipment.value == "not_required"
 
-    def test_equipment_ready_once_reserved_and_pending_until_then(self, data):
-        data.reserved = {"e-014"}
+    def test_equipment_ready_once_every_line_is_reserved_and_pending_until_then(self, data):
+        data.line_statuses = {"e-014": ["reserved", "reserved"], "e-015": ["reserved", "pending"]}
 
-        ready = event_row("e-014", "planning", preliminary_equipment_needs="2 projectors")
-        waiting = event_row("e-015", "planning", preliminary_equipment_needs="2 projectors")
-        assert self.readiness(data, ready).equipment.value == "ready"
-        assert self.readiness(data, waiting).equipment.value == "pending"
+        assert self.readiness(data, event_row("e-014", "planning")).equipment.value == "ready"
+        assert self.readiness(data, event_row("e-015", "planning")).equipment.value == "pending"
+
+    def test_a_not_available_line_is_an_equipment_issue(self, data):
+        data.line_statuses = {"e-017": ["reserved", "rejected"]}
+
+        assert self.readiness(data, event_row("e-017", "planning")).equipment.value == "issue"
 
     def test_technical_readiness_is_passed_through(self, data):
         for value in ("not_required", "pending", "ready", "issue"):
@@ -348,19 +356,21 @@ class TestCrossModuleReads:
             "s-2": [BookingReadiness(status="held")],
         }
 
-    def test_reserved_event_ids_are_those_with_a_live_or_finished_reservation(self, monkeypatch):
+    def test_equipment_readiness_comes_from_each_events_lines(self, monkeypatch):
         from app.modules.equipment import repository as equipment_repository
 
         seen = {}
 
-        def list_reserved_event_ids(ids, statuses):
-            seen["args"] = (list(ids), set(statuses))
-            return ["e-040"]
+        def list_line_statuses(ids):
+            seen["ids"] = list(ids)
+            return [{"event_id": "e-040", "status": "reserved"}, {"event_id": "e-040", "status": "released"}]
 
-        monkeypatch.setattr(equipment_repository, "list_reserved_event_ids", list_reserved_event_ids)
+        monkeypatch.setattr(equipment_repository, "list_line_statuses", list_line_statuses)
 
-        assert equipment_service.reserved_event_ids(["e-040", "e-041"]) == {"e-040"}
-        assert seen["args"] == (["e-040", "e-041"], {"confirmed", "completed"})
+        assert equipment_service.equipment_readiness_by_event(["e-040", "e-041"]) == {
+            "e-040": ReadinessState.ready, "e-041": ReadinessState.not_required,
+        }
+        assert seen["ids"] == ["e-040", "e-041"]
 
 
 class TestApi:

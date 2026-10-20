@@ -2669,3 +2669,69 @@ The dashboard's affected-replacement list keeps its booked-end cut-off (an event
 **Browser after the merge:** [2026-10-19 20:35](test-cases/runs/2026-10-19-2035-e2e-6a3099a.md) on `6a3099a`: **77 passed, 1 failed**. All three CR-100 cases passed. TC-BOOK-048/049/050 now gets past the label `main` fixed, but hit the 30-second test timeout on the Venue Staff restore step. Run alone without recording, it passed (52.9 s including sign-in and cleanup), so the replacement request through CR-100's `request_venue_booking` works. The test sits close to its timeout because each setup step goes through the Supabase CLI; that is a timing flake for its owner (CR-95), not a CR-100 regression. The recorded failure is kept.
 
 Remaining for the developer: PR and teammate review, PO acceptance, merge, and the DoD and backlog updates.
+
+### 4.67. SCRUM-24 — Manage equipment reservation
+
+On `feature/scrum-24-equipment-reservation`, branched from `feature/scrum-51-block-venue` at `31d21f0` (the developer's choice), 2026-10-19. An earlier empty branch of the same name, at `a6080f9`, was moved here; it had no commits. The Product backlog sheet couldn't be read through a connector, so the story and ACs are as the developer gave them, with their AC plan (rev 3).
+
+| Field | Value |
+|---|---|
+| ID | SCRUM-24 |
+| Title | Manage equipment reservation |
+| Status | In review: built, migration applied, live checks, e2e and the developer's manual pass passing (2026-10-19) |
+| Sprint | 3 (6–20 October) |
+
+**User story:** As Technical Support Staff, I want to check whether enough equipment is available for a pending request line and reserve it for the event, so that the same limited equipment isn't committed to overlapping events.
+
+**Acceptance criteria (as given by the developer, 2026-10-19):** AC1 reserve a pending line if enough is available for the event's window (23's check). AC2 a reservation reduces availability for overlapping events only. AC3 refused with how many are free; the line stays Pending or can be marked Not available. AC4 linked to event and line; line Reserved; assigned coordinator notified. AC5 simultaneous reserves of the last units: one succeeds. AC6 cancelling (84) or removing the line (44) releases. AC7 a time change (37) re-checks; failures flagged for re-review, not removed. AC8 only Technical Support; others 403. AC9 Not available and notes; coordinator notified and sees them. AC10 [W7 CR-06] the exit/walkway tick, with who and when on the safety review page (CR-103); cleared by equipment or venue changes. AC11 derived technical status (Ready / Not required / Issue), on the coordinator dashboard. AC12 notes internal. AC13 every status change with who and when in the event history.
+
+#### What was there already
+
+`equipment_requests` with the full line enum (SCRUM-45), `equipment_reservations` (`confirmed`/`cancelled`/`completed`), `events.technical_readiness` with four values but **no writer** (always Not required), its single reader `events.service.technical_status`, CR-104's `return_to_planning` with a `technical_not_ready` reason and no callers, CR-103's `exit_confirmation: None` placeholder, and a documented hook in `transition_event` for releasing equipment on rejection. The plan's other assumptions were checked against the code: the live migration history already matched local (no CR-98 blocker), CR-104's rework no longer writes `re_review`/`rejected` to lines (so D10 and D15 are closed), and `event_status_history` can't hold line changes (so AC13 got its own table).
+
+#### What was built
+
+1. **Database** (`20261019120000`, applied 2026-10-19). `equipment_availability` (§6.16 worst moment; fixes D45, SCRUM-23's sum); `reserve_equipment_line`, which locks the event, then the line, then the catalogue item, so the second of two simultaneous reserves re-reads availability (AC5); `mark_equipment_line_not_available` (reason required, frees any reservation); `set_equipment_line_note`; `set_exit_confirmation`; `recheck_event_reservations` (AC7, for story 37). Technical status is derived (`derive_technical_status`) and cached in `technical_readiness` by `refresh_technical_status`, called from triggers on lines and venue bookings and from every function. Triggers also clear the tick on line or venue changes (D4) and free a removed line's reservation (AC6, story 44). `transition_event` releases equipment on rejection and cancellation (D1, story 84). `event_technical_history` records every change with its actor, passed through a transaction setting so trigger-written rows name who caused them.
+2. **Backend.** Five Technical-Support-only routes (reserve, not-available, notes, exit-confirmation, technical view). A refusal answers 409 with `free_quantity`. When an event leaves Ready while in Safety review or Confirmed, the service calls `return_to_planning` (CR-104 AC10). The availability check and windowed inventory read the SQL function. The coordinator's lines carry reason, notes, technical status and tick; the dashboard's equipment readiness follows the lines; the safety review fills `exit_confirmation`.
+3. **Frontend.** `/tech-support/events/:id` (`TechnicalEventView`, `EquipmentLineArrangement`, `technicalEventStore`, `technical.js`), linked from each line on the tech support dashboard; the coordinator's equipment panel and the safety review page show the new information.
+
+#### Decisions
+
+D4, D8, D9, D11 and D14 adopted as [Assumption]s or [Team decision]s (REQUIREMENTS §9 items 75–81): the tick's clearing rules; re-reserve clears re-review; RS-R4 deferred; no equipment holds; AC10 kept despite "no automatic reset". Technical status is a cache written only by the database. One availability calculation (D7/D45), which changes Done story 23. A line can be marked Not available from Reserved too. The exit-confirmation route answers 204. CR-103's "Exit confirmation" heading was kept.
+
+#### Verification
+
+- **Numbering:** the availability defect was D43 on this branch; `main` took D43 and D44 first (CR-100), so it is **D45**. The applied migration's comments and the live function comment still say D43.
+- **Test-first:** the SQL script failed on the missing function before the migration; the API tests failed on the missing repository functions; the frontend specs before each piece.
+- **Database:** `equipment_reservation_checks.sql` passed in a rolled-back dry run, then live; every existing verification script passed with the migration applied in a dry run. Advisors: nothing new.
+- **Automated suites:** backend 1,606 passed; frontend 1,082 passed, build clean. New code fully covered (the remaining uncovered backend lines predate the story).
+- **Live API/database:** the first recorded attempt was cut off by a local DNS failure (`Errno 8`, the D42 pattern) and wrote no log; the re-run passed [149/149](test-cases/runs/2026-10-19-1854-api-db-b8a1356.md), including TC-EQR-017–019, 021 (the AC5 race), 022, 026 and the new SQL script.
+- **Browser:** the existing suite passed [75/75](test-cases/runs/2026-10-19-1906-e2e-b8a1356.md). The new spec's first run [failed TC-EQR-027](test-cases/runs/2026-10-19-1909-e2e-b8a1356.md) because the test reused one tab for a second role (`seedSession` seeds a tab once); with its own context it [passed 2/2](test-cases/runs/2026-10-19-1910-e2e-b8a1356.md).
+- **Manual:** TC-EQR-029–032 not yet run.
+
+#### Addendum: requests page (developer's request before the manual pass)
+
+The developer asked for the tech support dashboard to follow venue staff's: an **Active requests** tile (pending and re-review lines) in place of **Out of stock**, opening a page listing every request that can be filtered and sorted. Built on the same branch:
+- **Backend:** `GET /equipment/requests` (tech support): every line on open events, any status, with `equipment_type`; one repository read `list_requests(statuses)` now backs it and the pending queue.
+- **Frontend:** `/dashboard/tech-support/requests` (`TechSupportEquipmentRequestsView`, `EquipmentRequestQueue`, `requestList.js`), a sidebar link, and the tile. The dashboard's request list moved to the page (as venue staff's did); `PendingEquipmentRequests` was removed. Out of stock is now an inventory filter option, so that information isn't lost.
+- **Verification:** tests first; backend 1,662, frontend 1,113 passed, build clean; equipment e2e 4/4 (the first try failed only because the running backend hadn't been restarted with the new route). Manual TC-EQR-034 outstanding.
+- This goes beyond SCRUM-24's ACs (it is §6.15's "sortable queue", deferred by SCRUM-45). Record it on the backlog as the developer prefers.
+
+#### Addendum: a fuller equipment catalogue (developer's request before the manual pass)
+
+- **Seed:** the five seeded items now hold 10–24 units each (4K Projector 14, Wireless Mics 24, PA Systems 10, Stage Lighting 16, HDMI Switchers 12), and nine items were added (`b…0006`–`b…000e`): Sound System, Speaker Stands, Whiteboards, Flip Chart Stands, Projector Screens, Lecterns, Extension Cords, Presentation Laptops, Wireless Presenters. The same rows were upserted into the live project by ID (no truncate), so reservations and requests on the old items kept their references.
+- **Checks:** TC-EQR-002 (`verify_live.py`) and TC-EQR-005 (`equipment.e2e.js`) relied on "5 is above the 4 that exist"; they now submit 15 of 14, and TC-EQR-005's expected note reads "Only 14 exist in the catalogue." Both passed (`runs/2026-10-19-2223-api-db-744f444.md`, `runs/2026-10-19-2224-e2e-744f444.md`).
+
+#### Manual pass (2026-10-19)
+
+- **[Record](test-cases/runs/2026-10-19-2330-manual-ae2f465.md), Eileen:** TC-EQR-029, 030, 031, 032 and 034 passed at desktop and 375px, on throwaway events "live-check Manual A–E". Each step's stored result was confirmed in the database. Also seen: a refusal with "1 free" after another event took 11 of 12, an empty Not available reason refused, unticking Ready to Pending and back, a Re-review line reserved again on its one reservation, and unticking a Ready event in Safety review returning it to Planning with both notifications. No defects.
+- **TC-EQR-033 automated:** the TC-EQR-027 browser check already clicked the Active requests tile; it now also checks that the tile shows a count rather than "—" and carries TC-EQR-033 in its name. Equipment e2e 4/4 ([run](test-cases/runs/2026-10-19-2331-e2e-ae2f465.md)).
+- **Setup slip:** the first data script set Event C's status straight to Safety review without the status-history entry a real hand-off writes, so the Safety Officer's queue left it out. Adding the entry fixed it; not an app defect.
+
+#### Follow-ups
+
+- Story 37 must call `equipment.service.recheck_event`; story 44 should set edited reserved lines to `re_review` (EQ-R4); story 84 gets AC6 from `transition_event`.
+- Tell story 23's owner about D45, and Jie Ching that technical status is now derived and `exit_confirmation` is filled.
+- Raise D14 at the consult (AC10 clearing vs "no automatic reset").
+- SCRUM-45's e2e adds and deletes lines on the planning fixture `…0202`; with the triggers each run now leaves `event_technical_history` rows on it. Harmless, but the fixture's history grows.
+- PR, review, PO acceptance, merge, the backlog status and the DoD tab are the developer's.

@@ -1,19 +1,38 @@
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
+from functools import wraps
 
-from app.core.exceptions import EquipmentNotInCatalogueError, EquipmentRequestNotAllowedError, NotAssignedCoordinatorError
-from app.modules.equipment import repository
+from httpx import HTTPError
+from postgrest.exceptions import APIError
+
+from app.core.exceptions import (
+    EquipmentArrangementConflictError,
+    EquipmentInsufficientError,
+    EquipmentLineNotFoundError,
+    EquipmentNotAvailableReasonError,
+    EquipmentNotInCatalogueError,
+    EquipmentRequestNotAllowedError,
+    EquipmentServiceUnavailableError,
+    NotAssignedCoordinatorError,
+)
+from app.modules.equipment import repository, rules
 from app.modules.equipment.repository import CommitmentRow
 # A module import, not names: `events.service` imports this module too, and a
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.events import service as events_service
+from app.modules.events.schemas import ReadinessState
 from app.modules.equipment.schemas import (
     CatalogueItem,
     CatalogueResponse,
     EquipmentRequestCreate,
     EquipmentRequestLine,
     EquipmentRequestLinesResponse,
+    ExitConfirmation,
+    LineActionResponse,
+    TechnicalEvent,
+    TechnicalEventResponse,
+    TechnicalHistoryEntry,
     PendingEquipmentLine,
     PendingEquipmentLinesResponse,
     EquipmentAvailabilityResponse,
@@ -38,33 +57,21 @@ def check_equipment_availability(
     end_at: datetime,
     items: Sequence[EquipmentCheckItem],
 ) -> EquipmentAvailabilityResponse:
+    """SCRUM-23, by the §6.16 worst-moment rule (AV-R2). The numbers come from
+    `public.equipment_availability`, the calculation reserving uses (D45)."""
     equipment_ids = {str(item.equipment_id) for item in items}
 
-    equipment = {row.id: row for row in repository.list_equipment(equipment_ids)}
-    reserved = _totals_by_equipment(repository.list_reservations(start_at, end_at, equipment_ids))
-    unavailable = _totals_by_equipment(repository.list_unavailability(start_at, end_at, equipment_ids))
+    names = {row.id: row.name for row in repository.list_equipment(equipment_ids)}
+    free = {row.equipment_id: row.free_quantity for row in repository.availability(equipment_ids, start_at, end_at)}
 
     results = []
     for item in items:
         key = str(item.equipment_id)
-        row = equipment.get(key)
-        if row is None:
-            results.append(
-                ItemAvailabilityResult(
-                    equipment_id=item.equipment_id,
-                    name="Unknown equipment",
-                    quantity_needed=item.quantity_needed,
-                    quantity_available=0,
-                    sufficient=False,
-                )
-            )
-            continue
-
-        quantity_available = max(0, row.total_quantity - reserved.get(key, 0) - unavailable.get(key, 0))
+        quantity_available = free.get(key, 0) if key in names else 0
         results.append(
             ItemAvailabilityResult(
                 equipment_id=item.equipment_id,
-                name=row.name,
+                name=names.get(key, "Unknown equipment"),
                 quantity_needed=item.quantity_needed,
                 quantity_available=quantity_available,
                 sufficient=quantity_available >= item.quantity_needed,
@@ -81,17 +88,24 @@ def get_equipment_inventory(
     start_at: datetime | None = None,
     end_at: datetime | None = None,
 ) -> EquipmentInventoryResponse:
+    equipment = repository.list_equipment()
     # A lone start or end is ignored rather than half-applied: an overlap needs
     # both ends, and filtering on one would misreport stock.
-    window = (start_at, end_at) if start_at and end_at else (None, None)
-
-    reserved = _totals_by_equipment(repository.list_reservations(*window))
-    maintenance = _totals_by_equipment(repository.list_unavailability(*window))
+    if start_at and end_at:
+        # A window reports its worst moment, like the availability check (D45).
+        rows = {row.equipment_id: row for row in repository.availability([row.id for row in equipment], start_at, end_at)}
+        breakdown = {
+            key: (row.reserved_quantity, row.outage_quantity) for key, row in rows.items()
+        }
+    else:
+        # No window: everything committed at any time, summed.
+        reserved = _totals_by_equipment(repository.list_reservations())
+        maintenance = _totals_by_equipment(repository.list_unavailability())
+        breakdown = {row.id: (reserved.get(row.id, 0), maintenance.get(row.id, 0)) for row in equipment}
 
     items = []
-    for row in repository.list_equipment():
-        reserved_quantity = reserved.get(row.id, 0)
-        maintenance_quantity = maintenance.get(row.id, 0)
+    for row in equipment:
+        reserved_quantity, maintenance_quantity = breakdown.get(row.id, (0, 0))
         items.append(
             EquipmentInventoryItem(
                 equipment_id=row.id,
@@ -129,19 +143,13 @@ def get_equipment_maintenance() -> EquipmentMaintenanceResponse:
     return EquipmentMaintenanceResponse(items=items)
 
 
-# A reservation that was made and not cancelled means tech support settled the
-# line: `confirmed` still holds units, `completed` has used them.
-RESERVED_STATUSES = ("confirmed", "completed")
-
-
-def reserved_event_ids(event_ids: Iterable[str]) -> set[str]:
-    """The events among `event_ids` that tech support has reserved equipment for.
-
-    [Assumption] REQUIREMENTS §6.21.1: SCRUM-24's per-event equipment requests
-    don't exist yet, so "every request reserved" (§6.6) is read as "at least one
-    reservation". Used by the coordinator dashboard (SCRUM-72).
-    """
-    return set(repository.list_reserved_event_ids(event_ids, RESERVED_STATUSES))
+def equipment_readiness_by_event(event_ids: Iterable[str]) -> dict[str, ReadinessState]:
+    """The coordinator dashboard's equipment readiness per event, from its lines
+    (SCRUM-24 AC11). Events without lines are Not required."""
+    statuses: dict[str, list[str]] = defaultdict(list)
+    for row in repository.list_line_statuses(event_ids):
+        statuses[row["event_id"]].append(row["status"])
+    return {event_id: rules.equipment_readiness(statuses.get(event_id, [])) for event_id in event_ids}
 
 
 
@@ -152,8 +160,9 @@ RETURNED_MESSAGE = (
     "It can be requested once the event is back in planning."
 )
 
-# Tech support's queue leaves out lines on closed events. Releasing those lines
-# (6.15 `released`) is SCRUM-24's; until then they are only hidden.
+# Tech support's queue leaves out lines on closed events. Rejecting or
+# cancelling an event releases its lines (SCRUM-24 AC6); completed events'
+# lines are only hidden.
 QUEUE_EVENT_STATUSES = ("planning", "safety_review", "confirmed")
 
 
@@ -193,6 +202,8 @@ def _line_fields(row: dict, equipment_name: str, requester: dict | None) -> dict
         "quantity": row["quantity"],
         "technical_requirements": row.get("technical_requirements"),
         "status": row["status"],
+        "technical_notes": row.get("technical_notes"),
+        "not_available_reason": row.get("not_available_reason"),
         "requested_by": requester,
         "created_at": row["created_at"],
     }
@@ -257,17 +268,24 @@ def event_requests(event_id: str, coordinator_id: str) -> EquipmentRequestLinesR
     """Every line on an event, for its assigned coordinator.
 
     [Assumption] REQUIREMENTS 9: "the submitting coordinator" is read as the
-    assigned one. They are the same person until reassignment exists."""
-    events_service.assigned_event(event_id, coordinator_id)
+    assigned one; after a reassignment that is the new coordinator (D13).
+    SCRUM-24 AC9: with each line's status, reason and notes, the event's
+    technical status and who ticked the exit box."""
+    event = events_service.assigned_event(event_id, coordinator_id)
     return EquipmentRequestLinesResponse(
-        lines=[EquipmentRequestLine(**_embedded_line_fields(row)) for row in repository.list_event_requests(event_id)]
+        lines=[EquipmentRequestLine(**_embedded_line_fields(row)) for row in repository.list_event_requests(event_id)],
+        technical_status=event["technical_readiness"],
+        exit_confirmation=exit_confirmation(event_id),
     )
 
 
-def pending_queue() -> PendingEquipmentLinesResponse:
-    """Pending lines across every open event, soonest event first."""
+# The lines waiting on tech support (SCRUM-24 AC7 adds re-review).
+WAITING_LINE_STATUSES = ["pending", "re_review"]
+
+
+def _queue(statuses: list[str] | None) -> PendingEquipmentLinesResponse:
     lines = []
-    for row in repository.list_pending_requests():
+    for row in repository.list_requests(statuses):
         event = _one(row.get("event")) or {}
         if event.get("status") not in QUEUE_EVENT_STATUSES:
             continue
@@ -276,11 +294,23 @@ def pending_queue() -> PendingEquipmentLinesResponse:
                 **_embedded_line_fields(row),
                 event_name=event.get("name") or "",
                 event_starts_at=event.get("starts_at"),
+                equipment_type=(_one(row.get("equipment")) or {}).get("equipment_type"),
             )
         )
     far_future = datetime.max.replace(tzinfo=timezone.utc)
     lines.sort(key=lambda line: (line.event_starts_at or far_future, line.created_at))
     return PendingEquipmentLinesResponse(lines=lines)
+
+
+def pending_queue() -> PendingEquipmentLinesResponse:
+    """Pending and re-review lines across every open event, soonest event first."""
+    return _queue(WAITING_LINE_STATUSES)
+
+
+def request_list() -> PendingEquipmentLinesResponse:
+    """Every line on every open event, any status, soonest event first: tech
+    support's requests page, where resolved lines stay for reference."""
+    return _queue(None)
 
 
 def event_request_ids(event_id: str) -> set[str]:
@@ -293,3 +323,154 @@ def event_lines(event_id: str) -> list[dict]:
     return [dict(id=row["id"], equipment_name=(_one(row.get("equipment")) or {}).get("name", ""),
                  quantity=row["quantity"], status=row["status"])
             for row in repository.list_event_requests(event_id)]
+
+
+
+# --- SCRUM-24 manage equipment reservation -------------------------------------
+
+def _equipment_service_available(function):
+    """A Supabase outage is a 503, not a 500 (backend AGENTS.md)."""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except (HTTPError, APIError) as exc:
+            raise EquipmentServiceUnavailableError() from exc
+    return wrapped
+
+
+_CLOSED_MESSAGE = "This event is no longer open for equipment arrangements."
+
+
+def _line(line_id: str) -> dict:
+    line = repository.get_line(line_id)
+    if line is None:
+        raise EquipmentLineNotFoundError()
+    return line
+
+
+def _raise_for(outcome: str, not_reservable: str) -> None:
+    if outcome == "ok":
+        return
+    if outcome == "line_not_found":
+        raise EquipmentLineNotFoundError()
+    if outcome == "event_not_found":
+        raise events_service.EventNotFoundError()
+    if outcome == "event_closed":
+        raise EquipmentArrangementConflictError(_CLOSED_MESSAGE)
+    if outcome == "not_reservable":
+        raise EquipmentArrangementConflictError(not_reservable)
+    if outcome == "no_schedule":
+        raise EquipmentArrangementConflictError("This event has no date and time yet, so availability can't be checked.")
+    if outcome == "no_equipment":
+        raise EquipmentArrangementConflictError("This event has no equipment lines, so there is nothing to confirm.")
+    raise RuntimeError(f"equipment function returned {outcome!r}")
+
+
+def _after(event_id: str, left_ready: bool) -> None:
+    """AC11 with CR-104 AC10: an event in Safety review or Confirmed that stops
+    being technically Ready goes back to Planning. `return_to_planning` is a
+    no-op for an event in any other status."""
+    if left_ready:
+        events_service.return_to_planning(event_id, reason_code="technical_not_ready")
+
+
+@_equipment_service_available
+def reserve_line(line_id: str, actor_id: str) -> LineActionResponse:
+    """AC1-AC5: reserve the line's quantity for its event's window, if enough is
+    free. The database locks the item, so two reserves of the last units can't
+    both succeed (AC5)."""
+    line = _line(line_id)
+    outcome, free, left_ready = repository.reserve_line(line_id, actor_id)
+    if outcome == "insufficient":
+        raise EquipmentInsufficientError(free or 0, rules.line_status_label(line["status"]))
+    _raise_for(outcome, "Only a Pending or Re-review line can be reserved. Reload.")
+    _after(line["event_id"], left_ready)
+    return LineActionResponse(line_id=line_id, status="reserved", free_quantity=free)
+
+
+@_equipment_service_available
+def mark_not_available(line_id: str, actor_id: str, reason: str) -> LineActionResponse:
+    """AC3, AC9: mark a line Not available with a reason; any reservation it
+    held is freed (RS-R3)."""
+    line = _line(line_id)
+    outcome, left_ready = repository.mark_not_available(line_id, actor_id, reason)
+    if outcome == "reason_required":
+        raise EquipmentNotAvailableReasonError()
+    _raise_for(outcome, "This line is already Not available or released. Reload.")
+    _after(line["event_id"], left_ready)
+    return LineActionResponse(line_id=line_id, status="rejected")
+
+
+@_equipment_service_available
+def set_note(line_id: str, actor_id: str, note: str | None) -> LineActionResponse:
+    """AC9, AC12: internal notes on a line; the coordinator is told."""
+    line = _line(line_id)
+    _raise_for(repository.set_note(line_id, actor_id, note), "")
+    return LineActionResponse(line_id=line_id, status=line["status"])
+
+
+@_equipment_service_available
+def set_exit_confirmation(event_id: str, actor_id: str, confirmed: bool) -> None:
+    """AC10: tick or untick "Equipment does not block exits or walkways"."""
+    outcome, left_ready = repository.set_exit_confirmation(event_id, actor_id, confirmed)
+    _raise_for(outcome, "")
+    _after(event_id, left_ready)
+
+
+@_equipment_service_available
+def recheck_event(event_id: str, actor_id: str | None = None) -> int:
+    """AC7, for story 37 to call after an event's date or time changes.
+
+    Each reservation moves to the new window; a line that no longer fits goes to
+    re-review and keeps its reservation. Returns how many lines were flagged."""
+    outcome, flagged, left_ready = repository.recheck_event(event_id, actor_id)
+    if outcome != "ok":
+        return 0
+    _after(event_id, left_ready)
+    return flagged
+
+
+def exit_confirmation(event_id: str, row: dict | None = None) -> ExitConfirmation | None:
+    """Who ticked the exit box and when, or None (AC10, shown on CR-103's page)."""
+    row = row if row is not None else repository.get_event_technical(event_id)
+    if not row or not row.get("exit_confirmed_at"):
+        return None
+    return ExitConfirmation(
+        confirmed_by_name=(_one(row.get("exit_confirmer")) or {}).get("full_name"),
+        confirmed_at=row["exit_confirmed_at"],
+    )
+
+
+def _history_entry(row: dict) -> TechnicalHistoryEntry:
+    line = _one(row.get("line")) or {}
+    return TechnicalHistoryEntry(
+        action=row["action"],
+        line_label=rules.line_label(line.get("quantity"), (_one(line.get("equipment")) or {}).get("name")),
+        from_status=row.get("from_status"),
+        to_status=row.get("to_status"),
+        detail=row.get("detail"),
+        actor_name=(_one(row.get("actor")) or {}).get("full_name"),
+        created_at=row["created_at"],
+    )
+
+
+@_equipment_service_available
+def technical_view(event_id: str) -> TechnicalEventResponse:
+    """Technical Support's view of one event: lines with notes, the exit tick,
+    the derived technical status and the history (AC9-AC13). Tech support work
+    as a pool (AUTH-R5), so any non-draft event."""
+    row = repository.get_event_technical(event_id)
+    if not row or row["status"] == "draft":
+        raise events_service.EventNotFoundError()
+    return TechnicalEventResponse(
+        event=TechnicalEvent(
+            id=row["id"], name=row["name"], status=row["status"],
+            starts_at=row.get("starts_at"), ends_at=row.get("ends_at"),
+            coordinator_name=(_one(row.get("coordinator")) or {}).get("full_name"),
+        ),
+        technical_status=row["technical_readiness"],
+        exit_confirmation=exit_confirmation(event_id, row),
+        lines=[EquipmentRequestLine(**_embedded_line_fields(line)) for line in repository.list_event_requests(event_id)],
+        history=[_history_entry(entry) for entry in repository.list_technical_history(event_id)],
+    )

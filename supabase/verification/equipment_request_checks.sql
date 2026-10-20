@@ -5,7 +5,7 @@
 -- equipment and lines leave no trace.
 -- Uses the seeded organiser (…0001), coordinator (…0002, who also holds
 -- venue_staff), venue staff (…0003), tech support (…0004) and the seeded
--- 4K Projector (b…0001, 4 in total) and Wireless Mics (b…0002).
+-- 4K Projector (b…0001, 14 in total) and Wireless Mics (b…0002).
 
 begin;
 

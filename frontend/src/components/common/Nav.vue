@@ -79,6 +79,7 @@ const isEventListActive = computed(
 const isTechSupportInventoryActive = computed(
   () => route.name === "dashboard-tech-support" && route.query.tab !== "availability",
 );
+const isTechSupportRequestsActive = computed(() => route.name === "dashboard-tech-support-requests");
 const isTechSupportAvailabilityActive = computed(
   () => route.name === "dashboard-tech-support" && route.query.tab === "availability",
 );
@@ -256,6 +257,29 @@ async function handleLogout() {
             <path d="M9 15l2 2 4-4" />
           </svg>
           <span :class="labelClass">Availability</span>
+        </RouterLink>
+
+        <RouterLink
+          :to="{ name: 'dashboard-tech-support-requests' }"
+          :class="navLinkClass(isTechSupportRequestsActive)"
+          title="Equipment requests"
+          aria-label="Equipment requests"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-5 w-5 shrink-0"
+            aria-hidden="true"
+          >
+            <path d="M9 4h6v3H9z" />
+            <path d="M8 5H5v16h14V5h-3" />
+            <path d="M8 12h8M8 16h5" />
+          </svg>
+          <span :class="labelClass">Equipment requests</span>
         </RouterLink>
       </template>
 
