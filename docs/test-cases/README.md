@@ -31,6 +31,8 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 | Venue Staff | `venue.staff@connectsphere.dev` | Single role |
 | Technical Support | `tech.support@connectsphere.dev` | Single role |
 | Attendee | `attendee@connectsphere.dev` | Single role |
+| Event Coordinator Lead | `coordinator.lead@connectsphere.dev` | Single role (Grace Chua) |
+| Event Coordinator Lead (second) | `coordinator.lead2@connectsphere.dev` | Single role (Daniel Foo); the second Lead for TC-LEAD-012 and TC-LEAD-015 |
 
 **Safety review prerequisites (CR-103/104):** seeded Safety Officer and Event Coordinator Lead accounts are available; officer decision walkthrough cases remain subject to the manual checklist. Grant any additional staff roles using `SETUP.md`.
 

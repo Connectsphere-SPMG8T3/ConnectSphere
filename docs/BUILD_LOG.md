@@ -2772,3 +2772,19 @@ On `fix/inventory-window`, branched from `feature/scrum-24-equipment-reservation
 #### Manual pass
 
 - TC-EQR-036 passed ([record](test-cases/runs/2026-10-19-2356-manual-bc3a9d4.md)): the inventory window, its refusal and 375px layout, and the availability picker's full catalogue, a new item's check and the failure state.
+
+### 4.69. Chore — Second seeded Event Coordinator Lead
+
+On `chore/seed-second-lead-account`, branched from `main` at `15ca304`, 2026-10-20. It finishes CR-101 AC5, which says the system supports one or more Leads and that each Lead sees the active events they assigned or last reassigned. The code for that was done and unit-tested, but only one Lead account existed, so it could not be exercised with two Leads.
+
+**Changed.**
+1. `supabase/seed.sql` adds `coordinator.lead2@connectsphere.dev` (Daniel Foo, single Event Coordinator Lead role, `a0000000-…-0009`, password `Cs1234`). The seed now has 9 accounts covering 7 roles. The name is a placeholder.
+2. README, SETUP, the test-cases README and IMPLEMENTATION_MAP list the account and the new count.
+3. `backend/scripts/verify_live.py` knows the account and gains TC-LEAD-015: a read-only check that signs in as each Lead and compares the dashboard with `events.assigned_by` in the database (identical queues; each Lead's active events are exactly those they assigned, those with no assigner, and those whose assigner is no longer a Lead).
+4. `docs/test-cases/dashboards.md`: TC-LEAD-012 now has concrete steps and accounts, and TC-LEAD-015 is added.
+
+**Live project.** The account was created with only its own steps from the seed's first block (the same insert into `auth.users`, `auth.identities`, the profile role and `user_roles`), not by re-running the whole seed, which truncates the equipment tables. A read-only query afterwards showed it confirmed, with one identity, the Lead role as its only role, and department Event Planning.
+
+**What the live data should show** (read-only query, 2026-10-20): of the 18 active events, 8 have no coordinator (the shared queue), 7 were assigned before the Lead role existed (visible to both Leads), and 3 were last assigned by Grace Chua. Grace should therefore see 8 + 7 + 3 and Daniel 8 + 7, not Grace's three.
+
+**Not verified.** A sign-in as the new account was not tried, TC-LEAD-015 has not been run (it needs a backend with the project's secret key), and TC-LEAD-012 is still a manual case for the developer.

@@ -51,14 +51,14 @@ No separate JWT secret is configured: session tokens are verified via the Supaba
 ```bash
 supabase link --project-ref vuiryrzzyfecjqftwicj
 supabase db push                              # applies supabase/migrations/*.sql
-psql "$DATABASE_URL" -f supabase/seed.sql     # creates 8 test accounts covering all 7 roles
+psql "$DATABASE_URL" -f supabase/seed.sql     # creates 9 test accounts covering all 7 roles
 ```
 
 `supabase/migrations/20260912000001_init_auth_and_profiles.sql` creates the `user_role` enum, `public.profiles` table, indexes, the `handle_new_user()` trigger (auto-populates a profile row when a new `auth.users` row is inserted), and RLS policies. `20260913120749_fix_auth_security_defects.sql` then restricts sign-up to the external roles (`event_organiser`, `attendee`), replaces the `profiles` policies with a non-recursive version backed by `private.current_user_role()`, and pins `search_path` on the auth functions (see `docs/BUILD_LOG.md` §4.2).
 
 `20260915090000_venues_catalogue_and_availability.sql` (SCRUM-39) adds the venue catalogue: the `venue_layout` / `facility` / `accessibility_feature` / `venue_booking_status` / `venue_block_reason` enums, the `venues`, `venue_layouts`, `venue_facilities`, `venue_blocks` and `venue_bookings` tables, the `btree_gist` exclusion constraint that makes overlapping venue bookings impossible (DB-1), and staff-only read policies (see `docs/BUILD_LOG.md` §4.4). Before pushing, run `supabase migration list --linked` — the live history had drifted once (DEFECTS D8).
 
-`supabase/seed.sql` inserts directly into `auth.users` / `auth.identities` (the standard pattern for locally seeding confirmed Supabase Auth accounts outside the GoTrue signup API) so the eight test accounts (every role, plus a second coordinator) exist immediately, with no email confirmation step needed. Because the trigger no longer accepts staff roles from sign-up metadata, the seed sets each profile's role explicitly afterwards.
+`supabase/seed.sql` inserts directly into `auth.users` / `auth.identities` (the standard pattern for locally seeding confirmed Supabase Auth accounts outside the GoTrue signup API) so the nine test accounts (every role, plus a second coordinator and a second Lead) exist immediately, with no email confirmation step needed. Because the trigger no longer accepts staff roles from sign-up metadata, the seed sets each profile's role explicitly afterwards.
 
 Verify the auth/RLS security rules after applying migrations and seed (runs inside a transaction that rolls back, and raises on any failure):
 
@@ -84,6 +84,7 @@ All seeded accounts share the password `Cs1234`. Emails intentionally use the `@
 | Attendee | attendee@connectsphere.dev | Single role |
 | Safety Officer | safety.officer@connectsphere.dev | Single role (CR-103 AC5) |
 | Event Coordinator Lead | coordinator.lead@connectsphere.dev | Single role (12 AC12) |
+| Event Coordinator Lead (second) | coordinator.lead2@connectsphere.dev | Single role; a second Lead for CR-101 AC5's per-Lead scope |
 | Event Coordinator (second) | coordinator2@connectsphere.dev | Single role; a second coordinator for assignment and cross-coordinator checks |
 
 ### Grant a staff role
