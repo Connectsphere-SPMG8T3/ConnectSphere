@@ -6,10 +6,14 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.modules.events.schemas import SafetyReviewVenue
+from app.modules.auth.dependencies import CurrentUser
 from app.modules.venues import repository, service
 from app.modules.venues.schemas import VenueProfile
 from tests.test_event_comments_api import acting_as_another_role
 from tests.test_venues_api import HALL_A_ID, VALID_EDIT_PAYLOAD, make_venue_profile
+
+COORDINATOR = CurrentUser(id="a0000000-0000-4000-8000-000000000002", email="c@connectsphere.dev",
+                          full_name="Coordinator", role="event_coordinator", session_id="s", access_token="t")
 
 URL = f"/api/v1/venues/{HALL_A_ID}"
 FACTS = dict(setup_minutes=30, turnaround_minutes=45,
@@ -143,7 +147,7 @@ def test_search_includes_candidate_buffers_and_touching_boundaries(monkeypatch, 
 
     monkeypatch.setattr(repository, "list_occupants", occupants)
     result = service.search_venues(VenueSearchCriteria(
-        starts_at="2031-05-20T10:00:00Z", ends_at="2031-05-20T12:00:00Z", include_excluded=True))
+        starts_at="2031-05-20T10:00:00Z", ends_at="2031-05-20T12:00:00Z", include_excluded=True), COORDINATOR)
     assert result.results[0].excluded is unavailable
     assert reads == [{"starts_at": "2031-05-20T09:30:00Z", "ends_at": "2031-05-20T12:45:00Z"}]
 
@@ -160,7 +164,7 @@ def test_large_valid_defaults_do_not_crash_dated_search(monkeypatch, starts, end
     reads = []
     monkeypatch.setattr(repository, "list_venues", lambda: venues)
     monkeypatch.setattr(repository, "list_occupants", lambda period: reads.append(period) or {})
-    result = service.search_venues(VenueSearchCriteria(starts_at=starts, ends_at=ends))
+    result = service.search_venues(VenueSearchCriteria(starts_at=starts, ends_at=ends), COORDINATOR)
     assert result.included_count == 2
     assert reads[0].starts_at.year == first_year
     assert reads[0].ends_at.year == last_year

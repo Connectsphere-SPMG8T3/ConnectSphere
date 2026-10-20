@@ -1,7 +1,9 @@
 <script setup>
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
+import SuitabilityBadge from "@/components/venues/SuitabilityBadge.vue";
+import SuitabilityFindings from "@/components/venues/SuitabilityFindings.vue";
 import { BOOKING_NOTE_MAX_LENGTH } from "@/features/venues/venueBookingStore";
 
 const props = defineProps({
@@ -17,21 +19,35 @@ const props = defineProps({
   // requesting it sends the event back to Planning.
   replacesVenueName: { type: String, default: "" },
   returnsToPlanning: { type: Boolean, default: false },
+  // The venue's suitability for this event or space (SCRUM-18 AC9), as the search returned it.
+  suitability: { type: Object, default: null },
 });
 
 const emit = defineEmits(["confirm", "cancel"]);
 
 const note = ref("");
+const acknowledged = ref(false);
+
+// BR-R3 (SCRUM-18): the API enforces these; the dialog just doesn't offer what
+// it would refuse. Warnings need ticking, an Unsuitable venue can't be sent.
+const needsAcknowledgement = computed(() => props.suitability?.verdict === "suitable_with_warnings");
+const unsuitable = computed(() => props.suitability?.verdict === "unsuitable");
+const cannotSend = computed(
+  () => props.busy || unsuitable.value || (needsAcknowledgement.value && !acknowledged.value),
+);
 
 watch(
   () => props.open,
   (isOpen) => {
-    if (isOpen) note.value = "";
+    if (isOpen) {
+      note.value = "";
+      acknowledged.value = false;
+    }
   },
 );
 
 function confirm() {
-  if (!props.busy) emit("confirm", note.value);
+  if (!cannotSend.value) emit("confirm", note.value, needsAcknowledgement.value && acknowledged.value);
 }
 </script>
 
@@ -55,6 +71,22 @@ function confirm() {
           book it for this time in the meantime.
         </p>
         <p class="mt-3 border-2 border-ink bg-surface px-3 py-2 text-sm font-bold">{{ props.period }}</p>
+        <div v-if="props.suitability" class="mt-3 flex flex-col gap-2">
+          <div><SuitabilityBadge :suitability="props.suitability" /></div>
+          <SuitabilityFindings :suitability="props.suitability" />
+          <p v-if="unsuitable" class="text-sm font-bold" data-testid="unsuitable-notice">
+            This venue is unsuitable for this event, so it can't be requested.
+          </p>
+          <label v-if="needsAcknowledgement" class="flex items-start gap-3 text-sm font-bold">
+            <input
+              v-model="acknowledged"
+              type="checkbox"
+              data-testid="acknowledge-warnings"
+              class="mt-0.5 h-5 w-5 shrink-0 border-2 border-ink accent-ink"
+            />
+            I have read these warnings and still want to request this venue.
+          </label>
+        </div>
         <p v-if="props.replacesVenueName" class="mt-3 text-sm font-medium" data-testid="replaces-venue">
           This replaces {{ props.replacesVenueName }}, which is no longer available. It stays on the event until your
           replacement is approved.
@@ -83,7 +115,7 @@ function confirm() {
         </p>
         <div class="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <BauhausButton type="button" variant="outline" aria-label="Cancel" @click="emit('cancel')">Cancel</BauhausButton>
-          <BauhausButton type="button" variant="primary" aria-label="Request venue" :disabled="props.busy" @click="confirm">
+          <BauhausButton type="button" variant="primary" aria-label="Request venue" :disabled="cannotSend" @click="confirm">
             Request venue
           </BauhausButton>
         </div>

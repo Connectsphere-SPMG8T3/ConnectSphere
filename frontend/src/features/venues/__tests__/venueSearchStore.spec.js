@@ -157,3 +157,48 @@ describe("venues store", () => {
     expect(store.error).toBe("Venue not found.");
   });
 });
+
+describe("venue search context (SCRUM-18)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    venuesApi.search.mockResolvedValue(searchResponse());
+  });
+
+  it("sends no event or space for a plain search", async () => {
+    const store = signedInStore();
+
+    await store.search();
+
+    expect(venuesApi.search.mock.calls[0][0]).not.toHaveProperty("event_id");
+    expect(venuesApi.search.mock.calls[0][0]).not.toHaveProperty("space_id");
+  });
+
+  it("names the event and space so each result carries a suitability verdict", async () => {
+    const store = signedInStore();
+    store.setContext({ eventId: "e1", spaceId: "s1" });
+
+    await store.search();
+
+    expect(venuesApi.search.mock.calls[0][0]).toMatchObject({ event_id: "e1", space_id: "s1" });
+  });
+
+  it("names only the event when the event has no spaces", async () => {
+    const store = signedInStore();
+    store.setContext({ eventId: "e1", spaceId: null });
+
+    await store.search();
+
+    expect(venuesApi.search.mock.calls[0][0]).toMatchObject({ event_id: "e1" });
+    expect(venuesApi.search.mock.calls[0][0]).not.toHaveProperty("space_id");
+  });
+
+  it("reports whether the context changed, so the view knows to search again", () => {
+    const store = signedInStore();
+
+    expect(store.setContext({ eventId: "e1", spaceId: null })).toBe(true);
+    expect(store.setContext({ eventId: "e1", spaceId: null })).toBe(false);
+    expect(store.setContext({ eventId: "e1", spaceId: "s1" })).toBe(true);
+    expect(store.setContext(null)).toBe(true);
+    expect(store.setContext(null)).toBe(false);
+  });
+});

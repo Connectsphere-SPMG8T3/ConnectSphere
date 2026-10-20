@@ -3,6 +3,8 @@ import { computed } from "vue";
 import { RouterLink } from "vue-router";
 
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import SuitabilityBadge from "@/components/venues/SuitabilityBadge.vue";
+import SuitabilityFindings from "@/components/venues/SuitabilityFindings.vue";
 import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS } from "@/features/venues/venueSearchStore";
 
 const props = defineProps({
@@ -46,7 +48,7 @@ const hours = computed(() => `${venue.value.opens_at.slice(0, 5)}–${venue.valu
 </script>
 
 <template>
-  <BauhausCard background="white" accent="none" class="h-full">
+  <BauhausCard background="white" accent="none" class="h-full" data-testid="venue-result">
     <div class="flex h-full flex-col gap-4">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -57,9 +59,16 @@ const hours = computed(() => `${venue.value.opens_at.slice(0, 5)}–${venue.valu
           </h3>
           <p class="mt-1 text-sm font-medium">{{ venue.location }}</p>
         </div>
-        <span class="border-2 border-ink px-3 py-1 text-xs font-bold uppercase tracking-widest" :class="availabilityBadge.classes">
-          {{ availabilityBadge.text }}
-        </span>
+        <div class="flex flex-wrap gap-2">
+          <SuitabilityBadge :suitability="result.suitability" />
+          <span
+            data-testid="availability-badge"
+            class="border-2 border-ink px-3 py-1 text-xs font-bold uppercase tracking-widest"
+            :class="availabilityBadge.classes"
+          >
+            {{ availabilityBadge.text }}
+          </span>
+        </div>
       </div>
 
       <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -74,6 +83,10 @@ const hours = computed(() => `${venue.value.opens_at.slice(0, 5)}–${venue.valu
         <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Accessibility</dt>
         <dd class="font-medium">{{ accessibility.length ? accessibility.join(", ") : "None recorded" }}</dd>
       </dl>
+
+      <div v-if="result.suitability?.reasons?.length" class="mt-auto border-t-2 border-ink pt-3">
+        <SuitabilityFindings :suitability="result.suitability" />
+      </div>
 
       <ul v-if="result.reasons.length" class="mt-auto flex flex-col gap-1 border-t-2 border-ink pt-3">
         <li

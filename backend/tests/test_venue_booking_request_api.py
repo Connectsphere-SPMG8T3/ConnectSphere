@@ -8,7 +8,7 @@ API makes of them.
 """
 
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -18,7 +18,7 @@ from app.modules.events import repository as events_repository
 from app.modules.events import service as events_service
 from app.modules.venues import repository as venues_repository
 from app.modules.venues import service as venues_service
-from app.modules.venues.schemas import LayoutOption
+from app.modules.venues.schemas import Facility, LayoutOption, VenueLayout
 from tests.test_venues_api import make_venue_profile
 
 COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
@@ -46,6 +46,18 @@ def event_row(status="planning", coordinator_id=COORDINATOR_ID):
         "technical_readiness": "not_required", "submitted_at": now, "version": 4,
         "created_at": now, "updated_at": now,
     }
+
+
+@pytest.fixture(autouse=True)
+def a_venue_that_suits_the_event(monkeypatch):
+    """SCRUM-18 BR-R3: a request is checked for suitability first, so the venue
+    is read. This one suits `event_row`'s default (classroom, projector, any
+    hour); a test that needs another venue patches `get_venue` itself."""
+    venue = make_venue_profile(
+        VENUE_ID, "Innovation Lab", facilities=[Facility.projector], opens_at=time(0, 0), closes_at=time(23, 59, 59),
+        layouts=[LayoutOption(layout=VenueLayout.classroom, capacity_for_layout=None)],
+    )
+    monkeypatch.setattr(venues_repository, "get_venue", lambda venue_id: venue)
 
 
 @pytest.fixture()
