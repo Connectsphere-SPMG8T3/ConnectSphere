@@ -5,6 +5,7 @@ import {
   coordinatorFilterOptions,
   coordinatorOptions,
   filterLeadEvents,
+  queueVenueNeeds,
   sortLeadEvents,
 } from "@/features/events/leadDashboard";
 
@@ -82,5 +83,19 @@ describe("LEAD_STATUS_OPTIONS", () => {
       "confirmed",
     ]);
     expect(LEAD_STATUS_OPTIONS.every((o) => o.label)).toBe(true);
+  });
+});
+
+describe("queueVenueNeeds (SCRUM-12 AC10)", () => {
+  it("names the layout and facilities an event asks of a venue", () => {
+    expect(queueVenueNeeds({ layout_preference: "u_shape", facilities_required: ["projector", "video_conferencing"] })).toBe(
+      "U-shape · Projector, Video conferencing",
+    );
+  });
+
+  it("copes with only a layout, only facilities, or neither", () => {
+    expect(queueVenueNeeds({ layout_preference: "theatre", facilities_required: [] })).toBe("Theatre");
+    expect(queueVenueNeeds({ layout_preference: null, facilities_required: ["wifi"] })).toBe("Wi-Fi");
+    expect(queueVenueNeeds({})).toBe("No venue needs given");
   });
 });

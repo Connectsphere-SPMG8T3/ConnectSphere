@@ -4,6 +4,7 @@
  * the `GET /events/dashboard/lead` payload. No I/O.
  */
 import { ACTIVE_COORDINATOR_STATUSES, STATUS_LABELS } from "@/features/events/dashboard";
+import { FACILITIES, LAYOUTS } from "@/features/venues/venueSearchStore";
 
 export const LEAD_STATUS_OPTIONS = ACTIVE_COORDINATOR_STATUSES.map((value) => ({
   value,
@@ -45,4 +46,14 @@ export function coordinatorFilterOptions(coordinators = []) {
 
 export function coordinatorOptions(coordinators = [], currentId = null) {
   return coordinators.filter((c) => c.id !== currentId).map((c) => ({ value: c.id, label: c.full_name }));
+}
+
+const LAYOUT_LABELS = Object.fromEntries(LAYOUTS.map((entry) => [entry.value, entry.label]));
+const FACILITY_LABELS = Object.fromEntries(FACILITIES.map((entry) => [entry.value, entry.label]));
+
+/** What a queued event asks of a venue, in a line: "Theatre · Projector, Wi-Fi" (SCRUM-12 AC10). */
+export function queueVenueNeeds(event = {}) {
+  const layout = event.layout_preference ? (LAYOUT_LABELS[event.layout_preference] ?? event.layout_preference) : "";
+  const facilities = (event.facilities_required ?? []).map((value) => FACILITY_LABELS[value] ?? value).join(", ");
+  return [layout, facilities].filter(Boolean).join(" · ") || "No venue needs given";
 }

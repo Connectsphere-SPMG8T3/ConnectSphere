@@ -153,7 +153,7 @@ onMounted(async () => {
           <BauhausCard background="white" accent="none">
             <h2 class="text-2xl font-black uppercase tracking-tight">Planning status</h2>
             <p class="mt-3 text-sm font-medium">Your request is currently <strong class="uppercase">{{ statusLabel }}</strong>.</p>
-            <p class="mt-3 text-sm font-medium">Coordinator: {{ event.coordinator?.full_name || (event.coordinatorId ? "Assigned" : "To be assigned") }}</p>
+            <p class="mt-3 text-sm font-medium">Coordinator: {{ event.coordinator?.full_name || (event.coordinatorId ? "Assigned" : "Unassigned") }}</p>
           </BauhausCard>
           <BauhausCard background="white" accent="none">
             <h2 class="mb-6 text-2xl font-black uppercase tracking-tight">History</h2>

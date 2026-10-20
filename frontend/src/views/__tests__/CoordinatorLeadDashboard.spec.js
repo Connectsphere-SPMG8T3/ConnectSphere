@@ -9,7 +9,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  eventsApi: { leadDashboard: vi.fn(), reassign: vi.fn() },
+  eventsApi: { leadDashboard: vi.fn(), reassign: vi.fn(), assign: vi.fn() },
 }));
 
 const QUEUE_ID = "e0000000-0000-4000-8000-000000000301";
@@ -23,8 +23,9 @@ const PRIYA = { id: "c2", full_name: "Priya Nair" };
 const PAYLOAD = {
   unassigned: [
     {
-      event_id: QUEUE_ID, event_name: "Partner Summit", status: "under_review", starts_at: "2026-11-12T02:00:00Z",
-      organiser_name: "Olivia Tan", coordinator: null, version: 1,
+      event_id: QUEUE_ID, event_name: "Partner Summit", status: "submitted", starts_at: "2026-11-12T02:00:00Z",
+      organiser_name: "Olivia Tan", coordinator: null, version: 1, expected_attendance: 120,
+      layout_preference: "theatre", facilities_required: ["projector"],
     },
   ],
   active_events: [
@@ -117,7 +118,7 @@ describe("CoordinatorLeadDashboard (CR-101)", () => {
     eventsApi.leadDashboard.mockReturnValue(new Promise(() => {}));
 
     const { el } = await mountDashboard((store) => {
-      store.unassigned = [{ event_id: QUEUE_ID, event_name: "Another Lead's Event", status: "under_review", coordinator: null }];
+      store.unassigned = [{ event_id: QUEUE_ID, event_name: "Another Lead's Event", status: "submitted", coordinator: null }];
       store.hasSettled = true;
     });
 
@@ -141,7 +142,31 @@ describe("CoordinatorLeadDashboard (CR-101)", () => {
 
     expect(rows(queueSection(el))).toEqual([QUEUE_ID]);
     expect(queueSection(el).textContent).toContain("Partner Summit");
-    expect(queueSection(el).textContent).toContain("Under review");
+    expect(queueSection(el).textContent).toContain("Awaiting assignment");
+  });
+
+  it("shows each queued event's name, date, expected attendance and venue needs (SCRUM-12 AC10)", async () => {
+    const { el } = await mountDashboard();
+
+    const text = queueSection(el).textContent;
+    expect(text).toContain("Partner Summit");
+    expect(text).toContain("12 Nov 2026");
+    expect(text).toContain("120 expected");
+    expect(text).toContain("Theatre · Projector");
+  });
+
+  it("keeps the queue in the server's order, oldest submission first, whatever the event dates", async () => {
+    eventsApi.leadDashboard.mockResolvedValue({
+      unassigned: [
+        { event_id: "old", event_name: "Zulu Gala", status: "submitted", starts_at: "2027-01-01T02:00:00Z", coordinator: null, version: 1 },
+        { event_id: "new", event_name: "Alpha Meetup", status: "submitted", starts_at: "2026-11-01T02:00:00Z", coordinator: null, version: 1 },
+      ],
+      active_events: [],
+      coordinators: [],
+    });
+    const { el } = await mountDashboard();
+
+    expect(rows(queueSection(el))).toEqual(["old", "new"]);
   });
 
   it("lists the active events with their coordinator and status (AC1)", async () => {
