@@ -2869,3 +2869,24 @@ On `feature/scrum-18-venue-suitability`, branched from `main` at `69a54dd`, 2026
 - Backend 1,772 passed; frontend 1,170 passed; build clean. Live: booking checks 36/36 ([run](test-cases/runs/2026-10-20-1923-api-db-54f6e5b.md)) and TC-SUIT 7/7 ([run](test-cases/runs/2026-10-20-1929-api-db-54f6e5b.md)). Browser, narrowed at the developer's request to the booking, hold, block, buffer, deactivation and suitability specs: 21 of 22 ([run](test-cases/runs/2026-10-20-1932-e2e-54f6e5b.md)). The one failure is TC-BOOK-048/049/050, which also fails on `main`; this time every assertion in it passed and it failed closing a browser context on its last line.
 - **Not run after the BR-R3 change:** the full browser suite (the dashboard, equipment, auth and sign-up specs) and a full API run after the ordering fix (the booking and suitability checks were re-run, not the rest).
 
+### 4.76. SCRUM-113, SCRUM-53, SCRUM-90 — In-app notifications, attendee notices and reminders
+
+On `feature/scrum-113-in-app-notifications`, branched from `main` at `276127d`, 2026-10-20/21, in a worktree. Written from the Product backlog rows as revised on 2026-10-20: **email is out of release 1** (team decision; the customer left the channel to us), 114 (Email organisers) left Sprint 4, and 113 and 53 became in-app only. Design: `docs/superpowers/specs/2026-10-20-sprint4-in-app-notifications-design.md`; plan: `docs/superpowers/plans/2026-10-20-sprint4-in-app-notifications.md`. The delivery mechanism was already decided by ADR-0004 (still "Proposed"): the SPA polls every 10 seconds while the tab is visible.
+
+**Changed.**
+1. **Database** (`20261021100000`): `notifications.recipient_role` and `.dedupe_key`; table `notification_types`; a `BEFORE INSERT` trigger stamps each row with the role it is for, so the roughly 30 functions that already insert notifications needed no change; `add_notification` keeps NT-R1 and takes a dedupe key.
+2. **API** (`modules/notifications`): `GET /notifications/unread-count`, `GET /notifications` (keyset-paged on `(created_at, id)`), `POST /notifications/{id}/read`, `POST /notifications/read-all`, all scoped to the caller's **active** role.
+3. **SPA:** `NotificationBell` in the top bar for every role, `features/notifications/` (store, poller, time format), `notificationsApi`. The bell starts over on a role switch and drops responses for the role the user just left.
+4. **Attendees and reminders** (`20261021110000`, `20261021120000`): `notify_registered_attendees`, `send_attendee_event_reminders` and `send_staff_arrangement_reminders`, run by `pg_cron`.
+5. Live checks TC-NOTIF-001–003 in `backend/scripts/verify_live.py`, browser checks TC-NOTIF-004–005 in `frontend/e2e/notifications.e2e.js`, database checks in `supabase/verification/notification_*_checks.sql`, manual cases TC-NOTIF-009–014.
+
+**Decisions.** The trigger resolves a type that can go to two roles by the recipient's link to the event rather than by list order alone, because the seeded coordinator is also venue staff (REQUIREMENTS §9 item 86). Reminder rows name their role explicitly and use one dedupe key per audience, for the same reason. The 3-day, once-a-day staff reminder is an **[Assumption]** (item 85). `tests/test_active_role_access.py` now treats `/notifications` as open to every signed-in role, like `/auth`.
+
+**Verified.** Tests were written first and failed for the expected reasons. Backend: 175 passed in the notification, repository and role-matrix files, the new module at 100%; the full suite earlier passed 1,830 with only the four role-matrix failures this change then fixed. Frontend: 1,235 passed with one timing flake in `EventRequestView.spec.js` that passes alone and passed in the previous full run; `npm run build` succeeds. Database: each migration with its checks ran inside one rolled-back transaction on the live project and passed. TC-NOTIF-001 passes live against this branch's backend, and TC-NOTIF-005 passes in a real browser.
+
+**Not verified.**
+- **The migrations are not pushed**, so TC-NOTIF-002, 003 and 004, the real HTTP and browser run of the bell and the Supabase advisors on the new objects are all pending that push.
+- **Dev 1's `registrations` table does not exist yet.** `notify_registered_attendees` and the attendee reminder were checked against a stand-in table only; the committed checks need the real one.
+- **The callers of `notify_registered_attendees`** (37, 115, a confirmed replacement venue, registration changes) are other developers' stories and are not wired.
+- The manual pass (TC-NOTIF-009–014), phone-width layout, the full recorded live runs, and ADR-0004's status (left "Proposed") are the developer's.
+

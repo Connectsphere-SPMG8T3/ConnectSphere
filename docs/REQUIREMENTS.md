@@ -1132,7 +1132,9 @@ available(type, W) = total_quantity
 - **Given** a change moving the event to a time when Hall A is held by another event, **when** venue staff try to re-approve, **then** it fails with the conflict message, and they must reject.
 - **Given** a confirmed event with 30 registrations and reserved equipment, **when** its cancellation is approved, **then** the booking and equipment are freed, registrations are cancelled, and 30 attendees are notified.
 
-### 6.20 Notification system *(SCRUM-27: 69, 53)*
+### 6.20 Notification system *(SCRUM-27: 69, 53; SCRUM-113, 53, 90 in Sprint 4)*
+
+**Sprint 4 (2026-10-20/21).** Email is out of release 1 (team decision; the customer left the channel to us: Session 1, QA2-21): 114 (Email organisers) is out of Sprint 4 and 53 and 113 are in-app only. Every role has the bell, attendees and organisers included, and a user sees only the notifications addressed to the role their session is **acting as** (113 AC4): each notification carries a `recipient_role`, stamped from `notification_types`. Registered attendees are told of changes, cancellation and their own registration changes (53), 24 hours before an event each gets a reminder (53 AC4), and staff are reminded once a day from 3 days before about Planning or Safety review events (90, see §9 item 85).
 
 The delivery channel and delivery preferences are a team choice (QA-11, QA-39, QA2-21). **[Team decision]** Release 1 is **in-app**: a bell with an unread count (polling the API every 10 seconds while the tab is visible; why not a broker or Supabase Realtime: [ADR-0004](adr/0004-notification-delivery.md)), a list, mark-read and mark-all-read, and deep links. Email is P3, delivered by a second subscriber on the same domain events. The `communication_preferences` profile field (SCRUM-50) records the preferred channel for when email is added (QA-46).
 
@@ -1534,6 +1536,8 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 82. **[Assumption, SCRUM-12 AC2]** "Only active users holding the Event Coordinator role can be assigned": the schema has no active flag, so "active" is an account that is neither banned nor deleted in Supabase Auth. Revisit if an account-status column is added (ACC-R10).
 83. **[Team decision, SCRUM-18 BR-R3]** The acknowledgement is a boolean the request must carry (`acknowledge_warnings`), enforced by the API, with a tick box in the dialog, not a separate round trip. Capacity and an inactive venue are left to the database function that already refuses them, to keep CR-97's and SCRUM-64's wording; every other hard failure (today a missing facility) is refused by the API. The CR-94 note assigned BR-R3 to SCRUM-18, though the story's pasted acceptance criteria do not list it.
 84. **[Team decision, SCRUM-18 AC5]** Accessibility needs are free text, so they are matched to the venue's features by keyword and only ever warn (§6.11). The keyword list lives in `venues/suitability.py` (`ACCESSIBILITY_KEYWORDS`); a structured needs field on the event would replace it.
+85. **[Assumption, SCRUM-90 AC3]** "Reminders are sent a set time before each deadline" leaves the time open and the customer set none (Session 1, "no fixed SLA"). Staff reminders (coordinator; venue staff when a booking is held or under re-review; technical support when a line is pending or under re-review) go out once a day at 09:00 Singapore time, from 3 days before the event starts, while the event is in Planning or Safety review. The attendee reminder (53 AC4) is 24 hours before. To confirm in planning poker.
+86. **[Team decision, SCRUM-113]** A notification type that can go to two roles resolves by the recipient's link to the event (their own organiser or coordinator role first), then by the order in `notification_types`. A person who is both the organiser and the coordinator of one event receives such a type under the first listed role only.
 
 ## 10. Non-functional requirements
 
