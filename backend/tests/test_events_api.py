@@ -249,7 +249,7 @@ class TestEventDrafts:
 
         assert update_response.status_code == 200
         assert submit_response.status_code == 200
-        assert submit_response.json()["status"] == "under_review"
+        assert submit_response.json()["status"] == "submitted"
         assert source_response.json()["id"] == EVENT_ID
         assert source_response.json()["name"] == "Regional Planning Workshop"
         assert source_response.json()["status"] == "confirmed"
@@ -368,12 +368,12 @@ class TestEventSubmission:
         assert response.status_code == 200
         body = response.json()
         assert body["id"] == EVENT_ID
-        assert body["status"] == "under_review"
+        assert body["status"] == "submitted"
 
     def test_valid_draft_can_be_submitted_without_coordinator_assignment_through_transition_event(
         self, client, auth_headers, authenticate_as, mock_event_repository
     ):
-        """Submission writes event_status_history (draft -> under_review) with the
+        """Submission writes event_status_history (draft -> submitted) with the
         organiser as actor, so it must go through transition_event, the one path
         that records history."""
         organiser = authenticate_as("event_organiser")
@@ -384,7 +384,7 @@ class TestEventSubmission:
         assert response.json()["submitted_at"]
         assert mock_event_repository["transition_calls"] == [{
             "event_id": EVENT_ID, "actor_id": organiser["id"], "from_statuses": ["draft"],
-            "to_status": "under_review", "expected_version": 1,
+            "to_status": "submitted", "expected_version": 1,
             "reason": None, "notify_type": None, "notify_message": None,
         }]
 
@@ -469,7 +469,7 @@ class TestEventSubmission:
         )
 
         assert response.status_code == 200
-        assert response.json()["status"] == "under_review"
+        assert response.json()["status"] == "submitted"
 
     def test_registration_closing_datetime_must_follow_opening_datetime(
         self, client, auth_headers, authenticate_as

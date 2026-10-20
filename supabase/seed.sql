@@ -30,6 +30,9 @@ declare
     -- A second, single-role coordinator (no Venue Staff pairing), so two
     -- coordinators exist for assignment and cross-coordinator denial checks.
     v_coordinator_2_id uuid := 'a0000000-0000-4000-8000-000000000008';
+    -- A second Event Coordinator Lead (CR-101 AC5: the system supports one or more
+    -- Leads, and each sees the events they assigned), so the two-Lead scope can be tested.
+    v_coordinator_lead_2_id uuid := 'a0000000-0000-4000-8000-000000000009';
 
     v_users jsonb := jsonb_build_array(
         jsonb_build_object(
@@ -103,6 +106,15 @@ declare
             'organisation_name', null,
             'department', 'Event Planning',
             'phone_number', '+65 9000 0008'
+        ),
+        jsonb_build_object(
+            'id', v_coordinator_lead_2_id,
+            'email', 'coordinator.lead2@connectsphere.dev',
+            'full_name', 'Daniel Foo',
+            'role', 'event_coordinator_lead',
+            'organisation_name', null,
+            'department', 'Event Planning',
+            'phone_number', '+65 9000 0009'
         )
     );
     v_user jsonb;
@@ -384,7 +396,7 @@ values
         '4K Projector',
         'projector',
         'High-brightness 4K laser projector for conference halls and auditoriums.',
-        4,
+        14,
         'active',
         '{"resolution": "3840x2160", "brightness_lumens": 7000}'::jsonb
     ),
@@ -393,7 +405,7 @@ values
         'Wireless Mics',
         'microphone',
         'Digital handheld wireless microphones with receivers.',
-        12,
+        24,
         'active',
         '{"channels": 2, "frequency_band": "UHF"}'::jsonb
     ),
@@ -402,7 +414,7 @@ values
         'PA Systems',
         'audio',
         'Portable public-address speaker systems with mixers and stands.',
-        3,
+        10,
         'active',
         '{"power_watts": 2000, "includes_mixer": true}'::jsonb
     ),
@@ -411,7 +423,7 @@ values
         'Stage Lighting',
         'lighting',
         'LED stage-lighting kits for presentations, performances, and ceremonies.',
-        8,
+        16,
         'active',
         '{"fixture_type": "LED", "control": "DMX"}'::jsonb
     ),
@@ -420,9 +432,90 @@ values
         'HDMI Switchers',
         'video',
         'Multi-input HDMI switchers for hybrid event production.',
-        6,
+        12,
         'active',
         '{"inputs": 4, "outputs": 2, "max_resolution": "4K60"}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-000000000006',
+        'Sound System',
+        'audio',
+        'Full sound system: line-array speakers, subwoofers and a digital mixing console.',
+        10,
+        'active',
+        '{"power_watts": 6000, "mixer_channels": 16}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-000000000007',
+        'Speaker Stands',
+        'audio',
+        'Adjustable tripod stands for PA and full-range speakers.',
+        22,
+        'active',
+        '{"max_height_m": 2.1, "max_load_kg": 50}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-000000000008',
+        'Whiteboards',
+        'presentation',
+        'Mobile double-sided whiteboards on lockable wheels, with markers and erasers.',
+        18,
+        'active',
+        '{"width_cm": 180, "height_cm": 90, "double_sided": true}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-000000000009',
+        'Flip Chart Stands',
+        'presentation',
+        'Easel flip chart stands with paper pads for workshops and breakouts.',
+        12,
+        'active',
+        '{"pad_size": "A1"}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-00000000000a',
+        'Projector Screens',
+        'projector',
+        'Portable tripod projection screens, 16:9.',
+        13,
+        'active',
+        '{"diagonal_inches": 120, "aspect_ratio": "16:9"}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-00000000000b',
+        'Lecterns',
+        'staging',
+        'Standing lecterns with a gooseneck microphone mount.',
+        11,
+        'active',
+        '{"height_cm": 115, "mic_mount": true}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-00000000000c',
+        'Extension Cords',
+        'power',
+        'Heavy-duty extension cords with Singapore Type G plugs.',
+        40,
+        'active',
+        '{"length_m": 10, "outlets": 4, "plug": "Type G"}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-00000000000d',
+        'Presentation Laptops',
+        'computer',
+        'Laptops preloaded with presentation software, with HDMI and USB-C adapters.',
+        15,
+        'active',
+        '{"os": "Windows 11", "ports": ["HDMI", "USB-C"]}'::jsonb
+    ),
+    (
+        'b0000000-0000-4000-8000-00000000000e',
+        'Wireless Presenters',
+        'presentation',
+        'Wireless slide clickers with laser pointers.',
+        20,
+        'active',
+        '{"range_m": 30, "laser": true}'::jsonb
     );
 
 insert into public.equipment_unavailability (

@@ -539,9 +539,11 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
 
 def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
     _visible_event(event_id, user_id, role)
-    return EventHistoryResponse(
-        entries=[EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
-    )
+    entries = [EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
+    entries += [EventHistoryEntry(kind="reassignment", **row) for row in repository.list_assignment_history(event_id)]
+    # Stable, so entries sharing a time keep the repository's order (the creation row last).
+    entries.sort(key=lambda entry: entry.at, reverse=True)
+    return EventHistoryResponse(entries=entries)
 
 
 def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventResponse:
@@ -599,16 +601,10 @@ def _venue_readiness(booking_statuses: list[str], affected: bool = False) -> Rea
     return ReadinessState.ready if "approved" in booking_statuses else ReadinessState.pending
 
 
-def _equipment_readiness(row: dict, reserved: set[str]) -> ReadinessState:
-    # [Assumption] REQUIREMENTS §6.21.1: no equipment asked for means nothing to
-    # wait on; otherwise ready once tech support has reserved some.
-    if not (row.get("preliminary_equipment_needs") or "").strip():
-        return ReadinessState.not_required
-    return ReadinessState.ready if row["id"] in reserved else ReadinessState.pending
-
-
 def technical_status(row: dict) -> ReadinessState:
-    """Single reader of technical status; SCRUM-24 replaces this with derived status."""
+    """Single reader of technical status. The column is SCRUM-24's derived status
+    (AC11), kept current by the database whenever a line, the exit tick or the
+    venue changes, so reading it is reading the derived value."""
     return ReadinessState(row["technical_readiness"])
 
 
@@ -622,8 +618,8 @@ def _action_kind(row: dict, resubmitted_at: str | None, venue_affected: bool = F
         # A resubmission is the organiser's answer to a return (QA-22, QA-77):
         # SCRUM-72's "clarification response", not a first review.
         return CoordinatorActionKind.resubmitted if resubmitted_at else CoordinatorActionKind.awaiting_review
-    # [Assumption] REQUIREMENTS §6.21.1: tech support marking technical readiness
-    # as `issue` is the one arrangement problem the system records today.
+    # REQUIREMENTS §6.21.1: technical status is Issue when tech support marked a
+    # line Not available (SCRUM-24 AC11).
     if status in ("planning", "safety_review", "confirmed") and technical_status(row) == ReadinessState.issue:
         return CoordinatorActionKind.arrangement_issue
     # `returned` is waiting on the organiser, not the coordinator.
@@ -646,7 +642,7 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
     resubmissions = repository.list_latest_resubmissions(under_review_ids)
     bookings = venues_service.booking_statuses_by_event(event_ids) if event_ids else {}
     affected = venues_service.affected_event_ids(event_ids) if event_ids else set()
-    reserved = equipment_service.reserved_event_ids(event_ids) if event_ids else set()
+    equipment = equipment_service.equipment_readiness_by_event(event_ids) if event_ids else {}
 
     action_items: list[CoordinatorActionItem] = []
     active_events: list[CoordinatorActiveEvent] = []
@@ -676,7 +672,7 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
                 + (["venue_affected"] if row["id"] in affected else []),
                 readiness=Readiness(
                     venue=_venue_readiness(bookings.get(row["id"], []), row["id"] in affected),
-                    equipment=_equipment_readiness(row, reserved),
+                    equipment=equipment.get(row["id"], ReadinessState.not_required),
                     technical=technical,
                 ),
             )
@@ -696,6 +692,9 @@ def _lead_event(row: dict) -> LeadEvent:
         expected_attendance=row.get("expected_attendance"),
         coordinator=row.get("coordinator"),
         assigned_at=row.get("assigned_at"),
+        submitted_at=row.get("submitted_at"),
+        layout_preference=row.get("layout_preference"),
+        facilities_required=row.get("facilities_required") or [],
         version=row["version"],
     )
 
@@ -707,18 +706,54 @@ def lead_dashboard(lead_id: str) -> LeadDashboard:
     lead_ids = repository.list_lead_ids()
     rows = [
         row
-        for row in repository.list_lead_events(ACTIVE_COORDINATOR_STATUSES)
+        for row in repository.list_lead_events(("submitted", *ACTIVE_COORDINATOR_STATUSES))
         if lead_scope.in_lead_scope(row, lead_id, lead_ids)
     ]
     counts = lead_scope.active_counts(rows)
     return LeadDashboard(
-        unassigned=[_lead_event(r) for r in rows if r.get("coordinator_id") is None],
+        unassigned=[
+            _lead_event(r)
+            for r in sorted(
+                (r for r in rows if r.get("coordinator_id") is None),
+                key=lambda r: r.get("submitted_at") or "",
+            )
+        ],
         active_events=[_lead_event(r) for r in rows if r.get("coordinator_id") is not None],
         coordinators=[
             LeadCoordinator(id=c["id"], full_name=c["full_name"], active_count=counts.get(c["id"], 0))
             for c in repository.list_coordinators()
         ],
     )
+
+
+ALREADY_ASSIGNED_MESSAGE = "This event is already assigned."
+
+
+def assign(event_id: str, lead_id: str, coordinator_id: str) -> EventResponse:
+    """A Lead assigns a coordinator to a queued event (SCRUM-12). Only a `submitted` event
+    can be assigned here; changing an assignment is `reassign` (story 81). The database
+    repeats the status check under a lock, so of two simultaneous assignments one wins."""
+    row = repository.get_lead_event(event_id)
+    if not row or row.get("status") == "draft":
+        raise EventNotFoundError()
+    if row.get("coordinator_id") is not None or row["status"] in ACTIVE_COORDINATOR_STATUSES:
+        raise EventConflictError(ALREADY_ASSIGNED_MESSAGE)
+    target_status = lifecycle.target("assign", row["status"])
+    target = repository.get_coordinator(coordinator_id)
+    if target is None:
+        raise CoordinatorNotEligibleError()
+    name = row["name"]
+    updated = repository.assign_event(
+        event_id, lead_id, coordinator_id,
+        from_statuses=lifecycle.allowed_from("assign"),
+        to_status=target_status.value,
+        reason=f"Assigned to {target['full_name']}",
+        notify_assigned=f'"{name}" has been assigned to you.',
+        notify_organiser=f'Your event "{name}" is now coordinated by {target["full_name"]}.',
+    )
+    if not updated:
+        raise EventConflictError(ALREADY_ASSIGNED_MESSAGE)
+    return _to_response(updated)
 
 
 def reassign(event_id: str, lead_id: str, coordinator_id: str, expected_version: int) -> EventResponse:
@@ -942,5 +977,6 @@ def safety_review(event_id: str) -> SafetyReviewResponse:
                    registration=dict(enabled=row["registration_enabled"], capacity=row.get("registration_capacity"),
                                      opens_at=row.get("registration_opens_at"), closes_at=row.get("registration_closes_at"))),
         venues=venues, equipment_lines=equipment_service.event_lines(event_id),
+        exit_confirmation=equipment_service.exit_confirmation(event_id),
         decisions=[SafetyDecision(**decision) for decision in repository.list_safety_decisions(event_id)],
     )

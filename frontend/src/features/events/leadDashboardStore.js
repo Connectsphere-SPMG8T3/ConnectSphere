@@ -7,7 +7,7 @@ const NETWORK_ERROR = "Unable to reach the server. Please try again.";
 
 /**
  * Backing store for the Event Coordinator Lead dashboard (CR-101): loads
- * `GET /events/dashboard/lead` and performs `POST /events/{id}/reassign`.
+ * `GET /events/dashboard/lead` and performs `POST /events/{id}/assign` (SCRUM-12) and `/reassign`.
  */
 export const useLeadDashboardStore = defineStore("leadDashboard", {
   state: () => ({
@@ -65,6 +65,24 @@ export const useLeadDashboardStore = defineStore("leadDashboard", {
         this.isLoading = false;
         this.hasSettled = true;
       }
+    },
+
+    // Assign a coordinator to a queued event (SCRUM-12). Shares the reassign flags: a Lead
+    // is only ever doing one of the two on a page.
+    async assign(eventId, coordinatorId) {
+      const auth = useAuthStore();
+      this.isReassigning = true;
+      this.reassignError = null;
+      try {
+        await auth.withSession((token) => eventsApi.assign(eventId, coordinatorId, token));
+      } catch (err) {
+        this.reassignError = err instanceof ApiError ? err.message : NETWORK_ERROR;
+        return false;
+      } finally {
+        this.isReassigning = false;
+      }
+      await this.load();
+      return true;
     },
 
     async reassign(eventId, coordinatorId, expectedVersion) {

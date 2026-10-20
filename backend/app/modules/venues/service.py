@@ -12,6 +12,7 @@ from app.core.exceptions import (
     BookingDecisionTextError,
     BookingNotFoundError,
     EventServiceUnavailableError,
+    InsufficientRoleError,
     NotAssignedCoordinatorError,
     VenueAlreadyActiveError,
     VenueAlreadyInactiveError,
@@ -21,7 +22,8 @@ from app.core.exceptions import (
 )
 from app.modules.events import service as events_service
 from app.modules.events.schemas import BookingReadiness, EventPlanningContext, SpaceRequirements
-from app.modules.venues import impact, repository, search
+from app.modules.auth.dependencies import CurrentUser
+from app.modules.venues import impact, repository, search, suitability
 from app.modules.venues.search import OCCUPYING_STATUSES
 from app.modules.venues.schemas import (
     BLOCK_REASON_LABELS,
@@ -52,6 +54,8 @@ from app.modules.venues.schemas import (
     VenueSearchResponse,
     VenueStaffDashboard,
     VenueReactivateRequest,
+    SuitabilityCode,
+    VenueRequirements,
     Period,
     VenueSummary,
     VenueUpdateRequest,
@@ -68,8 +72,99 @@ DASHBOARD_BOOKING_STATUSES = frozenset({"held", "re_review", "approved", "reject
 FINISHED_EVENT_STATUSES = frozenset({"completed", "cancelled"})
 
 
-def search_venues(criteria: VenueSearchCriteria) -> VenueSearchResponse:
-    """Evaluate every venue against the criteria (and the period, if given)."""
+def _suitability_requirements(criteria: VenueSearchCriteria, user: CurrentUser) -> VenueRequirements | None:
+    """What a suitability check judges venues against (SCRUM-18), or None for a
+    search that names no event.
+
+    The requirements come from the stored event or space, never from the
+    client's filters. Only the event's assigned coordinator, acting as
+    coordinator, may ask (AC10): 403 for any other active role or a coordinator
+    who isn't assigned, 404 for a missing event or space or a draft. A space
+    states its own pax, layout, facilities and window (AC11); whatever it leaves
+    out falls back to the event's.
+    """
+    if criteria.event_id is None and criteria.space_id is None:
+        return None
+    if user.role != "event_coordinator":
+        raise InsufficientRoleError(["event_coordinator"])
+    space = None
+    if criteria.space_id is not None:
+        event, space = events_service.assigned_space(str(criteria.space_id), user.id)
+        if criteria.event_id is not None and event["id"] != str(criteria.event_id):
+            raise events_service.EventNotFoundError()
+    else:
+        event = events_service.assigned_event(str(criteria.event_id), user.id)
+    return _requirements_from(event, space)
+
+
+def _requirements_from(event: dict, space: dict | None) -> VenueRequirements:
+    """What a requested space (else the whole event) needs from a venue: the
+    space's own pax, layout, facilities and window, with the event's as the
+    fallback for whatever the space leaves out (AC11, QA3-23)."""
+    space = space or {}
+    starts_at = space.get("starts_at") or event.get("starts_at")
+    ends_at = space.get("ends_at") or event.get("ends_at")
+    attendance = space.get("expected_pax")
+    return VenueRequirements(
+        expected_attendance=attendance if attendance is not None else event.get("expected_attendance"),
+        layout_preference=space.get("layout_preference") or event.get("layout_preference"),
+        facilities_required=space.get("facilities_required") or event.get("facilities_required") or [],
+        period=Period(starts_at=starts_at, ends_at=ends_at) if starts_at and ends_at else None,
+        accessibility_needs=event.get("accessibility_needs"),
+    )
+
+
+# `public.request_venue_booking*` already refuses these two, atomically and in
+# their own words (CR-97 AC10, SCRUM-64 AC2), so the check leaves them to it.
+DATABASE_REFUSED_CODES = frozenset({SuitabilityCode.capacity, SuitabilityCode.inactive})
+
+
+def _database_will_decide(event: dict, space: dict | None, replacing: bool) -> bool:
+    """True when `public.request_venue_booking*` will refuse this request for
+    its own reason, in its own words: the event isn't in Planning, or the space
+    (else the event) already holds a venue. The suitability check then stays out
+    of the way, so those refusals read as they always have (TC-BOOK-004, 005).
+    A replacement is the exception: it may come from a confirmed event and has
+    its own booking in the way, which the database sets aside."""
+    if replacing:
+        return False
+    if event["status"] != "planning":
+        return True
+    space_id = space["id"] if space else None
+    return any(
+        row["status"] in OCCUPYING_STATUSES
+        and (space_id is None or row.get("event_space_request_id") == space_id)
+        for row in repository.list_booking_statuses([event["id"]])
+    )
+
+
+def _require_suitable(venue: VenueSummary, requirements: VenueRequirements, acknowledged: bool) -> None:
+    """BR-R3 (SCRUM-18): refuse a request for an Unsuitable venue; one that is
+    Suitable with warnings goes through only once the coordinator has
+    acknowledged them. Enforced here, on the server, not by the dialog."""
+    result = suitability.check(venue, requirements)
+    hard = [r for r in result.reasons if r.severity == SuitabilitySeverity.unsuitable]
+    if hard:
+        ours = [r for r in hard if r.code not in DATABASE_REFUSED_CODES]
+        if ours:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This venue is unsuitable for this event: " + " ".join(r.message for r in ours),
+            )
+        return  # only what the database function refuses itself: let it
+    if result.reasons and not acknowledged:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This venue is suitable with warnings: " + " ".join(r.message for r in result.reasons)
+            + " Acknowledge the warnings to request it.",
+        )
+
+
+def search_venues(criteria: VenueSearchCriteria, user: CurrentUser) -> VenueSearchResponse:
+    """Evaluate every venue against the criteria (and the period, if given).
+    When the search names an event or space, each result also carries its
+    suitability for it, separate from availability (SCRUM-18)."""
+    requirements = _suitability_requirements(criteria, user)
     venues = repository.list_venues()
     period = criteria.period
     # Fetch one envelope wide enough for every venue, then evaluate each venue
@@ -82,6 +177,9 @@ def search_venues(criteria: VenueSearchCriteria) -> VenueSearchResponse:
     occupants = repository.list_occupants(envelope) if envelope is not None else {}
 
     evaluated = search.search(venues, criteria, occupants)
+    if requirements is not None:
+        for result in evaluated:
+            result.suitability = suitability.check(result.venue, requirements)
     excluded_count = sum(1 for r in evaluated if r.excluded)
     results = evaluated if criteria.include_excluded else [r for r in evaluated if not r.excluded]
 
@@ -646,6 +744,11 @@ def request_booking(body: VenueBookingCreate, coordinator_id: str) -> VenueBooki
         space = event["spaces"][0] if event.get("spaces") else None
     event_id = event["id"]
     space_id = space["id"] if space else None
+    if not _database_will_decide(event, space, bool(body.replaces_booking_id)):
+        venue = repository.get_venue(venue_id)
+        if venue is None:
+            raise VenueNotFoundError()
+        _require_suitable(venue, _requirements_from(event, space), body.acknowledge_warnings)
     notify_message = f'A venue booking was requested for "{event["name"]}".'
     replaces_id = str(body.replaces_booking_id) if body.replaces_booking_id else None
     extra = {"replaces_booking_id": replaces_id} if replaces_id else {}

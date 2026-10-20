@@ -164,20 +164,32 @@ def list_maintenance() -> list[MaintenanceRow]:
     return rows
 
 
-def list_reserved_event_ids(event_ids: Iterable[str], statuses: Iterable[str]) -> list[str]:
-    """The ids among `event_ids` that hold at least one reservation in `statuses`."""
-    ids = list(event_ids)
+@dataclass(frozen=True)
+class AvailabilityRow:
+    """One item's §6.16 availability over a window (SCRUM-24, D45)."""
+
+    equipment_id: str
+    total_quantity: int
+    outage_quantity: int
+    reserved_quantity: int
+    free_quantity: int
+
+
+def availability(equipment_ids: Iterable[str], start_at: datetime, end_at: datetime) -> list[AvailabilityRow]:
+    """Run `public.equipment_availability`: total minus the peak concurrent
+    outage and reservations over `[start_at, end_at)` (AV-R2). The reserve
+    function uses the same calculation, so the check and a reserve agree."""
+    ids = sorted({str(i) for i in equipment_ids})
     if not ids:
         return []
     response = (
         get_supabase_admin_client()
-        .table("equipment_reservations")
-        .select("event_id")
-        .in_("event_id", ids)
-        .in_("status", list(statuses))
+        .rpc("equipment_availability", {
+            "p_equipment_ids": ids, "p_start_at": start_at.isoformat(), "p_end_at": end_at.isoformat(),
+        })
         .execute()
     )
-    return [row["event_id"] for row in response.data or []]
+    return [AvailabilityRow(**row) for row in response.data or []]
 
 
 # --- SCRUM-45 equipment request lines -----------------------------------------
@@ -189,8 +201,8 @@ REQUESTABLE_EQUIPMENT_STATUSES = ("active", "maintenance")
 # because `equipment_requests` points at both `events` and `profiles`.
 REQUEST_LINE_SELECT = (
     "id, submission_id, event_id, equipment_id, quantity, technical_requirements, status, "
-    "requested_by, created_at, "
-    "equipment:equipment!equipment_requests_equipment_id_fkey(name), "
+    "technical_notes, not_available_reason, requested_by, created_at, "
+    "equipment:equipment!equipment_requests_equipment_id_fkey(name, equipment_type), "
     "requester:profiles!equipment_requests_requested_by_fkey(id, full_name), "
     "event:events!equipment_requests_event_id_fkey(name, starts_at, status)"
 )
@@ -241,14 +253,115 @@ def list_event_requests(event_id: str) -> list[dict]:
     return response.data or []
 
 
-def list_pending_requests() -> list[dict]:
-    """Every pending line across all events (tech support are a pool, AUTH-R5)."""
+def list_requests(statuses: list[str] | None = None) -> list[dict]:
+    """Lines across all events (tech support are a pool, AUTH-R5), oldest
+    first; only those in `statuses` when given. The pending queue asks for
+    `pending` and `re_review` (SCRUM-24 AC7); the requests page for all."""
+    query = get_supabase_admin_client().table("equipment_requests").select(REQUEST_LINE_SELECT)
+    if statuses is not None:
+        query = query.in_("status", list(statuses))
+    return query.order("created_at").execute().data or []
+
+
+# --- SCRUM-24 reservation ------------------------------------------------------
+# Each staff action is one database function that locks, decides, writes history
+# and notices, and answers an outcome code instead of raising.
+
+
+def _rpc_row(name: str, params: dict) -> dict:
+    data = get_supabase_admin_client().rpc(name, params).execute().data
+    if isinstance(data, list):
+        return data[0] if data else {}
+    return {"outcome": data} if isinstance(data, str) else data or {}
+
+
+def get_line(line_id: str) -> dict | None:
+    """A line's id, event and status, or None."""
     response = (
         get_supabase_admin_client()
         .table("equipment_requests")
-        .select(REQUEST_LINE_SELECT)
-        .eq("status", "pending")
-        .order("created_at")
+        .select("id, event_id, status")
+        .eq("id", line_id)
+        .limit(1)
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def reserve_line(line_id: str, actor_id: str) -> tuple[str, int | None, bool]:
+    """`(outcome, free_quantity, left_ready)` from `public.reserve_equipment_line`."""
+    row = _rpc_row("reserve_equipment_line", {"p_line_id": line_id, "p_actor_id": actor_id})
+    return row.get("outcome", ""), row.get("free_quantity"), bool(row.get("left_ready"))
+
+
+def mark_not_available(line_id: str, actor_id: str, reason: str) -> tuple[str, bool]:
+    row = _rpc_row("mark_equipment_line_not_available",
+                   {"p_line_id": line_id, "p_actor_id": actor_id, "p_reason": reason})
+    return row.get("outcome", ""), bool(row.get("left_ready"))
+
+
+def set_note(line_id: str, actor_id: str, note: str | None) -> str:
+    return _rpc_row("set_equipment_line_note",
+                    {"p_line_id": line_id, "p_actor_id": actor_id, "p_note": note}).get("outcome", "")
+
+
+def set_exit_confirmation(event_id: str, actor_id: str, confirmed: bool) -> tuple[str, bool]:
+    row = _rpc_row("set_exit_confirmation",
+                   {"p_event_id": event_id, "p_actor_id": actor_id, "p_confirmed": confirmed})
+    return row.get("outcome", ""), bool(row.get("left_ready"))
+
+
+def recheck_event(event_id: str, actor_id: str | None) -> tuple[str, int, bool]:
+    row = _rpc_row("recheck_event_reservations", {"p_event_id": event_id, "p_actor_id": actor_id})
+    return row.get("outcome", ""), row.get("flagged") or 0, bool(row.get("left_ready"))
+
+
+def get_event_technical(event_id: str) -> dict | None:
+    """The event fields the technical screens show, with the coordinator's and
+    the exit-tick confirmer's names."""
+    response = (
+        get_supabase_admin_client()
+        .table("events")
+        .select(
+            "id, name, status, coordinator_id, starts_at, ends_at, technical_readiness, exit_confirmed_at, "
+            "coordinator:profiles!events_coordinator_id_fkey(full_name), "
+            "exit_confirmer:profiles!events_exit_confirmed_by_fkey(full_name)"
+        )
+        .eq("id", event_id)
+        .limit(1)
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def list_technical_history(event_id: str) -> list[dict]:
+    """The event's technical history, newest first (AC13)."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_technical_history")
+        .select(
+            "id, request_id, action, from_status, to_status, detail, created_at, "
+            "actor:profiles!event_technical_history_actor_id_fkey(full_name), "
+            "line:equipment_requests!event_technical_history_request_id_fkey("
+            "quantity, equipment:equipment!equipment_requests_equipment_id_fkey(name))"
+        )
+        .eq("event_id", event_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
+def list_line_statuses(event_ids: Iterable[str]) -> list[dict]:
+    """`{event_id, status}` for every line on `event_ids`."""
+    ids = sorted({str(i) for i in event_ids})
+    if not ids:
+        return []
+    response = (
+        get_supabase_admin_client()
+        .table("equipment_requests")
+        .select("event_id, status")
+        .in_("event_id", ids)
         .execute()
     )
     return response.data or []

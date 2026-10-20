@@ -73,6 +73,8 @@ ACCOUNTS = {
 W7_STAFF_ACCOUNTS = {
     "safety_officer": "safety.officer@connectsphere.dev",
     "event_coordinator_lead": "coordinator.lead@connectsphere.dev",
+    # A second Lead (CR-101 AC5: one or more Leads, each seeing what they assigned).
+    "event_coordinator_lead_2": "coordinator.lead2@connectsphere.dev",
 }
 INVALID_CREDENTIALS = "Invalid email or password."
 INVALID_TOKEN = "Invalid or expired authentication token."
@@ -107,6 +109,7 @@ DB_SCRIPTS = [
     ("venue_booking_reject_checks.sql", "TC-BOOK-023"),
     ("venue_booking_approve_checks.sql", "TC-BOOK-056"),
     ("lead_assignment_checks.sql", "CR-101 (database half: assignment columns, reassign_event)"),
+    ("coordinator_assignment_checks.sql", "TC-ASSIGN-010 (SCRUM-12 database half: assign_event, exclusive Lead role)"),
     ("venue_deactivation_checks.sql", "TC-VENUE-070 (SCRUM-64 database half); D33"),
     ("booking_conflict_checks.sql", "TC-BOOK-040 (SCRUM-21 database half: occupied window, venue_conflicts)"),
     ("venue_block_flag_checks.sql", "TC-BOOK-043, 044 (CR-95: a block flags the bookings it overlaps; organiser notice)"),
@@ -114,6 +117,7 @@ DB_SCRIPTS = [
     ("venue_release_checks.sql", "TC-BOOK-046 (CR-95: release the original when its replacement is approved)"),
     ("venue_restore_checks.sql", "TC-BOOK-047 (CR-95: restore an affected booking)"),
     ("venue_block_create_checks.sql", "TC-BLOCK-008–013 (SCRUM-51 database half: refusals, history, flags, links, notices, RLS)"),
+    ("equipment_reservation_checks.sql", "TC-EQR-016–020, 022–025 (SCRUM-24 database half)"),
 ]
 
 
@@ -608,6 +612,8 @@ def _(ctx: Context) -> None:
 
 LEAD_DASHBOARD = "/events/dashboard/lead"
 LEAD_ACTIVE_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed"}
+# The Lead's queue also holds events waiting for a coordinator (SCRUM-12).
+LEAD_DASHBOARD_STATUSES = LEAD_ACTIVE_STATUSES | {"submitted"}
 UNKNOWN_EVENT = "e0000000-0000-4000-8000-0000000009ff"
 SOME_COORDINATOR = "a0000000-0000-4000-8000-000000000002"
 LEAD_FIXTURE_EVENT = "e0000000-0000-4000-8000-000000000201"  # supabase/seed.sql: under_review, assigned
@@ -620,7 +626,7 @@ def _(ctx: Context) -> None:
     body = response.json()
     expect(set(body) == {"unassigned", "active_events", "coordinators"}, f"unexpected fields: {sorted(body)}")
     listed = body["unassigned"] + body["active_events"]
-    stray = {event["status"] for event in listed} - LEAD_ACTIVE_STATUSES
+    stray = {event["status"] for event in listed} - LEAD_DASHBOARD_STATUSES
     expect(not stray, f"inactive statuses listed: {stray}")
     expect(all(event["coordinator"] is None for event in body["unassigned"]), "the queue holds an assigned event")
     expect(all(event["coordinator"] for event in body["active_events"]), "an active event has no coordinator")
@@ -658,12 +664,249 @@ def _(ctx: Context) -> None:
     expect_status(response, 404)
 
 
+@check("TC-LEAD-015", "With two Leads, both see the whole queue and each sees only the events in their own scope", needs_db=True)
+def _(ctx: Context) -> None:
+    # Read-only. The expectation is computed from the database (events.assigned_by) and compared
+    # with what each Lead's dashboard returns, so it does not depend on which events exist.
+    leads = {
+        row["email"]: row["id"]
+        for row in db_query(
+            "select p.email, p.id from public.profiles p join public.user_roles ur on ur.profile_id = p.id "
+            "where ur.role = 'event_coordinator_lead'"
+        )
+    }
+    first, second = W7_STAFF_ACCOUNTS["event_coordinator_lead"], W7_STAFF_ACCOUNTS["event_coordinator_lead_2"]
+    expect(first in leads and second in leads, f"both Lead accounts must exist (found {sorted(leads)}): see supabase/seed.sql")
+    statuses = ", ".join(f"'{status}'" for status in sorted(LEAD_DASHBOARD_STATUSES))
+    events = db_query(f"select id, coordinator_id, assigned_by from public.events where status in ({statuses})")
+
+    def expected(lead_id: str) -> tuple[set[str], set[str]]:
+        queue = {e["id"] for e in events if e["coordinator_id"] is None}
+        scope = {
+            e["id"]
+            for e in events
+            if e["coordinator_id"] is not None
+            and (e["assigned_by"] is None or e["assigned_by"] == lead_id or e["assigned_by"] not in leads.values())
+        }
+        return queue, scope
+
+    seen = {}
+    for role, email in (("event_coordinator_lead", first), ("event_coordinator_lead_2", second)):
+        response = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=ctx.shared(role).headers)
+        expect_status(response, 200)
+        body = response.json()
+        queue, scope = expected(leads[email])
+        got_queue = {e["event_id"] for e in body["unassigned"]}
+        got_scope = {e["event_id"] for e in body["active_events"]}
+        expect(got_queue == queue, f"{email}: queue differs. missing {queue - got_queue}, extra {got_queue - queue}")
+        expect(got_scope == scope, f"{email}: scope differs. missing {scope - got_scope}, extra {got_scope - scope}")
+        seen[email] = got_queue
+    expect(seen[first] == seen[second], "the two Leads do not see the same unassigned queue")
+
+
 @check("TC-LEAD-005", "The Lead dashboard and reassign without a token are 401")
 def _(ctx: Context) -> None:
     expect_status(ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}"), 401)
     expect_status(
         ctx.client.post(f"{ctx.api}/events/{UNKNOWN_EVENT}/reassign", json={"coordinator_id": SOME_COORDINATOR, "expected_version": 1}), 401
     )
+
+
+# --- Coordinator assignment (SCRUM-12) --------------------------------------
+# Every check works on its own throwaway events (named "live-check ...", deleted when the run
+# ends, with their history and notifications), never on seeded ones.
+
+SECOND_COORDINATOR = "a0000000-0000-4000-8000-000000000008"
+ASSIGN_OTHER_ROLES = ("event_organiser", "event_coordinator", "venue_staff", "tech_support", "attendee", "safety_officer")
+
+
+def queued_event(ctx: Context, case: str) -> str:
+    return throwaway_event(ctx, case, "2031-08-12 09:00+08", "2031-08-12 17:00+08", status="submitted", assigned=False)
+
+
+def assign(ctx: Context, session: Session, event_id: str, coordinator_id: str = SOME_COORDINATOR) -> httpx.Response:
+    return ctx.client.post(f"{ctx.api}/events/{event_id}/assign", headers=session.headers, json={"coordinator_id": coordinator_id})
+
+
+def event_row(event_id: str) -> dict:
+    return db_query(f"select status, coordinator_id, assigned_by, assigned_at from public.events where id = '{event_id}'")[0]
+
+
+def lead_session(ctx: Context, role: str = "event_coordinator_lead") -> Session:
+    return ctx.shared(role)
+
+
+@check("TC-ASSIGN-001", "A submitted event joins the queue with no coordinator and no notice", needs_db=True)
+def _(ctx: Context) -> None:
+    organiser = ctx.shared("event_organiser")
+    created = ctx.client.post(
+        f"{ctx.api}/events",
+        headers=organiser.headers,
+        json={
+            "name": f"{THROWAWAY_EVENT_PREFIX}{ctx.run_id} 12-001",
+            "purpose": "Live check",
+            "starts_at": "2031-08-12T09:00:00+08:00",
+            "ends_at": "2031-08-12T17:00:00+08:00",
+            "expected_attendance": 40,
+            "layout_preference": "theatre",
+            "facilities_required": ["projector"],
+        },
+    )
+    expect_status(created, 201)
+    event_id = created.json()["id"]
+    submitted = ctx.client.post(f"{ctx.api}/events/{event_id}/submit", headers=organiser.headers)
+    expect_status(submitted, 200)
+    expect(submitted.json()["status"] == "submitted", f"status is {submitted.json()['status']}, expected submitted")
+    row = event_row(event_id)
+    expect(row["coordinator_id"] is None, "a coordinator was set on submission")
+    notified = db_query(f"select count(*) as n from public.notifications where event_id = '{event_id}' and type = 'event_assigned'")
+    expect(int(notified[0]["n"]) == 0, "a coordinator was notified on submission")
+    queue = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead_session(ctx).headers).json()["unassigned"]
+    expect(event_id in {e["event_id"] for e in queue}, "the submitted event is not in the Lead's queue")
+
+
+@check("TC-ASSIGN-002", "The queue is oldest submission first and carries the basic information", needs_db=True)
+def _(ctx: Context) -> None:
+    older, newer = queued_event(ctx, "12-002a"), queued_event(ctx, "12-002b")
+    db_query(f"update public.events set submitted_at = now() - interval '2 days', expected_attendance = 55, layout_preference = 'theatre' where id = '{older}'")
+    db_query(f"update public.events set submitted_at = now() - interval '1 day' where id = '{newer}'")
+    queue = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead_session(ctx).headers).json()["unassigned"]
+    ids = [e["event_id"] for e in queue]
+    expect(older in ids and newer in ids, "the throwaway events are not in the queue")
+    expect(ids.index(older) < ids.index(newer), "the older submission is not listed first")
+    stamps = [e["submitted_at"] for e in queue if e["submitted_at"]]
+    expect(stamps == sorted(stamps), "the queue is not in submission order")
+    entry = queue[ids.index(older)]
+    expect(entry["event_name"] and entry["starts_at"] and entry["expected_attendance"] == 55 and entry["layout_preference"] == "theatre",
+           f"basic information missing: {entry}")
+
+
+@check("TC-ASSIGN-003", "The Lead assigns a coordinator: status, who and when, history, notices, off the queue", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-003")
+    lead = lead_session(ctx)
+    response = assign(ctx, lead, event_id)
+    expect_status(response, 200)
+    row = event_row(event_id)
+    expect(row["status"] == "under_review" and row["coordinator_id"] == SOME_COORDINATOR, f"unexpected row: {row}")
+    expect(row["assigned_by"] == lead.body["profile"]["id"] and row["assigned_at"], "assigner or time not recorded")
+    history = db_query(
+        f"select h.actor_id, h.reason from public.event_status_history h where h.event_id = '{event_id}' "
+        "and h.from_status = 'submitted' and h.to_status = 'under_review'"
+    )
+    expect(len(history) == 1 and history[0]["actor_id"] == lead.body["profile"]["id"] and "Assigned to" in history[0]["reason"],
+           f"history row wrong: {history}")
+    notices = db_query(f"select recipient_id from public.notifications where event_id = '{event_id}'")
+    recipients = sorted(n["recipient_id"] for n in notices)
+    expect(recipients == sorted([SOME_COORDINATOR, "a0000000-0000-4000-8000-000000000001"]), f"notified {recipients}")
+    queue = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead.headers).json()["unassigned"]
+    expect(event_id not in {e["event_id"] for e in queue}, "the assigned event is still in the queue")
+
+
+@check("TC-ASSIGN-004", "Only an Event Coordinator can be assigned", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-004")
+    lead = lead_session(ctx)
+    for target in (lead.body["profile"]["id"], "a0000000-0000-4000-8000-000000000003", UNKNOWN_EVENT):
+        response = assign(ctx, lead, event_id, target)
+        expect_status(response, 422)
+        expect_detail(response, "That person is not an Event Coordinator.")
+    expect(event_row(event_id)["status"] == "submitted", "a refused assignment changed the event")
+
+
+@check("TC-ASSIGN-005", "An assigned event cannot be assigned again; two Leads at once leave one winner", needs_db=True)
+def _(ctx: Context) -> None:
+    taken = queued_event(ctx, "12-005a")
+    lead = lead_session(ctx)
+    expect_status(assign(ctx, lead, taken), 200)
+    for target in (SOME_COORDINATOR, SECOND_COORDINATOR):
+        again = assign(ctx, lead, taken, target)
+        expect_status(again, 409)
+        expect_detail(again, "This event is already assigned.")
+    expect(event_row(taken)["coordinator_id"] == SOME_COORDINATOR, "the coordinator changed")
+
+    contested = queued_event(ctx, "12-005b")
+    lead_two = lead_session(ctx, "event_coordinator_lead_2")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(assign, ctx, lead, contested, SOME_COORDINATOR)
+        second = pool.submit(assign, ctx, lead_two, contested, SECOND_COORDINATOR)
+        codes = sorted([first.result().status_code, second.result().status_code])
+    expect(codes == [200, 409], f"expected one 200 and one 409, got {codes}")
+
+
+@check("TC-ASSIGN-006", "A draft is not in the queue and cannot be assigned", needs_db=True)
+def _(ctx: Context) -> None:
+    draft = throwaway_event(ctx, "12-006", "2031-08-12 09:00+08", "2031-08-12 17:00+08", status="draft", assigned=False)
+    lead = lead_session(ctx)
+    expect_status(assign(ctx, lead, draft), 404)
+    queue = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead.headers).json()
+    listed = {e["event_id"] for e in queue["unassigned"] + queue["active_events"]}
+    expect(draft not in listed, "a draft is on the Lead's dashboard")
+
+
+@check("TC-ASSIGN-007", "Every other active role is refused the assignment and the queue", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-007")
+    for role in ASSIGN_OTHER_ROLES:
+        session = ctx.shared(role)
+        for response in (assign(ctx, session, event_id), ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=session.headers)):
+            expect(response.status_code == 403, f"{role} got HTTP {response.status_code}, expected 403")
+    expect(event_row(event_id)["status"] == "submitted", "a refused assignment changed the event")
+
+
+@check("TC-ASSIGN-008", "Only the assigned coordinator can manage the event", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-008")
+    expect_status(assign(ctx, lead_session(ctx), event_id), 200)
+    other_email = db_query(f"select email from public.profiles where id = '{SECOND_COORDINATOR}'")[0]["email"]
+    other = ctx.login("event_coordinator", email=other_email)
+    denied = ctx.client.post(f"{ctx.api}/events/{event_id}/approve", headers=other.headers)
+    expect(denied.status_code == 403, f"another coordinator got HTTP {denied.status_code}, expected 403")
+    allowed = ctx.client.post(f"{ctx.api}/events/{event_id}/approve", headers=ctx.shared("event_coordinator").headers)
+    expect_status(allowed, 200)
+
+
+@check("TC-ASSIGN-009", "A Lead cannot act on an event as its coordinator", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-009")
+    expect_status(assign(ctx, lead_session(ctx), event_id), 200)
+    lead = lead_session(ctx)
+    bodies = {
+        "approve": None,
+        "reject": {"reason": "Live check"},
+        "return": {"message": "Live check", "flagged_fields": []},
+        "send-for-safety-check": None,
+    }
+    for action, body in bodies.items():
+        response = ctx.client.post(f"{ctx.api}/events/{event_id}/{action}", headers=lead.headers, json=body)
+        expect(response.status_code == 403, f"Lead got HTTP {response.status_code} on {action}, expected 403")
+    expect(event_row(event_id)["status"] == "under_review", "the event moved")
+
+
+@check("TC-ASSIGN-016", "A reassignment shows in the event's history with who, from and to; an assignment from the queue shows once", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-016")
+    lead = lead_session(ctx)
+    expect_status(assign(ctx, lead, event_id), 200)
+    version = db_query(f"select version from public.events where id = '{event_id}'")[0]["version"]
+    moved = ctx.client.post(
+        f"{ctx.api}/events/{event_id}/reassign", headers=lead.headers,
+        json={"coordinator_id": SECOND_COORDINATOR, "expected_version": version},
+    )
+    expect_status(moved, 200)
+    # The organiser reads the history; the new coordinator would too.
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=ctx.shared("event_organiser").headers)
+    expect_status(history, 200)
+    entries = history.json()["entries"]
+    reassigned = [e for e in entries if e["kind"] == "reassignment"]
+    expect(len(reassigned) == 1, f"expected one reassignment entry, got {len(reassigned)}")
+    entry = reassigned[0]
+    expect(entry["actor"]["id"] == lead.body["profile"]["id"], "the reassigning Lead is not recorded")
+    expect(entry["from_coordinator"]["id"] == SOME_COORDINATOR and entry["to_coordinator"]["id"] == SECOND_COORDINATOR,
+           f"from/to wrong: {entry}")
+    assigned = [e for e in entries if e["kind"] == "status" and e["from_status"] == "submitted" and e["to_status"] == "under_review"]
+    expect(len(assigned) == 1, "the assignment from the queue should appear exactly once, as a status change")
+    expect(entries[0]["kind"] == "reassignment", "history is not newest first")
 
 
 # --- Sign-up (SCRUM-80) ----------------------------------------------------
@@ -723,6 +966,9 @@ def delete_throwaway_bookings() -> int:
     db_query(f"delete from public.venue_bookings where event_id in (select id from public.events where name like {like})")
     db_query(f"delete from public.venue_blocks where notes = '{THROWAWAY_BLOCK_NOTE}'")
     deleted = len(db_query(f"delete from public.events where name like {like} returning id"))
+    # SCRUM-24's throwaway equipment, after its events' lines (that foreign key
+    # restricts); its reservations cascade.
+    db_query(f"delete from public.equipment where name like {like}")
     # CR-94's throwaway venues: their layouts, facilities and edit history cascade.
     db_query(f"delete from public.venues where name like {like}")
     return deleted
@@ -2040,7 +2286,7 @@ def _(ctx: Context) -> None:
 
 # --- Equipment requests (SCRUM-45) ----------------------------------------
 
-PROJECTOR_ID = "b0000000-0000-4000-8000-000000000001"  # supabase/seed.sql: 4K Projector, 4 in total
+PROJECTOR_ID = "b0000000-0000-4000-8000-000000000001"  # supabase/seed.sql: 4K Projector, 14 in total
 EQUIPMENT_REQUESTS = "/equipment/requests"
 LIVE_CHECK_NOTE = "live-check SCRUM-45"  # marks the lines TC-EQR-002 writes, so only those are deleted
 
@@ -2078,14 +2324,14 @@ def _(ctx: Context) -> None:
     coordinator = ctx.shared("event_coordinator")
     note = f"{LIVE_CHECK_NOTE} {ctx.run_id}: HDMI to the lectern"
     try:
-        # 5 is above the 4 that exist: EQ-R1 allows it.
+        # 15 is above the 14 that exist: EQ-R1 allows it.
         response = submit_equipment(ctx, coordinator, PLANNING_FIXTURE, [
-            {"equipment_id": PROJECTOR_ID, "quantity": 5, "technical_requirements": note},
+            {"equipment_id": PROJECTOR_ID, "quantity": 15, "technical_requirements": note},
         ])
         expect_status(response, 201)
         [line] = response.json()["lines"]
         expect(line["status"] == "pending", f"status is {line['status']!r}")
-        expect(line["quantity"] == 5, f"quantity is {line['quantity']}")
+        expect(line["quantity"] == 15, f"quantity is {line['quantity']}")
 
         mine = ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/event/{PLANNING_FIXTURE}", headers=coordinator.headers)
         expect_status(mine, 200)
@@ -2099,7 +2345,7 @@ def _(ctx: Context) -> None:
         expect(seen[0]["event_name"], "tech support line has no event name")
 
         stored = db_query(f"select status::text as status, quantity from public.equipment_requests where id = '{line['id']}'")
-        expect(stored == [{"status": "pending", "quantity": 5}], f"stored row is {stored}")
+        expect(stored == [{"status": "pending", "quantity": 15}], f"stored row is {stored}")
     finally:
         delete_live_check_lines()
 
@@ -2135,6 +2381,170 @@ def _(ctx: Context) -> None:
     response = ctx.client.post(f"{ctx.api}/auth/active-role", json={"role": "venue_staff"}, headers=session.headers)
     expect_status(response, 200)
     expect_status(submit_equipment(ctx, session, PLANNING_FIXTURE, item), 403)
+
+
+# --- SCRUM-24 equipment reservation -------------------------------------------
+# Each check uses its own "live-check equipment" item on throwaway 2031 events,
+# so seeded stock is never reserved. The items (and, by cascade, their
+# reservations) are deleted with the throwaway events.
+
+THROWAWAY_EQUIPMENT_PREFIX = "live-check equipment "
+
+
+def throwaway_equipment(ctx: Context, case: str, quantity: int) -> str:
+    rows = db_query(
+        "insert into public.equipment (name, equipment_type, total_quantity, status) values "
+        f"('{THROWAWAY_EQUIPMENT_PREFIX}{ctx.run_id} {case}', 'live-check', {quantity}, 'active') returning id"
+    )
+    return rows[0]["id"]
+
+
+def throwaway_line(event_id: str, equipment_id: str, quantity: int) -> str:
+    rows = db_query(
+        "insert into public.equipment_requests (event_id, equipment_id, submission_id, quantity, requested_by) values "
+        f"('{event_id}', '{equipment_id}', gen_random_uuid(), {quantity}, '{COORDINATOR_ID}') returning id"
+    )
+    return rows[0]["id"]
+
+
+def reserve(ctx: Context, session: Session, line_id: str) -> httpx.Response:
+    return ctx.client.post(f"{ctx.api}{EQUIPMENT_REQUESTS}/{line_id}/reserve", headers=session.headers)
+
+
+@check("TC-EQR-017", "Tech support reserve a pending line; it is linked, Reserved, and the coordinator is told", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EQR017", "2031-08-01 09:00+08", "2031-08-01 12:00+08")
+    item = throwaway_equipment(ctx, "017", 5)
+    line_id = throwaway_line(event_id, item, 3)
+
+    response = reserve(ctx, ctx.shared("tech_support"), line_id)
+    expect_status(response, 200)
+    expect(response.json() == {"line_id": line_id, "status": "reserved", "free_quantity": 2}, response.text)
+    [row] = db_query(
+        "select count(*)::int as n from public.equipment_reservations "
+        f"where request_line_id = '{line_id}' and event_id = '{event_id}' and status = 'confirmed' "
+        "and start_at = '2031-08-01 09:00+08' and end_at = '2031-08-01 12:00+08'"
+    )
+    expect(row["n"] == 1, "the reservation is not linked to its line, event and window")
+    [notice] = db_query(
+        "select count(*)::int as n from public.notifications "
+        f"where event_id = '{event_id}' and recipient_id = '{COORDINATOR_ID}' and type = 'equipment_reserved'"
+    )
+    expect(notice["n"] == 1, f"the coordinator got {notice['n']} reserve notices")
+    lines = ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/event/{event_id}", headers=ctx.shared("event_coordinator").headers)
+    expect_status(lines, 200)
+    expect(lines.json()["lines"][0]["status"] == "reserved", "the coordinator does not see Reserved")
+    expect(lines.json()["technical_status"] == "pending", "reserved but unticked is not Pending")
+
+
+@check("TC-EQR-018", "An overlapping event is refused with how many are free; another time is unaffected", needs_db=True)
+def _(ctx: Context) -> None:
+    first = throwaway_event(ctx, "EQR018-a", "2031-08-02 09:00+08", "2031-08-02 12:00+08")
+    overlapping = throwaway_event(ctx, "EQR018-b", "2031-08-02 11:00+08", "2031-08-02 13:00+08")
+    back_to_back = throwaway_event(ctx, "EQR018-c", "2031-08-02 12:00+08", "2031-08-02 14:00+08")
+    item = throwaway_equipment(ctx, "018", 4)
+    tech = ctx.shared("tech_support")
+
+    expect_status(reserve(ctx, tech, throwaway_line(first, item, 3)), 200)
+    refused_line = throwaway_line(overlapping, item, 2)
+    refused = reserve(ctx, tech, refused_line)
+    expect_status(refused, 409)
+    expect(refused.json() == {
+        "detail": "Not enough available: 1 free for this event's time. The line stays Pending.", "free_quantity": 1,
+    }, refused.text)
+    [line] = db_query(f"select status::text as status from public.equipment_requests where id = '{refused_line}'")
+    expect(line["status"] == "pending", f"the refused line is {line['status']}")
+    expect_status(reserve(ctx, tech, throwaway_line(back_to_back, item, 4)), 200)
+
+
+@check("TC-EQR-019", "Not available needs a reason; the coordinator sees it and the notes, the organiser can't", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EQR019", "2031-08-03 09:00+08", "2031-08-03 12:00+08")
+    line_id = throwaway_line(event_id, throwaway_equipment(ctx, "019", 2), 1)
+    tech = ctx.shared("tech_support")
+    url = f"{ctx.api}{EQUIPMENT_REQUESTS}/{line_id}"
+
+    expect_status(ctx.client.post(f"{url}/not-available", headers=tech.headers, json={"reason": "  "}), 422)
+    expect_status(ctx.client.put(f"{url}/notes", headers=tech.headers, json={"note": "live check note"}), 200)
+    expect_status(ctx.client.post(f"{url}/not-available", headers=tech.headers, json={"reason": "Only 0 in stock"}), 200)
+    body = ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/event/{event_id}", headers=ctx.shared("event_coordinator").headers).json()
+    [line] = body["lines"]
+    expect((line["status"], line["not_available_reason"], line["technical_notes"])
+           == ("rejected", "Only 0 in stock", "live check note"), f"coordinator sees {line}")
+    expect(body["technical_status"] == "issue", f"technical status is {body['technical_status']}")
+    organiser = ctx.shared("event_organiser")
+    expect_status(ctx.client.get(f"{ctx.api}{EQUIPMENT_REQUESTS}/event/{event_id}", headers=organiser.headers), 403)
+    expect_status(ctx.client.get(f"{ctx.api}/equipment/events/{event_id}/technical", headers=organiser.headers), 403)
+
+
+@check("TC-EQR-021", "Two tech staff reserving the last units at once: exactly one succeeds", needs_db=True)
+def _(ctx: Context) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    left = throwaway_event(ctx, "EQR021-a", "2031-08-04 09:00+08", "2031-08-04 12:00+08")
+    right = throwaway_event(ctx, "EQR021-b", "2031-08-04 10:00+08", "2031-08-04 13:00+08")
+    item = throwaway_equipment(ctx, "021", 2)
+    lines = [throwaway_line(left, item, 2), throwaway_line(right, item, 2)]
+    sessions = [ctx.login("tech_support"), ctx.login("tech_support")]
+
+    # Separate clients and sessions, so the two reserves really are in flight together.
+    def fire(pair) -> int:
+        line_id, session = pair
+        with httpx.Client(timeout=30) as client:
+            return client.post(f"{ctx.api}{EQUIPMENT_REQUESTS}/{line_id}/reserve", headers=session.headers).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes = sorted(pool.map(fire, zip(lines, sessions)))
+    expect(codes == [200, 409], f"expected one 200 and one 409, got {codes}")
+    [row] = db_query(
+        "select coalesce(sum(quantity), 0)::int as held from public.equipment_reservations "
+        f"where equipment_id = '{item}' and status = 'confirmed'"
+    )
+    expect(row["held"] == 2, f"{row['held']} units are reserved of 2")
+
+
+@check("TC-EQR-022", "Every line Reserved plus the exit tick is Ready, with who ticked it; a new line clears it", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EQR022", "2031-08-05 09:00+08", "2031-08-05 12:00+08")
+    item = throwaway_equipment(ctx, "022", 3)
+    tech = ctx.shared("tech_support")
+    technical = f"{ctx.api}/equipment/events/{event_id}/technical"
+    expect_status(reserve(ctx, tech, throwaway_line(event_id, item, 1)), 200)
+
+    expect_status(ctx.client.put(f"{ctx.api}/equipment/events/{event_id}/exit-confirmation",
+                                 headers=tech.headers, json={"confirmed": True}), 204)
+    body = ctx.client.get(technical, headers=tech.headers).json()
+    expect(body["technical_status"] == "ready", f"technical status is {body['technical_status']}")
+    expect(body["exit_confirmation"] and body["exit_confirmation"]["confirmed_by_name"],
+           f"no confirmer: {body['exit_confirmation']}")
+    expect(any(e["action"] == "technical_status" and e["to_status"] == "ready" and e["actor_name"]
+               for e in body["history"]), "the change to Ready is not in history with who made it")
+
+    throwaway_line(event_id, item, 1)
+    body = ctx.client.get(technical, headers=tech.headers).json()
+    expect(body["exit_confirmation"] is None, "adding a line did not clear the exit tick")
+    expect(body["technical_status"] == "pending", f"technical status is {body['technical_status']}")
+
+
+@check("TC-EQR-026", "Only Technical Support reserve, mark, annotate and tick; every other role gets 403", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EQR026", "2031-08-06 09:00+08", "2031-08-06 12:00+08")
+    line_id = throwaway_line(event_id, throwaway_equipment(ctx, "026", 2), 1)
+    calls = [
+        ("POST", f"{EQUIPMENT_REQUESTS}/{line_id}/reserve", None),
+        ("POST", f"{EQUIPMENT_REQUESTS}/{line_id}/not-available", {"reason": "x"}),
+        ("PUT", f"{EQUIPMENT_REQUESTS}/{line_id}/notes", {"note": "x"}),
+        ("PUT", f"/equipment/events/{event_id}/exit-confirmation", {"confirmed": True}),
+        ("GET", f"/equipment/events/{event_id}/technical", None),
+    ]
+    roles = [r for r in ACCOUNTS if r != "tech_support"] + list(W7_STAFF_ACCOUNTS)
+    for role in roles:
+        session = ctx.shared(role)
+        for method, path, body in calls:
+            response = ctx.client.request(method, f"{ctx.api}{path}", headers=session.headers, json=body)
+            expect(response.status_code == 403, f"{role} {method} {path} answered {response.status_code}")
+    [line] = db_query(f"select status::text as status from public.equipment_requests where id = '{line_id}'")
+    expect(line["status"] == "pending", f"a refused role changed the line to {line['status']}")
 
 
 def expect_field_error(response: httpx.Response, field_name: str, msg: str | None = None) -> None:
@@ -2373,6 +2783,140 @@ def _(ctx: Context) -> None:
         f"{ctx.api}/venue-bookings/{MISSING_EVENT}/mark-revised",
         headers=ctx.shared("event_coordinator").headers,
     ), 404)
+
+
+# --- Venue suitability checking (SCRUM-18) ---------------------------------------
+
+def suitability_search(ctx: Context, session: Session, **params):
+    return ctx.client.get(f"{ctx.api}/venues", headers=session.headers,
+                          params={"include_excluded": "true", **params})
+
+
+def suitability_of(response: httpx.Response, venue_id: str) -> dict:
+    expect_status(response, 200)
+    found = [r for r in response.json()["results"] if r["venue"]["id"] == venue_id]
+    expect(len(found) == 1, f"venue {venue_id} appears {len(found)} times")
+    return found[0]["suitability"]
+
+
+@check("TC-SUIT-001", "A space is judged on its own attendance, not the event's (AC1, AC2, AC11)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "SUIT-001", "2031-07-10 09:00+08", "2031-07-10 12:00+08")
+    db_query(f"update public.events set expected_attendance = 500 where id = '{event_id}'")
+    fits = throwaway_space(event_id, "Breakout", pax=60, layout="classroom")
+    too_big = throwaway_space(event_id, "Workshop", pax=61, layout="classroom")
+    coordinator = ctx.shared("event_coordinator")
+
+    passing = suitability_of(suitability_search(ctx, coordinator, space_id=fits), INNOVATION_LAB)
+    expect("capacity" not in {r["code"] for r in passing["reasons"]},
+           f"60 people in a 60-seat classroom failed: {passing['reasons']}")
+    failing = suitability_of(suitability_search(ctx, coordinator, space_id=too_big), INNOVATION_LAB)
+    expect(failing["verdict"] == "unsuitable", f"verdict {failing['verdict']}")
+    expect("Capacity 60 is below the expected attendance of 61." in [r["message"] for r in failing["reasons"]],
+           f"reasons {failing['reasons']}")
+
+
+@check("TC-SUIT-002", "A missing facility and an inactive venue are Unsuitable and named (AC3, AC4, AC7)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "SUIT-002", "2031-07-11 09:00+08", "2031-07-11 12:00+08")
+    db_query(f"update public.events set expected_attendance = 10, facilities_required = '{{projector}}' "
+             f"where id = '{event_id}'")
+    bare = throwaway_venue(ctx, "SUIT-002 bare")
+    closed = throwaway_venue(ctx, "SUIT-002 closed")
+    db_query(f"update public.venues set is_active = false, inactive_reason = 'permanently_closed' where id = '{closed}'")
+    coordinator = ctx.shared("event_coordinator")
+
+    response = suitability_search(ctx, coordinator, event_id=event_id)
+    missing = suitability_of(response, bare)
+    expect(missing["verdict"] == "unsuitable", f"verdict {missing['verdict']}")
+    expect("Missing facilities this event needs: projector." in [r["message"] for r in missing["reasons"]],
+           f"reasons {missing['reasons']}")
+    inactive = suitability_of(response, closed)
+    expect(inactive["verdict"] == "unsuitable" and inactive["reasons"][0]["code"] == "inactive",
+           f"inactive venue reads {inactive}")
+
+
+@check("TC-SUIT-003", "Only the assigned coordinator, acting as coordinator, can run the check (AC10)", needs_db=True)
+def _(ctx: Context) -> None:
+    mine = throwaway_event(ctx, "SUIT-003 mine", "2031-07-12 09:00+08", "2031-07-12 12:00+08")
+    unassigned = throwaway_event(ctx, "SUIT-003 unassigned", "2031-07-12 09:00+08", "2031-07-12 12:00+08",
+                                 assigned=False)
+    space = throwaway_space(mine, "Room", pax=10)
+
+    for role in ("venue_staff", "event_organiser", "tech_support", "attendee"):
+        for params in ({"event_id": mine}, {"space_id": space}):
+            expect_status(suitability_search(ctx, ctx.shared(role), **params), 403)
+    coordinator = ctx.shared("event_coordinator")
+    expect_status(suitability_search(ctx, coordinator, event_id=unassigned), 403)
+    expect_status(suitability_search(ctx, coordinator, event_id=mine), 200)
+    expect_status(ctx.client.get(f"{ctx.api}/venues", headers=ctx.shared("venue_staff").headers), 200)
+
+
+@check("TC-SUIT-004", "Availability is reported separately from suitability (AC8)", needs_db=True)
+def _(ctx: Context) -> None:
+    holder = throwaway_event(ctx, "SUIT-004 holder", "2031-07-13 09:00+08", "2031-07-13 12:00+08")
+    expect_status(ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=ctx.shared("event_coordinator").headers,
+                                  json={"event_id": holder, "venue_id": HERITAGE_HALL}), 201)
+    wanting = throwaway_event(ctx, "SUIT-004 wanting", "2031-07-13 09:00+08", "2031-07-13 12:00+08")
+    db_query(f"update public.events set expected_attendance = 10 where id = '{wanting}'")
+
+    response = suitability_search(ctx, ctx.shared("event_coordinator"), event_id=wanting,
+                                  starts_at="2031-07-13T09:00:00+08:00", ends_at="2031-07-13T12:00:00+08:00")
+    expect_status(response, 200)
+    hall = next(r for r in response.json()["results"] if r["venue"]["id"] == HERITAGE_HALL)
+    expect(hall["availability"] == "unavailable", f"availability {hall['availability']}")
+    expect(hall["suitability"]["verdict"] in ("suitable", "suitable_with_warnings"),
+           f"a held venue read {hall['suitability']['verdict']}")
+
+
+@check("TC-SUIT-010", "A request for an Unsuitable venue is refused and leaves no hold (BR-R3)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "SUIT-007", "2031-07-14 09:00+08", "2031-07-14 12:00+08")
+    db_query(f"update public.events set expected_attendance = 10, facilities_required = '{{projector}}' "
+             f"where id = '{event_id}'")
+    bare = throwaway_venue(ctx, "SUIT-007 bare")
+
+    for body in ({}, {"acknowledge_warnings": True}):  # acknowledging never excuses a hard failure
+        response = ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=ctx.shared("event_coordinator").headers,
+                                   json={"event_id": event_id, "venue_id": bare, **body})
+        expect_status(response, 409)
+        expect_detail(response, "This venue is unsuitable for this event: Missing facilities this event needs: projector.")
+    expect(not db_query(f"select 1 from public.venue_bookings where event_id = '{event_id}'"),
+           "a refused request left a booking behind")
+
+
+@check("TC-SUIT-011", "A venue with warnings is held only once the coordinator acknowledges them (BR-R3)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "SUIT-008", "2031-07-15 10:00+08", "2031-07-15 12:00+08")
+    db_query(f"update public.events set expected_attendance = 10, layout_preference = 'banquet' where id = '{event_id}'")
+    venue = throwaway_venue(ctx, "SUIT-008 theatre only")  # no banquet layout: a warning, not a failure
+    coordinator = ctx.shared("event_coordinator")
+
+    refused = ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=coordinator.headers,
+                              json={"event_id": event_id, "venue_id": venue})
+    expect_status(refused, 409)
+    expect_detail(refused, "This venue is suitable with warnings: The banquet layout this event needs is not supported. "
+                           "Acknowledge the warnings to request it.")
+    expect(not db_query(f"select 1 from public.venue_bookings where event_id = '{event_id}'"),
+           "an unacknowledged request left a booking behind")
+
+    held = ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=coordinator.headers,
+                           json={"event_id": event_id, "venue_id": venue, "acknowledge_warnings": True})
+    expect_status(held, 201)
+    expect(len(db_query(f"select 1 from public.venue_bookings where event_id = '{event_id}' and status = 'held'")) == 1,
+           "the acknowledged request did not hold the venue")
+
+
+@check("TC-SUIT-012", "A suitable venue needs no acknowledgement (BR-R3)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "SUIT-010", "2031-07-16 10:00+08", "2031-07-16 12:00+08")
+    db_query(f"update public.events set expected_attendance = 10, layout_preference = 'theatre' where id = '{event_id}'")
+    venue = throwaway_venue(ctx, "SUIT-010 suits")
+
+    response = ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=ctx.shared("event_coordinator").headers,
+                               json={"event_id": event_id, "venue_id": venue})
+    expect_status(response, 201)
 
 
 # --- Helpers ---------------------------------------------------------------

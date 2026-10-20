@@ -82,8 +82,11 @@ async function loadEventContext(eventId, spaceId) {
     eventCriteria.value = { ...criteria, facilities: [...criteria.facilities] };
     venuesStore.criteria = criteria;
     venuesStore.fieldErrors = {};
+    // The API judges each venue's suitability against this event or space (SCRUM-18).
+    venuesStore.setContext({ eventId: event.id, spaceId: bookingSpace.value?.id ?? null });
   } catch (error) {
     eventError.value = error.message;
+    venuesStore.setContext(null);
   }
   venuesStore.search();
 }
@@ -99,10 +102,16 @@ watch(
       bookingEvent.value = null;
       bookingSpace.value = null;
       eventCriteria.value = null;
-      if (!venuesStore.hasSearched) venuesStore.search();
+      // Leaving an event drops its verdicts: results fetched for it are stale.
+      const hadContext = venuesStore.setContext(null);
+      if (hadContext || !venuesStore.hasSearched) venuesStore.search();
     }
   },
   { immediate: true },
+);
+
+const requestedSuitability = computed(
+  () => venuesStore.results.find((result) => result.venue.id === requestedVenue.value?.id)?.suitability ?? null,
 );
 
 function handleReset() {
@@ -115,13 +124,13 @@ function openRequest(venue) {
   requestedVenue.value = venue;
 }
 
-async function confirmRequest(note) {
+async function confirmRequest(note, acknowledgedWarnings = false) {
   try {
     const replaces = replacedBooking.value?.id ?? null;
     if (bookingSpace.value) {
-      await bookingStore.requestForSpace(bookingSpace.value.id, requestedVenue.value.id, note, replaces);
+      await bookingStore.requestForSpace(bookingSpace.value.id, requestedVenue.value.id, note, replaces, acknowledgedWarnings);
     } else {
-      await bookingStore.request(bookingEvent.value.id, requestedVenue.value.id, note, replaces);
+      await bookingStore.request(bookingEvent.value.id, requestedVenue.value.id, note, replaces, acknowledgedWarnings);
     }
     requestedVenue.value = null;
     showToast("Venue requested. It is held while venue staff decide.");
@@ -234,6 +243,7 @@ async function confirmRequest(note) {
       :conflict="describeConflict(bookingStore.conflict, bookingEvent.event_timezone || 'Asia/Singapore')"
       :replaces-venue-name="replacedBooking?.venue_name ?? ''"
       :returns-to-planning="returnsToPlanning"
+      :suitability="requestedSuitability"
       @confirm="confirmRequest"
       @cancel="requestedVenue = null"
     />

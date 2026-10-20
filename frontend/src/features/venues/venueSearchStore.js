@@ -98,6 +98,9 @@ export const useVenuesStore = defineStore("venues", {
     isLoading: false,
     error: null,
     selectedVenue: null,
+    // The event (and space) the search is for (SCRUM-18); when set, the API
+    // judges every result's suitability against it.
+    context: null,
   }),
 
   getters: {
@@ -107,6 +110,15 @@ export const useVenuesStore = defineStore("venues", {
   },
 
   actions: {
+    // True when the context changed, so results fetched for another event (or
+    // none) are stale and the caller should search again.
+    setContext(context) {
+      const next = context?.eventId || context?.spaceId ? { eventId: context.eventId ?? null, spaceId: context.spaceId ?? null } : null;
+      const changed = JSON.stringify(next) !== JSON.stringify(this.context);
+      this.context = next;
+      return changed;
+    },
+
     resetCriteria() {
       this.criteria = emptyCriteria();
       this.fieldErrors = {};
@@ -118,6 +130,8 @@ export const useVenuesStore = defineStore("venues", {
 
       const authStore = useAuthStore();
       const params = criteriaToParams(this.criteria);
+      if (this.context?.eventId) params.event_id = this.context.eventId;
+      if (this.context?.spaceId) params.space_id = this.context.spaceId;
       this.isLoading = true;
       this.error = null;
       try {

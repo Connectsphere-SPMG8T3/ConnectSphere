@@ -30,9 +30,9 @@ router = APIRouter(prefix="/venues", tags=["venues"])
 
 # Access matrix (REQUIREMENTS §2): coordinators read and search the catalogue,
 # venue staff manage it; organisers, attendees and tech support see nothing.
-# No per-resource relationship check is needed yet: search is not tied to an
-# event. When an `event_id` criterion is added, the "this event's coordinator"
-# check comes with it.
+# A plain search is not tied to an event, so it needs no per-resource check.
+# Naming an `event_id` or `space_id` (SCRUM-18) does: `service.search_venues`
+# then requires the event's assigned coordinator, acting as coordinator.
 VenueReader = Annotated[CurrentUser, Depends(require_roles(["event_coordinator", "venue_staff"]))]
 
 # The dashboard is a venue-staff work queue, so a coordinator is excluded even
@@ -63,9 +63,11 @@ def search_venues(
     strict; `starts_at`/`ends_at` (ISO 8601 with offset, given together) add
     an availability check against holds, bookings and blocks. Pass
     `include_excluded=true` to also return the venues that were ruled out,
-    each with its reasons.
+    each with its reasons. Name an `event_id` and/or `space_id` (assigned
+    coordinator only, else 403) to add each venue's `suitability` for that
+    event or space (SCRUM-18); availability stays a separate answer.
     """
-    return service.search_venues(criteria)
+    return service.search_venues(criteria, current_user)
 
 
 # Declared before `/{venue_id}`. This particular path is safe either way, since

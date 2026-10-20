@@ -1,4 +1,4 @@
-"""Pure suitability rules (CR-94; the module story 18 extends): does one venue
+"""Pure suitability rules (CR-94, extended by SCRUM-18 with the inactive and accessibility rules): does one venue
 meet one set of requirements, and how badly does it miss?
 
 Capacity and required facilities are hard rules (the venue is Unsuitable);
@@ -8,6 +8,7 @@ layout and operating hours only warn.
 from datetime import datetime, time, timedelta, timezone
 
 from app.modules.venues.schemas import (
+    AccessibilityFeature,
     Facility,
     LayoutOption,
     Period,
@@ -187,3 +188,77 @@ class TestVerdict:
             SuitabilityCode.layout_not_supported,
             SuitabilityCode.outside_operating_hours,
         }
+
+
+class TestInactive:
+    """SCRUM-18 AC4."""
+
+    def test_an_inactive_venue_is_unsuitable(self):
+        result = check(make_venue(is_active=False), VenueRequirements())
+
+        assert result.verdict == SuitabilityVerdict.unsuitable
+        assert codes(result) == {SuitabilityCode.inactive}
+        assert result.reasons[0].severity == SuitabilitySeverity.unsuitable
+        assert result.reasons[0].message == "This venue is inactive, so it can't be booked."
+
+    def test_an_active_venue_never_fails_the_inactive_rule(self):
+        assert SuitabilityCode.inactive not in codes(check(make_venue(), VenueRequirements()))
+
+
+class TestAccessibility:
+    """SCRUM-18 AC5 [Team decision]: the event's accessibility needs are free
+    text, so they are matched to the venue's features by keyword."""
+
+    def test_a_need_the_venue_lacks_warns_and_names_the_feature(self):
+        venue = make_venue(accessibility_features=[AccessibilityFeature.lift_access])
+
+        result = check(venue, VenueRequirements(accessibility_needs="Two attendees use a wheelchair"))
+
+        assert result.verdict == SuitabilityVerdict.suitable_with_warnings
+        assert codes(result) == {SuitabilityCode.missing_accessibility}
+        assert result.reasons[0].severity == SuitabilitySeverity.warning
+        assert result.reasons[0].message == "Missing accessibility features this event needs: wheelchair access."
+
+    def test_every_need_met_is_suitable(self):
+        venue = make_venue(
+            accessibility_features=[AccessibilityFeature.wheelchair_access, AccessibilityFeature.hearing_loop]
+        )
+
+        result = check(venue, VenueRequirements(accessibility_needs="Wheelchair users and a hearing loop"))
+
+        assert result.reasons == []
+
+    def test_missing_features_are_listed_alphabetically(self):
+        result = check(
+            make_venue(), VenueRequirements(accessibility_needs="elevator, wheelchair, toilet, hearing aid loop, ramp")
+        )
+
+        assert result.reasons[0].message == (
+            "Missing accessibility features this event needs: accessible toilet, hearing loop, "
+            "lift access, step free entry, wheelchair access."
+        )
+
+    def test_keywords_ignore_case(self):
+        result = check(make_venue(), VenueRequirements(accessibility_needs="WHEELCHAIR"))
+
+        assert codes(result) == {SuitabilityCode.missing_accessibility}
+
+    def test_no_needs_never_warns(self):
+        for text in (None, "", "   "):
+            assert check(make_venue(), VenueRequirements(accessibility_needs=text)).reasons == []
+
+    def test_unrecognised_needs_warn_and_say_what_the_venue_records(self):
+        venue = make_venue(accessibility_features=[AccessibilityFeature.lift_access])
+
+        result = check(venue, VenueRequirements(accessibility_needs="Quiet room for sensory breaks"))
+
+        assert codes(result) == {SuitabilityCode.missing_accessibility}
+        assert result.reasons[0].message == (
+            "This event lists accessibility needs (Quiet room for sensory breaks) that could not be matched. "
+            "The venue records: lift access."
+        )
+
+    def test_unrecognised_needs_at_a_venue_with_no_features_say_none(self):
+        result = check(make_venue(), VenueRequirements(accessibility_needs="Quiet room"))
+
+        assert result.reasons[0].message.endswith("The venue records: none.")

@@ -290,6 +290,25 @@ def list_status_history(event_id: str) -> list[dict]:
     return response.data or []
 
 
+def list_assignment_history(event_id: str) -> list[dict]:
+    """Reassignments, newest first, with the Lead and both coordinators named (SCRUM-12).
+    Kept apart from the status history because a reassignment is not a status change."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_assignment_history")
+        .select(
+            "id, at, "
+            "actor:profiles!event_assignment_history_actor_id_fkey(id, full_name), "
+            "from_coordinator:profiles!event_assignment_history_from_coordinator_id_fkey(id, full_name), "
+            "to_coordinator:profiles!event_assignment_history_to_coordinator_id_fkey(id, full_name)"
+        )
+        .eq("event_id", event_id)
+        .order("at", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
 def _first_row(response) -> dict | None:
     rows = (response.data or []) if response else []
     return rows[0] if rows else None
@@ -503,6 +522,7 @@ def list_safety_queue() -> list[dict]:
 # points at `profiles` twice (organiser and coordinator).
 _LEAD_COLUMNS = (
     "id, name, status, starts_at, purpose, expected_attendance, version, "
+    "submitted_at, layout_preference, facilities_required, "
     "coordinator_id, assigned_by, assigned_at, "
     "organiser:profiles!events_organiser_id_fkey(full_name), "
     "coordinator:profiles!events_coordinator_id_fkey(id, full_name)"
@@ -591,6 +611,40 @@ def get_coordinator(profile_id: str) -> dict | None:
         .execute()
     )
     return profile.data if profile else None
+
+
+def assign_event(
+    event_id: str,
+    lead_id: str,
+    coordinator_id: str,
+    *,
+    from_statuses: list[str],
+    to_status: str,
+    reason: str,
+    notify_assigned: str,
+    notify_organiser: str,
+) -> dict | None:
+    """Run `public.assign_event`: assignment, status change, history and notices in one
+    locked transaction. Returns the updated row, or None when the event was no longer
+    in the queue (another Lead assigned it first) or the target lost the coordinator role."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "assign_event",
+            {
+                "p_event_id": event_id,
+                "p_lead_id": lead_id,
+                "p_coordinator_id": coordinator_id,
+                "p_from_statuses": from_statuses,
+                "p_to_status": to_status,
+                "p_reason": reason,
+                "p_notify_assigned": notify_assigned,
+                "p_notify_organiser": notify_organiser,
+            },
+        )
+        .execute()
+    )
+    return _first_row(response)
 
 
 def reassign_event(

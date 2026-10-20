@@ -2669,3 +2669,203 @@ The dashboard's affected-replacement list keeps its booked-end cut-off (an event
 **Browser after the merge:** [2026-10-19 20:35](test-cases/runs/2026-10-19-2035-e2e-6a3099a.md) on `6a3099a`: **77 passed, 1 failed**. All three CR-100 cases passed. TC-BOOK-048/049/050 now gets past the label `main` fixed, but hit the 30-second test timeout on the Venue Staff restore step. Run alone without recording, it passed (52.9 s including sign-in and cleanup), so the replacement request through CR-100's `request_venue_booking` works. The test sits close to its timeout because each setup step goes through the Supabase CLI; that is a timing flake for its owner (CR-95), not a CR-100 regression. The recorded failure is kept.
 
 Remaining for the developer: PR and teammate review, PO acceptance, merge, and the DoD and backlog updates.
+
+### 4.67. SCRUM-24 — Manage equipment reservation
+
+On `feature/scrum-24-equipment-reservation`, branched from `feature/scrum-51-block-venue` at `31d21f0` (the developer's choice), 2026-10-19. An earlier empty branch of the same name, at `a6080f9`, was moved here; it had no commits. The Product backlog sheet couldn't be read through a connector, so the story and ACs are as the developer gave them, with their AC plan (rev 3).
+
+| Field | Value |
+|---|---|
+| ID | SCRUM-24 |
+| Title | Manage equipment reservation |
+| Status | In review: built, migration applied, live checks, e2e and the developer's manual pass passing (2026-10-19) |
+| Sprint | 3 (6–20 October) |
+
+**User story:** As Technical Support Staff, I want to check whether enough equipment is available for a pending request line and reserve it for the event, so that the same limited equipment isn't committed to overlapping events.
+
+**Acceptance criteria (as given by the developer, 2026-10-19):** AC1 reserve a pending line if enough is available for the event's window (23's check). AC2 a reservation reduces availability for overlapping events only. AC3 refused with how many are free; the line stays Pending or can be marked Not available. AC4 linked to event and line; line Reserved; assigned coordinator notified. AC5 simultaneous reserves of the last units: one succeeds. AC6 cancelling (84) or removing the line (44) releases. AC7 a time change (37) re-checks; failures flagged for re-review, not removed. AC8 only Technical Support; others 403. AC9 Not available and notes; coordinator notified and sees them. AC10 [W7 CR-06] the exit/walkway tick, with who and when on the safety review page (CR-103); cleared by equipment or venue changes. AC11 derived technical status (Ready / Not required / Issue), on the coordinator dashboard. AC12 notes internal. AC13 every status change with who and when in the event history.
+
+#### What was there already
+
+`equipment_requests` with the full line enum (SCRUM-45), `equipment_reservations` (`confirmed`/`cancelled`/`completed`), `events.technical_readiness` with four values but **no writer** (always Not required), its single reader `events.service.technical_status`, CR-104's `return_to_planning` with a `technical_not_ready` reason and no callers, CR-103's `exit_confirmation: None` placeholder, and a documented hook in `transition_event` for releasing equipment on rejection. The plan's other assumptions were checked against the code: the live migration history already matched local (no CR-98 blocker), CR-104's rework no longer writes `re_review`/`rejected` to lines (so D10 and D15 are closed), and `event_status_history` can't hold line changes (so AC13 got its own table).
+
+#### What was built
+
+1. **Database** (`20261019120000`, applied 2026-10-19). `equipment_availability` (§6.16 worst moment; fixes D45, SCRUM-23's sum); `reserve_equipment_line`, which locks the event, then the line, then the catalogue item, so the second of two simultaneous reserves re-reads availability (AC5); `mark_equipment_line_not_available` (reason required, frees any reservation); `set_equipment_line_note`; `set_exit_confirmation`; `recheck_event_reservations` (AC7, for story 37). Technical status is derived (`derive_technical_status`) and cached in `technical_readiness` by `refresh_technical_status`, called from triggers on lines and venue bookings and from every function. Triggers also clear the tick on line or venue changes (D4) and free a removed line's reservation (AC6, story 44). `transition_event` releases equipment on rejection and cancellation (D1, story 84). `event_technical_history` records every change with its actor, passed through a transaction setting so trigger-written rows name who caused them.
+2. **Backend.** Five Technical-Support-only routes (reserve, not-available, notes, exit-confirmation, technical view). A refusal answers 409 with `free_quantity`. When an event leaves Ready while in Safety review or Confirmed, the service calls `return_to_planning` (CR-104 AC10). The availability check and windowed inventory read the SQL function. The coordinator's lines carry reason, notes, technical status and tick; the dashboard's equipment readiness follows the lines; the safety review fills `exit_confirmation`.
+3. **Frontend.** `/tech-support/events/:id` (`TechnicalEventView`, `EquipmentLineArrangement`, `technicalEventStore`, `technical.js`), linked from each line on the tech support dashboard; the coordinator's equipment panel and the safety review page show the new information.
+
+#### Decisions
+
+D4, D8, D9, D11 and D14 adopted as [Assumption]s or [Team decision]s (REQUIREMENTS §9 items 75–81): the tick's clearing rules; re-reserve clears re-review; RS-R4 deferred; no equipment holds; AC10 kept despite "no automatic reset". Technical status is a cache written only by the database. One availability calculation (D7/D45), which changes Done story 23. A line can be marked Not available from Reserved too. The exit-confirmation route answers 204. CR-103's "Exit confirmation" heading was kept.
+
+#### Verification
+
+- **Numbering:** the availability defect was D43 on this branch; `main` took D43 and D44 first (CR-100), so it is **D45**. The applied migration's comments and the live function comment still say D43.
+- **Test-first:** the SQL script failed on the missing function before the migration; the API tests failed on the missing repository functions; the frontend specs before each piece.
+- **Database:** `equipment_reservation_checks.sql` passed in a rolled-back dry run, then live; every existing verification script passed with the migration applied in a dry run. Advisors: nothing new.
+- **Automated suites:** backend 1,606 passed; frontend 1,082 passed, build clean. New code fully covered (the remaining uncovered backend lines predate the story).
+- **Live API/database:** the first recorded attempt was cut off by a local DNS failure (`Errno 8`, the D42 pattern) and wrote no log; the re-run passed [149/149](test-cases/runs/2026-10-19-1854-api-db-b8a1356.md), including TC-EQR-017–019, 021 (the AC5 race), 022, 026 and the new SQL script.
+- **Browser:** the existing suite passed [75/75](test-cases/runs/2026-10-19-1906-e2e-b8a1356.md). The new spec's first run [failed TC-EQR-027](test-cases/runs/2026-10-19-1909-e2e-b8a1356.md) because the test reused one tab for a second role (`seedSession` seeds a tab once); with its own context it [passed 2/2](test-cases/runs/2026-10-19-1910-e2e-b8a1356.md).
+- **Manual:** TC-EQR-029–032 not yet run.
+
+#### Addendum: requests page (developer's request before the manual pass)
+
+The developer asked for the tech support dashboard to follow venue staff's: an **Active requests** tile (pending and re-review lines) in place of **Out of stock**, opening a page listing every request that can be filtered and sorted. Built on the same branch:
+- **Backend:** `GET /equipment/requests` (tech support): every line on open events, any status, with `equipment_type`; one repository read `list_requests(statuses)` now backs it and the pending queue.
+- **Frontend:** `/dashboard/tech-support/requests` (`TechSupportEquipmentRequestsView`, `EquipmentRequestQueue`, `requestList.js`), a sidebar link, and the tile. The dashboard's request list moved to the page (as venue staff's did); `PendingEquipmentRequests` was removed. Out of stock is now an inventory filter option, so that information isn't lost.
+- **Verification:** tests first; backend 1,662, frontend 1,113 passed, build clean; equipment e2e 4/4 (the first try failed only because the running backend hadn't been restarted with the new route). Manual TC-EQR-034 outstanding.
+- This goes beyond SCRUM-24's ACs (it is §6.15's "sortable queue", deferred by SCRUM-45). Record it on the backlog as the developer prefers.
+
+#### Addendum: a fuller equipment catalogue (developer's request before the manual pass)
+
+- **Seed:** the five seeded items now hold 10–24 units each (4K Projector 14, Wireless Mics 24, PA Systems 10, Stage Lighting 16, HDMI Switchers 12), and nine items were added (`b…0006`–`b…000e`): Sound System, Speaker Stands, Whiteboards, Flip Chart Stands, Projector Screens, Lecterns, Extension Cords, Presentation Laptops, Wireless Presenters. The same rows were upserted into the live project by ID (no truncate), so reservations and requests on the old items kept their references.
+- **Checks:** TC-EQR-002 (`verify_live.py`) and TC-EQR-005 (`equipment.e2e.js`) relied on "5 is above the 4 that exist"; they now submit 15 of 14, and TC-EQR-005's expected note reads "Only 14 exist in the catalogue." Both passed (`runs/2026-10-19-2223-api-db-744f444.md`, `runs/2026-10-19-2224-e2e-744f444.md`).
+
+#### Manual pass (2026-10-19)
+
+- **[Record](test-cases/runs/2026-10-19-2330-manual-ae2f465.md), Eileen:** TC-EQR-029, 030, 031, 032 and 034 passed at desktop and 375px, on throwaway events "live-check Manual A–E". Each step's stored result was confirmed in the database. Also seen: a refusal with "1 free" after another event took 11 of 12, an empty Not available reason refused, unticking Ready to Pending and back, a Re-review line reserved again on its one reservation, and unticking a Ready event in Safety review returning it to Planning with both notifications. No defects.
+- **TC-EQR-033 automated:** the TC-EQR-027 browser check already clicked the Active requests tile; it now also checks that the tile shows a count rather than "—" and carries TC-EQR-033 in its name. Equipment e2e 4/4 ([run](test-cases/runs/2026-10-19-2331-e2e-ae2f465.md)).
+- **Setup slip:** the first data script set Event C's status straight to Safety review without the status-history entry a real hand-off writes, so the Safety Officer's queue left it out. Adding the entry fixed it; not an app defect.
+
+#### Follow-ups
+
+- Story 37 must call `equipment.service.recheck_event`; story 44 should set edited reserved lines to `re_review` (EQ-R4); story 84 gets AC6 from `transition_event`.
+- Tell story 23's owner about D45, and Jie Ching that technical status is now derived and `exit_confirmation` is filled.
+- Raise D14 at the consult (AC10 clearing vs "no automatic reset").
+- SCRUM-45's e2e adds and deletes lines on the planning fixture `…0202`; with the triggers each run now leaves `event_technical_history` rows on it. Harmless, but the fixture's history grows.
+- PR, review, PO acceptance, merge, the backlog status and the DoD tab are the developer's.
+
+### 4.68. D46 — The inventory table names and owns its window
+
+On `fix/inventory-window`, branched from `feature/scrum-24-equipment-reservation` at `57b1725` (SCRUM-24 awaits review), 2026-10-19.
+
+| | |
+|---|---|
+| Defect | D46 (found by the developer after the SCRUM-24 manual pass); D47 (found while fixing it) |
+| Status | Fixed on branch; tests, browser checks and the developer's manual pass (TC-EQR-036) passing (2026-10-19) |
+
+**Problem.** Tech support's Inventory & status table counted reservations in the Availability tab's window (today 9 am–5 pm by default) and said so only in small print, so reserving equipment for a future event left the table unchanged.
+
+**Change** (`TechSupportDashboard.vue`, new `features/equipment/inventoryWindow.js`; the developer chose this over an "upcoming reservations" column, which would add units across different dates and could exceed the stock):
+
+1. The table has its own **Window start** and **Window end** above search and filter, defaulting to today 9 am–5 pm. The Availability tab keeps its own window.
+2. "Showing stock for 19 Oct 2026, 9:00 am – 5:00 pm" names the window the rows were loaded for. The figures are still each window's busiest moment (§6.16, D45).
+3. Changing either end reloads. An end before the start shows a red message and keeps the last rows and label. A load that answers after a later one is ignored, so the label and the rows always match.
+
+**Verification.**
+
+- Tests first: `inventoryWindow.spec.js` and five dashboard tests failed for the expected reasons, then passed. The out-of-order-load test was checked to fail with the guard removed (it first passed without it, because it asserted before the stale answer arrived; it now waits).
+- Frontend 1,122 passed; build clean.
+- New browser check TC-EQR-035 against the live project: a 2031 reservation of 2 of 3 shows 0 reserved for today and 2 reserved, 1 net available for its day. Equipment e2e 5/5 ([run](test-cases/runs/2026-10-19-2345-e2e-57b1725.md); named for the base commit, since the fix was uncommitted when it ran).
+- Screenshots at 1280 px and 375 px: no sideways page scroll; the fields stack on a phone.
+
+
+**Not verified:** TC-EQR-036 (how it reads and looks) is the developer's.
+
+#### D47: the availability check offers the live catalogue (developer's request)
+
+- **Problem.** The Availability tab's picker was a hard-coded list of the first five seeded items, so the nine added on 2026-10-19 (and anything added later) couldn't be checked.
+- **Change.** The picker loads `GET /equipment/catalogue` (already open to Technical Support for SCRUM-45) when the availability view first opens; new rows default to its first item. While it loads the picker says "Loading equipment…"; if it fails, the page says the check can't run and the check button is disabled. The view calls `equipmentApi.checkEquipmentAvailability` like its other calls; the unused wrapper export in `services/api.js` was removed (the spec's mock couldn't see through it, which is how it was found).
+- **Verification.** Four dashboard tests first (three failed against the fixed list as expected; the fourth guards that the inventory view doesn't load the catalogue). Frontend 1,126 passed; build clean. New browser check TC-EQR-037 picks Sound System and checks it against the live catalogue; equipment e2e 6/6 ([run](test-cases/runs/2026-10-19-2353-e2e-050c5ed.md)).
+
+#### Manual pass
+
+- TC-EQR-036 passed ([record](test-cases/runs/2026-10-19-2356-manual-bc3a9d4.md)): the inventory window, its refusal and 375px layout, and the availability picker's full catalogue, a new item's check and the failure state.
+
+### 4.69. Chore — Second seeded Event Coordinator Lead
+
+On `chore/seed-second-lead-account`, branched from `main` at `15ca304`, 2026-10-20. It finishes CR-101 AC5, which says the system supports one or more Leads and that each Lead sees the active events they assigned or last reassigned. The code for that was done and unit-tested, but only one Lead account existed, so it could not be exercised with two Leads.
+
+**Changed.**
+1. `supabase/seed.sql` adds `coordinator.lead2@connectsphere.dev` (Daniel Foo, single Event Coordinator Lead role, `a0000000-…-0009`, password `Cs1234`). The seed now has 9 accounts covering 7 roles. The name is a placeholder.
+2. README, SETUP, the test-cases README and IMPLEMENTATION_MAP list the account and the new count.
+3. `backend/scripts/verify_live.py` knows the account and gains TC-LEAD-015: a read-only check that signs in as each Lead and compares the dashboard with `events.assigned_by` in the database (identical queues; each Lead's active events are exactly those they assigned, those with no assigner, and those whose assigner is no longer a Lead).
+4. `docs/test-cases/dashboards.md`: TC-LEAD-012 now has concrete steps and accounts, and TC-LEAD-015 is added.
+
+**Live project.** The account was created with only its own steps from the seed's first block (the same insert into `auth.users`, `auth.identities`, the profile role and `user_roles`), not by re-running the whole seed, which truncates the equipment tables. A read-only query afterwards showed it confirmed, with one identity, the Lead role as its only role, and department Event Planning.
+
+**What the live data should show** (read-only query, 2026-10-20): of the 18 active events, 8 have no coordinator (the shared queue), 7 were assigned before the Lead role existed (visible to both Leads), and 3 were last assigned by Grace Chua. Grace should therefore see 8 + 7 + 3 and Daniel 8 + 7, not Grace's three.
+
+**Verified.** The live API and database run on 2026-10-20 passed **155/155** (`runs/2026-10-20-1323-api-db-46b5250.md`). That includes TC-LEAD-015, so with two Leads each dashboard matches `events.assigned_by` in the database, and it means the new account can sign in, since the check signs in as it.
+
+**Manual pass (2026-10-20).** The developer ran TC-LEAD-012 in a browser as both Leads and it passed (`runs/2026-10-20-manual-88f7fcf.md`).
+
+**Not verified.** The browser suite (`npm run test:e2e:record`) was not re-run for this chore.
+### 4.70. Bug fix — event-space responses include the primary flag (CR-98 / D48)
+
+**Reproduction:** `POST /api/v1/events/{event_id}/spaces` returned 500 when PostgREST returned `is_primary: false` from the new CR-97 column. `EventSpaceRequest` uses strict extra-field validation and did not include that persisted response field.
+
+**Fix:** Added `is_primary` to the response-only `EventSpaceRequest` model. The organiser create/update request schemas remain unchanged and reject attempts to set the coordinator-controlled primary flag.
+
+**Verification:** The focused regression test failed first with the reported Pydantic `extra_forbidden` error, then passed after the schema fix. All 30 tests in `backend/tests/test_event_spaces_api.py` pass, including a check that organiser input containing `is_primary` is rejected with 422.
+
+### 4.71. CR-98 — choose a space purpose in the organiser form
+
+**Change:** Replaced free-form space-label entry with purpose presets (Main venue, Breakout room, Workshop room, Registration/check-in, Catering area and Networking area) plus Other with required custom text. The selected purpose is still stored in the existing `label` field, so no API or database contract changed; historical custom labels reopen as Other with their text preserved.
+
+**Verification:** Added frontend coverage for the custom-purpose payload, required Other text and editing a saved custom label. The full frontend suite passes (1,041 tests across 72 files) with one worker; `npm run build` succeeds. The manual browser check remains pending because the browser session is unauthenticated.
+
+### 4.72. CR-98 — use the event date for space-specific times
+
+**Change:** Removed per-space date inputs. Organisers now enter a space start time and end time on the event date; values are composed with the event timezone into the existing timestamp API fields. The event schedule remains the outer bound, and spaces can still inherit its full duration.
+
+**Verification:** The focused event-request and event-store specs pass (41 tests), `npm run build` succeeds, and the full backend suite passes (1,529 tests). The full frontend suite has one unrelated failure in `SafetyViews.spec.js` because `URL.revokeObjectURL` is unavailable in the test environment (1,040/1,041 pass). Manual browser verification for TC-SPACE-003 remains pending.
+
+### 4.73. CR-98 — copy a space request
+
+**Change:** Added a Copy space action to every space card. It creates a separate unsaved request with the source's purpose, attendance, layout, facilities and schedule; the existing save flow creates the new record without replacing the source.
+
+**Verification:** `EventRequestView.spec.js` covers copying a persisted custom-purpose space, independent editing, and creation with the copied facilities and schedule. A browser smoke check confirmed the action appears on each card and adds a fourth card without saving. The full manual persistence check for TC-SPACE-011 remains pending.
+
+### 4.74. SCRUM-12 — Coordinator assignment
+
+On `feature/scrum-12-coordinator-assignment`, branched from `main` at `53b5191`, 2026-10-20. AC1–AC12 as supplied by the developer (the Product backlog sheet was not read; the ACs were pasted). Built on CR-101's Lead dashboard and reassign, not beside them.
+
+**Changed.**
+1. `lifecycle`: `submit` now targets `submitted`; new `assign` (`submitted` → `under_review`).
+2. Migration `20261020100000`: `assign_event` (locked update, history row, notices; refuses a non-coordinator or a banned/deleted account), a backfill that moves `under_review` events with no coordinator to `submitted`, and trigger `user_roles_exclusive_lead` for AC12.
+3. API: `POST /events/{id}/assign` (Lead only); the Lead dashboard also reads `submitted` events, orders the queue by `submitted_at` and carries layout and facilities.
+4. SPA: `LeadEventView` assigns a queued event and reassigns an assigned one; the queue shows attendance and venue needs in server order; the organiser's coordinator row reads "Unassigned".
+5. Live checks: TC-ASSIGN-001–009 in `backend/scripts/verify_live.py` (throwaway `live-check` events, cleaned up), the SQL script registered there, and browser specs TC-ASSIGN-011 and 014 in `frontend/e2e/coordinator-assignment.e2e.js`. TC-LEAD-001 and 015 now allow the `submitted` status in the Lead's queue.
+6. Docs: IMPLEMENTATION_MAP, REQUIREMENTS §6.5 and §9 item 82, test cases TC-ASSIGN-001–013, `supabase/verification/coordinator_assignment_checks.sql`.
+
+**Decisions.** AC5 is the status-history row (Lead, time, "Assigned to <name>"); a dedicated assignment-history table stays with story 81. "Active user" is "not banned or deleted in Auth" (REQUIREMENTS §9 item 82).
+
+**Verified.** Tests were written first and failed for the expected reasons. Backend 1,708 passed; frontend suites for the changed areas pass (the full frontend run showed two timing flakes under load that pass alone).
+
+**Live verification (2026-10-20).** The developer applied the migration with `supabase db push` and ran `coordinator_assignment_checks.sql` in the SQL Editor ("Success. No rows returned": the script raises on any failure and its final notice is not shown there). The recorded API and database run passed 165/165 ([run](test-cases/runs/2026-10-20-1448-api-db-53b5191.md)) against a backend on this branch (port 8010).
+
+**Follow-up: assignment history (2026-10-20).** The developer saw a reassignment appear as nothing (the event's history ended at "Under review"), because a reassignment is not a status change and CR-101 deliberately writes no `event_status_history` row for it. Built at their request: table `event_assignment_history` and a replaced `reassign_event` that writes to it (migration `20261020110000`), `repository.list_assignment_history`, and `service.history`, which merges the two by time (`kind: "reassignment"` entries with `from_coordinator` and `to_coordinator`); `EventStatusHistory.vue` shows "Reassigned to <name>" with "from <name>". Tests came first (API merge, repository, component); backend 1,710 passed. An assignment from the queue stays one status row. The Lead's own event page shows no history (only the organiser and the assigned coordinator can read it). After the migration was deployed: the SQL script passed in the SQL Editor, TC-ASSIGN-016 passed, the recorded API/database run passed [166/166](test-cases/runs/2026-10-20-1556-api-db-53b5191.md), and the recorded browser run was [83 passed, 1 failed](test-cases/runs/2026-10-20-1613-e2e-53b5191.md) (the same unrelated TC-TSD-017 failure as above).
+
+**Browser run (2026-10-20).** [83 passed, 1 failed](test-cases/runs/2026-10-20-1507-e2e-53b5191.md) against a frontend (port 5174) and backend (port 8010) on this branch. TC-ASSIGN-011 and 014 passed. The failure is TC-TSD-017, the tech-support summary-card layout check (it found 1 card where it expects 4 under the "Maintenance scheduled" card). This branch changes nothing on that dashboard; the dashboard was last changed on `main` by the SCRUM-24 requests-page work, so it looks like an earlier regression or a stale selector, but it was not re-run against `main` to confirm. Reported, not fixed.
+
+**Manual pass (2026-10-20).** The developer ran TC-ASSIGN-012, 013, 015 and 017 in a browser and all passed ([record](test-cases/runs/2026-10-20-manual-53b5191.md)). Notices were checked in the database only: no notification screen exists yet.
+
+### 4.75. SCRUM-18 — Venue suitability checking
+
+On `feature/scrum-18-venue-suitability`, branched from `main` at `69a54dd`, 2026-10-20. AC1–AC11 as supplied by the developer (the Product backlog sheet was not read; the ACs were pasted). An older branch, `feature/scrum-18-venue-suitability-check` (6 Oct, 345 commits behind `main`), was found and **not used**: it predates CR-94, CR-97, CR-98 and CR-100, whose code now covers part of this story, so it was rebuilt on `main`.
+
+**Changed.**
+1. `venues/suitability.py` (CR-94's module) gains the hard `inactive` rule (AC4) and the warning `missing_accessibility` (AC5), which matches the event's free-text needs to the venue's features by keyword.
+2. `GET /venues` takes `event_id` and/or `space_id` and adds `suitability` to each result beside `availability` (AC8, AC9). Requirements come from the stored event or space, a space's own pax, layout, facilities and window first, then the event's (AC11). Only the assigned coordinator acting as coordinator may ask; anyone else is 403 (AC10).
+3. SPA: `SuitabilityBadge`, `SuitabilityFindings`, `features/venues/suitability.js`; `VenueResultCard` and `RequestVenueModal` show the verdict and each reason; `useVenuesStore.context` carries the event and space, and `VenueSearchView` sets it from `/venues?event=&space=` and drops it when the search is opened without one.
+4. Live checks TC-SUIT-001–004 in `backend/scripts/verify_live.py`, browser checks TC-SUIT-005–006 in `frontend/e2e/venues-suitability.e2e.js`, manual cases TC-SUIT-007–008.
+
+**Decisions.** Accessibility matching by keyword is a **[Team decision]** (REQUIREMENTS §6.11, §9 item 84). BR-R3, refusing a request for an Unsuitable venue, is not in the ACs and stays open (§9 item 83). `impact.affected_bookings` deliberately leaves accessibility needs unset so a venue edit keeps reporting only its own `accessibility_changed` warning.
+
+**Verified.** Tests were written first and failed for the expected reasons. Backend 1,750 passed; frontend 1,162 passed across 81 files; `npm run build` succeeds. Coverage of the new backend lines is complete.
+
+**Live verification (2026-10-20), against a backend on port 8011 and a frontend on port 5183.**
+- API and database: 166 of 170 passed ([run](test-cases/runs/2026-10-20-1731-api-db-d4c092b.md)), including TC-SUIT-001–004. The four failures (TC-EQR-021, TC-EQR-026, TC-AUTH-037, TC-AUTH-038) are 500s from the local machine's network (`getaddrinfo failed` and a reset connection); none involves venue search. They were not re-run.
+- Browser: 81 of 86 passed ([run](test-cases/runs/2026-10-20-1758-e2e-d4c092b.md)). TC-SUIT-005 and 006 hit the 30 s test timeout in the full run and passed when run alone ([run](test-cases/runs/2026-10-20-1812-e2e-d4c092b.md)); the cause was not established, though the setup helpers make several slow database calls. The other three failures were checked alone and fail again: TC-BOOK-048/049/050 times out at its first page load of the coordinator dashboard, before any venue search; TC-ORG-010 ("Returned for amendments" not found) and TC-TSD-017 (1 card where 4 are expected) are layout checks on dashboards this branch does not touch. TC-TSD-017 failed the same way on the SCRUM-12 branch. None was compared against `main`.
+
+**Not verified.** The manual pass (TC-SUIT-007, 008), phone-width layout, and whether the three non-SUIT browser failures also fail on `main`.
+
+**Follow-up: BR-R3 (2026-10-20).** The CR-94 note assigned "refusing Unsuitable venues in `request_booking`" to this story, and an earlier edit here wrongly recorded it as not built; corrected.
+- `venues.service.request_booking` runs `suitability.check` on the space (else the event) before holding anything. An Unsuitable venue is refused (409, reasons named); a venue with warnings needs `acknowledge_warnings: true` (otherwise 409 listing them). Capacity and an inactive venue stay the database function's own refusals, with their own wording (CR-97 AC10, SCRUM-64).
+- The check is skipped when the database will refuse anyway (event not in Planning, or the space already holds a venue; never for a replacement). The first version ran before those refusals and changed TC-BOOK-004 and 005's messages; the full API run caught it (170/173, [run](test-cases/runs/2026-10-20-1856-api-db-54f6e5b.md); TC-BOOK-027's 404 in that run was not reproduced) and a regression test now pins the order.
+- The request dialog shows the verdict, asks for a tick before sending a venue with warnings and doesn't offer an Unsuitable one; `useVenueBookingStore` sends the flag. `test_venue_booking_request_api.py` gains an autouse venue fixture because the check reads the venue first.
+- Backend 1,772 passed; frontend 1,170 passed; build clean. Live: booking checks 36/36 ([run](test-cases/runs/2026-10-20-1923-api-db-54f6e5b.md)) and TC-SUIT 7/7 ([run](test-cases/runs/2026-10-20-1929-api-db-54f6e5b.md)). Browser, narrowed at the developer's request to the booking, hold, block, buffer, deactivation and suitability specs: 21 of 22 ([run](test-cases/runs/2026-10-20-1932-e2e-54f6e5b.md)). The one failure is TC-BOOK-048/049/050, which also fails on `main`; this time every assertion in it passed and it failed closing a browser context on its last line.
+- **Not run after the BR-R3 change:** the full browser suite (the dashboard, equipment, auth and sign-up specs) and a full API run after the ordering fix (the booking and suitability checks were re-run, not the rest).
+

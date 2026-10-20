@@ -148,3 +148,30 @@ describe("useVenueBookingStore.request (SCRUM-19)", () => {
     expect(useAuthStore().token).toBe("access-token");
   });
 });
+
+describe("useVenueBookingStore acknowledging warnings (SCRUM-18 BR-R3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    venueBookingsApi.request.mockResolvedValue(BOOKING);
+  });
+
+  it("sends the acknowledgement for an event request only when it was given", async () => {
+    const store = signedInCoordinator();
+
+    await store.request("event-1", "v1", "", null, true);
+    await store.request("event-1", "v1", "");
+
+    expect(venueBookingsApi.request.mock.calls[0][0]).toMatchObject({ acknowledge_warnings: true });
+    expect(venueBookingsApi.request.mock.calls[1][0]).not.toHaveProperty("acknowledge_warnings");
+  });
+
+  it("sends the acknowledgement for a space request only when it was given", async () => {
+    const store = signedInCoordinator();
+
+    await store.requestForSpace("space-1", "v1", "", null, true);
+    await store.requestForSpace("space-1", "v1", "");
+
+    expect(venueBookingsApi.request.mock.calls[0][0]).toMatchObject({ acknowledge_warnings: true });
+    expect(venueBookingsApi.request.mock.calls[1][0]).not.toHaveProperty("acknowledge_warnings");
+  });
+});

@@ -20,6 +20,7 @@ from app.modules.events.schemas import (
     EventCommentsResponse,
     EventCreateRequest,
     EventHistoryResponse,
+    EventAssignRequest,
     EventReassignRequest,
     EventRejectRequest,
     EventResponse,
@@ -167,6 +168,11 @@ def approve_event(event_id: UUID, current_user: EventCoordinator) -> EventRespon
 @router.post("/{event_id}/reject", response_model=EventResponse)
 def reject_event(event_id: UUID, body: EventRejectRequest, current_user: EventCoordinator) -> EventResponse:
     return service.reject(str(event_id), current_user.id, body.reason)
+
+
+@router.post("/{event_id}/assign", response_model=EventResponse)
+def assign_event(event_id: UUID, body: EventAssignRequest, current_user: EventCoordinatorLead) -> EventResponse:
+    return service.assign(str(event_id), current_user.id, str(body.coordinator_id))
 
 
 @router.post("/{event_id}/reassign", response_model=EventResponse)

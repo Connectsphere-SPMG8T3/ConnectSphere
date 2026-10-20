@@ -22,12 +22,14 @@ def state(monkeypatch):
     monkeypatch.setattr(repository,'list_safety_decisions',lambda _:deepcopy(state['decisions']),raising=False)
     monkeypatch.setattr(repository,'list_safety_queue',lambda:deepcopy(state['queue']),raising=False)
     monkeypatch.setattr(repository,'list_status_history',lambda _:[])
+    monkeypatch.setattr(repository,'list_assignment_history',lambda _:[])
     monkeypatch.setattr(repository,'list_events',lambda _:[deepcopy(state['event'])])
     monkeypatch.setattr(repository,'list_comments',lambda _:[])
     monkeypatch.setattr(venues,'active_booking_for_event',lambda _:None)
     monkeypatch.setattr(venues,'booking_readiness_by_event',lambda _:{EVENT_ID:[BookingReadiness(status='approved')]})
     monkeypatch.setattr(venues,'event_bookings_with_venues',lambda _:[dict(booking_id=BOOKING,venue_id=LINE,venue_name='Hall',booking_status='approved',capacity=24,layouts=['boardroom'],accessibility_features=['ramp'])],raising=False)
     monkeypatch.setattr(equipment,'event_lines',lambda _:[dict(id=LINE,equipment_name='Mic',quantity=2,status='pending')],raising=False)
+    monkeypatch.setattr(equipment,'exit_confirmation',lambda _:state.get('exit'))
     return state
 
 GETS=['/api/v1/events/safety-queue',f'/api/v1/events/{EVENT_ID}/safety-review',f'/api/v1/events/{EVENT_ID}/safety-decisions']
@@ -146,3 +148,12 @@ def test_event_read_outage_is_503(client,auth_headers,authenticate_as,state,monk
     def unavailable(*a): raise httpx.ReadTimeout('offline')
     monkeypatch.setattr(repository,'list_safety_decisions',unavailable)
     assert client.get(f'/api/v1/events/{EVENT_ID}',headers=auth_headers).status_code==503
+
+
+def test_review_shows_who_ticked_the_exit_box_and_when(client,auth_headers,authenticate_as,state):
+    """SCRUM-24 AC10 on CR-103 AC3's page."""
+    from app.modules.equipment.schemas import ExitConfirmation
+    authenticate_as('safety_officer')
+    state['exit']=ExitConfirmation(confirmed_by_name='Tan Wei',confirmed_at='2026-10-19T03:00:00Z')
+    data=client.get(GETS[1],headers=auth_headers).json()
+    assert data['exit_confirmation']=={'confirmed_by_name':'Tan Wei','confirmed_at':'2026-10-19T03:00:00Z'}

@@ -16,8 +16,16 @@ import {
   technicalRequirementsError,
 } from "@/features/equipment/equipmentRequest";
 import { useEquipmentRequestStore } from "@/features/equipment/equipmentRequestStore";
+import {
+  exitConfirmationText,
+  hasLiveLines,
+  TECHNICAL_STATUS_BADGE_CLASSES,
+  TECHNICAL_STATUS_LABELS,
+} from "@/features/equipment/technical";
 
 // SCRUM-45: the assigned coordinator's equipment request for one event.
+// SCRUM-24 AC9: with each line's status, Technical Support's reason and notes,
+// the event's technical status and the exit check.
 const props = defineProps({
   eventId: { type: String, required: true },
   status: { type: String, required: true },
@@ -90,6 +98,21 @@ async function submit() {
     <h2 id="equipment-request-title" class="mb-2 text-2xl font-black uppercase tracking-tight">Equipment request</h2>
     <p class="mb-6 text-sm font-medium text-ink/70">Lines go to Technical Support as Pending. They check availability for the event's dates.</p>
 
+    <dl v-if="store.technicalStatus" class="mb-6 grid gap-3 border-2 border-ink p-4 sm:grid-cols-2">
+      <div>
+        <dt class="text-xs font-bold uppercase tracking-widest">Technical status</dt>
+        <dd class="mt-1">
+          <span class="inline-block border-2 border-ink px-3 py-1 text-[10px] font-bold uppercase tracking-widest" :class="TECHNICAL_STATUS_BADGE_CLASSES[store.technicalStatus]">
+            {{ TECHNICAL_STATUS_LABELS[store.technicalStatus] ?? store.technicalStatus }}
+          </span>
+        </dd>
+      </div>
+      <div v-if="hasLiveLines(store.lines)">
+        <dt class="text-xs font-bold uppercase tracking-widest">Exits and walkways clear</dt>
+        <dd class="mt-1 text-sm">{{ exitConfirmationText(store.exitConfirmation) }}</dd>
+      </div>
+    </dl>
+
     <p v-if="store.isLoading && !store.lines.length" class="text-sm font-bold uppercase tracking-widest text-ink/70" role="status">
       Loading equipment…
     </p>
@@ -110,6 +133,13 @@ async function submit() {
           </span>
         </div>
         <p v-if="line.technical_requirements" class="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm font-medium">{{ line.technical_requirements }}</p>
+        <p v-if="line.not_available_reason" class="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
+          <span class="font-bold">Not available:</span> {{ line.not_available_reason }}
+        </p>
+        <p v-if="line.status === 're_review'" class="mt-2 text-sm font-bold">The event's time changed; Technical Support are re-checking this line. Its reservation is kept meanwhile.</p>
+        <p v-if="line.technical_notes" class="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] border-l-4 border-bauhaus-blue pl-2 text-sm">
+          <span class="font-bold">Technical Support notes:</span> {{ line.technical_notes }}
+        </p>
         <p class="mt-2 text-xs font-bold text-ink/60">
           {{ line.requested_by?.full_name ?? "Unknown user" }} · {{ formatter.format(new Date(line.created_at)) }}
         </p>

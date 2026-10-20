@@ -32,6 +32,11 @@ const isLoaded = computed(() => store.hasSettled && !store.error);
 const options = computed(() => coordinatorOptions(store.coordinators, event.value?.coordinator?.id));
 const selected = ref("");
 const isConfirming = ref(false);
+// An event with no coordinator is being assigned, so the page says so. A `submitted` one goes
+// through assign (SCRUM-12); an older event that is active but never got a coordinator can only
+// be taken by reassign (CR-101). One that already has a coordinator is reassigned.
+const isQueued = computed(() => !event.value?.coordinator);
+const usesAssign = computed(() => event.value?.status === "submitted" && isQueued.value);
 const selectedName = computed(() => options.value.find((option) => option.value === selected.value)?.label ?? "");
 
 // Times are stored in UTC and shown in Asia/Singapore (REQUIREMENTS §4).
@@ -51,9 +56,12 @@ async function reassign() {
   isConfirming.value = false;
   const eventName = event.value.event_name;
   const coordinatorName = selectedName.value;
-  const ok = await store.reassign(route.params.id, selected.value, event.value.version);
+  const queued = isQueued.value;
+  const ok = usesAssign.value
+    ? await store.assign(route.params.id, selected.value)
+    : await store.reassign(route.params.id, selected.value, event.value.version);
   if (ok) {
-    showToast(`"${eventName}" reassigned to ${coordinatorName}.`);
+    showToast(`"${eventName}" ${queued ? "assigned" : "reassigned"} to ${coordinatorName}.`);
     router.push({ name: "dashboard-coordinator-lead" });
   }
 }
@@ -126,7 +134,7 @@ async function reassign() {
 
         <section class="border-4 border-ink bg-canvas p-5 shadow-hard" aria-labelledby="reassign-heading">
           <h2 id="reassign-heading" class="text-2xl font-black uppercase tracking-tight">
-            {{ event.coordinator ? "Reassign" : "Assign" }} coordinator
+            {{ isQueued ? "Assign" : "Reassign" }} coordinator
           </h2>
           <p
             v-if="store.reassignError"
@@ -152,7 +160,7 @@ async function reassign() {
               :disabled="!selected || store.isReassigning"
               @click="isConfirming = true"
             >
-              {{ event.coordinator ? "Reassign" : "Assign" }}
+              {{ isQueued ? "Assign" : "Reassign" }}
             </BauhausButton>
           </div>
         </section>
@@ -161,9 +169,9 @@ async function reassign() {
 
     <ConfirmModal
       :open="isConfirming"
-      :title="event?.coordinator ? 'Reassign event?' : 'Assign event?'"
-      :message="`${event?.event_name ?? 'This event'} will be coordinated by ${selectedName}. They, the organiser and any previous coordinator are notified.`"
-      confirm-label="Reassign"
+      :title="isQueued ? 'Assign event?' : 'Reassign event?'"
+      :message="`${event?.event_name ?? 'This event'} will be coordinated by ${selectedName}. ${isQueued ? 'They and the organiser are notified.' : 'They, the organiser and any previous coordinator are notified.'}`"
+      :confirm-label="isQueued ? 'Assign' : 'Reassign'"
       cancel-label="Cancel"
       @confirm="reassign"
       @stay="isConfirming = false"

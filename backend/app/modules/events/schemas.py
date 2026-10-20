@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.modules.equipment.schemas import ExitConfirmation
 from app.modules.venues.schemas import Facility, VenueLayout
 
 
@@ -120,6 +121,7 @@ class EventSpaceRequest(EventSpaceRequestFields):
     id: str
     event_id: str
     version: int = 1
+    is_primary: bool = False
 
 
 class EventSpaceRequestResponse(BaseModel):
@@ -456,9 +458,15 @@ class HistoryActor(BaseModel):
 
 
 class EventHistoryEntry(BaseModel):
+    """One line of an event's history: a status change, or a reassignment (SCRUM-12), which
+    is not a status change and so carries the two coordinators instead of statuses."""
+
     id: str
+    kind: str = "status"
     from_status: EventStatus | None = None
-    to_status: EventStatus
+    to_status: EventStatus | None = None
+    from_coordinator: HistoryActor | None = None
+    to_coordinator: HistoryActor | None = None
     actor: HistoryActor | None = None
     reason: str | None = None
     at: datetime
@@ -541,6 +549,10 @@ class LeadEvent(BaseModel):
     expected_attendance: int | None = None
     coordinator: EventCoordinator | None = None
     assigned_at: datetime | None = None
+    # Queue entries (SCRUM-12 AC10): when it was submitted, and what it needs from a venue.
+    submitted_at: datetime | None = None
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] = []
     # The Lead sends it back on reassign, so a screen that is behind can't overwrite a newer change.
     version: int
 
@@ -552,6 +564,10 @@ class LeadDashboard(BaseModel):
     unassigned: list[LeadEvent] = []
     active_events: list[LeadEvent] = []
     coordinators: list[LeadCoordinator] = []
+
+
+class EventAssignRequest(BaseModel):
+    coordinator_id: UUID
 
 
 class EventReassignRequest(BaseModel):
@@ -667,5 +683,6 @@ class SafetyReviewResponse(BaseModel):
     event: SafetyReviewEvent
     venues: list[SafetyReviewVenue]
     equipment_lines: list[SafetyEquipmentLine]
-    exit_confirmation: None = None
+    # SCRUM-24 AC10: who ticked "Equipment does not block exits or walkways", and when.
+    exit_confirmation: ExitConfirmation | None = None
     decisions: list[SafetyDecision]

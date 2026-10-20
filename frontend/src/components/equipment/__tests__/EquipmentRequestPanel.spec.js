@@ -196,4 +196,34 @@ describe("EquipmentRequestPanel (SCRUM-45)", () => {
 
     expect(document.body.textContent).toContain("No equipment requested yet");
   });
+
+  it("shows Technical Support's status, reason and notes, and the exit check (SCRUM-24 AC9)", async () => {
+    equipmentApi.eventRequests.mockResolvedValue({
+      lines: [
+        { ...LINE, status: "rejected", not_available_reason: "Only 2 in stock", technical_notes: "Ask the vendor" },
+        { ...LINE, id: "l2", status: "re_review" },
+      ],
+      technical_status: "issue",
+      exit_confirmation: { confirmed_by_name: "Tan Wei", confirmed_at: "2026-10-19T03:00:00Z" },
+    });
+
+    await mountPanel();
+
+    const text = document.body.textContent;
+    expect(text).toContain("Technical status");
+    expect(text).toContain("Issue");
+    expect(text).toContain("Not available: Only 2 in stock");
+    expect(text).toContain("Technical Support notes: Ask the vendor");
+    expect(text).toContain("Technical Support are re-checking this line");
+    expect(text).toContain("Confirmed by Tan Wei");
+  });
+
+  it("with no lines the exit check is not shown", async () => {
+    equipmentApi.eventRequests.mockResolvedValue({ lines: [], technical_status: "not_required", exit_confirmation: null });
+
+    await mountPanel();
+
+    expect(document.body.textContent).toContain("Not required");
+    expect(document.body.textContent).not.toContain("Exits and walkways clear");
+  });
 });

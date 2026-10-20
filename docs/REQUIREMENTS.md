@@ -401,7 +401,7 @@ sequenceDiagram
   C->>API: POST /events/{id}/equipment-requests
   T->>API: GET availability, then POST reserve (full quantity only)
   API->>DB: reserve_equipment() locks and checks
-  T->>API: PATCH technical readiness = ready
+  T->>API: PUT exit-confirmation (technical status becomes Ready by itself)
   C->>API: POST /events/{id}/send-for-safety-check
   API->>DB: guard: every required booking approved, tech ready; planning to safety_review
   API-->>S: notify safety review waiting
@@ -579,7 +579,7 @@ CR-98 introduces organiser-proposed event spaces before venue booking. A space r
 **Rules**
 - **CR98-R1 (AC1):** While an event is `draft` or `returned`, its organiser can add, edit and remove space requests, including creating two or more for one event. Once submitted, direct organiser edits are rejected.
 - **CR98-R2 (AC2):** Each space has a non-blank label, expected pax of at least 1, a layout preference, and zero or more required facilities. The organiser can stage incomplete cards while editing; submission validates every space, and the API rejects invalid persisted space values.
-- **CR98-R3 (AC3, QA3-23):** Each space may specify its own date/time window, which must fall within the event's overall schedule. If both space bounds are null, the space inherits the event window. A space window is stored as a timezone-aware `starts_at`/`ends_at` pair; partial, inverted or out-of-envelope windows are rejected. The event-level schedule remains the required outer envelope and continues to govern event-level registration/lifecycle rules.
+- **CR98-R3 (AC3, QA3-23):** Each space may specify its own start and end times on the event date, within the event's overall schedule. The organiser form uses the event-level date and does not offer separate space-date inputs. If both space bounds are null, the space inherits the event window. A space window is stored as a timezone-aware `starts_at`/`ends_at` pair; partial, inverted or out-of-envelope windows are rejected. The event-level schedule remains the required outer envelope and continues to govern event-level registration/lifecycle rules.
 - **CR98-R4 (AC4):** Existing single-space events retain their expected-pax and layout data when represented by the migration's `Main space`; the coordinator can review and book one venue as before. New venue requirements are stored on their space requests rather than written to legacy event-level layout/facilities fields.
 - **CR98-R5 (AC5):** The coordinator can see every event space and its expected pax, layout and required facilities. This criterion is about review visibility only; selecting and booking a venue for each proposed space belongs to the follow-on CR-97 workflow, not CR-98.
 - Equipment remains event-level: preliminary needs are captured on the event and structured equipment request lines link by `event_id` (CR-98 clarification).
@@ -588,7 +588,7 @@ CR-98 introduces organiser-proposed event spaces before venue booking. A space r
 **Acceptance criteria**
 - **AC1.** While an event request is a draft or returned for amendment, the organiser can add, edit and remove event spaces, including creating an event with two or more spaces. Once submitted, direct organiser edits to spaces are rejected.
 - **AC2.** Each event space has a non-empty label, expected pax of at least 1 and a layout preference. Invalid or missing values are rejected.
-- **AC3 (QA3-23).** Each event space can have its own date and time window, which must fall within the event's overall date, start time and end time. A space without its own window uses the event's. A window outside the event's schedule is rejected.
+- **AC3 (QA3-23).** Each event space can have its own start and end times on the event date, which must fall within the event's overall start and end times. The organiser form uses the event-level date for each custom space window. A space without its own window uses the event's full schedule. A window outside the event's schedule is rejected.
 - **AC4.** An event with one event space continues to preserve its existing expected paxa and layout, and the coordinator can review and book one venue as before.
 - **AC5.** The coordinator sees every event space and its expected pax, layout and required facilities.
 
@@ -654,11 +654,19 @@ CR-98 introduces organiser-proposed event spaces before venue booking. A space r
   - LA-R2 scope: `events.assigned_by` records the assigning Lead, and null means assigned before the Lead role existed, so every Lead sees it. **[Assumption]** An event whose assigner no longer holds the Lead role is also visible to every Lead, so no event is orphaned.
   - LA-R6 and LA-R11 (minimal): a Lead-only `POST /events/{id}/reassign` through `reassign_event`, in the Lead's scope, to an account holding the coordinator role, with an `expected_version` check so a stale screen can't overwrite a newer assignment. It notifies the new coordinator, the previous coordinator and the organiser, never the Lead.
 - **Not built (story 81, SCRUM-12).**
-  - LA-R1 and LA-R4: a request still goes `draft → under_review` with no coordinator, not through `submitted`, so the Lead's "unassigned queue" is the active events that have no coordinator.
+  - ~~LA-R1 and LA-R4: a request still goes `draft → under_review` with no coordinator~~ — **built by SCRUM-12**, see the build notes below.
   - The coordinator's "Request reassignment" action (LA-R6).
   - LA-R8: the refusal to deactivate a coordinator with active events (CR-101 AC6, QA3-22) is out of scope by decision.
-  - **LA-R11's history ("who, when, from, to").** Only the last assigner and time are stored (`assigned_by`, `assigned_at`). Writing `event_status_history` was tried and rejected: readers treat every row there as a status transition, and a same-status row sent a Lead-reassigned event to the back of the Safety Officer's queue. Story 81 needs a dedicated assignment-history table.
+  - ~~LA-R11's history ("who, when, from, to")~~ — **built by SCRUM-12** in `event_assignment_history`, see the SCRUM-12 build notes below. (Writing `event_status_history` was tried and rejected: readers treat every row there as a status transition.)
 
+
+**SCRUM-12 build notes (`feature/scrum-12-coordinator-assignment`).**
+- A submission is `draft → submitted`; the unassigned queue is `submitted` with no coordinator, oldest submission first, each entry showing name, date, expected attendance and venue needs (layout and facilities). `POST /events/{id}/assign` (Lead only, on the active role) moves it `submitted → under_review` through `assign_event`: coordinator, `assigned_by`, `assigned_at`, one `event_status_history` row (Lead, time, "Assigned to <name>") and notices to the coordinator and organiser. An event that already has a coordinator is refused with 409 (change it with `reassign`, story 81); two simultaneous assignments leave one winner, the other gets "already assigned". Coordinators get 403 on the queue and on assign.
+- **[Team decision]** Events already `under_review` with no coordinator when the migration ran were moved back to `submitted`, so none sits in the old state.
+- **[Assumption]** "Active user" (AC2) means an account holding the Event Coordinator role that is not banned or deleted in Supabase Auth; the schema has no other active/inactive flag (§9 item 82).
+- AUTH-R7 / AC12: a database trigger on `user_roles` refuses a second role for a Lead and the Lead role for anyone holding another role. A Lead acting as Lead already gets 403 on approve, return, reject and send-for-safety-check (active-role guard), proved by tests.
+- **LA-R11 history.** A reassignment is recorded in `event_assignment_history` (Lead, previous and new coordinator, time), written by `reassign_event`, and shown in the event history merged with the status history (migration `20261020110000`). It stays out of `event_status_history` because a reassignment is not a status change. An assignment from the queue is already a status change (`submitted` → `under_review`), so it appears once, as that row. Built here at the developer's request; story 81 reuses it.
+- The coordinator-initiated "Request reassignment" remains story 81's.
 
 **Acceptance criteria**
 - **Given** an organiser submits a request, **then** it is `submitted` and in the unassigned queue, no coordinator is set, and no coordinator is notified.
@@ -682,7 +690,7 @@ See §5 for the state machine.
 | Item | Ready when | Who updates it |
 |---|---|---|
 | Venue | At least one active booking (`held`, `approved`, `re_review`), and **every required venue booking** `approved` and not flagged Affected, Conflict, Unsuitable, Safety rejected, Needs re-review or Expired (SCRUM-82 AC9, AC10, QA3-24). Each booking has its own approval and availability state; the event-level item is the aggregate (QA3-50). **CR-97:** an event with event spaces is checked **space by space**: each space needs its own active booking, approved and unflagged, and every blocker names the space ("Breakout room: no approved venue booking.", "…: awaiting venue staff approval.", "…: under re-review.", "…: flagged Affected."). A space whose only booking was rejected, cancelled, released or expired counts as having none. An event without spaces keeps the event-wide wording ("No venue booking is approved."). If one venue is rejected, the event stays in `planning` while the coordinator arranges a replacement or revises the plan, and the approved venues stay on the event (QA3-24). The at-least-one rule is an **[Assumption]**, §9 item 23. | Venue staff, by approving the booking (QA-128). The flags come from CR-94, CR-95 and CR-99. |
-| Technical status | `ready` or `not_required` (SCRUM-82 AC1, AC3). Read only through `events.service.technical_status(row)`, which reads `technical_readiness` until story 24 derives it from equipment lines (24 AC11: no lines gives `not_required`). Equipment is not a separate item: the 8 Oct clarification folds it into 24's technical status, so it isn't checked twice. | Tech support (QA-128), through story 24 |
+| Technical status | `ready` or `not_required` (SCRUM-82 AC1, AC3). Read only through `events.service.technical_status(row)`, which reads `technical_readiness`; since story 24 that column is derived from the equipment lines and the exit check (24 AC11, §6.17) and kept current by the database. Equipment is not a separate item: the 8 Oct clarification folds it into 24's technical status, so it isn't checked twice. | Derived from tech support's line decisions and exit check (story 24 AC11) |
 | Programme, registration setup | Shown for information only; **not blocking** (QA-17, QA-133). Programmes arrive as attachments with non-core story 89. | Organiser or coordinator |
 
 - **RD-R1:** "Send for safety check" is enabled only when every blocking item is ready. The server repeats the check and names every missing item. **No override** (QA-118). Only the Safety Officer's approval confirms an event (CR-104).
@@ -829,7 +837,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 
 **Behaviour**
 - Filters (W4, QA-59): date and time (to be pre-filled from the event once `events` exists; until then entered by the coordinator), minimum capacity (pre-filled from pax), location, layout, required facilities, accessibility features. Accessibility is filtered by boolean/tag features, not numeric metrics (QA2-14).
-- Each result shows capacity, layouts (with per-layout capacity), facilities, accessibility features, operating hours, and an **availability** badge (`available` / `unavailable` / `not_checked` when no period was given). The **suitability** badge (§6.11) is SCRUM-18 and not shown yet.
+- Each result shows capacity, layouts (with per-layout capacity), facilities, accessibility features, operating hours, and an **availability** badge (`available` / `unavailable` / `not_checked` when no period was given). The **suitability** badge (§6.11, SCRUM-18) shows only when the search names an event or space (`event_id` / `space_id`); a plain search carries none.
 - Order: included venues by name, then excluded venues by name. A "Show N excluded" toggle reveals excluded venues together with their reasons; each reason has a code and a message (e.g. `capacity_below_minimum` "Capacity 100 is below the required 150", `held` "Held by another event 10 Oct 13:00–16:00", `blocked` "Blocked: renovation 1 Oct 00:00 – 15 Oct 00:00").
 - Detail page per venue: full attributes plus upcoming blocks and occupying bookings (raw material for the §6.9 calendar).
 - API: `GET /api/v1/venues?starts_at&ends_at&min_capacity&location&layout&facilities&accessibility&include_excluded` and `GET /api/v1/venues/{id}`, coordinators and venue staff only (§2).
@@ -841,7 +849,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - **VS-R4 [Team decision]:** **Every criterion the coordinator sets is strict**, including layout and accessibility, which §6.11 treats as warnings for the suitability badge. A filter the coordinator chose should filter; VS-R3's toggle keeps excluded venues discoverable. Unset criteria are not applied (no minimum capacity → no capacity check).
 - **VS-R5 [Team decision]:** Any block, whatever its reason (also `internal_activity`, `other`), excludes the venue (CAL-R3); SCRUM-39's "maintenance, renovation, or safety" are examples. `held`, `approved` and `re_review` bookings exclude; `rejected`, `cancelled`, `released` do not (§6.14). SCRUM-39's "setup, reset, and turnaround buffers" criterion returns with W7 CR-01 (VS-R1, 21).
 - **VS-R6 [Team decision]:** When a layout is requested and the venue records a capacity for it, that figure is compared with the minimum; otherwise the venue capacity (§6.11). Location matches as a case-insensitive substring of the venue's free-text location.
-- **VS-R7 [Team decision]:** The period is optional; without it availability is `not_checked` and no venue is excluded on availability. `starts_at`/`ends_at` must be given together, timezone-aware, with `ends_at > starts_at`. The SPA sends Singapore time as a fixed `+08:00` offset (no daylight saving); the database stores UTC. Operating hours are displayed but not enforced here (a §6.11 warning, SCRUM-18).
+- **VS-R7 [Team decision]:** The period is optional; without it availability is `not_checked` and no venue is excluded on availability. `starts_at`/`ends_at` must be given together, timezone-aware, with `ends_at > starts_at`. The SPA sends Singapore time as a fixed `+08:00` offset (no daylight saving); the database stores UTC. Operating hours are displayed but not enforced here (a §6.11 warning, shown by SCRUM-18's suitability check).
 
 **Acceptance criteria**
 - **Given** an event on 10 Oct 14:00–17:00 for 150 pax needing a projector, **when** I search with the pre-filled filters, **then** only active venues with capacity ≥ 150, a projector, and no hold, booking, or block overlapping 14:00–17:00 are listed.
@@ -850,7 +858,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - **Given** Hall C is blocked for maintenance 08:00–12:00, **when** I search 12:00–15:00, **then** Hall C is listed (a block's end is exclusive, CAL-R2); **when** I search 11:59–13:00, **then** it is excluded with "Blocked: maintenance 10 Oct 08:00–12:00".
 - **Given** I search with no date and time, **then** every active venue is listed with availability "not checked".
 
-### 6.11 Venue suitability checking *(SCRUM-18)*
+### 6.11 Venue suitability checking *(SCRUM-18 — built)*
 
 This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one class per rule (Strategy/Specification pattern), so new rules plug in.
 
@@ -872,7 +880,16 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **Given** pax 150 and capacity 100, **then** the result is Unsuitable with "Capacity 100 is below expected attendance 150."
 - **Given** pax exactly equal to capacity, **then** the capacity rule passes (boundary).
 - **Given** the theatre layout is unsupported but everything else passes, **then** the result is "Suitable with warnings: theatre layout not supported."
-- **Given** a projector is required and the venue has none, **then** the result is Unsuitable.
+- **Given** a projector is required and the venue has none, **then** the result is Unsuitable, naming the facility.
+- **Given** an inactive venue, **then** the result is Unsuitable.
+- **Given** an event with several spaces, **then** each venue is checked against that space's own attendance, layout, facilities and window (QA3-23), so a 50-person breakout passes in a 60-seat room even if the event has 500.
+
+**How it is built (SCRUM-18)**
+- `GET /api/v1/venues` takes optional `event_id` and `space_id`. When either is given, every result carries `suitability {verdict, reasons[{code, severity, message}]}` beside its `availability`; otherwise `suitability` is null.
+- **Only the event's assigned coordinator, acting as coordinator, may ask:** 403 for any other active role (Venue Staff, Lead, Organiser, Tech Support, Attendee) and for a coordinator who is not assigned; 404 for a missing event, space, or a draft. The requirements come from the stored event or space, never from the client's filters.
+- A space's own attendance, layout and facilities apply, and anything it leaves blank falls back to the event's. Its own window applies, else the event's. With only `event_id`, the event's own requirements apply.
+- **Accessibility [Team decision]:** the event's needs are free text and the venue's features are a fixed list, so the check matches keywords in the text (wheelchair, step-free or ramp, toilet, hearing, lift or elevator) to the venue's features. A recognised need the venue lacks warns and names the feature; text with no recognised keyword warns that it could not be matched and lists what the venue records. Warning only, as the table says. Reason: nothing structured exists to match against, and a silent pass would hide a real gap.
+- **BR-R3 is enforced on the server (§6.12).** `venues.service.request_booking` runs the check on the space (else the event) before holding anything: an Unsuitable venue is refused with 409 and its reasons, and a venue with warnings is held only when the body carries `acknowledge_warnings: true` (otherwise 409 listing the warnings). Capacity and an inactive venue stay the database function's own refusals, with their own wording (CR-97 AC10, SCRUM-64), so this check leaves those two to it. Likewise it stays out of the way when the database function will refuse the request for its own reason (the event isn't in Planning, or the space already holds a venue), so those refusals keep their wording (TC-BOOK-004, 005); a replacement is always checked. The request dialog shows the verdict, asks for a tick before it sends a venue with warnings, and doesn't offer an Unsuitable one.
 
 ### 6.12 Venue booking request and tentative hold *(SCRUM-19)*
 
@@ -901,7 +918,7 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **BR-R17 (primary venue, QA3-26):** the coordinator may designate **one venue as the primary, attendee-facing location**. Attendees see the primary location; the organiser sees all the venues. **[Assumption]** A single-venue event's only venue is its primary venue automatically. **(CR-97)** The primary is a flag on the event space (`event_space_requests.is_primary`, at most one per event). The assigned coordinator, acting as coordinator, sets, moves or clears it while the event is in `planning` only **[Team decision]**; an event's only space reads as primary without being marked. Choosing a primary is optional and doesn't block the safety check **[Assumption]**, §9 item 51.
 - **BR-R18 (cancelling one venue, QA3-27):** cancelling one venue booking **doesn't cancel the others**. Other venue bookings are removed only when the whole event is cancelled.
 - **BR-R19 (replacement, QA3-30):** a replacement venue is a change request: it goes through a new venue request and every approval, like a new booking.
-- **SCRUM-19 scope:** BR-R3 (suitability) is **not enforced by SCRUM-19**; it moves to SCRUM-18, which owns the suitability verdict. BR-R5 (coordinator cancels a hold) is **not built**; it is **SCRUM-85**. Until it exists, a coordinator who picks the wrong venue is held to it unless venue staff reject the booking (§6.13).
+- **SCRUM-19 scope:** BR-R3 (suitability) is **not enforced by SCRUM-19**; SCRUM-18 now enforces it in `request_booking` (§6.11). BR-R5 (coordinator cancels a hold) is **not built**; it is **SCRUM-85**. Until it exists, a coordinator who picks the wrong venue is held to it unless venue staff reject the booking (§6.13).
 
 **Acceptance criteria**
 - **Given** a planning event and a suitable, free venue, **when** I request it, **then** a `held` booking exists, the calendar shows a tentative hold, and venue staff are notified.
@@ -1016,13 +1033,17 @@ available(type, W) = total_quantity
 
 ### 6.17 Equipment reservation *(SCRUM-24)*
 
-**Behaviour:** from a pending line, tech support click **Reserve**. `reserve_equipment` (DB-4) runs atomically. On success, the line is `reserved` and the coordinator is notified. When all equipment is arranged, tech support set **technical readiness = ready** (§6.6, QA-128).
+**Behaviour:** from a pending line, tech support click **Reserve**. `reserve_equipment_line` (DB-4) runs atomically. On success, the line is `reserved`, the reservation is linked to the event and line, and the coordinator assigned at that moment is notified. If not enough is free, the reservation is refused with how many are free and the line stays as it was; tech support may then mark it **Not available** (`rejected`) with a required reason. Tech support keep internal **technical notes** on each line; the assigned coordinator sees status, reason and notes, organisers and attendees never do.
+
+**Technical status is derived, not set by hand (SCRUM-24 AC11, [Team decision] 8 Oct merging story 87):** Not required when the event has no equipment lines (released lines don't count); Issue when any line is Not available; Ready when every line is Reserved **and** tech support ticked "Equipment does not block exits or walkways" (AC10, W7 CR-06); otherwise Pending (a line pending or flagged for re-review, or the box unticked). Issue takes precedence. An event in Safety review or Confirmed that stops being Ready returns to Planning (CR-104 AC10). Every line status change, tick and technical-status change is recorded with who made it and when (AC13).
 
 **Rules**
 - **RS-R1:** A reservation immediately reduces availability for overlapping windows, and stays linked to its event (W4).
 - **RS-R2:** Simultaneous reservations are first-come-first-served (QA-113). Two reservations that together exceed availability can't both succeed.
 - **RS-R3:** Reservations are **freed** only when the event is cancelled (QA-33), rejected, or completed, or when a line is deleted or rejected. They are **never auto-released** because of a change (QA-2, QA-32).
-- **RS-R4:** If an outage (damage or maintenance) drops availability below what's already reserved, reservations are kept, affected events show "Equipment issue", and tech support and coordinators are notified. There is no automatic substitution (QA-31).
+- **RS-R4:** If an outage (damage or maintenance) drops availability below what's already reserved, reservations are kept, affected events show "Equipment issue", and tech support and coordinators are notified. There is no automatic substitution (QA-31). **[Assumption, SCRUM-24 D9]** Not built in SCRUM-24: none of its 13 ACs ask for it; deferred (§9 item 78).
+- **RS-R5 (SCRUM-24 AC7):** when an event's date or time changes (story 37), each reservation moves to the new window and is re-checked. One that no longer fits is kept and still counts as taken; its line goes to `re_review` and the coordinator is notified. **[Assumption, D8]** Tech support clear it by reserving the line again, or by marking it Not available (§9 item 76).
+- **RS-R6 (SCRUM-24 AC10):** the exit check is cleared when a line is added or removed, a line's item or quantity changes, or the event's venue booking changes (a new booking, a different venue or space, or a booking that stops occupying). Approving a booking, flags, and note-only edits don't clear it (§9 item 75).
 
 **Acceptance criteria**
 - **Given** 5 available, **when** two tech staff simultaneously reserve 3 for two overlapping events, **then** exactly one succeeds and the other sees "Insufficient: 2 available."
@@ -1189,7 +1210,7 @@ Ties break by **soonest event date**, then by longest wait, then by ID for stabl
 
 **What the server derives** (`GET /events/dashboard/coordinator`, `events.service.coordinator_dashboard`). Only events assigned to the caller, never drafts (DR-R2). `awaiting_review` is an `under_review` event with no answered amendment; `resubmitted` is one whose latest amendment has `resubmitted_at`. Kinds with no data source yet (change and cancellation requests, booking and equipment decisions, re-review outcomes) are never produced, so their widgets stay empty rather than invented.
 
-- **[Assumption]** `arrangement_issue` is produced for a `planning`, `safety_review` or `confirmed` event whose `technical_readiness` is `issue`, the one arrangement problem the system records today. The event also carries the flag `technical_issue`. See §9 item 16.
+- **[Assumption]** `arrangement_issue` is produced for a `planning`, `safety_review` or `confirmed` event whose technical status is `issue`, i.e. a line tech support marked Not available (SCRUM-24 AC11). The dashboard's equipment column follows the lines alone (Not required, Pending, Ready, Issue); the technical column adds the exit check. The event also carries the flag `technical_issue`. See §9 item 16.
 - **[Assumption]** Equipment readiness is `not_required` when the event lists no preliminary equipment needs, `ready` once it has at least one `confirmed` or `completed` reservation, and `pending` otherwise. §6.6's "every request reserved" needs SCRUM-24's per-event equipment requests, which don't exist yet. See §9 item 17.
 - **Unassigned events are not shown.** The coordinator dashboard carries no unassigned count or alert: unassigned events are the Event Coordinator Lead's queue (customer clarification of 2026-10-05, QA row to be added, §6.5). This replaces the earlier [Assumption] about counting them (§9 item 18).
 
@@ -1503,6 +1524,16 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 72. **[Team decision, SCRUM-51]** AC10: each booking a block overlaps when it is saved is recorded against it in `venue_block_bookings`, even when another block or story flagged it first, so story 54 can tell whether ending one block early leaves the booking under another. The flag itself is still set once (item 61).
 73. **[Open question, SCRUM-51]** CAL-R1 says that after a block is saved, the affected coordinators **and venue staff** are notified. SCRUM-51's ACs name only the coordinator (AC5) and the organiser (AC13), so venue staff are not notified. Ask the PO whether they should be.
 74. **[Open question, CR-100]** Can Venue Staff adjust one booking's setup or turnaround for that event's needs (M3, said in Session 3), or are the venue's defaults always used as copied (written answer QA3-4: "Once set can't be updated/adjusted")? The team follows QA3-4 (VC-R9) and builds no per-booking edit. If the customer confirms M3, a new PBI adds the edit for `held` bookings, re-checked against DB-1 and locked on approval (QA3-6).
+75. **[Assumption, SCRUM-24 D4/D14]** AC10's "changing the event's equipment or venue" clears the exit check on: adding or removing a line; changing a line's item or quantity; a new venue booking, a different venue or space, or a booking that stops occupying. Note-only edits, approval and flags don't. The customer said a change causes no automatic reset of *other* sign-offs; AC10 is kept as written because it is the Week 7 safety rule. Raise at the consult.
+76. **[Assumption, SCRUM-24 D8]** A line flagged for re-review (AC7) is cleared by tech support reserving it again (it keeps its reservation meanwhile) or marking it Not available. The ACs don't say how.
+77. **[Assumption, SCRUM-24 D11]** Equipment has no hold or expiry (holds are venue-only, Week 7); an expired venue hold does not release equipment reservations. The customer's reply doesn't say the second part outright.
+78. **[Team decision, SCRUM-24 D9]** RS-R4 (outages after a reservation) is not in SCRUM-24's ACs and is deferred.
+79. **[Team decision, SCRUM-24]** Technical status is cached in `events.technical_readiness` and written only by the database whenever a line, the exit check or the venue changes, so every existing reader sees the derived value without recomputing it.
+80. **[Team decision, SCRUM-24 D7, D45]** Availability (SCRUM-23's check and reserving) uses one database calculation with §6.16's worst-moment rule, replacing a sum that refused valid requests. This changes Done story 23's behaviour.
+81. **[Assumption, SCRUM-24]** A line can be marked Not available from Pending, Reserved or Re-review (equipment can fail after it was reserved); doing so frees any reservation (RS-R3). The ACs only describe it from Pending.
+82. **[Assumption, SCRUM-12 AC2]** "Only active users holding the Event Coordinator role can be assigned": the schema has no active flag, so "active" is an account that is neither banned nor deleted in Supabase Auth. Revisit if an account-status column is added (ACC-R10).
+83. **[Team decision, SCRUM-18 BR-R3]** The acknowledgement is a boolean the request must carry (`acknowledge_warnings`), enforced by the API, with a tick box in the dialog, not a separate round trip. Capacity and an inactive venue are left to the database function that already refuses them, to keep CR-97's and SCRUM-64's wording; every other hard failure (today a missing facility) is refused by the API. The CR-94 note assigned BR-R3 to SCRUM-18, though the story's pasted acceptance criteria do not list it.
+84. **[Team decision, SCRUM-18 AC5]** Accessibility needs are free text, so they are matched to the venue's features by keyword and only ever warn (§6.11). The keyword list lives in `venues/suitability.py` (`ACCESSIBILITY_KEYWORDS`); a structured needs field on the event would replace it.
 
 ## 10. Non-functional requirements
 

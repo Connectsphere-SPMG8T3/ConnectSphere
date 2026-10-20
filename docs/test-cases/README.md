@@ -12,7 +12,7 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 | [roles-and-access.md](roles-and-access.md) | SCRUM-48 routing and data-layer security; SCRUM-74/75/76/78 role switching | TC-RBAC, TC-ROLE, TC-DATA |
 | [venues.md](venues.md) | SCRUM-39 venue search, SCRUM-67 venue profile, SCRUM-19 venue booking request, CR-99 hold expiry, SCRUM-38 booking rejection, CR-98 space-scoped venue selection, CR-94 venue-edit re-check and Unsuitable flag, CR-97 several venues per event, SCRUM-21 booking conflict detection, CR-95 affected bookings and replacements, CR-100 venue defaults and safety details | TC-VENUE, TC-BOOK, TC-HOLD, TC-SPACE |
 | [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment, SCRUM-61 comments, CR-98 event-space requirements | TC-EVENT, TC-REV, TC-AMD, TC-CMT, TC-SAFE, TC-SPACE |
-| [dashboards.md](dashboards.md) | SCRUM-72 coordinator, SCRUM-70 venue staff, SCRUM-71 organiser, SCRUM-73 technical support, CR-101 Event Coordinator Lead | TC-DASH, TC-VSD, TC-ORG, TC-TSD, TC-LEAD |
+| [dashboards.md](dashboards.md) | SCRUM-72 coordinator, SCRUM-70 venue staff, SCRUM-71 organiser, SCRUM-73 technical support, CR-101 Event Coordinator Lead, SCRUM-12 Coordinator assignment | TC-DASH, TC-VSD, TC-ORG, TC-TSD, TC-LEAD, TC-ASSIGN |
 | [safety-decisions.md](safety-decisions.md) | CR-103 queue/review (AC1–4, AC6), CR-104 safety decisions | TC-SDEC |
 | [equipment.md](equipment.md) | SCRUM-45 equipment request | TC-EQR |
 
@@ -31,6 +31,8 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 | Venue Staff | `venue.staff@connectsphere.dev` | Single role |
 | Technical Support | `tech.support@connectsphere.dev` | Single role |
 | Attendee | `attendee@connectsphere.dev` | Single role |
+| Event Coordinator Lead | `coordinator.lead@connectsphere.dev` | Single role (Grace Chua) |
+| Event Coordinator Lead (second) | `coordinator.lead2@connectsphere.dev` | Single role (Daniel Foo); the second Lead for TC-LEAD-012 and TC-LEAD-015 |
 
 **Safety review prerequisites (CR-103/104):** seeded Safety Officer and Event Coordinator Lead accounts are available; officer decision walkthrough cases remain subject to the manual checklist. Grant any additional staff roles using `SETUP.md`.
 

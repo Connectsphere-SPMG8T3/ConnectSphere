@@ -95,6 +95,13 @@ describe('Safety queue and review', () => {
     for (const text of ['Priya', 'Marcus', '80', 'Step-free access', 'Town Hall', '100', 'theatre', 'classroom', 'ramp', 'lift', '80%', 'Projector', '2', 'pending', '90', '10 Oct', '10 Nov', 'Officer Lee', 'Keep the aisle clear', 'Record any crowd-movement concerns here.', 'Emergency access', 'Restrictions', 'Exit confirmation']) expect(el.textContent).toContain(text);
     expect(el.textContent.match(/Not recorded/g)).toHaveLength(3);
   });
+  it('shows who ticked the exit check and when (SCRUM-24 AC10)', async () => {
+    eventsApi.safetyReview.mockResolvedValue(response({ exit_confirmation: { confirmed_by_name: 'Tan Wei', confirmed_at: '2026-10-19T03:00:00Z' } }));
+    const { el } = await mountView(); await vi.waitFor(() => expect(el.textContent).toContain('Community Fair'));
+    expect(el.textContent).toContain('Exit confirmation');
+    expect(el.textContent).toContain('Equipment does not block exits or walkways.');
+    expect(el.textContent).toContain('Confirmed by Tan Wei');
+  });
   it('renders absent equipment and no previous decisions', async () => {
     eventsApi.safetyReview.mockResolvedValue(response({ equipment_lines: [], decisions: [] }));
     const { el } = await mountView(); await vi.waitFor(() => expect(el.textContent).toContain('No equipment requested'));

@@ -113,7 +113,7 @@ To measure coverage, run `pytest --cov` here, or `npm run test:coverage` in `fro
 | Step | Command | Notes |
 |------|---------|-------|
 | Migrate DB | `supabase db push` | Creates `user_role` enum, `public.profiles`, trigger, RLS policies |
-| Seed test accounts | `psql "$DATABASE_URL" -f supabase/seed.sql` | Creates 8 accounts covering all 7 roles, see below |
+| Seed test accounts | `psql "$DATABASE_URL" -f supabase/seed.sql` | Creates 9 accounts covering all 7 roles, see below |
 | Start backend | `uvicorn app.main:app --reload --port 8000` | Run from `backend/` |
 | Start frontend | `npm run dev` | Run from `frontend/` |
 | Run tests | `pytest` | Run from `backend/` |
@@ -129,6 +129,7 @@ To measure coverage, run `pytest --cov` here, or `npm run test:coverage` in `fro
 | Attendee | attendee@connectsphere.dev | Cs1234 | Single role |
 | Safety Officer | safety.officer@connectsphere.dev | Cs1234 | Single role (CR-103 AC5) |
 | Event Coordinator Lead | coordinator.lead@connectsphere.dev | Cs1234 | Single role (12 AC12) |
+| Event Coordinator Lead (second) | coordinator.lead2@connectsphere.dev | Cs1234 | Single role; a second Lead, so CR-101 AC5's scope (each Lead sees the events they assigned) can be tested |
 | Event Coordinator (second) | coordinator2@connectsphere.dev | Cs1234 | Single role; a second coordinator for assignment and cross-coordinator checks |
 
 ## Architecture notes

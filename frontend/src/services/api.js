@@ -163,6 +163,14 @@ export const eventsApi = {
   leadDashboard(token) {
     return request("/events/dashboard/lead", { token });
   },
+  // SCRUM-12: a Lead assigns a coordinator to a queued (submitted) event.
+  assign(eventId, coordinatorId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/assign`, {
+      method: "POST",
+      body: { coordinator_id: coordinatorId },
+      token,
+    });
+  },
   // `expectedVersion` is the event version the Lead was looking at: a screen that is behind is refused.
   reassign(eventId, coordinatorId, expectedVersion, token) {
     return request(`/events/${encodeURIComponent(eventId)}/reassign`, {
@@ -265,13 +273,30 @@ export const equipmentApi = {
   eventRequests(eventId, token) {
     return request(`/equipment/requests/event/${encodeURIComponent(eventId)}`, { token });
   },
-  pendingRequests(token) {
-    return request("/equipment/requests/pending", { token });
+  // Every line on every open event, any status (SCRUM-24 requests page).
+  requestList(token) {
+    return request("/equipment/requests", { token });
+  },
+  // SCRUM-24 equipment reservation (tech support only).
+  technicalView(eventId, token) {
+    return request(`/equipment/events/${encodeURIComponent(eventId)}/technical`, { token });
+  },
+  reserveLine(lineId, token) {
+    return request(`/equipment/requests/${encodeURIComponent(lineId)}/reserve`, { method: "POST", token });
+  },
+  markNotAvailable(lineId, reason, token) {
+    return request(`/equipment/requests/${encodeURIComponent(lineId)}/not-available`, {
+      method: "POST", body: { reason }, token,
+    });
+  },
+  setLineNote(lineId, note, token) {
+    return request(`/equipment/requests/${encodeURIComponent(lineId)}/notes`, { method: "PUT", body: { note }, token });
+  },
+  setExitConfirmation(eventId, confirmed, token) {
+    return request(`/equipment/events/${encodeURIComponent(eventId)}/exit-confirmation`, {
+      method: "PUT", body: { confirmed }, token,
+    });
   },
 };
-
-export function checkEquipmentAvailability(payload, token) {
-  return equipmentApi.checkEquipmentAvailability(payload, token);
-}
 
 export { ApiError };

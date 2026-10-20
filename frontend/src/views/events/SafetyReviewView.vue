@@ -6,6 +6,7 @@ import BauhausCard from "@/components/common/BauhausCard.vue";
 import SafetyDecisionDetails from "@/components/events/SafetyDecisionDetails.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import { showToast } from "@/composables/useToast";
+import { exitConfirmationText } from "@/features/equipment/technical";
 import { displaySafetyTime } from "@/features/events/safetyDecision";
 import { useSafetyDecisionStore } from "@/features/events/safetyDecisionStore";
 
@@ -98,7 +99,7 @@ watch(() => route.params.id, (id) => {
           <h2 class="text-2xl font-black uppercase">Equipment</h2>
           <p v-if="!review.equipment_lines.length" class="mt-4">No equipment requested</p>
           <ul v-else class="mt-4 space-y-3"><li v-for="line in review.equipment_lines" :key="line.id">{{ line.equipment_name }} × {{ line.quantity }} — {{ line.status }}</li></ul>
-          <p class="mt-6 font-bold">Exit confirmation</p><p>{{ review.exit_confirmation ?? 'Not recorded' }}</p>
+          <p class="mt-6 font-bold">Exit confirmation</p><p v-if="review.exit_confirmation">Equipment does not block exits or walkways.</p><p>{{ exitConfirmationText(review.exit_confirmation) }}</p>
         </BauhausCard>
         <BauhausCard background="white" accent="none">
           <h2 class="text-2xl font-black uppercase">Registration — for information</h2>

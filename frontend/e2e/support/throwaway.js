@@ -70,6 +70,22 @@ export function createThrowawayEvent(tag, startsAt, endsAt) {
   return row;
 }
 
+/** A submitted event waiting in the Lead's unassigned queue (SCRUM-12): no coordinator. */
+export function createQueuedThrowawayEvent(tag, startsAt, endsAt) {
+  const [row] = query(
+    "insert into public.events (organiser_id, coordinator_id, status, name, starts_at, ends_at, expected_attendance, layout_preference, facilities_required, submitted_at) values " +
+      "('a0000000-0000-4000-8000-000000000001', null, 'submitted', " +
+      `'${EVENT_PREFIX}e2e-${runId} ${tag}', '${startsAt}', '${endsAt}', 64, 'theatre', '{projector}', now()) returning id, name`,
+  );
+  return row;
+}
+
+/** The event's status and coordinator, read straight from the database. */
+export function readThrowawayEvent(eventId) {
+  const [row] = query(`select status, coordinator_id from public.events where id = '${eventId}'`);
+  return row;
+}
+
 /** A booking on a throwaway event with a chosen status and expiry (CR-99), for
  * states a request alone can't reach. Deleted with the event's bookings. */
 export function createThrowawayHold(event, venueId, startsAt, endsAt, status, expiresAt, spaceId = null) {
@@ -93,6 +109,11 @@ export function createThrowawayBooking(event, venueId, startsAt, endsAt, status)
 /** Moves a throwaway event to a status a request alone can't reach (CR-95: Confirmed). */
 export function setThrowawayEventStatus(event, status) {
   query(`update public.events set status = '${status}' where id = '${event.id}'`);
+}
+
+/** Free-text accessibility needs on a throwaway event (SCRUM-18). */
+export function setThrowawayEventAccessibilityNeeds(event, needs) {
+  query(`update public.events set accessibility_needs = '${needs}' where id = '${event.id}'`);
 }
 
 // Same note as backend/scripts/verify_live.py's THROWAWAY_BLOCK_NOTE, so either
@@ -162,6 +183,28 @@ export function setThrowawayBookingBuffers(bookingId, setupMinutes, turnaroundMi
 export function deleteThrowawayEvents() {
   query(`delete from public.venue_bookings where event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);
   query(`delete from public.events where name like '${EVENT_PREFIX}%'`);
+  // SCRUM-24's throwaway equipment, after its events' lines (that foreign key
+  // restricts); its reservations cascade.
+  query(`delete from public.equipment where name like '${EVENT_PREFIX}%'`);
+}
+
+/** A throwaway catalogue item (SCRUM-24), so seeded stock is never reserved.
+ * Deleted by deleteThrowawayEvents. */
+export function createThrowawayEquipment(tag, quantity) {
+  const [row] = query(
+    "insert into public.equipment (name, equipment_type, total_quantity, status) values " +
+      `('${EVENT_PREFIX}equipment e2e-${runId} ${tag}', 'live-check', ${quantity}, 'active') returning id, name`,
+  );
+  return row;
+}
+
+/** A pending request line on a throwaway event, requested by the seeded coordinator. */
+export function createThrowawayLine(event, equipment, quantity) {
+  const [row] = query(
+    "insert into public.equipment_requests (event_id, equipment_id, submission_id, quantity, requested_by) values " +
+      `('${event.id}', '${equipment.id}', gen_random_uuid(), ${quantity}, 'a0000000-0000-4000-8000-000000000002') returning id`,
+  );
+  return row;
 }
 
 // Same "live-check venue " prefix as backend/scripts/verify_live.py (SCRUM-64).
