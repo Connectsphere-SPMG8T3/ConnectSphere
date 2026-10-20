@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { eventsApi, venueBookingsApi } from "@/services/api";
+import { eventsApi, notificationsApi, venueBookingsApi } from "@/services/api";
 
 describe("eventsApi.clone", () => {
   afterEach(() => {
@@ -286,5 +286,60 @@ describe('CR-104 mark revised API', () => {
     expect(venueBookingsApi.markRevised).toBeTypeOf('function');
     await expect(venueBookingsApi.markRevised('b/1','token')).resolves.toEqual({id:'b1',flag:null});
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/api/v1/venue-bookings/b%2F1/mark-revised',expect.objectContaining({method:'POST',body:undefined,headers:expect.objectContaining({Authorization:'Bearer token'})}));
+  });
+});
+
+describe("notificationsApi (SCRUM-113)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubFetch(body) {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => body });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+  const authed = expect.objectContaining({ Authorization: "Bearer token" });
+
+  it("reads the unread count", async () => {
+    const fetchMock = stubFetch({ count: 2, latest_at: "t" });
+
+    await expect(notificationsApi.unreadCount("token")).resolves.toEqual({ count: 2, latest_at: "t" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/notifications/unread-count",
+      expect.objectContaining({ method: "GET", headers: authed }),
+    );
+  });
+
+  it("lists a page, sending only the paging it is given", async () => {
+    const fetchMock = stubFetch({ items: [], next_before: null });
+
+    await notificationsApi.list({ limit: 20 }, "token");
+    await notificationsApi.list({ limit: 20, before: "cur=" }, "token");
+    await notificationsApi.list(undefined, "token");
+
+    const urls = fetchMock.mock.calls.map((call) => call[0]);
+    expect(urls).toEqual([
+      "http://localhost:8000/api/v1/notifications?limit=20",
+      "http://localhost:8000/api/v1/notifications?limit=20&before=cur%3D",
+      "http://localhost:8000/api/v1/notifications",
+    ]);
+  });
+
+  it("marks one read with an encoded id, and all read", async () => {
+    const fetchMock = stubFetch({ id: "n/1", read: true });
+
+    await notificationsApi.markRead("n/1", "token");
+    await notificationsApi.markAllRead("token");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/v1/notifications/n%2F1/read",
+      expect.objectContaining({ method: "POST", headers: authed }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/v1/notifications/read-all",
+      expect.objectContaining({ method: "POST", headers: authed }),
+    );
   });
 });
