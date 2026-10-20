@@ -304,6 +304,11 @@ class VenueSearchCriteria(BaseModel):
     facilities: list[Facility] = []
     accessibility: list[AccessibilityFeature] = []
     include_excluded: bool = False
+    # SCRUM-18: naming an event (and optionally one of its spaces) adds a
+    # suitability verdict to every result, judged on that event's or space's
+    # stored requirements. Only the event's assigned coordinator may.
+    event_id: UUID | None = None
+    space_id: UUID | None = None
 
     @model_validator(mode="after")
     def _check_period(self):
@@ -337,6 +342,9 @@ class VenueRequirements(BaseModel):
     layout_preference: VenueLayout | None = None
     facilities_required: list[Facility] = []
     period: Period | None = None
+    # Free text on the event (SCRUM-18 AC5); `suitability.check` matches it to
+    # the venue's accessibility features by keyword.
+    accessibility_needs: str | None = None
 
 
 class SuitabilityVerdict(str, Enum):
@@ -352,9 +360,11 @@ class SuitabilitySeverity(str, Enum):
 
 class SuitabilityCode(str, Enum):
     capacity = "capacity"
+    inactive = "inactive"
     missing_facility = "missing_facility"
     layout_not_supported = "layout_not_supported"
     outside_operating_hours = "outside_operating_hours"
+    missing_accessibility = "missing_accessibility"
     # Edit-only (CR-94): set by `venues.impact`, never by `suitability.check`.
     accessibility_changed = "accessibility_changed"
 
@@ -475,6 +485,9 @@ class VenueSearchResult(BaseModel):
     availability: Availability
     excluded: bool
     reasons: list[Reason] = []
+    # Set only when the search named an event or space (SCRUM-18). Availability
+    # above and suitability here are separate answers (AC8).
+    suitability: SuitabilityResult | None = None
 
 
 class VenueSearchResponse(BaseModel):

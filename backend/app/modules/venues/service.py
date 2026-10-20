@@ -12,6 +12,7 @@ from app.core.exceptions import (
     BookingDecisionTextError,
     BookingNotFoundError,
     EventServiceUnavailableError,
+    InsufficientRoleError,
     NotAssignedCoordinatorError,
     VenueAlreadyActiveError,
     VenueAlreadyInactiveError,
@@ -21,7 +22,8 @@ from app.core.exceptions import (
 )
 from app.modules.events import service as events_service
 from app.modules.events.schemas import BookingReadiness, EventPlanningContext, SpaceRequirements
-from app.modules.venues import impact, repository, search
+from app.modules.auth.dependencies import CurrentUser
+from app.modules.venues import impact, repository, search, suitability
 from app.modules.venues.search import OCCUPYING_STATUSES
 from app.modules.venues.schemas import (
     BLOCK_REASON_LABELS,
@@ -52,6 +54,7 @@ from app.modules.venues.schemas import (
     VenueSearchResponse,
     VenueStaffDashboard,
     VenueReactivateRequest,
+    VenueRequirements,
     Period,
     VenueSummary,
     VenueUpdateRequest,
@@ -68,8 +71,46 @@ DASHBOARD_BOOKING_STATUSES = frozenset({"held", "re_review", "approved", "reject
 FINISHED_EVENT_STATUSES = frozenset({"completed", "cancelled"})
 
 
-def search_venues(criteria: VenueSearchCriteria) -> VenueSearchResponse:
-    """Evaluate every venue against the criteria (and the period, if given)."""
+def _suitability_requirements(criteria: VenueSearchCriteria, user: CurrentUser) -> VenueRequirements | None:
+    """What a suitability check judges venues against (SCRUM-18), or None for a
+    search that names no event.
+
+    The requirements come from the stored event or space, never from the
+    client's filters. Only the event's assigned coordinator, acting as
+    coordinator, may ask (AC10): 403 for any other active role or a coordinator
+    who isn't assigned, 404 for a missing event or space or a draft. A space
+    states its own pax, layout, facilities and window (AC11); whatever it leaves
+    out falls back to the event's.
+    """
+    if criteria.event_id is None and criteria.space_id is None:
+        return None
+    if user.role != "event_coordinator":
+        raise InsufficientRoleError(["event_coordinator"])
+    space = None
+    if criteria.space_id is not None:
+        event, space = events_service.assigned_space(str(criteria.space_id), user.id)
+        if criteria.event_id is not None and event["id"] != str(criteria.event_id):
+            raise events_service.EventNotFoundError()
+    else:
+        event = events_service.assigned_event(str(criteria.event_id), user.id)
+    space = space or {}
+    starts_at = space.get("starts_at") or event.get("starts_at")
+    ends_at = space.get("ends_at") or event.get("ends_at")
+    attendance = space.get("expected_pax")
+    return VenueRequirements(
+        expected_attendance=attendance if attendance is not None else event.get("expected_attendance"),
+        layout_preference=space.get("layout_preference") or event.get("layout_preference"),
+        facilities_required=space.get("facilities_required") or event.get("facilities_required") or [],
+        period=Period(starts_at=starts_at, ends_at=ends_at) if starts_at and ends_at else None,
+        accessibility_needs=event.get("accessibility_needs"),
+    )
+
+
+def search_venues(criteria: VenueSearchCriteria, user: CurrentUser) -> VenueSearchResponse:
+    """Evaluate every venue against the criteria (and the period, if given).
+    When the search names an event or space, each result also carries its
+    suitability for it, separate from availability (SCRUM-18)."""
+    requirements = _suitability_requirements(criteria, user)
     venues = repository.list_venues()
     period = criteria.period
     # Fetch one envelope wide enough for every venue, then evaluate each venue
@@ -82,6 +123,9 @@ def search_venues(criteria: VenueSearchCriteria) -> VenueSearchResponse:
     occupants = repository.list_occupants(envelope) if envelope is not None else {}
 
     evaluated = search.search(venues, criteria, occupants)
+    if requirements is not None:
+        for result in evaluated:
+            result.suitability = suitability.check(result.venue, requirements)
     excluded_count = sum(1 for r in evaluated if r.excluded)
     results = evaluated if criteria.include_excluded else [r for r in evaluated if not r.excluded]
 
