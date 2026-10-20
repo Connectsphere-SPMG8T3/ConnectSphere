@@ -243,6 +243,41 @@ describe("VenueSearchView", () => {
       await vi.waitFor(() => expect(el.textContent).toContain("Partner Summit"));
       expect(el.querySelector('[aria-label="Request Hall A"]')).toBeNull();
     });
+
+    it("requests a replacement for a Safety-rejected booking (D51)", async () => {
+      const rejected = { ...AFFECTED, id: "booking-rejected", flag: "safety_rejected", flag_reason: "Exits blocked" };
+      eventsApi.get.mockResolvedValue({ ...affectedEvent("planning"), venue_bookings: [rejected] });
+      venueBookingsApi.request.mockResolvedValue({ id: "new-booking" });
+      const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+      const { el } = await mountView(VenueSearchView, {
+        route: { name: "venue-search", query: { event: "event-affected", replaces: rejected.id } },
+      });
+
+      await vi.waitFor(() => expect(el.textContent).toContain("Partner Summit"));
+      el.querySelector('[aria-label="Request Hall A"]').click();
+      await settle();
+
+      const dialog = document.querySelector('[role="dialog"]');
+      expect(dialog.textContent).toContain("replaces Seminar Room 1");
+      expect(dialog.textContent).not.toContain("back to Planning");
+      document.querySelector('[aria-label="Request venue"]').click();
+      await vi.waitFor(() => expect(venueBookingsApi.request).toHaveBeenCalledWith({
+        event_id: "event-affected", venue_id: HALL_A.id, note: null, replaces_booking_id: rejected.id,
+      }, "access"));
+    });
+
+    it("offers no request for a Safety-rejected booking that already has a replacement", async () => {
+      const rejected = { ...AFFECTED, id: "booking-rejected", flag: "safety_rejected", flag_reason: "Exits blocked" };
+      const pending = { ...AFFECTED, id: "booking-new", flag: null, status: "held", replaces_booking_id: rejected.id };
+      eventsApi.get.mockResolvedValue({ ...affectedEvent("planning"), venue_bookings: [rejected, pending] });
+      const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+      const { el } = await mountView(VenueSearchView, {
+        route: { name: "venue-search", query: { event: "event-affected", replaces: rejected.id } },
+      });
+
+      await vi.waitFor(() => expect(el.textContent).toContain("Partner Summit"));
+      expect(el.querySelector('[aria-label="Request Hall A"]')).toBeNull();
+    });
   });
 
   it("keeps the selected-space request dialog open and shows a booking refusal", async () => {

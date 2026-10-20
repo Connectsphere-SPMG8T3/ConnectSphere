@@ -139,8 +139,8 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     eventsApi.safetyDecisions.mockResolvedValue([decision]);
     const el = await mountView(eventResponse({ status: "planning", latest_safety_decision: decision, venue_booking: null }));
     await vi.waitFor(() => expect(el.textContent).toContain("Safety decision history"));
-    const banner = [...el.querySelectorAll('div')].find((item) => item.textContent.includes("Safety Officer's decision") && item.textContent.includes('Rejected venue: a booking that no longer exists'));
-    expect(banner?.textContent).toContain("Rejected venue: a booking that no longer exists");
+    const banner = [...el.querySelectorAll('div')].find((item) => item.textContent.includes("Safety Officer's decision") && item.textContent.includes('Rejected venue: a venue that no longer exists'));
+    expect(banner?.textContent).toContain("Rejected venue: a venue that no longer exists");
     expect(el.textContent).not.toContain('released-booking');
     expect(el.textContent).not.toContain('v1');
   });
