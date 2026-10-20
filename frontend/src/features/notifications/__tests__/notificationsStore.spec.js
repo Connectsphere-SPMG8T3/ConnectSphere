@@ -167,6 +167,45 @@ describe("useNotificationsStore (113)", () => {
       expect(store.nextBefore).toBeNull();
     });
 
+    it("an older page that lands after a newer reload is dropped, so nothing shows twice", async () => {
+      const NEW = { ...ITEM_1, id: "n0", message: "Brand new" };
+      const older = deferred();
+      notificationsApi.list.mockResolvedValueOnce({ items: [ITEM_1], next_before: "cur" });
+      notificationsApi.unreadCount.mockResolvedValue({ count: 2, latest_at: "t2" });
+      const store = useNotificationsStore();
+      await store.open();
+      notificationsApi.list.mockReturnValueOnce(older.promise);
+      const loadingMore = store.loadMore();
+      notificationsApi.list.mockResolvedValueOnce({ items: [NEW, ITEM_1], next_before: "cur2" });
+
+      await store.poll(); // sees something new while the panel is open: reloads from the top
+      older.resolve({ items: [ITEM_2], next_before: null });
+      await loadingMore;
+
+      expect(store.items.map((item) => item.id)).toEqual(["n0", "n1"]);
+      expect(store.nextBefore).toBe("cur2");
+      expect(store.isLoading).toBe(false);
+    });
+
+    it("a reload that lands after an older page replaces it cleanly", async () => {
+      const NEW = { ...ITEM_1, id: "n0", message: "Brand new" };
+      const reload = deferred();
+      notificationsApi.list.mockResolvedValueOnce({ items: [ITEM_1], next_before: "cur" });
+      const store = useNotificationsStore();
+      await store.open();
+      notificationsApi.list.mockResolvedValueOnce({ items: [ITEM_2], next_before: null });
+      const loadingMore = store.loadMore();
+      notificationsApi.list.mockReturnValueOnce(reload.promise);
+      const reloading = store.loadList();
+
+      await loadingMore;
+      reload.resolve({ items: [NEW, ITEM_1], next_before: "cur2" });
+      await reloading;
+
+      expect(store.items.map((item) => item.id)).toEqual(["n0", "n1"]);
+      expect(store.nextBefore).toBe("cur2");
+    });
+
     it("loadMore does nothing on the last page", async () => {
       notificationsApi.list.mockResolvedValue({ items: [ITEM_1], next_before: null });
       const store = useNotificationsStore();

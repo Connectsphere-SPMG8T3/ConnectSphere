@@ -10,6 +10,14 @@ const PAGE_SIZE = 20;
 // set per store instance, so a test's fresh Pinia never inherits the last one's.
 const running = new WeakMap();
 
+// Counts how many times the list was restarted from the top (or cleared), per store.
+const generations = new WeakMap();
+const bumpGeneration = (store) => {
+  const next = (generations.get(store) ?? 0) + 1;
+  generations.set(store, next);
+  return next;
+};
+
 const initialState = () => ({
   count: 0,
   latestAt: null,
@@ -73,18 +81,22 @@ export const useNotificationsStore = defineStore("notifications", {
     async fetchPage(before) {
       const auth = useAuthStore();
       const role = auth.role;
+      // A reload from the top starts a new generation; an older page asked for under
+      // an earlier one belongs to a list that has since been replaced, so it is dropped.
+      const generation = before ? generations.get(this) : bumpGeneration(this);
+      const current = () => auth.role === role && generations.get(this) === generation;
       this.isLoading = true;
       this.error = null;
       try {
         const params = before ? { limit: PAGE_SIZE, before } : { limit: PAGE_SIZE };
         const page = await auth.withSession((token) => notificationsApi.list(params, token));
-        if (auth.role !== role) return;
+        if (!current()) return;
         this.items = before ? [...this.items, ...page.items] : page.items;
         this.nextBefore = page.next_before;
       } catch (error) {
-        if (auth.role === role) this.error = error.message;
+        if (current()) this.error = error.message;
       } finally {
-        if (auth.role === role) this.isLoading = false;
+        if (current()) this.isLoading = false;
       }
     },
 
@@ -122,6 +134,7 @@ export const useNotificationsStore = defineStore("notifications", {
     },
 
     reset() {
+      bumpGeneration(this);
       Object.assign(this, initialState());
     },
 

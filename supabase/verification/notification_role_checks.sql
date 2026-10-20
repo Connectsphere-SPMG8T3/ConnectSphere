@@ -104,6 +104,18 @@ begin
         raise exception 'ROLE FAIL: unregistered notification types: %', v_missing;
     end if;
 
+    -- 6b. The list above only knows the types of today. This catches the next story:
+    --     any notification already in the table whose type nobody registered would
+    --     be stamped with no role and shown in no bell. (zz_unregistered_type is
+    --     check 2's own row.)
+    select string_agg(distinct n.type, ', ') into v_missing
+      from public.notifications n
+     where n.type <> 'zz_unregistered_type'
+       and not exists (select 1 from public.notification_types nt where nt.type = n.type);
+    if v_missing is not null then
+        raise exception 'ROLE FAIL: notifications exist whose type is not in notification_types (register it in the migration that first inserts it): %', v_missing;
+    end if;
+
     -- 7. The backfill left no registered-type row without a role.
     if exists (
         select 1 from public.notifications n

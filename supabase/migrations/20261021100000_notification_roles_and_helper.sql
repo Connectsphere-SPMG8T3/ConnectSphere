@@ -142,6 +142,19 @@ update public.notifications n
    set recipient_role = private.resolve_notification_role(n.recipient_id, n.event_id, n.type)
  where n.recipient_role is null;
 
+-- The RLS safety net follows the API: a user reads their own notifications
+-- addressed to the role the session is acting as (SCRUM-76), not every role they
+-- hold. A row with no role is read by nobody.
+drop policy "notifications_select_own" on public.notifications;
+create policy "notifications_select_own_in_active_role"
+    on public.notifications
+    for select
+    to authenticated
+    using (
+        recipient_id = (select auth.uid())
+        and recipient_role = (select private.current_user_role())
+    );
+
 -- 3. The helper for new code --------------------------------------------------------
 create or replace function public.add_notification(
     p_recipient uuid,

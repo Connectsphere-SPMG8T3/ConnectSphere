@@ -10,8 +10,8 @@
 -- role it is for.
 --
 -- 53 AC4: 24 hours before an event starts, each Registered attendee. Needs Dev 1's
---   public.registrations(event_id, attendee_id, status); the function is
---   plpgsql, so it can be created before the table exists but not run.
+--   public.registrations(event_id, attendee_id, status). The job runs from the
+--   day this is pushed, so until the table exists the function returns 0.
 -- 90 AC1 and AC2: staff, about events still in Planning or Safety review (any
 --   other status has its arrangements done or the event is over).
 -- [Assumption] 90 AC3 leaves "a set time" open and the customer set no timing
@@ -37,6 +37,12 @@ as $$
 declare
     v_count integer;
 begin
+    -- The job is scheduled below and runs every 15 minutes, possibly before Dev 1's
+    -- table exists: do nothing then, rather than fail and log 96 errors a day.
+    if to_regclass('public.registrations') is null then
+        return 0;
+    end if;
+
     with due as (
         select e.id,
                coalesce(e.name, 'Your event') as name,
