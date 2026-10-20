@@ -82,6 +82,31 @@ const labelled = (el, label) =>
   [...el.querySelectorAll("label")].find((node) => node.textContent.trim().startsWith(label));
 const controlFor = (el, label) => document.getElementById(labelled(el, label).getAttribute("for"));
 const buttonByText = (el, text) => [...el.querySelectorAll("button")].find((node) => node.textContent.trim() === text);
+const lastControlFor = (el, label) => {
+  const matchingLabels = [...el.querySelectorAll("label")]
+    .filter((node) => node.textContent.trim().startsWith(label));
+  return document.getElementById(matchingLabels.at(-1).getAttribute("for"));
+};
+const chooseSpacePurpose = async (el, purpose) => {
+  const presets = {
+    "Main venue": "main_venue",
+    "Breakout room": "breakout_room",
+    "Workshop room": "workshop_room",
+    "Registration/check-in": "registration",
+    "Catering area": "catering",
+    "Networking area": "networking",
+  };
+  const selection = lastControlFor(el, "Purpose");
+  selection.value = presets[purpose] ?? "other";
+  selection.dispatchEvent(new Event("change"));
+  await nextTick();
+  if (!presets[purpose]) {
+    const customPurpose = lastControlFor(el, "Custom purpose");
+    customPurpose.value = purpose;
+    customPurpose.dispatchEvent(new Event("input"));
+    await nextTick();
+  }
+};
 
 describe("EventRequestView amending a returned request (SCRUM-33)", () => {
   afterEach(() => {
@@ -100,6 +125,8 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     expect(eventsApi.get).toHaveBeenCalledWith("returned-1", "access");
     expect(el.textContent).toContain("Amend your request");
     expect(el.querySelector('[data-testid="amendment-banner"]').textContent).toContain("Please confirm the attendance");
+    expect(lastControlFor(el, "Purpose").value).toBe("other");
+    expect(controlFor(el, "Custom purpose").value).toBe("Main hall");
   });
 
   it("highlights every input behind a flagged field and nothing else", async () => {
@@ -172,7 +199,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
   it("keeps the banner and highlights after Save changes", async () => {
     const { el } = await mountForm([returnedEvent({ amendment: null })], returnedEvent());
     eventsApi.update.mockResolvedValue(returnedEvent({ purpose: "Brief our partners", version: 5 }));
-    const purpose = controlFor(el, "Purpose");
+    const purpose = lastControlFor(el, "Purpose");
     purpose.value = "Brief our partners";
     purpose.dispatchEvent(new Event("input"));
     await nextTick();
@@ -258,10 +285,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
         buttonByText(el, "Add space request").click();
         await nextTick();
       }
-      const spaceLabelNode = [...el.querySelectorAll("label")].filter((node) => node.textContent.trim().startsWith("Space label")).at(-1);
-      const spaceLabel = document.getElementById(spaceLabelNode.getAttribute("for"));
-      spaceLabel.value = label;
-      spaceLabel.dispatchEvent(new Event("input"));
+      await chooseSpacePurpose(el, label);
       const expectedPaxNode = [...el.querySelectorAll("label")].filter((node) => node.textContent.trim().startsWith("Expected pax")).at(-1);
       const expectedPax = document.getElementById(expectedPaxNode.getAttribute("for"));
       expectedPax.value = pax;
@@ -277,6 +301,51 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     buttonByText(el, "Save draft").click();
     await vi.waitFor(() => expect(eventsApi.createSpace).toHaveBeenCalledTimes(2));
     expect(eventsApi.createSpace.mock.calls.map(([, payload]) => payload.label)).toEqual(["Main hall", "Workshop room"]);
+  });
+
+  it("saves a custom space purpose through the existing label field", async () => {
+    const draft = returnedEvent({ id: "draft-purpose", status: "draft", spaces: [], amendment: null });
+    eventsApi.create.mockResolvedValue(draft);
+    eventsApi.get.mockResolvedValue(draft);
+    eventsApi.createSpace.mockResolvedValue({ id: "space-purpose", version: 1 });
+    const { el } = await mountNewForm();
+
+    expect(labelled(el, "Purpose")).toBeTruthy();
+
+    controlFor(el, "Event title").value = "Community workshop";
+    controlFor(el, "Event title").dispatchEvent(new Event("input"));
+    const purpose = lastControlFor(el, "Purpose");
+    purpose.value = "other";
+    purpose.dispatchEvent(new Event("change"));
+    await nextTick();
+    const customPurpose = controlFor(el, "Custom purpose");
+    customPurpose.value = "Quiet room";
+    customPurpose.dispatchEvent(new Event("input"));
+    controlFor(el, "Expected pax").value = "12";
+    controlFor(el, "Expected pax").dispatchEvent(new Event("input"));
+    controlFor(el, "Preferred layout").value = "classroom";
+    controlFor(el, "Preferred layout").dispatchEvent(new Event("change"));
+    await nextTick();
+
+    buttonByText(el, "Save draft").click();
+    await vi.waitFor(() => expect(eventsApi.createSpace).toHaveBeenCalled());
+    expect(eventsApi.createSpace).toHaveBeenCalledWith("draft-purpose", expect.objectContaining({
+      label: "Quiet room",
+    }), "access");
+  });
+
+  it("requires custom text when Other is selected", async () => {
+    const { el } = await mountNewForm();
+    const purpose = lastControlFor(el, "Purpose");
+    purpose.value = "other";
+    purpose.dispatchEvent(new Event("change"));
+    await nextTick();
+
+    buttonByText(el, "Submit request").click();
+    await nextTick();
+
+    expect(el.textContent).toContain("Enter a custom purpose.");
+    expect(eventsApi.submit).not.toHaveBeenCalled();
   });
 
   it("adds and removes unsaved space cards without a separate panel", async () => {
@@ -295,7 +364,67 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     expect(buttonByText(el, "Remove space")).toBeUndefined();
   });
 
-  it("validates space label, pax and layout only when submitting", async () => {
+  it("copies a saved space into an independent new request", async () => {
+    const sourceSpace = {
+      id: "space-source",
+      event_id: "draft-copy",
+      version: 3,
+      label: "Quiet room",
+      expected_pax: 24,
+      layout_preference: "classroom",
+      facilities_required: ["projector"],
+      starts_at: "2026-12-01T03:00:00Z",
+      ends_at: "2026-12-01T03:30:00Z",
+    };
+    const draft = returnedEvent({
+      id: "draft-copy",
+      status: "draft",
+      amendment: null,
+      spaces: [sourceSpace],
+    });
+    const copiedSpace = { ...sourceSpace, id: "space-copy", version: 1, expected_pax: 30 };
+    const refreshed = returnedEvent({
+      id: "draft-copy",
+      status: "draft",
+      amendment: null,
+      spaces: [sourceSpace, copiedSpace],
+    });
+    eventsApi.update.mockResolvedValue(draft);
+    eventsApi.updateSpace.mockResolvedValue(sourceSpace);
+    eventsApi.createSpace.mockResolvedValue(copiedSpace);
+    eventsApi.get.mockResolvedValue(refreshed);
+    const { el } = await mountForm([draft], draft);
+
+    buttonByText(el, "Copy space").click();
+    await nextTick();
+    expect(el.textContent).toContain("2 spaces");
+    expect(lastControlFor(el, "Purpose").value).toBe("other");
+    expect(lastControlFor(el, "Custom purpose").value).toBe("Quiet room");
+    expect(lastControlFor(el, "Expected pax").value).toBe("24");
+    expect(lastControlFor(el, "Preferred layout").value).toBe("classroom");
+    expect([...el.querySelectorAll('input[type="checkbox"][value="projector"]')].every((input) => input.checked)).toBe(true);
+    expect(lastControlFor(el, "Start time").value).toBe("11:00");
+    expect(lastControlFor(el, "End time").value).toBe("11:30");
+
+    const copiedPax = lastControlFor(el, "Expected pax");
+    copiedPax.value = "30";
+    copiedPax.dispatchEvent(new Event("input"));
+    await nextTick();
+    expect(controlFor(el, "Expected pax").value).toBe("24");
+
+    buttonByText(el, "Save draft").click();
+    await vi.waitFor(() => expect(eventsApi.createSpace).toHaveBeenCalledWith("draft-copy", {
+      label: "Quiet room",
+      expected_pax: 30,
+      layout_preference: "classroom",
+      facilities_required: ["projector"],
+      starts_at: "2026-12-01T03:00:00.000Z",
+      ends_at: "2026-12-01T03:30:00.000Z",
+    }, "access"));
+    expect(eventsApi.updateSpace).toHaveBeenCalledWith("draft-copy", "space-source", expect.objectContaining({ expected_pax: 24 }), "access");
+  });
+
+  it("validates space purpose, pax and layout only when submitting", async () => {
     const { el } = await mountNewForm();
     const setValue = async (label, value, eventName = "input") => {
       const control = controlFor(el, label);
@@ -311,7 +440,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
 
     buttonByText(el, "Submit request").click();
     await nextTick();
-    expect(el.textContent).toContain("Enter a space label.");
+    expect(el.textContent).toContain("Choose a space purpose.");
     expect(el.textContent).toContain("Enter expected pax of at least 1.");
     expect(el.textContent).toContain("Choose a layout.");
     expect(el.textContent).not.toContain("Complete every space request");
@@ -320,10 +449,13 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     expect(document.getElementById(layoutControl.getAttribute("aria-describedby")).textContent).toBe("Choose a layout.");
     expect(eventsApi.submit).not.toHaveBeenCalled();
 
-    await setValue("Space label", "Main venue");
+    const spacePurpose = lastControlFor(el, "Purpose");
+    spacePurpose.value = "main_venue";
+    spacePurpose.dispatchEvent(new Event("change"));
+    await nextTick();
     buttonByText(el, "Submit request").click();
     await nextTick();
-    expect(el.textContent).not.toContain("Enter a space label.");
+    expect(el.textContent).not.toContain("Choose a space purpose.");
     expect(el.textContent).toContain("Enter expected pax of at least 1.");
     expect(el.textContent).toContain("Choose a layout.");
 
@@ -394,10 +526,10 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     await vi.waitFor(() => expect(eventsApi.create).toHaveBeenCalled());
     await vi.waitFor(() => expect(el.textContent).toContain("1 spaces"));
     expect(eventsApi.createSpace).not.toHaveBeenCalled();
-    expect(controlFor(el, "Space label").value).toBe("");
+    expect(lastControlFor(el, "Purpose").value).toBe("");
   });
 
-  it("lets a space override the event schedule and persists its own window", async () => {
+  it("lets a space use its own times on the event date and persists its window", async () => {
     const draft = returnedEvent({
       id: "draft-space-window",
       status: "draft",
@@ -421,7 +553,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     await setValue("Proposed event date", "2099-12-01");
     await setValue("Proposed start time", "10:00");
     await setValue("Proposed end time", "18:00");
-    await setValue("Space label", "Afternoon breakout");
+    await chooseSpacePurpose(el, "Afternoon breakout");
     await setValue("Expected pax", "40");
     await setValue("Preferred layout", "classroom", "change");
 
@@ -430,8 +562,12 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     scheduleToggle.checked = false;
     scheduleToggle.dispatchEvent(new Event("change"));
     await nextTick();
-    await setValue("Space starts", "2099-12-01T13:00");
-    await setValue("Space ends", "2099-12-01T16:00");
+    expect(controlFor(el, "Start time").type).toBe("time");
+    expect(controlFor(el, "End time").type).toBe("time");
+    expect(labelled(el, "Space starts")).toBeUndefined();
+    expect(labelled(el, "Space ends")).toBeUndefined();
+    await setValue("Start time", "13:00");
+    await setValue("End time", "16:00");
     buttonByText(el, "Save draft").click();
 
     await vi.waitFor(() => expect(eventsApi.createSpace).toHaveBeenCalled());
@@ -454,7 +590,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     await setValue("Proposed event date", "2099-12-01");
     await setValue("Proposed start time", "10:00");
     await setValue("Proposed end time", "18:00");
-    await setValue("Space label", "Main venue");
+    await chooseSpacePurpose(el, "Main venue");
     await setValue("Expected pax", "20");
     await setValue("Preferred layout", "classroom", "change");
 
@@ -463,20 +599,20 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     scheduleToggle.dispatchEvent(new Event("change"));
     await nextTick();
 
-    await setValue("Space starts", "2099-12-01T09:00");
-    await setValue("Space ends", "2099-12-01T16:00");
+    await setValue("Start time", "09:00");
+    await setValue("End time", "16:00");
     buttonByText(el, "Submit request").click();
     await nextTick();
-    expect(el.textContent).toContain("Space schedule must be within the event's overall schedule.");
+    expect(el.textContent).toContain("Space times must be within the event's overall schedule.");
 
-    await setValue("Space starts", "2099-12-01T13:00");
-    await setValue("Space ends", "2099-12-01T19:00");
+    await setValue("Start time", "13:00");
+    await setValue("End time", "19:00");
     buttonByText(el, "Submit request").click();
     await nextTick();
-    expect(el.textContent).toContain("Space schedule must be within the event's overall schedule.");
+    expect(el.textContent).toContain("Space times must be within the event's overall schedule.");
 
-    await setValue("Space starts", "2099-12-01T16:00");
-    await setValue("Space ends", "2099-12-01T12:00");
+    await setValue("Start time", "16:00");
+    await setValue("End time", "12:00");
     buttonByText(el, "Submit request").click();
     await nextTick();
     expect(el.textContent).toContain("Space end time must be after its start time.");
@@ -493,7 +629,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     };
     await setValue("Event title", "Space without event schedule");
     await setValue("Purpose", "Check parent schedule validation");
-    await setValue("Space label", "Main venue");
+    await chooseSpacePurpose(el, "Main venue");
     await setValue("Expected pax", "20");
     await setValue("Preferred layout", "classroom", "change");
 
@@ -501,8 +637,8 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     scheduleToggle.checked = false;
     scheduleToggle.dispatchEvent(new Event("change"));
     await nextTick();
-    await setValue("Space starts", "2099-12-01T13:00");
-    await setValue("Space ends", "2099-12-01T16:00");
+    await setValue("Start time", "13:00");
+    await setValue("End time", "16:00");
 
     buttonByText(el, "Submit request").click();
     await nextTick();
@@ -540,7 +676,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     await setValue("Proposed event date", "2099-12-01");
     await setValue("Proposed start time", "10:00");
     await setValue("Proposed end time", "12:00");
-    await setValue("Space label", "Main venue");
+    await chooseSpacePurpose(el, "Main venue");
     await setValue("Expected pax", "30");
     await setValue("Preferred layout", "theatre", "change");
 
@@ -581,11 +717,9 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     const { el } = await mountForm([draft], draft);
     eventsApi.get.mockImplementation(async () => { sequence.push("reload-event"); return refreshed; });
 
-    const spaceLabel = [...el.querySelectorAll("label")]
-      .find((node) => node.textContent.trim().startsWith("Space label"));
-    const spaceLabelInput = document.getElementById(spaceLabel.getAttribute("for"));
-    spaceLabelInput.value = "Updated main hall";
-    spaceLabelInput.dispatchEvent(new Event("input"));
+    const customPurpose = controlFor(el, "Custom purpose");
+    customPurpose.value = "Updated main hall";
+    customPurpose.dispatchEvent(new Event("input"));
     await nextTick();
     buttonByText(el, "Save draft").click();
     await vi.waitFor(() => expect(eventsApi.updateSpace).toHaveBeenCalledTimes(1));
