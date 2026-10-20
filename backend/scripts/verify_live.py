@@ -2773,7 +2773,7 @@ def _(ctx: Context) -> None:
         if role != "event_coordinator":
             expect_status(ctx.client.post(
                 f"{ctx.api}/venue-bookings/{MISSING_EVENT}/mark-revised",
-                headers=ctx.shared(role).headers,
+                headers=ctx.shared(role).headers, json={"note": "live check"},
             ), 403)
 
 
@@ -2781,8 +2781,69 @@ def _(ctx: Context) -> None:
 def _(ctx: Context) -> None:
     expect_status(ctx.client.post(
         f"{ctx.api}/venue-bookings/{MISSING_EVENT}/mark-revised",
-        headers=ctx.shared("event_coordinator").headers,
+        headers=ctx.shared("event_coordinator").headers, json={"note": "live check"},
     ), 404)
+
+
+# D51-D53: disposable success flows, only after the follow-up migration is deployed.
+def safety_rejection_followup_fixture(ctx: Context, case: str) -> tuple[str, str, str]:
+    event_id = throwaway_event(ctx, case, "2031-08-20 10:00+08", "2031-08-20 12:00+08")
+    venue_id = throwaway_venue(ctx, case)
+    [booking] = db_query(
+        "insert into public.venue_bookings (event_id, venue_id, occupied_period, status) values "
+        f"('{event_id}', '{venue_id}', tstzrange('2031-08-20 10:00+08', '2031-08-20 12:00+08', '[)'), 'approved') returning id"
+    )
+    db_query(f"update public.events set status='safety_review' where id='{event_id}'")
+    return event_id, booking["id"], venue_id
+
+
+@check("TC-SDEC-031", "Reject then revise with a note; named history shows the response", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id, venue_id = safety_rejection_followup_fixture(ctx, "SDEC-031")
+    officer = ctx.shared("safety_officer")
+    coordinator = ctx.shared("event_coordinator")
+    expect_status(ctx.client.post(
+        f"{ctx.api}/events/{event_id}/safety-reject", headers=officer.headers,
+        json={"booking_id": booking_id, "reason": "live check exits"},
+    ), 200)
+    for note, code in (("   ", 422), ("live check revised", 200)):
+        expect_status(ctx.client.post(
+            f"{ctx.api}/venue-bookings/{booking_id}/mark-revised", headers=coordinator.headers,
+            json={"note": note},
+        ), code)
+    response = ctx.client.get(f"{ctx.api}/events/{event_id}/safety-decisions", headers=officer.headers)
+    expect_status(response, 200)
+    rejection = next(row for row in response.json() if row["decision"] == "arrangement_rejected")
+    [venue] = db_query(f"select name from public.venues where id='{venue_id}'")
+    expect(rejection["rejected_venues"][0]["venue_name"] == venue["name"], "history names the rejected venue")
+    expect(rejection["revision"]["note"] == "live check revised", "history carries the coordinator response")
+
+
+@check("TC-SDEC-032", "Replace a Safety-rejected venue; approval releases it", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id, _ = safety_rejection_followup_fixture(ctx, "SDEC-032")
+    venue_id = throwaway_venue(ctx, "SDEC-032 replacement")
+    officer = ctx.shared("safety_officer")
+    coordinator = ctx.shared("event_coordinator")
+    staff = ctx.shared("venue_staff")
+    expect_status(ctx.client.post(
+        f"{ctx.api}/events/{event_id}/safety-reject", headers=officer.headers,
+        json={"booking_id": booking_id, "reason": "live check exits"},
+    ), 200)
+    requested = ctx.client.post(f"{ctx.api}/venue-bookings", headers=coordinator.headers,
+        json={"event_id": event_id, "venue_id": venue_id, "replaces_booking_id": booking_id})
+    expect_status(requested, 201)
+    replacement_id = requested.json()["id"]
+    refused = ctx.client.post(f"{ctx.api}/venue-bookings/{booking_id}/mark-revised", headers=coordinator.headers,
+                             json={"note": "live check revised"})
+    expect_status(refused, 409)
+    expect(refused.json()["detail"] == "A replacement venue has been requested for this booking.", "pending replacement refusal")
+    expect_status(approve_booking(ctx, staff, replacement_id), 200)
+    rows = db_query(f"select id, status, flag from public.venue_bookings where id in ('{booking_id}', '{replacement_id}')")
+    stored = {row["id"]: row for row in rows}
+    expect(stored[booking_id]["status"] == "released", "the rejected booking is released")
+    expect(stored[replacement_id]["status"] == "approved" and stored[replacement_id]["flag"] is None,
+           "the replacement is approved and unflagged")
 
 
 # --- Venue suitability checking (SCRUM-18) ---------------------------------------
