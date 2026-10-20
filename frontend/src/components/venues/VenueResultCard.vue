@@ -48,7 +48,7 @@ const hours = computed(() => `${venue.value.opens_at.slice(0, 5)}–${venue.valu
 </script>
 
 <template>
-  <BauhausCard background="white" accent="none" class="h-full">
+  <BauhausCard background="white" accent="none" class="h-full" data-testid="venue-result">
     <div class="flex h-full flex-col gap-4">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>

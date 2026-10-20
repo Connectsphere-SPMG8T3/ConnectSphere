@@ -837,7 +837,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 
 **Behaviour**
 - Filters (W4, QA-59): date and time (to be pre-filled from the event once `events` exists; until then entered by the coordinator), minimum capacity (pre-filled from pax), location, layout, required facilities, accessibility features. Accessibility is filtered by boolean/tag features, not numeric metrics (QA2-14).
-- Each result shows capacity, layouts (with per-layout capacity), facilities, accessibility features, operating hours, and an **availability** badge (`available` / `unavailable` / `not_checked` when no period was given). The **suitability** badge (§6.11) is SCRUM-18 and not shown yet.
+- Each result shows capacity, layouts (with per-layout capacity), facilities, accessibility features, operating hours, and an **availability** badge (`available` / `unavailable` / `not_checked` when no period was given). The **suitability** badge (§6.11, SCRUM-18) shows only when the search names an event or space (`event_id` / `space_id`); a plain search carries none.
 - Order: included venues by name, then excluded venues by name. A "Show N excluded" toggle reveals excluded venues together with their reasons; each reason has a code and a message (e.g. `capacity_below_minimum` "Capacity 100 is below the required 150", `held` "Held by another event 10 Oct 13:00–16:00", `blocked` "Blocked: renovation 1 Oct 00:00 – 15 Oct 00:00").
 - Detail page per venue: full attributes plus upcoming blocks and occupying bookings (raw material for the §6.9 calendar).
 - API: `GET /api/v1/venues?starts_at&ends_at&min_capacity&location&layout&facilities&accessibility&include_excluded` and `GET /api/v1/venues/{id}`, coordinators and venue staff only (§2).
@@ -849,7 +849,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - **VS-R4 [Team decision]:** **Every criterion the coordinator sets is strict**, including layout and accessibility, which §6.11 treats as warnings for the suitability badge. A filter the coordinator chose should filter; VS-R3's toggle keeps excluded venues discoverable. Unset criteria are not applied (no minimum capacity → no capacity check).
 - **VS-R5 [Team decision]:** Any block, whatever its reason (also `internal_activity`, `other`), excludes the venue (CAL-R3); SCRUM-39's "maintenance, renovation, or safety" are examples. `held`, `approved` and `re_review` bookings exclude; `rejected`, `cancelled`, `released` do not (§6.14). SCRUM-39's "setup, reset, and turnaround buffers" criterion returns with W7 CR-01 (VS-R1, 21).
 - **VS-R6 [Team decision]:** When a layout is requested and the venue records a capacity for it, that figure is compared with the minimum; otherwise the venue capacity (§6.11). Location matches as a case-insensitive substring of the venue's free-text location.
-- **VS-R7 [Team decision]:** The period is optional; without it availability is `not_checked` and no venue is excluded on availability. `starts_at`/`ends_at` must be given together, timezone-aware, with `ends_at > starts_at`. The SPA sends Singapore time as a fixed `+08:00` offset (no daylight saving); the database stores UTC. Operating hours are displayed but not enforced here (a §6.11 warning, SCRUM-18).
+- **VS-R7 [Team decision]:** The period is optional; without it availability is `not_checked` and no venue is excluded on availability. `starts_at`/`ends_at` must be given together, timezone-aware, with `ends_at > starts_at`. The SPA sends Singapore time as a fixed `+08:00` offset (no daylight saving); the database stores UTC. Operating hours are displayed but not enforced here (a §6.11 warning, shown by SCRUM-18's suitability check).
 
 **Acceptance criteria**
 - **Given** an event on 10 Oct 14:00–17:00 for 150 pax needing a projector, **when** I search with the pre-filled filters, **then** only active venues with capacity ≥ 150, a projector, and no hold, booking, or block overlapping 14:00–17:00 are listed.
@@ -858,7 +858,7 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - **Given** Hall C is blocked for maintenance 08:00–12:00, **when** I search 12:00–15:00, **then** Hall C is listed (a block's end is exclusive, CAL-R2); **when** I search 11:59–13:00, **then** it is excluded with "Blocked: maintenance 10 Oct 08:00–12:00".
 - **Given** I search with no date and time, **then** every active venue is listed with availability "not checked".
 
-### 6.11 Venue suitability checking *(SCRUM-18)*
+### 6.11 Venue suitability checking *(SCRUM-18 — built)*
 
 This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one class per rule (Strategy/Specification pattern), so new rules plug in.
 
@@ -880,7 +880,16 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **Given** pax 150 and capacity 100, **then** the result is Unsuitable with "Capacity 100 is below expected attendance 150."
 - **Given** pax exactly equal to capacity, **then** the capacity rule passes (boundary).
 - **Given** the theatre layout is unsupported but everything else passes, **then** the result is "Suitable with warnings: theatre layout not supported."
-- **Given** a projector is required and the venue has none, **then** the result is Unsuitable.
+- **Given** a projector is required and the venue has none, **then** the result is Unsuitable, naming the facility.
+- **Given** an inactive venue, **then** the result is Unsuitable.
+- **Given** an event with several spaces, **then** each venue is checked against that space's own attendance, layout, facilities and window (QA3-23), so a 50-person breakout passes in a 60-seat room even if the event has 500.
+
+**How it is built (SCRUM-18)**
+- `GET /api/v1/venues` takes optional `event_id` and `space_id`. When either is given, every result carries `suitability {verdict, reasons[{code, severity, message}]}` beside its `availability`; otherwise `suitability` is null.
+- **Only the event's assigned coordinator, acting as coordinator, may ask:** 403 for any other active role (Venue Staff, Lead, Organiser, Tech Support, Attendee) and for a coordinator who is not assigned; 404 for a missing event, space, or a draft. The requirements come from the stored event or space, never from the client's filters.
+- A space's own attendance, layout and facilities apply, and anything it leaves blank falls back to the event's. Its own window applies, else the event's. With only `event_id`, the event's own requirements apply.
+- **Accessibility [Team decision]:** the event's needs are free text and the venue's features are a fixed list, so the check matches keywords in the text (wheelchair, step-free or ramp, toilet, hearing, lift or elevator) to the venue's features. A recognised need the venue lacks warns and names the feature; text with no recognised keyword warns that it could not be matched and lists what the venue records. Warning only, as the table says. Reason: nothing structured exists to match against, and a silent pass would hide a real gap.
+- **BR-R3 is not built here.** A venue the check calls Unsuitable can still be requested from the UI; refusing it is a separate decision (§9 item 83).
 
 ### 6.12 Venue booking request and tentative hold *(SCRUM-19)*
 
@@ -909,7 +918,7 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **BR-R17 (primary venue, QA3-26):** the coordinator may designate **one venue as the primary, attendee-facing location**. Attendees see the primary location; the organiser sees all the venues. **[Assumption]** A single-venue event's only venue is its primary venue automatically. **(CR-97)** The primary is a flag on the event space (`event_space_requests.is_primary`, at most one per event). The assigned coordinator, acting as coordinator, sets, moves or clears it while the event is in `planning` only **[Team decision]**; an event's only space reads as primary without being marked. Choosing a primary is optional and doesn't block the safety check **[Assumption]**, §9 item 51.
 - **BR-R18 (cancelling one venue, QA3-27):** cancelling one venue booking **doesn't cancel the others**. Other venue bookings are removed only when the whole event is cancelled.
 - **BR-R19 (replacement, QA3-30):** a replacement venue is a change request: it goes through a new venue request and every approval, like a new booking.
-- **SCRUM-19 scope:** BR-R3 (suitability) is **not enforced by SCRUM-19**; it moves to SCRUM-18, which owns the suitability verdict. BR-R5 (coordinator cancels a hold) is **not built**; it is **SCRUM-85**. Until it exists, a coordinator who picks the wrong venue is held to it unless venue staff reject the booking (§6.13).
+- **SCRUM-19 scope:** BR-R3 (suitability) is **not enforced by SCRUM-19**; SCRUM-18 now produces the verdict but, per its acceptance criteria, does not refuse or ask for acknowledgement either (§9 item 83). BR-R5 (coordinator cancels a hold) is **not built**; it is **SCRUM-85**. Until it exists, a coordinator who picks the wrong venue is held to it unless venue staff reject the booking (§6.13).
 
 **Acceptance criteria**
 - **Given** a planning event and a suitable, free venue, **when** I request it, **then** a `held` booking exists, the calendar shows a tentative hold, and venue staff are notified.
@@ -1523,6 +1532,8 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 80. **[Team decision, SCRUM-24 D7, D45]** Availability (SCRUM-23's check and reserving) uses one database calculation with §6.16's worst-moment rule, replacing a sum that refused valid requests. This changes Done story 23's behaviour.
 81. **[Assumption, SCRUM-24]** A line can be marked Not available from Pending, Reserved or Re-review (equipment can fail after it was reserved); doing so frees any reservation (RS-R3). The ACs only describe it from Pending.
 82. **[Assumption, SCRUM-12 AC2]** "Only active users holding the Event Coordinator role can be assigned": the schema has no active flag, so "active" is an account that is neither banned nor deleted in Supabase Auth. Revisit if an account-status column is added (ACC-R10).
+83. **[Open, SCRUM-18]** BR-R3 (§6.12) says a request for an Unsuitable venue is refused and a venue with warnings needs the coordinator's acknowledgement. SCRUM-18's acceptance criteria only produce and show the verdict, so nothing refuses or asks for acknowledgement yet. Confirm with the PO whether that belongs to the booking request flow (SCRUM-19) or a new story.
+84. **[Team decision, SCRUM-18 AC5]** Accessibility needs are free text, so they are matched to the venue's features by keyword and only ever warn (§6.11). The keyword list lives in `venues/suitability.py` (`ACCESSIBILITY_KEYWORDS`); a structured needs field on the event would replace it.
 
 ## 10. Non-functional requirements
 

@@ -2785,6 +2785,90 @@ def _(ctx: Context) -> None:
     ), 404)
 
 
+# --- Venue suitability checking (SCRUM-18) ---------------------------------------
+
+def suitability_search(ctx: Context, session: Session, **params):
+    return ctx.client.get(f"{ctx.api}/venues", headers=session.headers,
+                          params={"include_excluded": "true", **params})
+
+
+def suitability_of(response: httpx.Response, venue_id: str) -> dict:
+    expect_status(response, 200)
+    found = [r for r in response.json()["results"] if r["venue"]["id"] == venue_id]
+    expect(len(found) == 1, f"venue {venue_id} appears {len(found)} times")
+    return found[0]["suitability"]
+
+
+@check("TC-SUIT-001", "A space is judged on its own attendance, not the event's (AC1, AC2, AC11)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "SUIT-001", "2031-07-10 09:00+08", "2031-07-10 12:00+08")
+    db_query(f"update public.events set expected_attendance = 500 where id = '{event_id}'")
+    fits = throwaway_space(event_id, "Breakout", pax=60, layout="classroom")
+    too_big = throwaway_space(event_id, "Workshop", pax=61, layout="classroom")
+    coordinator = ctx.shared("event_coordinator")
+
+    passing = suitability_of(suitability_search(ctx, coordinator, space_id=fits), INNOVATION_LAB)
+    expect("capacity" not in {r["code"] for r in passing["reasons"]},
+           f"60 people in a 60-seat classroom failed: {passing['reasons']}")
+    failing = suitability_of(suitability_search(ctx, coordinator, space_id=too_big), INNOVATION_LAB)
+    expect(failing["verdict"] == "unsuitable", f"verdict {failing['verdict']}")
+    expect("Capacity 60 is below the expected attendance of 61." in [r["message"] for r in failing["reasons"]],
+           f"reasons {failing['reasons']}")
+
+
+@check("TC-SUIT-002", "A missing facility and an inactive venue are Unsuitable and named (AC3, AC4, AC7)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "SUIT-002", "2031-07-11 09:00+08", "2031-07-11 12:00+08")
+    db_query(f"update public.events set expected_attendance = 10, facilities_required = '{{projector}}' "
+             f"where id = '{event_id}'")
+    bare = throwaway_venue(ctx, "SUIT-002 bare")
+    closed = throwaway_venue(ctx, "SUIT-002 closed")
+    db_query(f"update public.venues set is_active = false, inactive_reason = 'permanently_closed' where id = '{closed}'")
+    coordinator = ctx.shared("event_coordinator")
+
+    response = suitability_search(ctx, coordinator, event_id=event_id)
+    missing = suitability_of(response, bare)
+    expect(missing["verdict"] == "unsuitable", f"verdict {missing['verdict']}")
+    expect("Missing facilities this event needs: projector." in [r["message"] for r in missing["reasons"]],
+           f"reasons {missing['reasons']}")
+    inactive = suitability_of(response, closed)
+    expect(inactive["verdict"] == "unsuitable" and inactive["reasons"][0]["code"] == "inactive",
+           f"inactive venue reads {inactive}")
+
+
+@check("TC-SUIT-003", "Only the assigned coordinator, acting as coordinator, can run the check (AC10)", needs_db=True)
+def _(ctx: Context) -> None:
+    mine = throwaway_event(ctx, "SUIT-003 mine", "2031-07-12 09:00+08", "2031-07-12 12:00+08")
+    unassigned = throwaway_event(ctx, "SUIT-003 unassigned", "2031-07-12 09:00+08", "2031-07-12 12:00+08",
+                                 assigned=False)
+    space = throwaway_space(mine, "Room", pax=10)
+
+    for role in ("venue_staff", "event_organiser", "tech_support", "attendee"):
+        for params in ({"event_id": mine}, {"space_id": space}):
+            expect_status(suitability_search(ctx, ctx.shared(role), **params), 403)
+    coordinator = ctx.shared("event_coordinator")
+    expect_status(suitability_search(ctx, coordinator, event_id=unassigned), 403)
+    expect_status(suitability_search(ctx, coordinator, event_id=mine), 200)
+    expect_status(ctx.client.get(f"{ctx.api}/venues", headers=ctx.shared("venue_staff").headers), 200)
+
+
+@check("TC-SUIT-004", "Availability is reported separately from suitability (AC8)", needs_db=True)
+def _(ctx: Context) -> None:
+    holder = throwaway_event(ctx, "SUIT-004 holder", "2031-07-13 09:00+08", "2031-07-13 12:00+08")
+    expect_status(ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=ctx.shared("event_coordinator").headers,
+                                  json={"event_id": holder, "venue_id": HERITAGE_HALL}), 201)
+    wanting = throwaway_event(ctx, "SUIT-004 wanting", "2031-07-13 09:00+08", "2031-07-13 12:00+08")
+    db_query(f"update public.events set expected_attendance = 10 where id = '{wanting}'")
+
+    response = suitability_search(ctx, ctx.shared("event_coordinator"), event_id=wanting,
+                                  starts_at="2031-07-13T09:00:00+08:00", ends_at="2031-07-13T12:00:00+08:00")
+    expect_status(response, 200)
+    hall = next(r for r in response.json()["results"] if r["venue"]["id"] == HERITAGE_HALL)
+    expect(hall["availability"] == "unavailable", f"availability {hall['availability']}")
+    expect(hall["suitability"]["verdict"] in ("suitable", "suitable_with_warnings"),
+           f"a held venue read {hall['suitability']['verdict']}")
+
+
 # --- Helpers ---------------------------------------------------------------
 
 
