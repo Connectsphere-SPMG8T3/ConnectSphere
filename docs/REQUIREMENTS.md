@@ -654,11 +654,19 @@ CR-98 introduces organiser-proposed event spaces before venue booking. A space r
   - LA-R2 scope: `events.assigned_by` records the assigning Lead, and null means assigned before the Lead role existed, so every Lead sees it. **[Assumption]** An event whose assigner no longer holds the Lead role is also visible to every Lead, so no event is orphaned.
   - LA-R6 and LA-R11 (minimal): a Lead-only `POST /events/{id}/reassign` through `reassign_event`, in the Lead's scope, to an account holding the coordinator role, with an `expected_version` check so a stale screen can't overwrite a newer assignment. It notifies the new coordinator, the previous coordinator and the organiser, never the Lead.
 - **Not built (story 81, SCRUM-12).**
-  - LA-R1 and LA-R4: a request still goes `draft → under_review` with no coordinator, not through `submitted`, so the Lead's "unassigned queue" is the active events that have no coordinator.
+  - ~~LA-R1 and LA-R4: a request still goes `draft → under_review` with no coordinator~~ — **built by SCRUM-12**, see the build notes below.
   - The coordinator's "Request reassignment" action (LA-R6).
   - LA-R8: the refusal to deactivate a coordinator with active events (CR-101 AC6, QA3-22) is out of scope by decision.
-  - **LA-R11's history ("who, when, from, to").** Only the last assigner and time are stored (`assigned_by`, `assigned_at`). Writing `event_status_history` was tried and rejected: readers treat every row there as a status transition, and a same-status row sent a Lead-reassigned event to the back of the Safety Officer's queue. Story 81 needs a dedicated assignment-history table.
+  - ~~LA-R11's history ("who, when, from, to")~~ — **built by SCRUM-12** in `event_assignment_history`, see the SCRUM-12 build notes below. (Writing `event_status_history` was tried and rejected: readers treat every row there as a status transition.)
 
+
+**SCRUM-12 build notes (`feature/scrum-12-coordinator-assignment`).**
+- A submission is `draft → submitted`; the unassigned queue is `submitted` with no coordinator, oldest submission first, each entry showing name, date, expected attendance and venue needs (layout and facilities). `POST /events/{id}/assign` (Lead only, on the active role) moves it `submitted → under_review` through `assign_event`: coordinator, `assigned_by`, `assigned_at`, one `event_status_history` row (Lead, time, "Assigned to <name>") and notices to the coordinator and organiser. An event that already has a coordinator is refused with 409 (change it with `reassign`, story 81); two simultaneous assignments leave one winner, the other gets "already assigned". Coordinators get 403 on the queue and on assign.
+- **[Team decision]** Events already `under_review` with no coordinator when the migration ran were moved back to `submitted`, so none sits in the old state.
+- **[Assumption]** "Active user" (AC2) means an account holding the Event Coordinator role that is not banned or deleted in Supabase Auth; the schema has no other active/inactive flag (§9 item 82).
+- AUTH-R7 / AC12: a database trigger on `user_roles` refuses a second role for a Lead and the Lead role for anyone holding another role. A Lead acting as Lead already gets 403 on approve, return, reject and send-for-safety-check (active-role guard), proved by tests.
+- **LA-R11 history.** A reassignment is recorded in `event_assignment_history` (Lead, previous and new coordinator, time), written by `reassign_event`, and shown in the event history merged with the status history (migration `20261020110000`). It stays out of `event_status_history` because a reassignment is not a status change. An assignment from the queue is already a status change (`submitted` → `under_review`), so it appears once, as that row. Built here at the developer's request; story 81 reuses it.
+- The coordinator-initiated "Request reassignment" remains story 81's.
 
 **Acceptance criteria**
 - **Given** an organiser submits a request, **then** it is `submitted` and in the unassigned queue, no coordinator is set, and no coordinator is notified.
@@ -1514,6 +1522,7 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 79. **[Team decision, SCRUM-24]** Technical status is cached in `events.technical_readiness` and written only by the database whenever a line, the exit check or the venue changes, so every existing reader sees the derived value without recomputing it.
 80. **[Team decision, SCRUM-24 D7, D45]** Availability (SCRUM-23's check and reserving) uses one database calculation with §6.16's worst-moment rule, replacing a sum that refused valid requests. This changes Done story 23's behaviour.
 81. **[Assumption, SCRUM-24]** A line can be marked Not available from Pending, Reserved or Re-review (equipment can fail after it was reserved); doing so frees any reservation (RS-R3). The ACs only describe it from Pending.
+82. **[Assumption, SCRUM-12 AC2]** "Only active users holding the Event Coordinator role can be assigned": the schema has no active flag, so "active" is an account that is neither banned nor deleted in Supabase Auth. Revisit if an account-status column is added (ACC-R10).
 
 ## 10. Non-functional requirements
 

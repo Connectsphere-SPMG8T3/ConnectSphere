@@ -2817,3 +2817,27 @@ On `chore/seed-second-lead-account`, branched from `main` at `15ca304`, 2026-10-
 **Change:** Added a Copy space action to every space card. It creates a separate unsaved request with the source's purpose, attendance, layout, facilities and schedule; the existing save flow creates the new record without replacing the source.
 
 **Verification:** `EventRequestView.spec.js` covers copying a persisted custom-purpose space, independent editing, and creation with the copied facilities and schedule. A browser smoke check confirmed the action appears on each card and adds a fourth card without saving. The full manual persistence check for TC-SPACE-011 remains pending.
+
+### 4.74. SCRUM-12 — Coordinator assignment
+
+On `feature/scrum-12-coordinator-assignment`, branched from `main` at `53b5191`, 2026-10-20. AC1–AC12 as supplied by the developer (the Product backlog sheet was not read; the ACs were pasted). Built on CR-101's Lead dashboard and reassign, not beside them.
+
+**Changed.**
+1. `lifecycle`: `submit` now targets `submitted`; new `assign` (`submitted` → `under_review`).
+2. Migration `20261020100000`: `assign_event` (locked update, history row, notices; refuses a non-coordinator or a banned/deleted account), a backfill that moves `under_review` events with no coordinator to `submitted`, and trigger `user_roles_exclusive_lead` for AC12.
+3. API: `POST /events/{id}/assign` (Lead only); the Lead dashboard also reads `submitted` events, orders the queue by `submitted_at` and carries layout and facilities.
+4. SPA: `LeadEventView` assigns a queued event and reassigns an assigned one; the queue shows attendance and venue needs in server order; the organiser's coordinator row reads "Unassigned".
+5. Live checks: TC-ASSIGN-001–009 in `backend/scripts/verify_live.py` (throwaway `live-check` events, cleaned up), the SQL script registered there, and browser specs TC-ASSIGN-011 and 014 in `frontend/e2e/coordinator-assignment.e2e.js`. TC-LEAD-001 and 015 now allow the `submitted` status in the Lead's queue.
+6. Docs: IMPLEMENTATION_MAP, REQUIREMENTS §6.5 and §9 item 82, test cases TC-ASSIGN-001–013, `supabase/verification/coordinator_assignment_checks.sql`.
+
+**Decisions.** AC5 is the status-history row (Lead, time, "Assigned to <name>"); a dedicated assignment-history table stays with story 81. "Active user" is "not banned or deleted in Auth" (REQUIREMENTS §9 item 82).
+
+**Verified.** Tests were written first and failed for the expected reasons. Backend 1,708 passed; frontend suites for the changed areas pass (the full frontend run showed two timing flakes under load that pass alone).
+
+**Live verification (2026-10-20).** The developer applied the migration with `supabase db push` and ran `coordinator_assignment_checks.sql` in the SQL Editor ("Success. No rows returned": the script raises on any failure and its final notice is not shown there). The recorded API and database run passed 165/165 ([run](test-cases/runs/2026-10-20-1448-api-db-53b5191.md)) against a backend on this branch (port 8010).
+
+**Follow-up: assignment history (2026-10-20).** The developer saw a reassignment appear as nothing (the event's history ended at "Under review"), because a reassignment is not a status change and CR-101 deliberately writes no `event_status_history` row for it. Built at their request: table `event_assignment_history` and a replaced `reassign_event` that writes to it (migration `20261020110000`), `repository.list_assignment_history`, and `service.history`, which merges the two by time (`kind: "reassignment"` entries with `from_coordinator` and `to_coordinator`); `EventStatusHistory.vue` shows "Reassigned to <name>" with "from <name>". Tests came first (API merge, repository, component); backend 1,710 passed. An assignment from the queue stays one status row. The Lead's own event page shows no history (only the organiser and the assigned coordinator can read it). After the migration was deployed: the SQL script passed in the SQL Editor, TC-ASSIGN-016 passed, the recorded API/database run passed [166/166](test-cases/runs/2026-10-20-1556-api-db-53b5191.md), and the recorded browser run was [83 passed, 1 failed](test-cases/runs/2026-10-20-1613-e2e-53b5191.md) (the same unrelated TC-TSD-017 failure as above).
+
+**Browser run (2026-10-20).** [83 passed, 1 failed](test-cases/runs/2026-10-20-1507-e2e-53b5191.md) against a frontend (port 5174) and backend (port 8010) on this branch. TC-ASSIGN-011 and 014 passed. The failure is TC-TSD-017, the tech-support summary-card layout check (it found 1 card where it expects 4 under the "Maintenance scheduled" card). This branch changes nothing on that dashboard; the dashboard was last changed on `main` by the SCRUM-24 requests-page work, so it looks like an earlier regression or a stale selector, but it was not re-run against `main` to confirm. Reported, not fixed.
+
+**Manual pass (2026-10-20).** The developer ran TC-ASSIGN-012, 013, 015 and 017 in a browser and all passed ([record](test-cases/runs/2026-10-20-manual-53b5191.md)). Notices were checked in the database only: no notification screen exists yet.
