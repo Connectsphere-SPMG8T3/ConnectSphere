@@ -253,3 +253,18 @@ class EquipmentNotAvailableReasonError(HTTPException):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=[{"loc": ["body", "reason"], "msg": "Give a reason the line is not available.", "type": "value_error"}],
         )
+
+
+class NotificationNotFoundError(HTTPException):
+    """Not the caller's notification in their active role: the same answer for a missing id."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
+
+
+class InvalidNotificationCursorError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The page cursor is not valid. Reload the notifications.",
+        )

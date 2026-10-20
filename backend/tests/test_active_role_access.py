@@ -32,8 +32,12 @@ ROLES = [
 ]
 USER_ID = "11111111-1111-1111-1111-111111111111"
 SESSION_ID = "22222222-2222-2222-2222-222222222222"
-# Auth endpoints are public or open to any signed-in user by design.
-OPEN_PREFIX = f"{settings.api_v1_prefix}/auth"
+# Auth endpoints are public or open to any signed-in user by design. So are the
+# notification bell's: every role has one, and each call returns only the
+# caller's own rows in the role the session is acting as. That scoping, not a
+# role gate, is what test_notifications_api.TestActiveRoleDenial proves with a
+# user who holds a second role.
+OPEN_PREFIXES = (f"{settings.api_v1_prefix}/auth", f"{settings.api_v1_prefix}/notifications")
 
 
 def _protected_routes() -> list[tuple[str, str]]:
@@ -41,7 +45,7 @@ def _protected_routes() -> list[tuple[str, str]]:
     for route in app.routes:
         if not isinstance(route, APIRoute) or not route.path.startswith(settings.api_v1_prefix):
             continue
-        if route.path.startswith(OPEN_PREFIX):
+        if route.path.startswith(OPEN_PREFIXES):
             continue
         for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
             routes.append((method, route.path))
