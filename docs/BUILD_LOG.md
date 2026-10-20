@@ -2881,4 +2881,4 @@ On `fix/safety-decision-wording`, branched from `main` at `276127d`, 2026-10-20.
 
 **Verified.** `SafetyViews.spec.js` was updated first and failed on the old text; frontend 1,169 of 1,170 passed in the full run, the one failure (`EventRequestView` resubmit, 1.5 s) passed 3 of 3 alone and is unrelated. Browser: `safety-decision.e2e.js` and `venue-buffers.e2e.js` 8/8 ([run](test-cases/runs/2026-10-20-2249-e2e-db49f93.md)), against a backend on 8010 and a frontend on 5184; none of them asserts the new copy. No API run, since no backend code changed.
 
-**Not verified.** Manual case TC-SDEC-030 (how the wording reads, 375 px).
+**Manual.** TC-SDEC-030 passed ([run](test-cases/runs/2026-10-20-manual-3622650.md)).
