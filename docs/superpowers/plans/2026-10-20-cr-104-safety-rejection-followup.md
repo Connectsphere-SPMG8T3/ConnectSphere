@@ -114,58 +114,10 @@ end $$;
 Run (from repo root): `supabase db query --linked -f supabase/verification/safety_decision_checks.sql` (if `-f` is unsupported in CLI 2.120.0, pass the file's contents as the query argument).
 Expected: `SAFETY FAIL: Task 1 table/RPC interfaces are missing`.
 
-- [ ] **Step 3: Write the migration.** Start each function from its **live** body (`select pg_get_functiondef('public.request_venue_booking'::regproc)`, same for `_for_space`), change only the replaced-booking condition, and keep comments and grants.
-
-```sql
--- ConnectSphere - CR-104 follow-up (D51, D53): revise with a note, replace a
--- Safety-rejected venue through CR-95's replacement request.
-
--- D51: a Safety-rejected booking also stops holding the space's single slot,
--- so its replacement can sit beside it until approval releases it.
-drop index public.venue_bookings_one_active_per_space;
-create unique index venue_bookings_one_active_per_space
-    on public.venue_bookings (event_space_request_id)
-    where status in ('held', 'approved', 're_review')
-      and (flag is null or flag not in ('affected', 'safety_rejected'));
-
--- request_venue_booking / request_venue_booking_for_space: recreated from the
--- live bodies; the only change is the replaced booking's flag test:
---     or v_replaced.flag is distinct from 'affected'
--- becomes
---     or v_replaced.flag is null
---     or v_replaced.flag not in ('affected', 'safety_rejected')
--- Update each function's comment to say "affected or Safety-rejected booking".
-
-drop function public.mark_safety_revision(uuid, uuid);
-create function public.mark_safety_revision(p_booking_id uuid, p_actor_id uuid, p_note text)
-returns text language plpgsql security definer set search_path = '' as $$
-declare
-    v_booking public.venue_bookings;
-    v_event public.events;
-begin
-    select * into v_event from public.events
-    where id=(select event_id from public.venue_bookings where id=p_booking_id) for update;
-    select * into v_booking from public.venue_bookings where id=p_booking_id for update;
-    if not found then return 'booking_not_found'; end if;
-    if v_booking.flag is distinct from 'safety_rejected' then return 'not_safety_rejected'; end if;
-    if v_event.coordinator_id is distinct from p_actor_id then return 'not_assigned'; end if;
-    if v_event.status <> 'planning' then return 'not_planning'; end if;
-    if p_note is null or length(btrim(p_note)) = 0 then return 'note_required'; end if;
-    if exists (select 1 from public.venue_bookings r
-               where r.replaces_booking_id = p_booking_id
-                 and r.status in ('held', 'approved', 're_review')) then
-        return 'replacement_pending';
-    end if;
-    update public.venue_bookings set flag=null, flag_reason=null, flagged_at=null where id=p_booking_id;
-    insert into public.venue_booking_history(booking_id,actor_id,action,from_status,to_status,reason)
-    values(p_booking_id,p_actor_id,'safety_revised',v_booking.status,v_booking.status,btrim(p_note));
-    return 'ok';
-end $$;
-comment on function public.mark_safety_revision(uuid,uuid,text) is
-    'CR-104 AC3/AC4, D53: the assigned coordinator marks a Safety-rejected booking revised in Planning with a required note (stored as the history row''s reason). Refused while a replacement is pending (D51). API-only.';
-revoke execute on function public.mark_safety_revision(uuid,uuid,text) from public,anon,authenticated;
-grant execute on function public.mark_safety_revision(uuid,uuid,text) to service_role;
-```
+- [ ] **Step 3: Write the migration** `20261020150000_safety_rejection_followup.sql`. Requirements:
+  - **Index:** recreate `venue_bookings_one_active_per_space` with the predicate in Interfaces above, so a `safety_rejected` booking no longer holds the space's single live slot.
+  - **Request functions:** recreate `request_venue_booking` and `request_venue_booking_for_space` from their **live** bodies (`select pg_get_functiondef('public.<name>'::regproc)`), changing only the replaced-booking test from "flag is distinct from 'affected'" to "flag is null or not one of affected / safety_rejected" (see Global Constraints on the null trap). Keep signatures, locks, grants; update each comment to say "affected or Safety-rejected booking".
+  - **`mark_safety_revision`:** drop the two-argument version; create the three-argument one with the same locks and order (event row, then booking row) and the same existing outcomes in the same order, then `note_required` (null or blank after trim), then `replacement_pending` (any booking with `replaces_booking_id` = this one in held/approved/re_review). On `ok`: clear `flag`, `flag_reason`, `flagged_at`; insert the `safety_revised` history row with `reason = btrim(p_note)` (the existing 1–1,000 check enforces the upper bound). No notification, no event version bump (unchanged [Assumption]). Security definer, `search_path = ''`, comment citing D53/D51, execute revoked from public/anon/authenticated and granted to service_role.
 
   Also update the `venue_bookings.flag` column comment: `safety_rejected` is cleared by Mark as revised **or** released when an approved replacement stands in for it.
 
