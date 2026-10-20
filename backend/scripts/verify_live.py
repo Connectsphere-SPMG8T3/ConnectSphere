@@ -73,6 +73,8 @@ ACCOUNTS = {
 W7_STAFF_ACCOUNTS = {
     "safety_officer": "safety.officer@connectsphere.dev",
     "event_coordinator_lead": "coordinator.lead@connectsphere.dev",
+    # A second Lead (CR-101 AC5: one or more Leads, each seeing what they assigned).
+    "event_coordinator_lead_2": "coordinator.lead2@connectsphere.dev",
 }
 INVALID_CREDENTIALS = "Invalid email or password."
 INVALID_TOKEN = "Invalid or expired authentication token."
@@ -657,6 +659,46 @@ def _(ctx: Context) -> None:
         json={"coordinator_id": SOME_COORDINATOR, "expected_version": 1},
     )
     expect_status(response, 404)
+
+
+@check("TC-LEAD-015", "With two Leads, both see the whole queue and each sees only the events in their own scope", needs_db=True)
+def _(ctx: Context) -> None:
+    # Read-only. The expectation is computed from the database (events.assigned_by) and compared
+    # with what each Lead's dashboard returns, so it does not depend on which events exist.
+    leads = {
+        row["email"]: row["id"]
+        for row in db_query(
+            "select p.email, p.id from public.profiles p join public.user_roles ur on ur.profile_id = p.id "
+            "where ur.role = 'event_coordinator_lead'"
+        )
+    }
+    first, second = W7_STAFF_ACCOUNTS["event_coordinator_lead"], W7_STAFF_ACCOUNTS["event_coordinator_lead_2"]
+    expect(first in leads and second in leads, f"both Lead accounts must exist (found {sorted(leads)}): see supabase/seed.sql")
+    statuses = ", ".join(f"'{status}'" for status in sorted(LEAD_ACTIVE_STATUSES))
+    events = db_query(f"select id, coordinator_id, assigned_by from public.events where status in ({statuses})")
+
+    def expected(lead_id: str) -> tuple[set[str], set[str]]:
+        queue = {e["id"] for e in events if e["coordinator_id"] is None}
+        scope = {
+            e["id"]
+            for e in events
+            if e["coordinator_id"] is not None
+            and (e["assigned_by"] is None or e["assigned_by"] == lead_id or e["assigned_by"] not in leads.values())
+        }
+        return queue, scope
+
+    seen = {}
+    for role, email in (("event_coordinator_lead", first), ("event_coordinator_lead_2", second)):
+        response = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=ctx.shared(role).headers)
+        expect_status(response, 200)
+        body = response.json()
+        queue, scope = expected(leads[email])
+        got_queue = {e["event_id"] for e in body["unassigned"]}
+        got_scope = {e["event_id"] for e in body["active_events"]}
+        expect(got_queue == queue, f"{email}: queue differs. missing {queue - got_queue}, extra {got_queue - queue}")
+        expect(got_scope == scope, f"{email}: scope differs. missing {scope - got_scope}, extra {got_scope - scope}")
+        seen[email] = got_queue
+    expect(seen[first] == seen[second], "the two Leads do not see the same unassigned queue")
 
 
 @check("TC-LEAD-005", "The Lead dashboard and reassign without a token are 401")

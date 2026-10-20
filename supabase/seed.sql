@@ -30,6 +30,9 @@ declare
     -- A second, single-role coordinator (no Venue Staff pairing), so two
     -- coordinators exist for assignment and cross-coordinator denial checks.
     v_coordinator_2_id uuid := 'a0000000-0000-4000-8000-000000000008';
+    -- A second Event Coordinator Lead (CR-101 AC5: the system supports one or more
+    -- Leads, and each sees the events they assigned), so the two-Lead scope can be tested.
+    v_coordinator_lead_2_id uuid := 'a0000000-0000-4000-8000-000000000009';
 
     v_users jsonb := jsonb_build_array(
         jsonb_build_object(
@@ -103,6 +106,15 @@ declare
             'organisation_name', null,
             'department', 'Event Planning',
             'phone_number', '+65 9000 0008'
+        ),
+        jsonb_build_object(
+            'id', v_coordinator_lead_2_id,
+            'email', 'coordinator.lead2@connectsphere.dev',
+            'full_name', 'Daniel Foo',
+            'role', 'event_coordinator_lead',
+            'organisation_name', null,
+            'department', 'Event Planning',
+            'phone_number', '+65 9000 0009'
         )
     );
     v_user jsonb;
