@@ -20,6 +20,7 @@ declare
     venue_staff uuid := 'a0000000-0000-4000-8000-000000000003';
     r public.events;
     n integer;
+    v integer;
 begin
     if to_regprocedure('public.assign_event(uuid, uuid, uuid, text[], text, text, text, text)') is null then
         raise exception 'SCRUM-12: assign_event missing';
@@ -62,6 +63,25 @@ begin
     select count(*) into n from public.assign_event(q, lead, coordinator_b, array['submitted'], 'under_review', 'r', 'a', 'o');
     if n <> 0 or (select coordinator_id from public.events where id = q) <> coordinator_a then
         raise exception 'SCRUM-12: an assigned event was assigned again';
+    end if;
+
+    -- A reassignment is recorded in event_assignment_history (who, from, to), not as a status change.
+    select version into v from public.events where id = q;
+    select * into r from public.reassign_event(q, lead, coordinator_b, v,
+        array['under_review','returned','planning','safety_review','confirmed'], 'to B', 'prev', 'to organiser');
+    if r.coordinator_id is distinct from coordinator_b then
+        raise exception 'SCRUM-12: reassign did not move the event';
+    end if;
+    if (select count(*) from public.event_assignment_history
+         where event_id = q and from_coordinator_id = coordinator_a and to_coordinator_id = coordinator_b
+           and actor_id = lead) <> 1 then
+        raise exception 'SCRUM-12: the reassignment was not recorded in event_assignment_history';
+    end if;
+    if exists (select 1 from public.event_status_history where event_id = q and from_status = to_status) then
+        raise exception 'SCRUM-12: reassign wrote a same-status history row';
+    end if;
+    if exists (select 1 from public.event_assignment_history where event_id = q and from_coordinator_id is null) then
+        raise exception 'SCRUM-12: assigning from the queue wrote an assignment-history row (its status row is the record)';
     end if;
 
     -- The Lead role is exclusive.

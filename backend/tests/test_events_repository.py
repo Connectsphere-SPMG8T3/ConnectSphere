@@ -193,6 +193,39 @@ def test_status_history_puts_the_creation_entry_last_when_timestamps_tie(monkeyp
     assert orders == [("at", True, None), ("from_status", True, False)]
 
 
+def test_assignment_history_reads_the_event_s_rows_with_both_coordinators_named(monkeypatch):
+    seen = {}
+
+    class Query:
+        def select(self, columns):
+            seen["columns"] = columns
+            return self
+
+        def eq(self, field, value):
+            seen["eq"] = (field, value)
+            return self
+
+        def order(self, column, *, desc=False):
+            seen["order"] = (column, desc)
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[{"id": "a1"}])
+
+    class AdminClient:
+        def table(self, name):
+            seen["table"] = name
+            return Query()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    assert repository.list_assignment_history("event-1") == [{"id": "a1"}]
+    assert seen["table"] == "event_assignment_history"
+    assert seen["eq"] == ("event_id", "event-1") and seen["order"] == ("at", True)
+    for embedded in ("actor:", "from_coordinator:", "to_coordinator:"):
+        assert embedded in seen["columns"]
+
+
 class RpcClient:
     """Records the RPC name and parameters; answers with the rows given."""
 

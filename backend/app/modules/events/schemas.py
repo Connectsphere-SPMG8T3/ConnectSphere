@@ -458,9 +458,15 @@ class HistoryActor(BaseModel):
 
 
 class EventHistoryEntry(BaseModel):
+    """One line of an event's history: a status change, or a reassignment (SCRUM-12), which
+    is not a status change and so carries the two coordinators instead of statuses."""
+
     id: str
+    kind: str = "status"
     from_status: EventStatus | None = None
-    to_status: EventStatus
+    to_status: EventStatus | None = None
+    from_coordinator: HistoryActor | None = None
+    to_coordinator: HistoryActor | None = None
     actor: HistoryActor | None = None
     reason: str | None = None
     at: datetime

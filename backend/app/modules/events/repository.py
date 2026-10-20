@@ -290,6 +290,25 @@ def list_status_history(event_id: str) -> list[dict]:
     return response.data or []
 
 
+def list_assignment_history(event_id: str) -> list[dict]:
+    """Reassignments, newest first, with the Lead and both coordinators named (SCRUM-12).
+    Kept apart from the status history because a reassignment is not a status change."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_assignment_history")
+        .select(
+            "id, at, "
+            "actor:profiles!event_assignment_history_actor_id_fkey(id, full_name), "
+            "from_coordinator:profiles!event_assignment_history_from_coordinator_id_fkey(id, full_name), "
+            "to_coordinator:profiles!event_assignment_history_to_coordinator_id_fkey(id, full_name)"
+        )
+        .eq("event_id", event_id)
+        .order("at", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
 def _first_row(response) -> dict | None:
     rows = (response.data or []) if response else []
     return rows[0] if rows else None

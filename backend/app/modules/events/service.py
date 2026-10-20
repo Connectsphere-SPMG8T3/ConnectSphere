@@ -539,9 +539,11 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
 
 def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
     _visible_event(event_id, user_id, role)
-    return EventHistoryResponse(
-        entries=[EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
-    )
+    entries = [EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
+    entries += [EventHistoryEntry(kind="reassignment", **row) for row in repository.list_assignment_history(event_id)]
+    # Stable, so entries sharing a time keep the repository's order (the creation row last).
+    entries.sort(key=lambda entry: entry.at, reverse=True)
+    return EventHistoryResponse(entries=entries)
 
 
 def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventResponse:
