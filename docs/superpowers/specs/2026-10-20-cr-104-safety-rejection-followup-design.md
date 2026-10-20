@@ -29,11 +29,11 @@ This is a fix branch, not a reopened story (developer's decision, 20/10).
 ### 1. Mark as revised with a response note (F1, F4)
 
 **Database (new migration).**
-- `venue_booking_history.note text null`, with a check `note is null or length(btrim(note)) between 1 and 1000`.
+- Use the existing `venue_booking_history.reason` column for the response note; its existing check allows null or 1–1,000 characters after trimming. No new `note` column (planning correction, 2026-10-20).
 - Replace `public.mark_safety_revision(p_booking_id uuid, p_actor_id uuid)` with `public.mark_safety_revision(p_booking_id uuid, p_actor_id uuid, p_note text) returns text` (drop the two-argument version). Same locks and order (event, then booking), same outcomes (`ok`, `booking_not_found`, `not_safety_rejected`, `not_assigned`, `not_planning`), plus:
   - `note_required` when `p_note` is null or blank after trimming;
   - `replacement_pending` when a booking with `replaces_booking_id = p_booking_id` is `held`, `approved` or `re_review`.
-- On `ok` the history row stores `btrim(p_note)`. Security definer, empty search path, `service_role` only, as now.
+- On `ok` the history row stores `reason = btrim(p_note)`. Security definer, empty search path, `service_role` only, as now.
 
 **API.** `POST /api/v1/venue-bookings/{booking_id}/mark-revised` takes a body `SafetyRevisionRequest {note: str}` (trimmed, 1–1,000; blank or longer → 422 before the RPC). `replacement_pending` → 409 "A replacement venue has been requested for this booking." Other outcomes map as today. Response unchanged (`VenueBookingDetail`).
 
@@ -58,9 +58,9 @@ This is a fix branch, not a reopened story (developer's decision, 20/10).
 - `affected_bookings: list[{booking_id, venue_name}]`
 - `affected_equipment: list[{id, equipment_name}]`
 - `rejected_venues: list[{venue_id, venue_name}]`
-- `revision: {note, by_name, at} | None` — for an `arrangement_rejected` decision, the first `safety_revised` history row with a note on its rejected booking after `decided_at`.
+- `revision: {note, by_name, at} | None` — for an `arrangement_rejected` decision, the first `safety_revised` history row on its rejected booking after `decided_at`, if that row has a non-null `reason`. Preserve legacy revisions without notes as cycle boundaries so a later rejection's response is never attributed to an earlier rejection.
 
-Built in `events.service` for both `safety_decisions` and `safety_review`, with one lookup per kind (no per-row queries). A name that can't be found is `null`, not an error.
+Built in `events.service` for `safety_decisions`, `safety_review`, `safety_history` and the coordinator's latest-decision banner, with one lookup per kind (no per-row queries). A name that can't be found is `null`, not an error.
 
 **SPA.** `SafetyDecisionDetails` replaces the counts with "Rejected venue: …", "Concerns: Heritage Hall · Projector" (falling back to "a booking that no longer exists" for a null name) and, under a rejection, "Coordinator's response: <note>" with name and time.
 

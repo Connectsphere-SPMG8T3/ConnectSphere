@@ -39,6 +39,20 @@ Unit suites pass (backend 1,396; frontend 971). Live runs after the migration pu
 | TC-SDEC-028 | Coordinator notice wording and phone layout | Manual | Assigned coordinator; Safety-rejected booking | Open /coordinator/events/<id> at desktop and 375px; inspect venue or space card | Planning and Safety-review events | Safety rejected badge, reason and revision guidance visible; Mark as revised only in Planning, disabled while busy; no horizontal scroll or layout jumps | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
 | TC-SDEC-029 | Organiser sees no flag or reason | Manual | Organiser; disposable event after safety rejection | Open organiser event page and inspect event response | Internal booking flag and officer reason | No flag or flag_reason fields populated; officer reason absent; existing fixed outcome summary allowed | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
 
+### Rejection follow-up — D51–D53 (2026-10-20)
+
+Migration `20261020150000_safety_rejection_followup.sql` is not deployed. The following checks are authored; live/browser runs and the developer's manual pass are deferred until deployment. Mocked probe/helper tests do not constitute live passes.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|---|---|---|---|---|---|---|---|---|---|
+| TC-SDEC-031 | Reject, revise with a note, read named history | Integration | Follow-up migration deployed; branch backend; throwaway event, venue and approved booking | Officer rejects booking; coordinator submits blank note then valid note; officer reads safety-decisions | Blank note; live check revised | Blank 422; valid 200; history names rejected venue and records response | 🔴 | 2026-10-20 | Not run — awaiting migration |
+| TC-SDEC-032 | Replace a Safety-rejected venue and approve replacement | Integration | Follow-up migration deployed; throwaway event and two venues | Reject original; request replacement; try revision; venue staff approve replacement; inspect stored bookings | replaces_booking_id; live check revised | Request 201; revision 409 with replacement message; original released, replacement approved and unflagged | 🔴 | 2026-10-20 | Not run — awaiting migration |
+| TC-SDEC-033 | Replace venue from Safety rejected notice | E2E | Follow-up migration deployed; coordinator session; throwaway planning event and two venues | Open event, click Replace venue, request second venue, return to event | Throwaway Safety-rejected booking | Search URL carries replaces; notice names requested replacement and hides both actions | 🔴 | 2026-10-20 | Not run — awaiting migration |
+| TC-SDEC-034 | Revise dialog wording and phone layout | Manual | Follow-up migration deployed; assigned coordinator; disposable rejected booking | Open /coordinator/events/<id> at desktop and 375 px; open Mark as revised; enter whitespace, then text; cancel and reopen | 1–1000 characters | Label asks what changed or what officer should know; counter tracks input; whitespace cannot submit; Cancel sends nothing; no sideways scroll, clipped controls, flashes or jumps | 🔴 | 2026-10-20 | Not run — developer pass deferred |
+| TC-SDEC-035 | Named history and response readability | Manual | Disposable rejection with response; assigned coordinator and Safety Officer sessions | Read /coordinator/events/<id>, officer history from /dashboard/safety and /safety/events/<id> after resubmission, at desktop and 375 px | Named venue/equipment, multiline response | Names replace counts; rejection names venue; response preserves lines and shows author/time; wording reads clearly and wraps without overflow | 🔴 | 2026-10-20 | Not run — developer pass deferred |
+
+F1 → 031/034; F2 → 031/035; F3/F4 → 032/033; F5 remains the existing readiness cases; F6 remains raw-request assignment and active-role denial tests.
+
 ### Traceability — CR-103 / CR-104
 
 | PBI / acceptance criterion | Cases | Boundary |
