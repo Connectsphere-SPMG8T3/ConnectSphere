@@ -511,6 +511,9 @@ class VenueBookingCreate(BaseModel):
     event_space_request_id: UUID | None = None
     venue_id: UUID
     note: str | None = Field(default=None, max_length=BOOKING_NOTE_MAX_LENGTH)
+    # BR-R3 (SCRUM-18): a venue Suitable with warnings is requested only once
+    # the coordinator has acknowledged them.
+    acknowledge_warnings: bool = False
     # CR-95 AC4: the affected booking this request replaces.
     replaces_booking_id: UUID | None = None
 

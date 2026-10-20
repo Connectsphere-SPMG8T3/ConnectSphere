@@ -16,7 +16,7 @@ export const useVenueBookingStore = defineStore("venueBooking", {
   state: () => ({ isRequesting: false, error: null, conflict: null }),
 
   actions: {
-    async request(eventId, venueId, note, replacesBookingId = null) {
+    async request(eventId, venueId, note, replacesBookingId = null, acknowledgedWarnings = false) {
       const auth = useAuthStore();
       this.isRequesting = true;
       this.error = null;
@@ -24,6 +24,8 @@ export const useVenueBookingStore = defineStore("venueBooking", {
       try {
         const payload = { event_id: eventId, venue_id: venueId, note: note?.trim() || null };
         if (replacesBookingId) payload.replaces_booking_id = replacesBookingId;
+        // BR-R3: a venue Suitable with warnings is requested only once they are acknowledged.
+        if (acknowledgedWarnings) payload.acknowledge_warnings = true;
         return await auth.withSession((token) => venueBookingsApi.request(payload, token));
       } catch (error) {
         this.error = error.message;
@@ -34,7 +36,7 @@ export const useVenueBookingStore = defineStore("venueBooking", {
       }
     },
 
-    async requestForSpace(spaceId, venueId, note, replacesBookingId = null) {
+    async requestForSpace(spaceId, venueId, note, replacesBookingId = null, acknowledgedWarnings = false) {
       const auth = useAuthStore();
       this.isRequesting = true;
       this.error = null;
@@ -42,6 +44,8 @@ export const useVenueBookingStore = defineStore("venueBooking", {
       try {
         const payload = { event_space_request_id: spaceId, venue_id: venueId, note: note?.trim() || null };
         if (replacesBookingId) payload.replaces_booking_id = replacesBookingId;
+        // BR-R3: a venue Suitable with warnings is requested only once they are acknowledged.
+        if (acknowledgedWarnings) payload.acknowledge_warnings = true;
         return await auth.withSession((token) => venueBookingsApi.request(payload, token));
       } catch (error) {
         this.error = error.message;

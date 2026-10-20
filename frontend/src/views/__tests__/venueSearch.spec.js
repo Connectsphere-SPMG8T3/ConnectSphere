@@ -813,6 +813,26 @@ describe("VenueSearchView suitability (SCRUM-18)", () => {
     expect(dialog.querySelector("[data-testid='suitability-badge']").textContent.trim()).toBe("Suitable with warnings");
   });
 
+  it("sends the acknowledgement with a request for a venue that has warnings (BR-R3)", async () => {
+    venueBookingsApi.request.mockResolvedValue({ id: "booking-1" });
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView, { route: { name: "venue-search", query: { event: EVENT.id, space: "space-1" } } });
+    await vi.waitFor(() => expect(el.querySelector('[aria-label="Request Hall A"]')).not.toBeNull());
+
+    el.querySelector('[aria-label="Request Hall A"]').click();
+    await settle();
+    document.querySelector("[data-testid='acknowledge-warnings']").click();
+    await settle();
+    document.querySelector('[aria-label="Request venue"]').click();
+
+    await vi.waitFor(() =>
+      expect(venueBookingsApi.request).toHaveBeenCalledWith(
+        { event_space_request_id: "space-1", venue_id: HALL_A.id, note: null, acknowledge_warnings: true },
+        "access",
+      ),
+    );
+  });
+
   it("drops the event context, and its verdicts, when the search is opened without one", async () => {
     const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
     const { el } = await mountView(VenueSearchView, { route: { name: "venue-search", query: { event: EVENT.id } } });

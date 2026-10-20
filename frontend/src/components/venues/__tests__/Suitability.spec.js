@@ -1,5 +1,5 @@
-import { createApp, h, nextTick } from "vue";
-import { afterEach, describe, expect, it } from "vitest";
+import { createApp, h, nextTick, ref } from "vue";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 
 import RequestVenueModal from "@/components/venues/RequestVenueModal.vue";
@@ -99,5 +99,80 @@ describe("RequestVenueModal suitability (AC9)", () => {
     await mountComponent(RequestVenueModal, props);
 
     expect(document.querySelector("[data-testid='suitability-badge']")).toBeNull();
+  });
+});
+
+describe("RequestVenueModal acknowledgement (BR-R3)", () => {
+  const WARNING = {
+    verdict: "suitable_with_warnings",
+    reasons: [{ code: "layout_not_supported", severity: "warning", message: "The banquet layout this event needs is not supported." }],
+  };
+  const props = { open: true, venueName: "Hall A", eventName: "Summit", period: "10 Oct" };
+  const requestButton = () => document.querySelector("[aria-label='Request venue']");
+  const checkbox = () => document.querySelector("[data-testid='acknowledge-warnings']");
+
+  it("asks for the warnings to be acknowledged before the request can be sent", async () => {
+    const onConfirm = vi.fn();
+    await mountComponent(RequestVenueModal, { ...props, suitability: WARNING, onConfirm });
+
+    expect(checkbox()).not.toBeNull();
+    expect(requestButton().disabled).toBe(true);
+    requestButton().click();
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    checkbox().click();
+    await nextTick();
+    expect(requestButton().disabled).toBe(false);
+    requestButton().click();
+    expect(onConfirm).toHaveBeenCalledWith("", true);
+  });
+
+  it("forgets the acknowledgement when the dialog is opened again", async () => {
+    const open = ref(true);
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const app = createApp({ render: () => h(RequestVenueModal, { ...props, open: open.value, suitability: WARNING }) });
+    app.mount(el);
+    mounted.push(app);
+    await nextTick();
+    checkbox().click();
+    await nextTick();
+    expect(checkbox().checked).toBe(true);
+
+    open.value = false;
+    await nextTick();
+    open.value = true;
+    await nextTick();
+
+    expect(checkbox().checked).toBe(false);
+  });
+
+  it("sends a suitable venue's request with no acknowledgement", async () => {
+    const onConfirm = vi.fn();
+    await mountComponent(RequestVenueModal, { ...props, suitability: { verdict: "suitable", reasons: [] }, onConfirm });
+
+    expect(checkbox()).toBeNull();
+    requestButton().click();
+    expect(onConfirm).toHaveBeenCalledWith("", false);
+  });
+
+  it("does not offer to request a venue that is unsuitable", async () => {
+    const onConfirm = vi.fn();
+    await mountComponent(RequestVenueModal, { ...props, suitability: UNSUITABLE, onConfirm });
+
+    expect(checkbox()).toBeNull();
+    expect(requestButton().disabled).toBe(true);
+    expect(document.body.textContent).toContain("unsuitable");
+    requestButton().click();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("leaves the request open when there is no verdict", async () => {
+    const onConfirm = vi.fn();
+    await mountComponent(RequestVenueModal, { ...props, onConfirm });
+
+    expect(requestButton().disabled).toBe(false);
+    requestButton().click();
+    expect(onConfirm).toHaveBeenCalledWith("", false);
   });
 });

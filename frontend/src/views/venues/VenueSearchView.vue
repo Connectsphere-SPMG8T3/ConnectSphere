@@ -124,13 +124,13 @@ function openRequest(venue) {
   requestedVenue.value = venue;
 }
 
-async function confirmRequest(note) {
+async function confirmRequest(note, acknowledgedWarnings = false) {
   try {
     const replaces = replacedBooking.value?.id ?? null;
     if (bookingSpace.value) {
-      await bookingStore.requestForSpace(bookingSpace.value.id, requestedVenue.value.id, note, replaces);
+      await bookingStore.requestForSpace(bookingSpace.value.id, requestedVenue.value.id, note, replaces, acknowledgedWarnings);
     } else {
-      await bookingStore.request(bookingEvent.value.id, requestedVenue.value.id, note, replaces);
+      await bookingStore.request(bookingEvent.value.id, requestedVenue.value.id, note, replaces, acknowledgedWarnings);
     }
     requestedVenue.value = null;
     showToast("Venue requested. It is held while venue staff decide.");
