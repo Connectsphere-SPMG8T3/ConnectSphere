@@ -92,7 +92,7 @@ describe('Safety queue and review', () => {
   });
   it('renders every review field and earlier decisions', async () => {
     const { el } = await mountView(); await vi.waitFor(() => expect(el.textContent).toContain('Community Fair'));
-    for (const text of ['Priya', 'Marcus', '80', 'Step-free access', 'Town Hall', '100', 'theatre', 'classroom', 'ramp', 'lift', '80%', 'Projector', '2', 'pending', '90', '10 Oct', '10 Nov', 'Officer Lee', 'Keep the aisle clear', 'Record any crowd-movement concerns here.', 'Emergency access', 'Restrictions', 'Exit confirmation']) expect(el.textContent).toContain(text);
+    for (const text of ['Priya', 'Marcus', '80', 'Step-free access', 'Town Hall', '100', 'theatre', 'classroom', 'ramp', 'lift', '80%', 'Projector', '2', 'pending', '90', '10 Oct', '10 Nov', 'Officer Lee', 'Keep the aisle clear', 'Required to request changes or reject. Note any crowd-movement concerns here.', 'Emergency access', 'Restrictions', 'Exit confirmation']) expect(el.textContent).toContain(text);
     expect(el.textContent.match(/Not recorded/g)).toHaveLength(3);
   });
   it('shows who ticked the exit check and when (SCRUM-24 AC10)', async () => {
@@ -149,8 +149,13 @@ describe('Safety queue and review', () => {
     const { el } = await mountView();
     await vi.waitFor(() => expect(el.querySelector('input[type=radio]')).not.toBeNull());
     expect(el.querySelector('input[type=radio]').disabled).toBe(true);
-    expect(el.textContent).toContain('Venue to reject (required for Reject)');
-    expect(el.textContent).toContain('Arrangements this concerns (optional)');
+    const legends = [...el.querySelectorAll('legend')].map((legend) => legend.textContent.trim());
+    expect(legends).toEqual(['For Request changes: what needs changing (optional)', 'For Reject: venue that fails the safety check (required)']);
+    expect(el.textContent).toContain('Tick the venues and equipment your comment is about, so the coordinator knows what to revise.');
+    expect(el.textContent).toContain('Choose one venue. Only approved bookings can be rejected; the event goes back to Planning.');
+    for (const fieldset of el.querySelectorAll('fieldset')) {
+      expect(el.querySelector(`#${fieldset.getAttribute('aria-describedby')}`)).not.toBeNull();
+    }
   });
   it('cancels confirmation without sending a decision', async () => {
     await mountView(); await vi.waitFor(() => expect(button('Approve')).not.toBeNull()); button('Approve').click(); await nextTick();
