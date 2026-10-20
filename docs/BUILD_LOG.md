@@ -2792,3 +2792,10 @@ On `chore/seed-second-lead-account`, branched from `main` at `15ca304`, 2026-10-
 **Manual pass (2026-10-20).** The developer ran TC-LEAD-012 in a browser as both Leads and it passed (`runs/2026-10-20-manual-88f7fcf.md`).
 
 **Not verified.** The browser suite (`npm run test:e2e:record`) was not re-run for this chore.
+### 4.70. Bug fix — event-space responses include the primary flag (CR-98 / D48)
+
+**Reproduction:** `POST /api/v1/events/{event_id}/spaces` returned 500 when PostgREST returned `is_primary: false` from the new CR-97 column. `EventSpaceRequest` uses strict extra-field validation and did not include that persisted response field.
+
+**Fix:** Added `is_primary` to the response-only `EventSpaceRequest` model. The organiser create/update request schemas remain unchanged and reject attempts to set the coordinator-controlled primary flag.
+
+**Verification:** The focused regression test failed first with the reported Pydantic `extra_forbidden` error, then passed after the schema fix. All 30 tests in `backend/tests/test_event_spaces_api.py` pass, including a check that organiser input containing `is_primary` is rejected with 422.

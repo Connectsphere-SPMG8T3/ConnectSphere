@@ -59,6 +59,7 @@ def test_organiser_can_create_a_space_request_with_pax_and_layout(
             **deepcopy({key: values[key] for key in (
                 "label", "expected_pax", "layout_preference", "facilities_required", "starts_at", "ends_at"
             )}),
+            "is_primary": False,
             "version": 1,
         }
 
@@ -84,10 +85,35 @@ def test_organiser_can_create_a_space_request_with_pax_and_layout(
     assert response.json()["expected_pax"] == 40
     assert response.json()["layout_preference"] == "classroom"
     assert response.json()["facilities_required"] == ["projector"]
+    assert response.json()["is_primary"] is False
     assert response.json()["starts_at"] is None
     assert response.json()["ends_at"] is None
     assert created_values["starts_at"] is None
     assert created_values["ends_at"] is None
+
+
+def test_organiser_cannot_set_primary_space_on_create(
+    client, auth_headers, authenticate_as, monkeypatch
+):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    monkeypatch.setattr(
+        repository,
+        "get_event",
+        lambda event_id: pytest.fail("invalid payload must be rejected before loading the event"),
+    )
+
+    response = client.post(
+        f"/api/v1/events/{EVENT_ID}/spaces",
+        json={
+            "label": "Afternoon breakout",
+            "expected_pax": 40,
+            "layout_preference": "classroom",
+            "is_primary": True,
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
 
 
 def test_space_request_rejects_window_outside_event_period(
@@ -244,6 +270,7 @@ def test_organiser_can_update_a_space_request_without_internal_row_fields(
         "expected_pax": 40,
         "layout_preference": "classroom",
         "facilities_required": ["projector"],
+        "is_primary": False,
         "version": 1,
     }
     monkeypatch.setattr(repository, "get_space", lambda space_id: current_space)
@@ -265,6 +292,7 @@ def test_organiser_can_update_a_space_request_without_internal_row_fields(
 
     assert response.status_code == 200
     assert response.json()["label"] == "Updated breakout"
+    assert response.json()["is_primary"] is False
     assert response.json()["version"] == 2
 
 

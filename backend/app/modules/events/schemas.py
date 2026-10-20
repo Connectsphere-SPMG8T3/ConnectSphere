@@ -121,6 +121,7 @@ class EventSpaceRequest(EventSpaceRequestFields):
     id: str
     event_id: str
     version: int = 1
+    is_primary: bool = False
 
 
 class EventSpaceRequestResponse(BaseModel):
