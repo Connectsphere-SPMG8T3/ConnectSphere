@@ -109,6 +109,7 @@ DB_SCRIPTS = [
     ("venue_booking_reject_checks.sql", "TC-BOOK-023"),
     ("venue_booking_approve_checks.sql", "TC-BOOK-056"),
     ("lead_assignment_checks.sql", "CR-101 (database half: assignment columns, reassign_event)"),
+    ("coordinator_assignment_checks.sql", "TC-ASSIGN-010 (SCRUM-12 database half: assign_event, exclusive Lead role)"),
     ("venue_deactivation_checks.sql", "TC-VENUE-070 (SCRUM-64 database half); D33"),
     ("booking_conflict_checks.sql", "TC-BOOK-040 (SCRUM-21 database half: occupied window, venue_conflicts)"),
     ("venue_block_flag_checks.sql", "TC-BOOK-043, 044 (CR-95: a block flags the bookings it overlaps; organiser notice)"),
@@ -611,6 +612,8 @@ def _(ctx: Context) -> None:
 
 LEAD_DASHBOARD = "/events/dashboard/lead"
 LEAD_ACTIVE_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed"}
+# The Lead's queue also holds events waiting for a coordinator (SCRUM-12).
+LEAD_DASHBOARD_STATUSES = LEAD_ACTIVE_STATUSES | {"submitted"}
 UNKNOWN_EVENT = "e0000000-0000-4000-8000-0000000009ff"
 SOME_COORDINATOR = "a0000000-0000-4000-8000-000000000002"
 LEAD_FIXTURE_EVENT = "e0000000-0000-4000-8000-000000000201"  # supabase/seed.sql: under_review, assigned
@@ -623,7 +626,7 @@ def _(ctx: Context) -> None:
     body = response.json()
     expect(set(body) == {"unassigned", "active_events", "coordinators"}, f"unexpected fields: {sorted(body)}")
     listed = body["unassigned"] + body["active_events"]
-    stray = {event["status"] for event in listed} - LEAD_ACTIVE_STATUSES
+    stray = {event["status"] for event in listed} - LEAD_DASHBOARD_STATUSES
     expect(not stray, f"inactive statuses listed: {stray}")
     expect(all(event["coordinator"] is None for event in body["unassigned"]), "the queue holds an assigned event")
     expect(all(event["coordinator"] for event in body["active_events"]), "an active event has no coordinator")
@@ -674,7 +677,7 @@ def _(ctx: Context) -> None:
     }
     first, second = W7_STAFF_ACCOUNTS["event_coordinator_lead"], W7_STAFF_ACCOUNTS["event_coordinator_lead_2"]
     expect(first in leads and second in leads, f"both Lead accounts must exist (found {sorted(leads)}): see supabase/seed.sql")
-    statuses = ", ".join(f"'{status}'" for status in sorted(LEAD_ACTIVE_STATUSES))
+    statuses = ", ".join(f"'{status}'" for status in sorted(LEAD_DASHBOARD_STATUSES))
     events = db_query(f"select id, coordinator_id, assigned_by from public.events where status in ({statuses})")
 
     def expected(lead_id: str) -> tuple[set[str], set[str]]:
@@ -707,6 +710,203 @@ def _(ctx: Context) -> None:
     expect_status(
         ctx.client.post(f"{ctx.api}/events/{UNKNOWN_EVENT}/reassign", json={"coordinator_id": SOME_COORDINATOR, "expected_version": 1}), 401
     )
+
+
+# --- Coordinator assignment (SCRUM-12) --------------------------------------
+# Every check works on its own throwaway events (named "live-check ...", deleted when the run
+# ends, with their history and notifications), never on seeded ones.
+
+SECOND_COORDINATOR = "a0000000-0000-4000-8000-000000000008"
+ASSIGN_OTHER_ROLES = ("event_organiser", "event_coordinator", "venue_staff", "tech_support", "attendee", "safety_officer")
+
+
+def queued_event(ctx: Context, case: str) -> str:
+    return throwaway_event(ctx, case, "2031-08-12 09:00+08", "2031-08-12 17:00+08", status="submitted", assigned=False)
+
+
+def assign(ctx: Context, session: Session, event_id: str, coordinator_id: str = SOME_COORDINATOR) -> httpx.Response:
+    return ctx.client.post(f"{ctx.api}/events/{event_id}/assign", headers=session.headers, json={"coordinator_id": coordinator_id})
+
+
+def event_row(event_id: str) -> dict:
+    return db_query(f"select status, coordinator_id, assigned_by, assigned_at from public.events where id = '{event_id}'")[0]
+
+
+def lead_session(ctx: Context, role: str = "event_coordinator_lead") -> Session:
+    return ctx.shared(role)
+
+
+@check("TC-ASSIGN-001", "A submitted event joins the queue with no coordinator and no notice", needs_db=True)
+def _(ctx: Context) -> None:
+    organiser = ctx.shared("event_organiser")
+    created = ctx.client.post(
+        f"{ctx.api}/events",
+        headers=organiser.headers,
+        json={
+            "name": f"{THROWAWAY_EVENT_PREFIX}{ctx.run_id} 12-001",
+            "purpose": "Live check",
+            "starts_at": "2031-08-12T09:00:00+08:00",
+            "ends_at": "2031-08-12T17:00:00+08:00",
+            "expected_attendance": 40,
+            "layout_preference": "theatre",
+            "facilities_required": ["projector"],
+        },
+    )
+    expect_status(created, 201)
+    event_id = created.json()["id"]
+    submitted = ctx.client.post(f"{ctx.api}/events/{event_id}/submit", headers=organiser.headers)
+    expect_status(submitted, 200)
+    expect(submitted.json()["status"] == "submitted", f"status is {submitted.json()['status']}, expected submitted")
+    row = event_row(event_id)
+    expect(row["coordinator_id"] is None, "a coordinator was set on submission")
+    notified = db_query(f"select count(*) as n from public.notifications where event_id = '{event_id}' and type = 'event_assigned'")
+    expect(int(notified[0]["n"]) == 0, "a coordinator was notified on submission")
+    queue = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead_session(ctx).headers).json()["unassigned"]
+    expect(event_id in {e["event_id"] for e in queue}, "the submitted event is not in the Lead's queue")
+
+
+@check("TC-ASSIGN-002", "The queue is oldest submission first and carries the basic information", needs_db=True)
+def _(ctx: Context) -> None:
+    older, newer = queued_event(ctx, "12-002a"), queued_event(ctx, "12-002b")
+    db_query(f"update public.events set submitted_at = now() - interval '2 days', expected_attendance = 55, layout_preference = 'theatre' where id = '{older}'")
+    db_query(f"update public.events set submitted_at = now() - interval '1 day' where id = '{newer}'")
+    queue = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead_session(ctx).headers).json()["unassigned"]
+    ids = [e["event_id"] for e in queue]
+    expect(older in ids and newer in ids, "the throwaway events are not in the queue")
+    expect(ids.index(older) < ids.index(newer), "the older submission is not listed first")
+    stamps = [e["submitted_at"] for e in queue if e["submitted_at"]]
+    expect(stamps == sorted(stamps), "the queue is not in submission order")
+    entry = queue[ids.index(older)]
+    expect(entry["event_name"] and entry["starts_at"] and entry["expected_attendance"] == 55 and entry["layout_preference"] == "theatre",
+           f"basic information missing: {entry}")
+
+
+@check("TC-ASSIGN-003", "The Lead assigns a coordinator: status, who and when, history, notices, off the queue", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-003")
+    lead = lead_session(ctx)
+    response = assign(ctx, lead, event_id)
+    expect_status(response, 200)
+    row = event_row(event_id)
+    expect(row["status"] == "under_review" and row["coordinator_id"] == SOME_COORDINATOR, f"unexpected row: {row}")
+    expect(row["assigned_by"] == lead.body["profile"]["id"] and row["assigned_at"], "assigner or time not recorded")
+    history = db_query(
+        f"select h.actor_id, h.reason from public.event_status_history h where h.event_id = '{event_id}' "
+        "and h.from_status = 'submitted' and h.to_status = 'under_review'"
+    )
+    expect(len(history) == 1 and history[0]["actor_id"] == lead.body["profile"]["id"] and "Assigned to" in history[0]["reason"],
+           f"history row wrong: {history}")
+    notices = db_query(f"select recipient_id from public.notifications where event_id = '{event_id}'")
+    recipients = sorted(n["recipient_id"] for n in notices)
+    expect(recipients == sorted([SOME_COORDINATOR, "a0000000-0000-4000-8000-000000000001"]), f"notified {recipients}")
+    queue = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead.headers).json()["unassigned"]
+    expect(event_id not in {e["event_id"] for e in queue}, "the assigned event is still in the queue")
+
+
+@check("TC-ASSIGN-004", "Only an Event Coordinator can be assigned", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-004")
+    lead = lead_session(ctx)
+    for target in (lead.body["profile"]["id"], "a0000000-0000-4000-8000-000000000003", UNKNOWN_EVENT):
+        response = assign(ctx, lead, event_id, target)
+        expect_status(response, 422)
+        expect_detail(response, "That person is not an Event Coordinator.")
+    expect(event_row(event_id)["status"] == "submitted", "a refused assignment changed the event")
+
+
+@check("TC-ASSIGN-005", "An assigned event cannot be assigned again; two Leads at once leave one winner", needs_db=True)
+def _(ctx: Context) -> None:
+    taken = queued_event(ctx, "12-005a")
+    lead = lead_session(ctx)
+    expect_status(assign(ctx, lead, taken), 200)
+    for target in (SOME_COORDINATOR, SECOND_COORDINATOR):
+        again = assign(ctx, lead, taken, target)
+        expect_status(again, 409)
+        expect_detail(again, "This event is already assigned.")
+    expect(event_row(taken)["coordinator_id"] == SOME_COORDINATOR, "the coordinator changed")
+
+    contested = queued_event(ctx, "12-005b")
+    lead_two = lead_session(ctx, "event_coordinator_lead_2")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(assign, ctx, lead, contested, SOME_COORDINATOR)
+        second = pool.submit(assign, ctx, lead_two, contested, SECOND_COORDINATOR)
+        codes = sorted([first.result().status_code, second.result().status_code])
+    expect(codes == [200, 409], f"expected one 200 and one 409, got {codes}")
+
+
+@check("TC-ASSIGN-006", "A draft is not in the queue and cannot be assigned", needs_db=True)
+def _(ctx: Context) -> None:
+    draft = throwaway_event(ctx, "12-006", "2031-08-12 09:00+08", "2031-08-12 17:00+08", status="draft", assigned=False)
+    lead = lead_session(ctx)
+    expect_status(assign(ctx, lead, draft), 404)
+    queue = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead.headers).json()
+    listed = {e["event_id"] for e in queue["unassigned"] + queue["active_events"]}
+    expect(draft not in listed, "a draft is on the Lead's dashboard")
+
+
+@check("TC-ASSIGN-007", "Every other active role is refused the assignment and the queue", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-007")
+    for role in ASSIGN_OTHER_ROLES:
+        session = ctx.shared(role)
+        for response in (assign(ctx, session, event_id), ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=session.headers)):
+            expect(response.status_code == 403, f"{role} got HTTP {response.status_code}, expected 403")
+    expect(event_row(event_id)["status"] == "submitted", "a refused assignment changed the event")
+
+
+@check("TC-ASSIGN-008", "Only the assigned coordinator can manage the event", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-008")
+    expect_status(assign(ctx, lead_session(ctx), event_id), 200)
+    other_email = db_query(f"select email from public.profiles where id = '{SECOND_COORDINATOR}'")[0]["email"]
+    other = ctx.login("event_coordinator", email=other_email)
+    denied = ctx.client.post(f"{ctx.api}/events/{event_id}/approve", headers=other.headers)
+    expect(denied.status_code == 403, f"another coordinator got HTTP {denied.status_code}, expected 403")
+    allowed = ctx.client.post(f"{ctx.api}/events/{event_id}/approve", headers=ctx.shared("event_coordinator").headers)
+    expect_status(allowed, 200)
+
+
+@check("TC-ASSIGN-009", "A Lead cannot act on an event as its coordinator", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-009")
+    expect_status(assign(ctx, lead_session(ctx), event_id), 200)
+    lead = lead_session(ctx)
+    bodies = {
+        "approve": None,
+        "reject": {"reason": "Live check"},
+        "return": {"message": "Live check", "flagged_fields": []},
+        "send-for-safety-check": None,
+    }
+    for action, body in bodies.items():
+        response = ctx.client.post(f"{ctx.api}/events/{event_id}/{action}", headers=lead.headers, json=body)
+        expect(response.status_code == 403, f"Lead got HTTP {response.status_code} on {action}, expected 403")
+    expect(event_row(event_id)["status"] == "under_review", "the event moved")
+
+
+@check("TC-ASSIGN-016", "A reassignment shows in the event's history with who, from and to; an assignment from the queue shows once", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "12-016")
+    lead = lead_session(ctx)
+    expect_status(assign(ctx, lead, event_id), 200)
+    version = db_query(f"select version from public.events where id = '{event_id}'")[0]["version"]
+    moved = ctx.client.post(
+        f"{ctx.api}/events/{event_id}/reassign", headers=lead.headers,
+        json={"coordinator_id": SECOND_COORDINATOR, "expected_version": version},
+    )
+    expect_status(moved, 200)
+    # The organiser reads the history; the new coordinator would too.
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=ctx.shared("event_organiser").headers)
+    expect_status(history, 200)
+    entries = history.json()["entries"]
+    reassigned = [e for e in entries if e["kind"] == "reassignment"]
+    expect(len(reassigned) == 1, f"expected one reassignment entry, got {len(reassigned)}")
+    entry = reassigned[0]
+    expect(entry["actor"]["id"] == lead.body["profile"]["id"], "the reassigning Lead is not recorded")
+    expect(entry["from_coordinator"]["id"] == SOME_COORDINATOR and entry["to_coordinator"]["id"] == SECOND_COORDINATOR,
+           f"from/to wrong: {entry}")
+    assigned = [e for e in entries if e["kind"] == "status" and e["from_status"] == "submitted" and e["to_status"] == "under_review"]
+    expect(len(assigned) == 1, "the assignment from the queue should appear exactly once, as a status change")
+    expect(entries[0]["kind"] == "reassignment", "history is not newest first")
 
 
 # --- Sign-up (SCRUM-80) ----------------------------------------------------
