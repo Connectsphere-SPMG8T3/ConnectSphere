@@ -110,6 +110,19 @@ describe("NotificationBell (113)", () => {
     expect(bellButton(mounted.el).getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("marks an unread item with a visible square marker and a tinted row, and a read item with neither", async () => {
+    mounted = await mountBell();
+
+    bellButton(mounted.el).click();
+    await vi.waitFor(() => expect(mounted.el.querySelectorAll("li")).toHaveLength(2));
+
+    const [unread, read] = mounted.el.querySelectorAll("li");
+    expect(unread.querySelector('[data-testid="unread-marker"]')).not.toBeNull();
+    expect(unread.querySelector("a").className).toContain("bg-bauhaus-yellow/20");
+    expect(read.querySelector('[data-testid="unread-marker"]')).toBeNull();
+    expect(read.querySelector("button").className).not.toContain("bg-bauhaus-yellow/20");
+  });
+
   it("an item with a link is a link; an item without one is plain text", async () => {
     mounted = await mountBell();
 

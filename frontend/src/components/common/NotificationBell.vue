@@ -121,15 +121,25 @@ function select(item) {
           <component
             :is="item.link ? RouterLink : 'button'"
             v-bind="item.link ? { to: item.link } : { type: 'button' }"
-            class="block w-full border-l-4 px-4 py-3 text-left hover:bg-muted"
-            :class="item.read ? 'border-transparent' : 'border-bauhaus-yellow'"
+            class="flex w-full items-start gap-3 px-4 py-3 text-left"
+            :class="item.read ? 'hover:bg-muted' : 'bg-bauhaus-yellow/20 hover:bg-bauhaus-yellow/30'"
             @click="select(item)"
           >
-            <span class="block text-sm text-ink" :class="item.read ? 'font-medium' : 'font-bold'">
-              {{ item.message }}
-            </span>
-            <span class="mt-1 block text-[11px] font-bold uppercase tracking-widest text-ink/60">
-              {{ formatNotificationTime(item.created_at) }}
+            <!-- Unread: a solid square marker on a tinted row; read: an empty slot, so text stays aligned. -->
+            <span
+              v-if="!item.read"
+              data-testid="unread-marker"
+              class="mt-1.5 h-2.5 w-2.5 shrink-0 border-2 border-ink bg-bauhaus-yellow"
+              aria-hidden="true"
+            ></span>
+            <span v-else class="mt-1.5 h-2.5 w-2.5 shrink-0" aria-hidden="true"></span>
+            <span class="min-w-0">
+              <span class="block text-sm text-ink" :class="item.read ? 'font-medium text-ink/70' : 'font-bold'">
+                {{ item.message }}
+              </span>
+              <span class="mt-1 block text-[11px] font-bold uppercase tracking-widest text-ink/60">
+                {{ formatNotificationTime(item.created_at) }}
+              </span>
             </span>
           </component>
         </li>

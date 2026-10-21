@@ -14,7 +14,10 @@ async function unreadCount(bell) {
 test("TC-NOTIF-004 a new notification reaches the bell within 10 seconds and opens its event", async ({ page, sharedSessions }) => {
   const event = createThrowawayEvent("N004", "2031-09-03 10:00+08", "2031-09-03 12:00+08");
   await seedSession(page, await sharedSessions("event_coordinator"));
+  // Read the badge only after the first poll has answered, or it still says 0.
+  const firstPoll = page.waitForResponse((response) => response.url().includes("/notifications/unread-count"));
   await page.goto("/dashboard/coordinator");
+  await firstPoll;
   const bell = page.getByRole("button", { name: /^Notifications/ });
   await expect(bell).toBeVisible();
   const before = await unreadCount(bell);
