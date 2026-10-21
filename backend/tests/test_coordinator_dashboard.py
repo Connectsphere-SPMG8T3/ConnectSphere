@@ -73,12 +73,12 @@ def items_by_kind(dashboard) -> dict[str, list[str]]:
 
 
 class TestScope:
-    def test_reads_only_the_callers_events_in_active_statuses(self, data):
+    def test_reads_only_the_callers_events_in_active_statuses_and_rejected(self, data):
         service.coordinator_dashboard(COORDINATOR_ID)
 
         coordinator_id, statuses = data.calls["events"]
         assert coordinator_id == COORDINATOR_ID
-        assert statuses == {"under_review", "returned", "planning", "safety_review", "confirmed"}
+        assert statuses == {"under_review", "returned", "planning", "safety_review", "confirmed", "rejected"}
         # Drafts are private to their organiser (DR-R2); terminal statuses aren't active.
         assert "draft" not in ACTIVE_COORDINATOR_STATUSES
 
@@ -87,6 +87,34 @@ class TestScope:
 
         assert dashboard.action_items == []
         assert dashboard.active_events == []
+        assert dashboard.rejected_events == []
+
+
+class TestRejectedEvents:
+    def test_rejected_events_are_listed_apart_from_active_events_and_actions(self, data):
+        data.events = [
+            event_row("e-001", "under_review"),
+            event_row("e-009", "rejected", starts_at="2026-10-30T19:00:00+08:00"),
+        ]
+
+        dashboard = service.coordinator_dashboard(COORDINATOR_ID)
+
+        [rejected] = dashboard.rejected_events
+        assert rejected.event_id == "e-009"
+        assert rejected.event_name == "Event 009"
+        assert rejected.starts_at.isoformat() == "2026-10-30T19:00:00+08:00"
+        assert [event.event_id for event in dashboard.active_events] == ["e-001"]
+        assert [item.event_id for item in dashboard.action_items] == ["e-001"]
+
+    def test_arrangements_are_looked_up_for_active_events_only(self, data, monkeypatch):
+        asked = {}
+        monkeypatch.setattr(venues_service, "booking_statuses_by_event", lambda ids: asked.setdefault("bookings", ids) and {})
+        monkeypatch.setattr(venues_service, "affected_event_ids", lambda ids: asked.setdefault("affected", ids) and set())
+        data.events = [event_row("e-001", "planning"), event_row("e-009", "rejected")]
+
+        service.coordinator_dashboard(COORDINATOR_ID)
+
+        assert asked == {"bookings": ["e-001"], "affected": ["e-001"]}
 
 
 class TestActionItems:
@@ -383,7 +411,8 @@ class TestApi:
         # 200, not 422: the route is declared above `/{event_id}`, which is typed UUID.
         assert response.status_code == 200
         body = response.json()
-        assert set(body) == {"action_items", "active_events"}
+        assert set(body) == {"action_items", "active_events", "rejected_events"}
+        assert body["rejected_events"] == []
         assert body["action_items"] == [{
             "event_id": "e-050",
             "event_name": "Event 050",

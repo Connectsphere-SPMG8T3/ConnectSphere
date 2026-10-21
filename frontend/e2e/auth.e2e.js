@@ -13,8 +13,8 @@ import {
   test,
 } from "./support/fixtures.js";
 
-// The venue staff and tech support dashboards open straight onto their data, with no welcome heading.
-const WELCOME_HEADING = new Set(["event_organiser", "event_coordinator", "attendee"]);
+// The coordinator, venue staff and tech support dashboards open straight onto their data, with no welcome heading.
+const WELCOME_HEADING = new Set(["event_organiser", "attendee"]);
 
 test.describe("Login", () => {
   for (const [role, account] of Object.entries(ACCOUNTS)) {

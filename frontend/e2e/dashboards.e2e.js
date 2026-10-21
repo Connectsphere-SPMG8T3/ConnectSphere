@@ -30,19 +30,18 @@ test("TC-DASH-019 a dashboard row opens that event's review page", async ({ page
   await expect(page.getByText(name, { exact: false }).first()).toBeVisible();
 });
 
-test("TC-DASH-022 a category tile opens the Events view filtered to it", async ({ page, sharedSessions }) => {
+test("TC-DASH-022 a status heading opens the Events view filtered to it", async ({ page, sharedSessions }) => {
   await seedSession(page, await sharedSessions("event_coordinator"));
   await page.goto("/dashboard/coordinator");
 
-  await page.getByRole("button", { name: "Show Awaiting approval events" }).click();
+  await page.getByRole("button", { name: "View all Under review events" }).click();
 
   await expect(page).toHaveURL(/tab=events/);
-  await expect(page).toHaveURL(/action=awaitingApproval/);
-  await expect(page.getByText("Showing: Awaiting approval")).toBeVisible();
-  // Every card left needs a first review.
+  await expect(page).toHaveURL(/status=under_review/);
+  // Every card left is under review.
   const cards = page.locator("[data-event-card]");
   const count = await cards.count();
   for (let i = 0; i < count; i += 1) {
-    await expect(cards.nth(i)).toContainText("Action needed: Awaiting first review");
+    await expect(cards.nth(i)).toContainText("Under review");
   }
 });

@@ -174,6 +174,15 @@ export function prioritiseActionItems(items = []) {
   );
 }
 
+/** Each event's most urgent action kind, ranked as `prioritiseActionItems` ranks them. */
+export function mostUrgentActionByEvent(items = []) {
+  const byEvent = new Map();
+  for (const item of prioritiseActionItems(items)) {
+    if (!byEvent.has(item.event_id)) byEvent.set(item.event_id, item.kind);
+  }
+  return byEvent;
+}
+
 /**
  * The three categories SCRUM-72 AC1 names, mapped onto action kinds.
  *
@@ -217,6 +226,77 @@ export function groupActiveEventsByStatus(events = []) {
     description: STATUS_DESCRIPTIONS[status],
     events: events.filter((event) => event.status === status).sort(byEventDate),
   }));
+}
+
+/**
+ * Order one status-board column: events waiting on the coordinator first, most
+ * urgent kind first (the same ranking as the action queue, so the board and the
+ * queue never disagree), then everything else; ties fall back to the soonest
+ * event date. Each event is tagged with its most urgent action kind
+ * (`topAction`, or null when nothing is waiting). Returns new objects in a new
+ * array.
+ */
+export function orderBoardEvents(events = [], actionItems = []) {
+  const topAction = mostUrgentActionByEvent(actionItems);
+  const rankFor = (event) =>
+    topAction.has(event.event_id) ? rankOf(topAction.get(event.event_id)) : Number.POSITIVE_INFINITY;
+
+  return events
+    .map((event) => ({ ...event, topAction: topAction.get(event.event_id) ?? null }))
+    .sort((a, b) => rankFor(a) - rankFor(b) || byEventDate(a, b));
+}
+
+// Active statuses where the event is with someone other than the coordinator:
+// the organiser amending it, or the Safety Officer checking it.
+const WAITING_ON_OTHERS_STATUSES = ["returned", "safety_review"];
+
+/**
+ * How a status-board card is highlighted: "attention" (red) whenever the event
+ * needs the coordinator (`topAction` from `orderBoardEvents`), which overrides
+ * everything else; otherwise "waiting" (grey) where it is with someone else,
+ * "done" (green) once confirmed, and "plain" in the coordinator's own stages.
+ */
+export function boardEventTone(event) {
+  if (event.topAction) return "attention";
+  if (WAITING_ON_OTHERS_STATUSES.includes(event.status)) return "waiting";
+  if (event.status === "confirmed") return "done";
+  return "plain";
+}
+
+/** Card classes per `boardEventTone`, shared by the status board and the Events view. */
+export const BOARD_CARD_TONE_CLASSES = {
+  attention: "border-bauhaus-red bg-bauhaus-red/10",
+  waiting: "border-ink/40 bg-muted",
+  done: "border-bauhaus-green bg-bauhaus-green/10",
+  plain: "border-ink bg-canvas",
+  rejected: "border-ink/30 bg-muted text-ink/70",
+};
+
+/** Badge classes per action-kind tone (`actionKindMeta(kind).tone`). */
+export const ACTION_BADGE_CLASSES = {
+  red: "bg-bauhaus-red text-canvas",
+  yellow: "bg-bauhaus-yellow text-ink",
+  blue: "bg-bauhaus-blue text-canvas",
+};
+
+// Times are stored in UTC and shown in Asia/Singapore (REQUIREMENTS §4).
+const eventDateTimeFormat = new Intl.DateTimeFormat("en-SG", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Asia/Singapore",
+});
+
+/** A flag key such as `venue_affected` as a sentence-case label ("Venue affected"). */
+export function flagLabel(flag) {
+  const words = String(flag).replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** An event's start in Singapore time, or "Date to be confirmed" when missing or unreadable. */
+export function formatEventDateTime(value) {
+  if (!value) return "Date to be confirmed";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "Date to be confirmed" : eventDateTimeFormat.format(parsed);
 }
 
 /** Count events per active status; statuses with no events are omitted. */

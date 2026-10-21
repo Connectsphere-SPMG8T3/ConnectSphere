@@ -12,9 +12,13 @@ vi.mock("@/services/api", async (importOriginal) => ({
   eventsApi: { coordinatorDashboard: vi.fn(), list: vi.fn(), get: vi.fn() },
 }));
 
+// Matches the padding the Events card lists keep for card shadows (CoordinatorDashboard.vue).
+const CARD_LIST_SHADOW_ROOM = 8;
+
 const UNDER_REVIEW_ID = "e0000000-0000-4000-8000-000000000201";
 const PLANNING_ID = "e0000000-0000-4000-8000-000000000202";
 const CONFIRMED_ID = "e0000000-0000-4000-8000-000000000203";
+const REJECTED_ID = "e0000000-0000-4000-8000-000000000298";
 
 // The shape `GET /events/dashboard/coordinator` returns (SCRUM-72).
 const PAYLOAD = {
@@ -97,14 +101,16 @@ describe("CoordinatorDashboard", () => {
   });
 
   describe("Overview (the default view)", () => {
-    it("shows the coordinator's header and counts from the payload", async () => {
+    it("opens straight onto the event status board, with no welcome header or action list", async () => {
       const { el } = await mountDashboard();
 
-      expect(el.textContent).toContain("Event Coordinator Dashboard");
-      expect(el.textContent).toContain("Welcome, Marcus Lim");
+      expect(el.textContent).not.toContain("Event Coordinator Dashboard");
+      expect(el.textContent).not.toContain("Welcome");
       expect(el.textContent).not.toContain("Awaiting data");
-      const awaiting = el.querySelector('[aria-label="Show Awaiting approval events"]');
-      expect(awaiting.textContent).toContain("1");
+      expect(el.textContent).not.toContain("Needs your action");
+      expect(el.querySelector('[aria-label="Show Awaiting approval events"]')).toBeNull();
+      expect(el.querySelector("ol")).toBeNull();
+      expect(el.querySelector('[data-status-group="under_review"]').textContent).toContain("1");
       // Unassigned events are the Event Coordinator Lead's queue, not this dashboard's.
       expect(el.querySelector('[data-testid="unassigned-alert"]')).toBeNull();
       expect(el.textContent.toLowerCase()).not.toContain("awaiting assignment");
@@ -116,7 +122,7 @@ describe("CoordinatorDashboard", () => {
       const { el } = await mountDashboard();
 
       expect(el.querySelector('[role="status"]').textContent).toMatch(/loading/i);
-      expect(el.querySelector('[aria-label="Show Awaiting approval events"]')).toBeNull();
+      expect(el.querySelector("[data-status-group]")).toBeNull();
     });
 
     it("shows a server failure instead of an empty dashboard (TC-DASH-004)", async () => {
@@ -128,22 +134,63 @@ describe("CoordinatorDashboard", () => {
       expect(el.textContent).not.toContain("No outstanding actions");
     });
 
-    it("opens the Events view filtered to a category when its tile is clicked", async () => {
-      const { el, router } = await mountDashboard();
-
-      el.querySelector('[aria-label="Show Awaiting approval events"]').click();
-
-      await vi.waitFor(() =>
-        expect(router.currentRoute.value.query).toMatchObject({ tab: "events", action: "awaitingApproval" }),
-      );
-    });
-
-    it("links each prioritised action to the coordinator review page", async () => {
+    it("lists events needing attention first in each column, highlighted in red, then the rest by date", async () => {
+      const SECOND_PLANNING_ID = "e0000000-0000-4000-8000-000000000204";
+      eventsApi.coordinatorDashboard.mockResolvedValue({
+        action_items: [
+          ...PAYLOAD.action_items,
+          {
+            event_id: SECOND_PLANNING_ID,
+            event_name: "Board Retreat",
+            kind: "needs_alternative_venue",
+            starts_at: "2026-11-20T02:00:00Z",
+            occurred_at: "2026-09-29T02:00:00Z",
+            organiser_name: "Olivia Tan",
+          },
+        ],
+        active_events: [
+          ...PAYLOAD.active_events,
+          {
+            event_id: SECOND_PLANNING_ID,
+            event_name: "Board Retreat",
+            status: "planning",
+            starts_at: "2026-11-20T02:00:00Z",
+            flags: [],
+            readiness: { venue: "pending", equipment: "not_required", technical: "not_required" },
+          },
+        ],
+      });
       const { el } = await mountDashboard();
+      const planning = el.querySelector('[data-status-group="planning"]');
+      const names = [...planning.querySelectorAll("li a p:first-child")].map((p) => p.textContent.trim());
 
-      const actionLink = el.querySelector(`ol a[href="/coordinator/events/${UNDER_REVIEW_ID}"]`);
-      expect(actionLink.textContent).toContain("Partner Summit");
-      expect(actionLink.textContent).toContain("Olivia Tan");
+      // Board Retreat starts later but needs attention, so it leads the column.
+      expect(names).toEqual(["Board Retreat", "Year-End Dinner"]);
+      const retreat = planning.querySelector(`a[href="/coordinator/events/${SECOND_PLANNING_ID}"]`);
+      const dinner = planning.querySelector(`a[href="/coordinator/events/${PLANNING_ID}"]`);
+      expect(retreat.textContent).toContain("Needs alternative venue");
+      expect(retreat.className).toContain("border-bauhaus-red");
+      expect(dinner.className).not.toContain("border-bauhaus-red");
+      expect(el.querySelector('[aria-label="Order status board by"]')).toBeNull();
+
+      // A legend explains what the red highlight means.
+      const legend = el.querySelector('[aria-labelledby="active-events"] [data-board-legend]');
+      expect(legend.textContent).toContain("Red: needs your action");
+      expect(legend.textContent).toContain("Grey: waiting on others");
+      expect(legend.textContent).toContain("Green: confirmed");
+
+      // A column holding anything that needs attention gets a red header; the rest stay grey.
+      const header = (status) => el.querySelector(`[data-status-group="${status}"] [data-column-header]`);
+      expect(header("planning").className).toContain("bg-bauhaus-red");
+      expect(header("under_review").className).toContain("bg-bauhaus-red");
+      expect(header("confirmed").className).toContain("bg-muted");
+      // Cards, not columns, carry the tone: a confirmed event is green, one needing action red.
+      const card = (id) => el.querySelector(`a[href="/coordinator/events/${id}"][data-tone]`);
+      expect(card(SECOND_PLANNING_ID).dataset.tone).toBe("attention");
+      expect(card(PLANNING_ID).dataset.tone).toBe("plain");
+      expect(card(CONFIRMED_ID).dataset.tone).toBe("done");
+      expect(card(CONFIRMED_ID).className).toContain("border-bauhaus-green");
+      expect(el.querySelector('[data-status-group="confirmed"]').className).not.toContain("bauhaus-green");
     });
 
     it("lists every active status, each row opening its review page", async () => {
@@ -168,13 +215,64 @@ describe("CoordinatorDashboard", () => {
       );
     });
 
-    it("links a readiness gap to the review page", async () => {
+    it("moves confirmed events whose date has passed off the board into Past events", async () => {
+      const PAST_ID = "e0000000-0000-4000-8000-000000000299";
+      eventsApi.coordinatorDashboard.mockResolvedValue({
+        ...PAYLOAD,
+        active_events: [
+          ...PAYLOAD.active_events,
+          {
+            event_id: PAST_ID,
+            event_name: "Spring Mixer",
+            status: "confirmed",
+            starts_at: "2026-09-20T02:00:00Z",
+            flags: [],
+            readiness: { venue: "ready", equipment: "ready", technical: "ready" },
+          },
+        ],
+      });
       const { el } = await mountDashboard();
 
-      const gaps = el.querySelector('[aria-labelledby="readiness"]');
-      expect(gaps.querySelector(`a[href="/coordinator/events/${PLANNING_ID}"]`)).not.toBeNull();
-      // Fully ready, and outside the 14-day window anyway.
-      expect(gaps.querySelector(`a[href="/coordinator/events/${CONFIRMED_ID}"]`)).toBeNull();
+      const board = el.querySelector('[aria-labelledby="active-events"]');
+      expect(board.querySelector('[data-status-group="confirmed"]').textContent).not.toContain("Spring Mixer");
+      expect(board.querySelector('[data-status-group="confirmed"]').textContent).toContain("Gala Night");
+      expect(board.textContent).toContain("3 total");
+      const past = el.querySelector('[aria-labelledby="past-events"]');
+      expect(past.closest('[aria-labelledby="active-events"]')).toBeNull();
+      expect(past.querySelector(`[data-event-card][href="/coordinator/events/${PAST_ID}"]`).dataset.tone).toBe("done");
+      expect(past.textContent).toContain("1 total");
+    });
+
+    it("lists the coordinator's rejected events in their own section", async () => {
+      eventsApi.coordinatorDashboard.mockResolvedValue({
+        ...PAYLOAD,
+        rejected_events: [{ event_id: REJECTED_ID, event_name: "Turned Down", starts_at: "2026-10-30T11:00:00Z" }],
+      });
+      const { el } = await mountDashboard();
+
+      const rejected = el.querySelector('[aria-labelledby="rejected-events"]');
+      expect(rejected.textContent).toContain("Rejected events");
+      expect(rejected.textContent).toContain("1 total");
+      expect(rejected.querySelector(`[data-event-card][href="/coordinator/events/${REJECTED_ID}"]`).dataset.tone).toBe(
+        "rejected",
+      );
+      // It sits below Past events, and the board does not count it.
+      const past = el.querySelector('[aria-labelledby="past-events"]');
+      expect(past.compareDocumentPosition(rejected) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(el.querySelector('[aria-labelledby="active-events"]').textContent).not.toContain("Turned Down");
+    });
+
+    it("says when there are no rejected events", async () => {
+      const { el } = await mountDashboard();
+
+      expect(el.querySelector('[aria-labelledby="rejected-events"]').textContent).toContain("No rejected events");
+    });
+
+    it("has no readiness gaps section", async () => {
+      const { el } = await mountDashboard();
+
+      expect(el.querySelector('[aria-labelledby="readiness"]')).toBeNull();
+      expect(el.textContent).not.toContain("Readiness gaps");
     });
   });
 
@@ -183,13 +281,127 @@ describe("CoordinatorDashboard", () => {
       const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
 
       expect(el.textContent).toContain("Find an event");
+      expect(el.querySelector('[aria-labelledby="event-filters"]').className).toContain("bg-muted");
+      // The Events view opens straight onto its filters, with no header card.
+      expect(el.textContent).not.toContain("Events I'm coordinating");
+      expect(el.textContent).not.toContain("Search venues");
       const needsAction = el.querySelector('[aria-labelledby="needs-action-events"]');
       const inProgress = el.querySelector('[aria-labelledby="in-progress-events"]');
       expect(needsAction.textContent).toContain("Partner Summit");
       expect(needsAction.textContent).toContain("Awaiting first review");
       expect(inProgress.textContent).toContain("Year-End Dinner");
-      expect(inProgress.textContent).toContain("Outstanding: Venue");
       expect(inProgress.textContent).toContain("Gala Night");
+    });
+
+    it("shows needs-action and in-progress side by side, cards coloured like the status board", async () => {
+      const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
+      const card = (id) => el.querySelector(`[data-event-card][href="/coordinator/events/${id}"]`);
+
+      const columns = el.querySelector("[data-card-columns]");
+      expect(columns.className).toContain("lg:grid-cols-2");
+      expect([...columns.children].map((section) => section.getAttribute("aria-labelledby"))).toEqual([
+        "needs-action-events",
+        "in-progress-events",
+      ]);
+      expect(el.querySelector('[aria-labelledby="in-progress-events"] [data-card-grid]').className).not.toContain("grid-cols-3");
+      expect(card(UNDER_REVIEW_ID).dataset.tone).toBe("attention");
+      expect(card(UNDER_REVIEW_ID).querySelector("[data-action-badge]").textContent).toContain("Awaiting first review");
+      expect(card(PLANNING_ID).dataset.tone).toBe("plain");
+      expect([...card(PLANNING_ID).querySelectorAll("[data-outstanding]")].map((chip) => chip.textContent.trim())).toEqual([
+        "Venue",
+      ]);
+      expect(card(CONFIRMED_ID).dataset.tone).toBe("done");
+      expect(card(CONFIRMED_ID).textContent).toContain("All arrangements in place");
+      expect(card(CONFIRMED_ID).querySelector("[data-outstanding]")).toBeNull();
+    });
+
+    it("caps each column at four cards and scrolls the rest", async () => {
+      const extra = Array.from({ length: 4 }, (_, i) => ({
+        event_id: `e0000000-0000-4000-8000-00000000030${i}`,
+        event_name: `Extra Event ${i}`,
+        status: "planning",
+        starts_at: `2026-11-0${i + 1}T02:00:00Z`,
+        flags: [],
+        readiness: { venue: "ready", equipment: "ready", technical: "ready" },
+      }));
+      eventsApi.coordinatorDashboard.mockResolvedValue({ ...PAYLOAD, active_events: [...PAYLOAD.active_events, ...extra] });
+      // jsdom has no layout: give each card a 100px slot, 90px tall, and the list a top of 0.
+      const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
+        if (this.matches("[data-card-grid] > li")) {
+          const index = [...this.parentElement.children].indexOf(this);
+          return { top: index * 100, bottom: index * 100 + 90 };
+        }
+        return { top: 0, bottom: 0 };
+      });
+
+      const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
+      const inProgress = el.querySelector('[aria-labelledby="in-progress-events"] [data-card-grid]');
+      const needsAction = el.querySelector('[aria-labelledby="needs-action-events"] [data-card-grid]');
+      rect.mockRestore();
+
+      expect(inProgress.children).toHaveLength(6);
+      expect(inProgress.className).toContain("overflow-y-auto");
+      // The fourth card ends at 390px; the list keeps room for the card shadows below it.
+      expect(inProgress.style.maxHeight).toBe(`${390 + CARD_LIST_SHADOW_ROOM}px`);
+      // One card needs no cap.
+      expect(needsAction.style.maxHeight).toBe("");
+    });
+
+    it("lists confirmed events whose date has passed in a full-width Past events section", async () => {
+      const PAST_ID = "e0000000-0000-4000-8000-000000000299";
+      eventsApi.coordinatorDashboard.mockResolvedValue({
+        action_items: [
+          ...PAYLOAD.action_items,
+          { event_id: PAST_ID, event_name: "Spring Mixer", kind: "needs_alternative_venue", starts_at: "2026-09-20T02:00:00Z" },
+        ],
+        active_events: [
+          ...PAYLOAD.active_events,
+          {
+            event_id: PAST_ID,
+            event_name: "Spring Mixer",
+            status: "confirmed",
+            starts_at: "2026-09-20T02:00:00Z",
+            flags: [],
+            readiness: { venue: "ready", equipment: "ready", technical: "ready" },
+          },
+        ],
+      });
+      const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
+
+      const past = el.querySelector('[aria-labelledby="past-events"]');
+      expect(past.textContent).toContain("Past events");
+      expect(past.textContent).toContain("1 total");
+      expect(past.closest("[data-card-columns]")).toBeNull();
+      const card = past.querySelector(`[data-event-card][href="/coordinator/events/${PAST_ID}"]`);
+      expect(card.dataset.tone).toBe("done");
+      // Nothing can be done about a past event, so it carries no action badge and leaves Needs your action.
+      expect(card.querySelector("[data-action-badge]")).toBeNull();
+      expect(el.querySelector('[aria-labelledby="needs-action-events"]').textContent).not.toContain("Spring Mixer");
+      expect(el.querySelector('[aria-labelledby="in-progress-events"]').textContent).not.toContain("Spring Mixer");
+    });
+
+    it("says when there are no past events", async () => {
+      const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
+
+      expect(el.querySelector('[aria-labelledby="past-events"]').textContent).toContain("No past events");
+    });
+
+    it("filters rejected events by name, and hides them under a status filter", async () => {
+      eventsApi.coordinatorDashboard.mockResolvedValue({
+        ...PAYLOAD,
+        rejected_events: [{ event_id: REJECTED_ID, event_name: "Turned Down", starts_at: "2026-10-30T11:00:00Z" }],
+      });
+      const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
+      const rejected = () => el.querySelector('[aria-labelledby="rejected-events"]');
+      expect(rejected().textContent).toContain("Turned Down");
+
+      input(el.querySelector('input[placeholder="Search by event name"]'), "gala");
+      await flush();
+      expect(rejected().textContent).toContain("No rejected events");
+
+      document.body.innerHTML = "";
+      const filtered = await mountDashboard("/dashboard/coordinator?tab=events&status=planning");
+      expect(filtered.el.querySelector('[aria-labelledby="rejected-events"]').textContent).not.toContain("Turned Down");
     });
 
     it("filters by name", async () => {
@@ -223,13 +435,10 @@ describe("CoordinatorDashboard", () => {
       expect(el.textContent).toContain("No matching events");
     });
 
-    it("opens the review page from a card's Review button", async () => {
+    it("opens the review page when a card is clicked", async () => {
       const { el, router } = await mountDashboard("/dashboard/coordinator?tab=events");
 
-      const button = [...el.querySelectorAll("button")].find(
-        (candidate) => candidate.getAttribute("aria-label") === "Review Gala Night",
-      );
-      button.click();
+      el.querySelector('a[aria-label="More details about Gala Night"]').click();
 
       await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe(`/coordinator/events/${CONFIRMED_ID}`));
     });
