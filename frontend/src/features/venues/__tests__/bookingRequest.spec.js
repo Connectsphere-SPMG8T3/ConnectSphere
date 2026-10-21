@@ -214,7 +214,7 @@ it("CR-100 labels an occupied window beyond supported dates without presenting c
 });
 
 
-describe("D51 Safety-rejected replacement", () => {
+describe("D52 Safety-rejected replacement", () => {
   const rejected = {...booking("approved"), id: "old", flag: "safety_rejected", flag_reason: "Exits blocked"};
   it.each(["held", "approved", "re_review"])("a %s replacement hides both actions and names it", (status) => {
     const replacement = {...booking(status), id: "r1", replaces_booking_id: rejected.id, venue_name: "Town Hall"};

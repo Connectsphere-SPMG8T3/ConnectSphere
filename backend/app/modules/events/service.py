@@ -985,7 +985,7 @@ def safety_review(event_id: str) -> SafetyReviewResponse:
 
 
 def _named_decisions(rows: list[dict]) -> list[SafetyDecision]:
-    """D52/D53: batch names and attach the first response after each rejection."""
+    """D53/D54: batch names and attach the first response after each rejection."""
     booking_ids = sorted({str(id) for row in rows for id in row.get("affected_booking_ids", [])})
     venue_ids = sorted({str(id) for row in rows for id in row.get("rejected_venue_ids", [])})
     line_ids = sorted({str(id) for row in rows for id in row.get("affected_equipment_request_ids", [])})

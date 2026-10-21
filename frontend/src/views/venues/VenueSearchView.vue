@@ -31,7 +31,7 @@ const requestedVenue = ref(null);
 const panelState = computed(() => venuePanelState(bookingEvent.value, bookingSpace.value));
 
 // Opened to replace an affected or Safety-rejected booking (`&replaces=<booking
-// id>`, CR-95 AC4, D51): requests are offered only while that booking still
+// id>`, CR-95 AC4, D52): requests are offered only while that booking still
 // waits for a replacement.
 const REPLACEABLE_PANELS = ["affected", "safety-rejected"];
 const replacesId = computed(() => (route.query.replaces ? String(route.query.replaces) : null));

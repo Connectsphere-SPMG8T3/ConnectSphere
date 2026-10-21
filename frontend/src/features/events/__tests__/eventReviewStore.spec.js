@@ -331,7 +331,7 @@ describe("private safety decisions", () => {
 });
 
 
-describe("D53 revision note", () => {
+describe("D54 revision note", () => {
   beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks(); signedInCoordinator(); });
   it("sends the note once even if called twice", async () => {
     const store=useEventReviewStore(); store.event={...EVENT};

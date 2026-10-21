@@ -1,6 +1,6 @@
 # CR-104 follow-up: after a safety rejection — design
 
-_2026-10-20 · branch `fix/cr-104-safety-rejection-followup` · defects D51, D52, D53 · owner Jie Ching_
+_2026-10-20 · branch `fix/cr-104-safety-rejection-followup` · defects D52, D53, D54 · owner Jie Ching_
 
 ## Why
 
@@ -8,18 +8,18 @@ Sprint review comment on CR-104 (Done): "May need to revise after safety officer
 
 A rejection (CR-104 AC3) flags one approved booking `safety_rejected` and returns the event to Planning. Today the coordinator then has only **Mark as revised**, which clears the flag and records nothing. Two real cases follow a rejection, and neither is served:
 
-1. **The venue really doesn't suit.** The coordinator needs another venue. CR-95's replacement request accepts only an `affected` booking, and cancelling a booking (85) isn't built, so there is no path at all. → **D51**
-2. **The Safety Officer misunderstood, or the coordinator fixed it with venue staff.** The coordinator keeps the venue, but Mark as revised carries no explanation, so on re-review the Safety Officer can't see what changed. → **D53**
+1. **The venue really doesn't suit.** The coordinator needs another venue. CR-95's replacement request accepts only an `affected` booking, and cancelling a booking (85) isn't built, so there is no path at all. → **D52**
+2. **The Safety Officer misunderstood, or the coordinator fixed it with venue staff.** The coordinator keeps the venue, but Mark as revised carries no explanation, so on re-review the Safety Officer can't see what changed. → **D54**
 
-And the decision history shows "Affected bookings: 1", not which venue or equipment a decision was about. → **D52**
+And the decision history shows "Affected bookings: 1", not which venue or equipment a decision was about. → **D53**
 
 This is a fix branch, not a reopened story (developer's decision, 20/10).
 
 ## Acceptance criteria
 
-- **F1 (D53).** Marking a Safety-rejected booking revised requires a response note (1–1,000 characters after trimming). The note is stored on the `safety_revised` booking-history row with who and when.
-- **F2 (D52, D53).** Each safety decision in the history names the venues and equipment it concerns, and the venue it rejected; a rejection also shows the coordinator's response note, who wrote it and when, once the booking was marked revised. Shown wherever `SafetyDecisionDetails` is used (Safety Officer review, Safety dashboard, coordinator event page).
-- **F3 (D51).** The assigned coordinator, acting as coordinator, with the event in Planning, can request a replacement for a Safety-rejected booking from the rejected-venue notice, through CR-95's existing replacement request. When venue staff approve the replacement, the rejected booking is released, as for an Affected booking.
+- **F1 (D54).** Marking a Safety-rejected booking revised requires a response note (1–1,000 characters after trimming). The note is stored on the `safety_revised` booking-history row with who and when.
+- **F2 (D53, D54).** Each safety decision in the history names the venues and equipment it concerns, and the venue it rejected; a rejection also shows the coordinator's response note, who wrote it and when, once the booking was marked revised. Shown wherever `SafetyDecisionDetails` is used (Safety Officer review, Safety dashboard, coordinator event page).
+- **F3 (D52).** The assigned coordinator, acting as coordinator, with the event in Planning, can request a replacement for a Safety-rejected booking from the rejected-venue notice, through CR-95's existing replacement request. When venue staff approve the replacement, the rejected booking is released, as for an Affected booking.
 - **F4.** While a replacement for a Safety-rejected booking is pending, Mark as revised is refused (409) and hidden; the notice says a replacement was requested and names its venue.
 - **F5.** Readiness is unchanged: a `safety_rejected` booking is not ready, so the event can't be sent for safety check again until it is marked revised or its replacement is approved and releases it.
 - **F6.** Every new or changed endpoint keeps the active-role and assignment rules: anyone other than the assigned coordinator acting as coordinator gets 403 (or 404 where the existing endpoint already answers 404 for an unrelated caller), proved by a raw request.

@@ -1,4 +1,4 @@
-"""D52/D53: named CR-104 decisions and the first coordinator response."""
+"""D53/D54: named CR-104 decisions and the first coordinator response."""
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import MagicMock

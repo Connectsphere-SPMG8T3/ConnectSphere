@@ -2785,7 +2785,7 @@ def _(ctx: Context) -> None:
     ), 404)
 
 
-# D51-D53: disposable success flows, only after the follow-up migration is deployed.
+# D52-D54: disposable success flows, only after the follow-up migration is deployed.
 def safety_rejection_followup_fixture(ctx: Context, case: str) -> tuple[str, str, str]:
     event_id = throwaway_event(ctx, case, "2031-08-20 10:00+08", "2031-08-20 12:00+08")
     venue_id = throwaway_venue(ctx, case)

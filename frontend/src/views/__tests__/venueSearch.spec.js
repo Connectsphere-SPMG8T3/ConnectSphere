@@ -244,7 +244,7 @@ describe("VenueSearchView", () => {
       expect(el.querySelector('[aria-label="Request Hall A"]')).toBeNull();
     });
 
-    it("requests a replacement for a Safety-rejected booking (D51)", async () => {
+    it("requests a replacement for a Safety-rejected booking (D52)", async () => {
       const rejected = { ...AFFECTED, id: "booking-rejected", flag: "safety_rejected", flag_reason: "Exits blocked" };
       eventsApi.get.mockResolvedValue({ ...affectedEvent("planning"), venue_bookings: [rejected] });
       venueBookingsApi.request.mockResolvedValue({ id: "new-booking" });

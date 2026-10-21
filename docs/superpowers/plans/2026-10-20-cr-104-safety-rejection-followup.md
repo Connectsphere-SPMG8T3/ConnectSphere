@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Branch `fix/cr-104-safety-rejection-followup`; never commit to `main`. Defects D51 (no replacement for Safety rejected), D52 (history shows counts), D53 (Mark as revised records nothing).
+- Branch `fix/cr-104-safety-rejection-followup`; never commit to `main`. Defects D52 (no replacement for Safety rejected), D53 (history shows counts), D54 (Mark as revised records nothing).
 - **Spec correction (decided while planning):** the response note is stored in the existing `venue_booking_history.reason` column (already `null` or 1–1,000 chars trimmed, already returned as `BookingHistoryEntry.reason` and shown on the booking page). No new `note` column. Update the spec's §1 in Task 7.
 - Note rules: trimmed, 1–1,000 characters. Blank → 422 in the API, `note_required` in the database.
 - Every RPC stays `security definer`, `set search_path = ''`, executable by `service_role` only.
@@ -117,7 +117,7 @@ Expected: `SAFETY FAIL: Task 1 table/RPC interfaces are missing`.
 - [ ] **Step 3: Write the migration** `20261020150000_safety_rejection_followup.sql`. Requirements:
   - **Index:** recreate `venue_bookings_one_active_per_space` with the predicate in Interfaces above, so a `safety_rejected` booking no longer holds the space's single live slot.
   - **Request functions:** recreate `request_venue_booking` and `request_venue_booking_for_space` from their **live** bodies (`select pg_get_functiondef('public.<name>'::regproc)`), changing only the replaced-booking test from "flag is distinct from 'affected'" to "flag is null or not one of affected / safety_rejected" (see Global Constraints on the null trap). Keep signatures, locks, grants; update each comment to say "affected or Safety-rejected booking".
-  - **`mark_safety_revision`:** drop the two-argument version; create the three-argument one with the same locks and order (event row, then booking row) and the same existing outcomes in the same order, then `note_required` (null or blank after trim), then `replacement_pending` (any booking with `replaces_booking_id` = this one in held/approved/re_review). On `ok`: clear `flag`, `flag_reason`, `flagged_at`; insert the `safety_revised` history row with `reason = btrim(p_note)` (the existing 1–1,000 check enforces the upper bound). No notification, no event version bump (unchanged [Assumption]). Security definer, `search_path = ''`, comment citing D53/D51, execute revoked from public/anon/authenticated and granted to service_role.
+  - **`mark_safety_revision`:** drop the two-argument version; create the three-argument one with the same locks and order (event row, then booking row) and the same existing outcomes in the same order, then `note_required` (null or blank after trim), then `replacement_pending` (any booking with `replaces_booking_id` = this one in held/approved/re_review). On `ok`: clear `flag`, `flag_reason`, `flagged_at`; insert the `safety_revised` history row with `reason = btrim(p_note)` (the existing 1–1,000 check enforces the upper bound). No notification, no event version bump (unchanged [Assumption]). Security definer, `search_path = ''`, comment citing D54/D52, execute revoked from public/anon/authenticated and granted to service_role.
 
   Also update the `venue_bookings.flag` column comment: `safety_rejected` is cleared by Mark as revised **or** released when an approved replacement stands in for it.
 
@@ -130,7 +130,7 @@ Expected: `SAFETY DECISION CHECKS PASSED`, and `venue_deactivation_checks.sql` s
 
 ```bash
 git add supabase/migrations/20261020150000_safety_rejection_followup.sql supabase/verification/safety_decision_checks.sql
-git commit -m "feat(db): revise with a note and replace a Safety-rejected booking (D51, D53)"
+git commit -m "feat(db): revise with a note and replace a Safety-rejected booking (D52, D54)"
 ```
 
 ---
@@ -183,7 +183,7 @@ def test_note_required_outcome_from_the_database_is_422(client, auth_headers, au
 
 ```python
 class SafetyRevisionRequest(BaseModel):
-    """D53: what the coordinator changed, or wants the Safety Officer to know."""
+    """D54: what the coordinator changed, or wants the Safety Officer to know."""
     note: str = Field(min_length=1, max_length=1000)
 
     @field_validator("note", mode="before")
@@ -196,7 +196,7 @@ class SafetyRevisionRequest(BaseModel):
 
 - [ ] **Step 4: Run.** Same command → all pass. Then the full backend suite: `.venv/bin/python -m pytest -q` → all pass.
 
-- [ ] **Step 5: Commit** `git commit -m "feat(venues): Mark as revised requires a note (D53)"` with the four source files and the test.
+- [ ] **Step 5: Commit** `git commit -m "feat(venues): Mark as revised requires a note (D54)"` with the four source files and the test.
 
 ---
 
@@ -243,11 +243,11 @@ def test_replacing_a_safety_rejected_booking_does_not_return_to_planning(
 
 - [ ] **Step 2: Run** `-k replace` → the `safety_rejected` case fails with 409.
 
-- [ ] **Step 3: Implement.** In `_prepare_replacement` replace `row.get("flag") != "affected"` with `row.get("flag") not in REPLACEABLE_FLAGS`, where module-level `REPLACEABLE_FLAGS = ("affected", "safety_rejected")` with a one-line comment (CR-95 AC4; D51). Update the docstring ("this event's own affected or Safety-rejected booking").
+- [ ] **Step 3: Implement.** In `_prepare_replacement` replace `row.get("flag") != "affected"` with `row.get("flag") not in REPLACEABLE_FLAGS`, where module-level `REPLACEABLE_FLAGS = ("affected", "safety_rejected")` with a one-line comment (CR-95 AC4; D52). Update the docstring ("this event's own affected or Safety-rejected booking").
 
 - [ ] **Step 4: Run** the file, then the full suite → pass.
 
-- [ ] **Step 5: Commit** `git commit -m "feat(venues): replace a Safety-rejected booking through CR-95's request (D51)"`.
+- [ ] **Step 5: Commit** `git commit -m "feat(venues): replace a Safety-rejected booking through CR-95's request (D52)"`.
 
 ---
 
@@ -349,7 +349,7 @@ def test_the_safety_review_uses_the_same_named_decisions(client, auth_headers, a
 
 - [ ] **Step 4: Run** the new file and the full suite → pass.
 
-- [ ] **Step 5: Commit** `git commit -m "feat(safety): name venues and equipment in decisions and show the coordinator's response (D52, D53)"`.
+- [ ] **Step 5: Commit** `git commit -m "feat(safety): name venues and equipment in decisions and show the coordinator's response (D53, D54)"`.
 
 ---
 
@@ -437,7 +437,7 @@ it("markBookingRevised sends the note once even if called twice", async () => {
 
 - [ ] **Step 4: Run** the files, then `npx vitest run` → all pass.
 
-- [ ] **Step 5: Commit** `git commit -m "feat(safety): revise with a note or replace a Safety-rejected venue in the SPA (D51, D53)"`.
+- [ ] **Step 5: Commit** `git commit -m "feat(safety): revise with a note or replace a Safety-rejected venue in the SPA (D52, D54)"`.
 
 ---
 
@@ -484,7 +484,7 @@ it("shows nothing extra for a decision with no arrangements", async () => {
 
 - [ ] **Step 4: Run** the file and `npx vitest run` → pass. Run `npm run build` → succeeds.
 
-- [ ] **Step 5: Commit** `git commit -m "feat(safety): decision history names venues, equipment and the response (D52)"`.
+- [ ] **Step 5: Commit** `git commit -m "feat(safety): decision history names venues, equipment and the response (D53)"`.
 
 ---
 
@@ -494,7 +494,7 @@ it("shows nothing extra for a decision with no arrangements", async () => {
 - Modify: `backend/scripts/verify_live.py` (TC-SDEC-022/023 send a body; new TC-SDEC-031, TC-SDEC-032)
 - Modify: `backend/tests/test_verify_live_safety_rework.py` (the mark-revised probe asserts a JSON body with `note`)
 - Create: `frontend/e2e/safety-rejection-followup.e2e.js` (TC-SDEC-033)
-- Modify: `docs/test-cases/safety-decisions.md` (TC-SDEC-031–035), `docs/DEFECTS.md` (D51–D53), `docs/BUILD_LOG.md`, `docs/IMPLEMENTATION_MAP.md`, `docs/REQUIREMENTS.md` (two [Team decision]s), the spec (§1 note storage correction)
+- Modify: `docs/test-cases/safety-decisions.md` (TC-SDEC-031–035), `docs/DEFECTS.md` (D52–D54), `docs/BUILD_LOG.md`, `docs/IMPLEMENTATION_MAP.md`, `docs/REQUIREMENTS.md` (two [Team decision]s), the spec (§1 note storage correction)
 
 - [ ] **Step 1: Update the probes first.** TC-SDEC-022 and 023 post `json={"note": "live check"}`; the probe test asserts `json.loads(request.content) == {"note": "live check"}`. Run `pytest tests/test_verify_live_safety_rework.py` → fails, then fix the checks → passes.
 
@@ -508,10 +508,10 @@ it("shows nothing extra for a decision with no arrangements", async () => {
 
 - [ ] **Step 4: Manual cases.** TC-SDEC-034 (revise dialog wording, counter, 375 px), TC-SDEC-035 (named history and response as Safety Officer and coordinator, 375 px). Add rows for 031–033 too, with Created 2026-10-20.
 
-- [ ] **Step 5: Paper trail.** D51–D53 in `DEFECTS.md` (fixed on this branch); `BUILD_LOG.md` entry (symptoms, causes, fix, verification, not verified); `IMPLEMENTATION_MAP.md` (mark-revised body, replacement flags, `SafetyDecision` fields, migration row, booking flag contract note, Last updated); `REQUIREMENTS.md` [Team decision]s (replacement via CR-95; note required); spec §1 correction (note stored in `reason`).
+- [ ] **Step 5: Paper trail.** D52–D54 in `DEFECTS.md` (fixed on this branch); `BUILD_LOG.md` entry (symptoms, causes, fix, verification, not verified); `IMPLEMENTATION_MAP.md` (mark-revised body, replacement flags, `SafetyDecision` fields, migration row, booking flag contract note, Last updated); `REQUIREMENTS.md` [Team decision]s (replacement via CR-95; note required); spec §1 correction (note stored in `reason`).
 
 - [ ] **Step 6: Recorded runs.** `python scripts/verify_live.py --record --api <port>` and `npm run test:e2e:record` (at least the safety, venue and booking specs) against this branch; commit the run logs with the docs.
 
 - [ ] **Step 7: Ask the developer for the manual pass** (TC-SDEC-034, 035) and record it.
 
-- [ ] **Step 8: Commit** `git commit -m "test(safety): live, browser and manual cases for the rejection follow-up (D51-D53)"` and `git commit -m "docs(safety): D51-D53 paper trail"`.
+- [ ] **Step 8: Commit** `git commit -m "test(safety): live, browser and manual cases for the rejection follow-up (D52-D54)"` and `git commit -m "docs(safety): D52-D54 paper trail"`.

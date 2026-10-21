@@ -232,7 +232,7 @@ export function venueBufferMigrationPresent() {
     "and table_name = 'venues' and column_name in ('setup_minutes', 'turnaround_minutes', 'emergency_access', 'restrictions')")[0].present;
 }
 
-/** D51: a rejected arrangement for TC-SDEC-033; never flags shared events. */
+/** D52: a rejected arrangement for TC-SDEC-033; never flags shared events. */
 export function setThrowawayBookingSafetyRejected(bookingId) {
   query(`update public.venue_bookings set flag = 'safety_rejected', flag_reason = 'live check exits', flagged_at = now() ` +
     `where id = '${bookingId}' and event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);

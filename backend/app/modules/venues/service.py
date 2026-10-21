@@ -707,7 +707,7 @@ BOOKING_REFUSALS = {
 }
 
 
-# CR-95 AC4 / D51: both follow-up flags permit requesting another venue.
+# CR-95 AC4 / D52: both follow-up flags permit requesting another venue.
 REPLACEABLE_FLAGS = ("affected", "safety_rejected")
 
 

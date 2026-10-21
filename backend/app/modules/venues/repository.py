@@ -820,7 +820,7 @@ def mark_safety_revision(booking_id: str, actor_id: str, note: str) -> str:
 
 
 def booking_venue_names(booking_ids: list[str]) -> dict[str, str | None]:
-    """D52: one lookup for every booking named in the decision history."""
+    """D53: one lookup for every booking named in the decision history."""
     if not booking_ids:
         return {}
     rows = (get_supabase_admin_client().table("venue_bookings")
@@ -838,7 +838,7 @@ def venue_names(venue_ids: list[str]) -> dict[str, str | None]:
 
 
 def safety_revisions(booking_ids: list[str]) -> list[dict]:
-    """D53: responses in time order, using the existing booking-history reason."""
+    """D54: responses in time order, using the existing booking-history reason."""
     if not booking_ids:
         return []
     rows = (get_supabase_admin_client().table("venue_booking_history")

@@ -2870,9 +2870,11 @@ On `feature/scrum-18-venue-suitability`, branched from `main` at `69a54dd`, 2026
 - **Not run after the BR-R3 change:** the full browser suite (the dashboard, equipment, auth and sign-up specs) and a full API run after the ordering fix (the booking and suitability checks were re-run, not the rest).
 
 
-### 4.76. Bug fix — CR-104 Safety-rejection follow-up (D51–D53)
+### 4.79. Bug fix — CR-104 Safety-rejection follow-up (D52–D54)
 
-On `fix/cr-104-safety-rejection-followup`, 2026-10-20; approved plan/spec dated 2026-10-20. A Safety-rejected booking offered no replacement path (D51), decisions displayed counts rather than names (D52), and Mark as revised recorded no coordinator explanation (D53). This is a fix, not a reopened story; no backlog sheet edits.
+_Renumbered 2026-10-21 from D51–D53 and entry 4.76: PR #95 took D49 and 4.76, PR #92 D50 and 4.77, PR #93 D51 and 4.78. The applied migration `20261020150000` keeps the old numbers in its comments._
+
+On `fix/cr-104-safety-rejection-followup`, 2026-10-20; approved plan/spec dated 2026-10-20. A Safety-rejected booking offered no replacement path (D52), decisions displayed counts rather than names (D53), and Mark as revised recorded no coordinator explanation (D54). This is a fix, not a reopened story; no backlog sheet edits.
 
 **Changed.** Migration `20261020150000_safety_rejection_followup.sql` stores a required trimmed response in the existing `venue_booking_history.reason`, refuses revision while a live replacement exists, widens both CR-95 request functions to accept `safety_rejected`, and excludes both follow-up flags from the per-space live-booking index. Functions were copied from live definitions; `release_replaced_booking` already releases the original without checking its flag. Restore remains Affected-only. API requires `{note}` (1–1000 characters), retains active-role/assignment guards and accepts the additional replacement flag. Batched name/history lookups enrich decisions, including the coordinator's latest banner; missing names stay null. SPA adds the note dialog, duplicate-submit guard, Replace venue action and named pending state; shared decision details show names, response, author and time.
 

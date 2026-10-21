@@ -368,7 +368,7 @@ def list_line_statuses(event_ids: Iterable[str]) -> list[dict]:
 
 
 def line_names(line_ids: list[str]) -> dict[str, str | None]:
-    """D52: names for all equipment lines concerned by a decision history."""
+    """D53: names for all equipment lines concerned by a decision history."""
     if not line_ids:
         return {}
     rows = (get_supabase_admin_client().table("equipment_requests")

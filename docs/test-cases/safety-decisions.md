@@ -39,7 +39,7 @@ Unit suites pass (backend 1,396; frontend 971). Live runs after the migration pu
 | TC-SDEC-028 | Coordinator notice wording and phone layout | Manual | Assigned coordinator; Safety-rejected booking | Open /coordinator/events/<id> at desktop and 375px; inspect venue or space card | Planning and Safety-review events | Safety rejected badge, reason and revision guidance visible; Mark as revised only in Planning, disabled while busy; no horizontal scroll or layout jumps | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
 | TC-SDEC-029 | Organiser sees no flag or reason | Manual | Organiser; disposable event after safety rejection | Open organiser event page and inspect event response | Internal booking flag and officer reason | No flag or flag_reason fields populated; officer reason absent; existing fixed outcome summary allowed | 🔴 | 2026-10-18 | 2026-10-18 Pass ([run](runs/2026-10-18-2040-manual-190ccba.md)) |
 
-### Rejection follow-up — D51–D53 (2026-10-20)
+### Rejection follow-up — D52–D54 (2026-10-20)
 
 Migration `20261020150000_safety_rejection_followup.sql` is not deployed. The following checks are authored; live/browser runs and the developer's manual pass are deferred until deployment. Mocked probe/helper tests do not constitute live passes.
 
