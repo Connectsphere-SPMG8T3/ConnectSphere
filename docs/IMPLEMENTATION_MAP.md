@@ -9,7 +9,7 @@ This file describes the **current state** of the codebase, so a developer (or AI
 
 **Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current").
 
-_Last updated: 2026-10-21 — chore: the whole frontend uses readable sentence-case type (no `uppercase`, `tracking-*`, `font-black` or sub-12px text; Title Case labels such as "Sign In" are now sentence case), guarded by `views/__tests__/typography.spec.js`. Rule in frontend/AGENTS.md "Type"._
+_Last updated: 2026-10-21 — chore: venue search's "Find a venue" heading moves into its filter card, which is now grey like the coordinator's Events filters, and the separate header card and explanatory paragraph are gone._
 
 **Migration status last checked 2026-10-13:** the linked ledger contained remote-only versions through `20261012140000`; D32 migration `20261013100000_revoke_event_space_trigger_execution.sql` was local-only then. QA3-23 migration `20261013110000_event_spaces_allow_individual_schedules.sql` was added afterward and is pending deployment; its linked-ledger status has not been rechecked. The dated 9 October drift notes below are historical. CR-101's `20261013120000_lead_assignment.sql` and `20261013130000_reassign_event_without_status_history.sql` are newer than both and were applied to the live project on 2026-10-13/14; the two older local-only files above now sit before them in the ledger, so deploying them needs `supabase db push --include-all`.
 

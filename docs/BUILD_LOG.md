@@ -2886,3 +2886,13 @@ On `chore/readable-typography`, branched from `main` at `b360f14`, 2026-10-21. N
 **Verified.** Frontend 1,324 passed on this branch alone; `npm run build` succeeds. The conversion was a script over class tokens only; a check against `main` confirmed that the only other changes are the label rewrites, and three files whose multi-line class lists lost their indentation were restored. The coordinator dashboard, Events view, venue search and organiser dashboard were screenshotted in Chrome at 1440px and the coordinator Overview at 390px: no horizontal page scroll, text legible.
 
 **Not verified.** The browser e2e suite (its setup needs the Supabase CLI, which was not installed); a manual pass over the other screens, especially the venue calendar, where 12px text in small cells may crowd.
+
+### 4.77. Enabler — venue search heading in a grey filter card
+
+On `chore/venue-search-filter-card`, on top of §4.76, 2026-10-21. No PBI: a layout request from the developer.
+
+**Changed.** `VenueSearchView` loses its yellow "Venue catalogue / Find a venue" header card and the paragraph explaining the filters. The "Find a venue" heading now heads the filter card, which is a grey (`bg-muted`) section like the coordinator's Events filters, so the white fields stand out. The blue "Requesting a venue for…" card still sits above it when the page is opened from an event.
+
+**Verified.** `venueSearch.spec.js` checks that the page's `h1` sits in the grey filter card with the form and that the header copy is gone. Frontend 1,325 passed; build clean.
+
+**Not verified.** A manual look in a browser, including the order of the cards when the page is opened from an event.

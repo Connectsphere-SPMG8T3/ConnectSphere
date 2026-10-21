@@ -143,15 +143,6 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
 
 <template>
   <main class="py-12">
-    <BauhausCard background="yellow" accent="square" accent-color="bauhaus-red" class="mb-10">
-      <p class="text-xs font-bold opacity-80">Venue catalogue</p>
-      <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">Find a venue</h1>
-      <p class="mt-3 max-w-xl text-sm font-medium">
-        Enter the event's requirements. Every filter you set is strict; venues that miss one are listed separately with
-        the reason.
-      </p>
-    </BauhausCard>
-
     <BauhausCard v-if="route.query.event" background="blue" accent="none" class="mb-10 text-canvas" data-testid="booking-event-context">
       <p v-if="eventError" role="alert" class="text-sm font-bold">{{ eventError }}</p>
       <template v-else-if="bookingEvent">
@@ -175,7 +166,8 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
       <p v-else class="text-sm font-bold">Loading event…</p>
     </BauhausCard>
 
-    <BauhausCard background="white" accent="none" class="mb-10">
+    <section class="mb-10 border-4 border-ink bg-muted p-5 shadow-hard" data-testid="venue-filters" aria-labelledby="find-a-venue">
+      <h1 id="find-a-venue" class="mb-6 text-3xl font-bold leading-tight sm:text-4xl">Find a venue</h1>
       <VenueCriteriaForm
         :criteria="venuesStore.criteria"
         :errors="venuesStore.fieldErrors"
@@ -183,7 +175,7 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
         @submit="venuesStore.search()"
         @reset="handleReset"
       />
-    </BauhausCard>
+    </section>
 
     <p
       v-if="venuesStore.error"
