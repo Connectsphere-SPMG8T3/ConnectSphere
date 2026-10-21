@@ -125,7 +125,7 @@ This section and §5 are human-owned. An agent does these steps only when the de
 ## End of sprint
 
 - **[PO]** Any PBI that is not Done returns to the Product Backlog. Its remaining work is re-estimated and the PO reorders it. It earns no velocity.
-- **[A/D]** Both automated suites are run with recording on, as regression evidence for the sprint review ([`test-cases/runs/README.md`](test-cases/runs/README.md)). There is no sprint-wide manual pass.
+- **[A/D]** Both automated suites are run with recording on, as regression evidence for the sprint review, and each log is titled `Sprint <n> regression — …` ([`test-cases/runs/README.md`](test-cases/runs/README.md)). There is no sprint-wide manual pass.
 - **[A/D]** Mutation testing is run on both stacks and a baseline row is added to [`MUTATION_TESTING.md`](MUTATION_TESTING.md) §6, as evidence that test quality is tracked across sprints.
 - **[D]** The task board (the Status view) is screenshotted as evidence.
 
