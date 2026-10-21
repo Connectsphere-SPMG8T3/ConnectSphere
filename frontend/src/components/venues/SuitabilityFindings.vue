@@ -16,7 +16,7 @@ defineProps({
     >
       <span class="mt-1.5 inline-block h-2 w-2 shrink-0 bg-current" aria-hidden="true" />
       <span>
-        <span class="text-xs uppercase tracking-widest">{{ reasonLabel(reason) }}:</span>
+        <span class="text-xs">{{ reasonLabel(reason) }}:</span>
         {{ reason.message }}
       </span>
     </li>

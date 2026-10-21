@@ -90,7 +90,7 @@ const isVenuesActive = computed(
 
 function navLinkClass(active) {
   return [
-    "flex items-center gap-3 border-2 border-ink px-4 py-3 text-sm font-bold uppercase tracking-wide transition-transform sm:border-4",
+    "flex items-center gap-3 border-2 border-ink px-4 py-3 text-sm font-bold   transition-transform sm:border-4",
     active ? "bg-bauhaus-yellow text-ink shadow-hard" : "bg-canvas text-ink hover:bg-muted",
     // The collapsed rail is only 80px wide, so items drop their own side padding
     // and centre the icon instead — otherwise they outgrow the rail.
@@ -153,7 +153,7 @@ async function handleLogout() {
       >
         <BrandMark />
         <span
-          class="text-lg font-black uppercase leading-tight tracking-tighter"
+          class="text-lg font-bold leading-tight"
           :class="labelClass"
           >ConnectSphere</span
         >

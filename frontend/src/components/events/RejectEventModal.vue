@@ -43,11 +43,11 @@ function confirm() {
         aria-labelledby="reject-modal-title"
         class="w-full max-w-lg border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
       >
-        <h2 id="reject-modal-title" class="text-2xl font-black uppercase leading-tight tracking-tight">Reject this request?</h2>
+        <h2 id="reject-modal-title" class="text-2xl font-bold leading-tight">Reject this request?</h2>
         <p class="mt-4 text-base font-medium">
           "{{ props.eventName }}" will be closed and can't be resubmitted. The organiser will see your reason.
         </p>
-        <label for="reject-reason" class="mt-6 block text-xs font-bold uppercase tracking-widest text-ink/70">Reason (required)</label>
+        <label for="reject-reason" class="mt-6 block text-xs font-bold text-ink/70">Reason (required)</label>
         <textarea
           id="reject-reason"
           v-model="reason"

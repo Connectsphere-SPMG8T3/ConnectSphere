@@ -19,10 +19,10 @@ const toastClasses = computed(() => toneClasses[toastState.value?.tone] ?? toneC
     aria-live="polite"
   >
     <div class="flex items-start gap-4 border-2 px-4 py-3 shadow-hard sm:border-4" :class="toastClasses">
-      <p class="min-w-0 flex-1 text-sm font-bold uppercase tracking-wide">{{ toastState.message }}</p>
+      <p class="min-w-0 flex-1 text-sm font-bold">{{ toastState.message }}</p>
       <button
         type="button"
-        class="shrink-0 text-xl font-black leading-none"
+        class="shrink-0 text-xl font-bold leading-none"
         aria-label="Dismiss notification"
         @click="dismissToast"
       >

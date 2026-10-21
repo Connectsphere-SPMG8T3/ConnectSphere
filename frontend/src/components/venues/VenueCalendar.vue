@@ -247,10 +247,10 @@ function exportCalendar() {
   >
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 id="venue-calendar-heading" class="text-2xl font-black uppercase leading-none tracking-tighter">
+        <h2 id="venue-calendar-heading" class="text-2xl font-bold leading-tight">
           Calendar
         </h2>
-        <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/60">
+        <p class="mt-1 text-xs font-bold text-ink/60">
           {{ periodLabel }} · Singapore time
         </p>
       </div>
@@ -260,7 +260,7 @@ function exportCalendar() {
             v-for="option in VIEWS"
             :key="option.key"
             type="button"
-            class="px-3 py-2 text-xs font-bold uppercase tracking-widest active-press"
+            class="px-3 py-2 text-xs font-bold active-press"
             :class="view === option.key ? 'bg-ink text-canvas' : 'bg-canvas text-ink'"
             :aria-pressed="view === option.key"
             @click="setView(option.key)"
@@ -270,7 +270,7 @@ function exportCalendar() {
         </div>
         <button
           type="button"
-          class="border-2 border-ink px-3 py-2 text-xs font-bold uppercase tracking-widest"
+          class="border-2 border-ink px-3 py-2 text-xs font-bold"
           :class="isCurrentPeriod ? 'cursor-not-allowed opacity-40' : 'bg-canvas active-press'"
           :disabled="isCurrentPeriod"
           :aria-label="isWeekView ? 'Jump to the current week' : 'Jump to the current month'"
@@ -280,7 +280,7 @@ function exportCalendar() {
         </button>
         <button
           type="button"
-          class="border-2 border-ink px-3 py-2 text-xs font-bold uppercase tracking-widest"
+          class="border-2 border-ink px-3 py-2 text-xs font-bold"
           :class="canGoPrev ? 'bg-canvas active-press' : 'cursor-not-allowed opacity-40'"
           :disabled="!canGoPrev"
           :aria-label="isWeekView ? 'Previous week' : 'Previous month'"
@@ -290,7 +290,7 @@ function exportCalendar() {
         </button>
         <button
           type="button"
-          class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold uppercase tracking-widest active-press"
+          class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold active-press"
           :aria-label="isWeekView ? 'Next week' : 'Next month'"
           @click="step(1)"
         >
@@ -328,7 +328,7 @@ function exportCalendar() {
     <ul class="mb-4 flex flex-wrap gap-x-4 gap-y-1">
       <li v-for="kind in CALENDAR_KINDS" :key="kind.key" class="flex items-center gap-2">
         <span class="h-2.5 w-2.5 rounded-full border border-ink" :class="dotClasses[kind.tone]" aria-hidden="true" />
-        <span class="text-[10px] font-bold uppercase tracking-widest text-ink/70">{{ kind.label }}</span>
+        <span class="text-xs font-bold text-ink/70">{{ kind.label }}</span>
       </li>
     </ul>
 
@@ -342,7 +342,7 @@ function exportCalendar() {
           <div
             v-for="weekday in grid.weekdays"
             :key="weekday"
-            class="py-2 text-center text-[10px] font-bold uppercase tracking-widest text-ink/60"
+            class="py-2 text-center text-xs font-bold text-ink/60"
           >
             {{ weekday }}
           </div>
@@ -387,7 +387,7 @@ function exportCalendar() {
               <span
                 v-for="(cell, index) in row.cells"
                 :key="`${cell.key}-num`"
-                class="px-1 text-left text-[11px] font-bold leading-none"
+                class="px-1 text-left text-xs font-bold leading-none"
                 :class="cell.inCurrentMonth ? 'text-ink' : 'text-ink/35'"
                 :style="{ gridColumn: index + 1, gridRow: 1 }"
               >
@@ -397,7 +397,7 @@ function exportCalendar() {
               <span
                 v-for="segment in row.segments"
                 :key="segment.id"
-                class="mx-0.5 flex items-center gap-1 overflow-hidden px-1 py-0.5 text-[10px] font-bold leading-tight"
+                class="mx-0.5 flex items-center gap-1 overflow-hidden px-1 py-0.5 text-xs font-bold leading-tight"
                 :class="[
                   barClasses[calendarKindMeta(segment.item.kind).tone],
                   segment.continuesBefore ? 'rounded-l-none border-l-0 pl-0.5' : 'border-l-4',
@@ -415,7 +415,7 @@ function exportCalendar() {
                 v-for="(count, index) in row.overflow"
                 :key="`${row.key}-more-${index}`"
                 v-show="count"
-                class="px-1 text-left text-[9px] font-bold uppercase tracking-widest text-ink/55"
+                class="px-1 text-left text-xs font-bold text-ink/70"
                 :style="{ gridColumn: index + 1, gridRow: MAX_LANES + 2 }"
               >
                 +{{ count }}
@@ -450,8 +450,8 @@ function exportCalendar() {
                 class="flex shrink-0 flex-col gap-0.5 border-l-4 px-1 py-1 text-left"
                 :class="itemStripeClasses[calendarKindMeta(item.kind).tone]"
               >
-                <span class="text-[10px] font-bold uppercase leading-tight tracking-tight">{{ item.venueName }}</span>
-                <span class="text-[9px] font-medium leading-tight text-ink/65">{{ formatSpan(item) }}</span>
+                <span class="text-xs font-bold leading-tight">{{ item.venueName }}</span>
+                <span class="text-xs font-medium leading-tight text-ink/75">{{ formatSpan(item) }}</span>
               </span>
             </span>
           </button>
@@ -466,12 +466,12 @@ function exportCalendar() {
       >
         <template v-if="selectedCell">
           <div class="flex shrink-0 items-start justify-between gap-2">
-            <p class="text-xs font-bold uppercase tracking-widest text-ink/70">
+            <p class="text-xs font-bold text-ink/70">
               {{ formatSelectedDay(selectedCell.key) }}
             </p>
             <button
               type="button"
-              class="shrink-0 text-xs font-bold uppercase leading-none tracking-widest text-ink/50"
+              class="shrink-0 text-xs font-bold leading-none text-ink/50"
               aria-label="Clear the selected day"
               @click="selectedDayKey = null"
             >
@@ -485,12 +485,12 @@ function exportCalendar() {
               class="flex shrink-0 flex-col gap-1 border-l-4 border-ink bg-surface py-2 pl-3 pr-2"
             >
               <span
-                class="self-start border-2 border-ink px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest"
+                class="self-start border-2 border-ink px-2 py-0.5 text-xs font-bold"
                 :class="badgeClasses[calendarKindMeta(item.kind).tone]"
               >
                 {{ itemLabel(item) }}
               </span>
-              <span class="text-sm font-bold uppercase leading-tight tracking-tight">{{ item.venueName }}</span>
+              <span class="text-sm font-bold leading-tight">{{ item.venueName }}</span>
               <span class="text-xs font-medium text-ink/70">{{ formatSpan(item) }}</span>
             </li>
           </ul>

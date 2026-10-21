@@ -52,7 +52,7 @@ const classes = computed(() => [
   <button
     :type="type"
     :disabled="disabled"
-    class="inline-flex items-center justify-center gap-2 border-2 border-ink font-bold uppercase tracking-widest shadow-hard transition-transform"
+    class="inline-flex items-center justify-center gap-2 border-2 border-ink font-bold shadow-hard transition-transform"
     :class="classes"
   >
     <slot />

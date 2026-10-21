@@ -109,7 +109,7 @@ async function handleSubmit() {
     <BauhausCard background="white" accent="square" accent-color="bauhaus-blue">
       <form class="flex flex-col gap-6" novalidate @submit.prevent="handleSubmit">
         <div>
-          <h2 class="text-2xl font-black uppercase tracking-tight">
+          <h2 class="text-2xl font-bold">
             {{ role === "attendee" ? "Create an Attendee Account" : "Create an Event Organiser Account" }}
           </h2>
           <p class="mt-1 text-sm font-medium text-ink/70">
@@ -120,7 +120,7 @@ async function handleSubmit() {
         <div
           v-if="formError"
           role="alert"
-          class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+          class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
         >
           {{ formError }}
         </div>
@@ -128,7 +128,7 @@ async function handleSubmit() {
         <BauhausInput
           v-model="form.full_name"
           :error="fieldErrors.full_name"
-          label="Full Name"
+          label="Full name"
           required
           autocomplete="name"
         />
@@ -154,7 +154,7 @@ async function handleSubmit() {
           v-if="role === 'event_organiser'"
           v-model="form.organisation_name"
           :error="fieldErrors.organisation_name"
-          label="Organisation Name"
+          label="Organisation name"
           required
           autocomplete="organization"
         />
@@ -162,7 +162,7 @@ async function handleSubmit() {
           v-if="role === 'event_organiser'"
           v-model="form.phone_number"
           :error="fieldErrors.phone_number"
-          label="Phone Number"
+          label="Phone number"
           type="tel"
           autocomplete="tel"
         />

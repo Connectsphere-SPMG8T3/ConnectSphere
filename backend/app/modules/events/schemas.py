@@ -551,9 +551,18 @@ class CoordinatorActiveEvent(BaseModel):
     readiness: Readiness
 
 
+class CoordinatorRejectedEvent(BaseModel):
+    """A request the coordinator rejected: closed, so no readiness or actions."""
+
+    event_id: str
+    event_name: str
+    starts_at: datetime | None = None
+
+
 class CoordinatorDashboard(BaseModel):
     action_items: list[CoordinatorActionItem] = []
     active_events: list[CoordinatorActiveEvent] = []
+    rejected_events: list[CoordinatorRejectedEvent] = []
     # No unassigned figure: unassigned events are the Event Coordinator Lead's
     # queue, not a coordinator's (customer clarification, REQUIREMENTS §6.5).
 

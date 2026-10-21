@@ -350,8 +350,8 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
 <template>
   <main class="py-12">
     <BauhausCard background="yellow" accent="square" accent-color="bauhaus-red" class="mb-10">
-      <p class="text-xs font-bold uppercase tracking-widest opacity-80">Event request</p>
-      <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">
+      <p class="text-xs font-bold opacity-80">Event request</p>
+      <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">
         {{ isNew ? "Start an event" : isReturned ? "Amend your request" : "Edit your draft" }}
       </h1>
       <p class="mt-3 max-w-xl text-sm font-medium">
@@ -364,7 +364,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
     <p
       v-if="eventsStore.error && !isResubmitModalOpen"
       role="alert"
-      class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+      class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
     >
       {{ eventsStore.error }}
     </p>
@@ -379,9 +379,9 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
             <BauhausInput v-model="form.purpose" label="Purpose" required :error="fieldErrors.purpose" :flag="flagFor('purpose')" placeholder="What is this event for?" />
           </div>
           <div class="sm:col-span-2 flex flex-col gap-2">
-            <label for="event-description" class="text-xs font-bold uppercase tracking-widest">Description</label>
+            <label for="event-description" class="text-xs font-bold">Description</label>
             <textarea id="event-description" v-model="form.description" rows="4" class="border-2 border-ink px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" :class="flagFor('description') ? 'bg-bauhaus-yellow/30' : 'bg-canvas'" :aria-describedby="flagFor('description') ? 'event-description-flag' : undefined" :data-flagged="flagFor('description') ? 'true' : undefined" placeholder="Add useful context for the planning team."></textarea>
-            <p v-if="flagFor('description')" id="event-description-flag" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold uppercase tracking-wide text-ink">{{ FLAG_TEXT }}</p>
+            <p v-if="flagFor('description')" id="event-description-flag" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold text-ink">{{ FLAG_TEXT }}</p>
           </div>
           <BauhausInput v-model="form.date" label="Proposed event date" type="date" required :min="earliestEventDate" :error="fieldErrors.date" :flag="flagFor('date')" />
           <BauhausSelect v-model="form.eventTimezone" label="Event timezone" required :options="EVENT_TIMEZONES" :flag="flagFor('eventTimezone')" />
@@ -395,11 +395,11 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
           <div class="sm:col-span-2 border-4 border-ink bg-bauhaus-yellow/20 p-4 shadow-hard sm:p-6">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Venue requirements</p>
-                <h2 class="mt-1 text-2xl font-black uppercase tracking-tight">Plan each space</h2>
+                <p class="text-xs font-bold text-ink/70">Venue requirements</p>
+                <h2 class="mt-1 text-2xl font-bold">Plan each space</h2>
                 <p class="mt-2 text-sm font-bold">Suggest venue layouts for your event.</p>
               </div>
-              <span class="border-2 border-ink bg-canvas px-2 py-1 text-xs font-black uppercase tracking-widest">{{ form.spaces.length }} spaces</span>
+              <span class="border-2 border-ink bg-canvas px-2 py-1 text-xs font-bold">{{ form.spaces.length }} spaces</span>
             </div>
 
             <div class="mt-6 grid gap-4">
@@ -428,7 +428,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
                   <BauhausSelect v-model="space.layoutPreference" label="Preferred layout" required :options="LAYOUTS" placeholder="Choose a layout" :error="fieldErrors.spaces?.[index]?.layoutPreference" />
                   <div class="sm:col-span-2"><BauhausCheckboxGroup v-model="space.facilitiesRequired" label="Venue facilities required" :options="FACILITIES" /></div>
                   <div class="sm:col-span-2">
-                    <label class="inline-flex items-center gap-2 border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold uppercase tracking-wide shadow-hard">
+                    <label class="inline-flex items-center gap-2 border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold shadow-hard">
                       <input v-model="space.useEventSchedule" data-testid="space-schedule-toggle" type="checkbox" class="h-4 w-4 accent-bauhaus-red" />
                       Use full event duration
                     </label>
@@ -475,12 +475,12 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
 
       <aside class="flex flex-col gap-6">
         <BauhausCard background="blue" accent="circle" accent-color="bauhaus-yellow">
-          <h2 class="text-2xl font-black uppercase tracking-tight">Registration</h2>
-          <label class="mt-5 flex items-center gap-3 text-sm font-bold uppercase tracking-wide">
+          <h2 class="text-2xl font-bold">Registration</h2>
+          <label class="mt-5 flex items-center gap-3 text-sm font-bold">
             <input v-model="form.registrationEnabled" type="checkbox" class="h-5 w-5 accent-bauhaus-yellow" />
             Enable attendee registration
           </label>
-          <p v-if="flagFor('registrationEnabled')" class="mt-2 border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold uppercase tracking-wide">{{ FLAG_TEXT }}</p>
+          <p v-if="flagFor('registrationEnabled')" class="mt-2 border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold">{{ FLAG_TEXT }}</p>
           <div v-if="form.registrationEnabled" class="mt-5 flex flex-col gap-5">
             <BauhausInput v-model="form.registrationCapacity" label="Registration capacity" required type="number" :error="fieldErrors.registrationCapacity" :flag="flagFor('registrationCapacity')" />
             <BauhausInput v-model="form.registrationOpensAt" label="Registration opens" required type="datetime-local" :min="earliestRegistrationDateTime" :error="fieldErrors.registrationOpensAt" :flag="flagFor('registrationOpensAt')" />
@@ -489,7 +489,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
         </BauhausCard>
 
         <BauhausCard background="white" accent="none">
-          <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Workflow</p>
+          <p class="text-xs font-bold text-ink/70">Workflow</p>
           <p class="mt-2 text-sm font-medium">Drafts stay private to you. Submission sends a complete request for coordinator review.</p>
           <div class="mt-6 flex flex-col gap-3">
             <BauhausButton type="button" variant="yellow" :disabled="eventsStore.isSaving" @click="chooseIntent('draft')">

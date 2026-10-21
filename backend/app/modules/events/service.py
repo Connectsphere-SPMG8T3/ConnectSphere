@@ -41,6 +41,7 @@ from app.modules.events.schemas import (
     CoordinatorActionKind,
     CoordinatorActiveEvent,
     CoordinatorDashboard,
+    CoordinatorRejectedEvent,
     LeadCoordinator,
     LeadDashboard,
     LeadEvent,
@@ -634,8 +635,17 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
     equipment decisions, re-review outcomes) are not produced, so their widgets
     stay empty rather than invent anything (REQUIREMENTS §6.21). The SPA ranks
     the items, so they are returned unordered.
+
+    The caller's rejected events come back in the same query, listed apart:
+    they are closed, so no arrangement or action is looked up for them.
     """
-    rows = repository.list_coordinator_events(coordinator_id, ACTIVE_COORDINATOR_STATUSES)
+    all_rows = repository.list_coordinator_events(coordinator_id, (*ACTIVE_COORDINATOR_STATUSES, "rejected"))
+    rows = [row for row in all_rows if row["status"] != "rejected"]
+    rejected_events = [
+        CoordinatorRejectedEvent(event_id=row["id"], event_name=row["name"], starts_at=row.get("starts_at"))
+        for row in all_rows
+        if row["status"] == "rejected"
+    ]
     event_ids = [row["id"] for row in rows]
     under_review_ids = [row["id"] for row in rows if row["status"] == "under_review"]
 
@@ -678,7 +688,7 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
             )
         )
 
-    return CoordinatorDashboard(action_items=action_items, active_events=active_events)
+    return CoordinatorDashboard(action_items=action_items, active_events=active_events, rejected_events=rejected_events)
 
 
 def _lead_event(row: dict) -> LeadEvent:

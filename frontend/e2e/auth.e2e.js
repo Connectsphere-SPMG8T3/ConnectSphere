@@ -13,8 +13,8 @@ import {
   test,
 } from "./support/fixtures.js";
 
-// The venue staff and tech support dashboards open straight onto their data, with no welcome heading.
-const WELCOME_HEADING = new Set(["event_organiser", "event_coordinator", "attendee"]);
+// The coordinator, venue staff and tech support dashboards open straight onto their data, with no welcome heading.
+const WELCOME_HEADING = new Set(["event_organiser", "attendee"]);
 
 test.describe("Login", () => {
   for (const [role, account] of Object.entries(ACCOUNTS)) {
@@ -54,7 +54,7 @@ test.describe("Login", () => {
     page.on("request", (request) => request.url().endsWith("/auth/login") && loginRequests.push(request));
     await page.goto("/login");
 
-    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.getByRole("button", { name: "Sign in" }).click();
 
     await expect(page.getByText("Email is required.")).toBeVisible();
     await expect(page.getByText("Password is required.")).toBeVisible();
@@ -67,7 +67,7 @@ test.describe("Login", () => {
     await page.goto("/login");
 
     await page.getByLabel("Email").fill(ACCOUNTS.attendee.email);
-    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.getByRole("button", { name: "Sign in" }).click();
 
     await expect(page.getByText("Password is required.")).toBeVisible();
     await expect(page.getByText("Email is required.")).toHaveCount(0);

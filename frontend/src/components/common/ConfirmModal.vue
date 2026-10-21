@@ -41,7 +41,7 @@ const emit = defineEmits(["confirm", "stay"]);
         aria-labelledby="confirm-modal-title"
         class="w-full max-w-lg border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
       >
-        <h2 id="confirm-modal-title" class="text-2xl font-black uppercase leading-tight tracking-tight">{{ props.title }}</h2>
+        <h2 id="confirm-modal-title" class="text-2xl font-bold leading-tight">{{ props.title }}</h2>
         <p class="mt-4 text-base font-medium">{{ props.message }}</p>
         <div class="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <BauhausButton type="button" variant="outline" :aria-label="props.cancelLabel" @click="emit('stay')">{{ props.cancelLabel }}</BauhausButton>

@@ -14,7 +14,7 @@ const badge = computed(() => suitabilityBadge(props.suitability));
   <span
     v-if="badge"
     data-testid="suitability-badge"
-    class="border-2 border-ink px-3 py-1 text-xs font-bold uppercase tracking-widest"
+    class="border-2 border-ink px-3 py-1 text-xs font-bold"
     :class="badge.classes"
   >
     {{ badge.text }}

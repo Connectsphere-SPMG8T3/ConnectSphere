@@ -10,10 +10,10 @@
 
     <div class="relative z-10 w-full min-w-0 max-w-md">
       <div class="mb-8 text-center">
-        <h1 class="text-3xl font-black uppercase leading-[0.9] tracking-tighter text-ink sm:text-5xl">
+        <h1 class="text-3xl font-bold leading-tight text-ink sm:text-5xl">
           Connect<span class="text-bauhaus-red">Sphere</span>
         </h1>
-        <p class="mt-3 text-sm font-bold uppercase tracking-widest text-ink/70">
+        <p class="mt-3 text-sm font-bold text-ink/70">
           Event &amp; Venue Services Platform
         </p>
       </div>

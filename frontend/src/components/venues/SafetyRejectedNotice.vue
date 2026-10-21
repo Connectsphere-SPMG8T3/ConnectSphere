@@ -22,7 +22,7 @@ function markRevised() {
 
 <template>
   <div class="mt-3 border-l-4 border-bauhaus-red pl-3" data-testid="venue-safety-rejected">
-    <p class="inline-block bg-bauhaus-red px-2 py-0.5 text-xs font-black uppercase tracking-widest text-canvas">Safety rejected</p>
+    <p class="inline-block bg-bauhaus-red px-2 py-0.5 text-xs font-bold text-canvas">Safety rejected</p>
     <p class="mt-2 text-sm font-medium">{{ reason }}</p>
     <p class="mt-2 text-sm font-medium">Revise the arrangement with venue staff and mark it revised, or replace the venue. Then send the event for safety check again.</p>
     <p v-if="replacement" class="mt-3 text-sm font-bold">Replacement requested: {{ replacement.venue_name ?? 'another venue' }}</p>
@@ -32,7 +32,7 @@ function markRevised() {
         <BauhausButton v-if="canReplace" variant="outline" :disabled="busy" @click="emit('replace')">Replace venue</BauhausButton>
       </div>
       <section v-if="revising && canMarkRevised" role="dialog" aria-label="Mark as revised" class="mt-4 border-2 border-ink p-4">
-        <h3 class="text-lg font-black uppercase">Mark as revised</h3>
+        <h3 class="text-lg font-bold">Mark as revised</h3>
         <label class="mt-3 block text-sm font-bold">
           What changed, or what should the Safety Officer know?
           <textarea v-model="note" maxlength="1000" required :disabled="busy" rows="4" class="mt-2 block w-full border-2 border-ink bg-canvas p-3 font-medium" />

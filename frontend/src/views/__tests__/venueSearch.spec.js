@@ -364,6 +364,22 @@ describe("VenueSearchView", () => {
     expect(el.querySelector('[aria-label="Request Hall A"]')).toBeNull();
   });
 
+  it("heads the filter card with the page title instead of a separate header card", async () => {
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView);
+    await settle();
+
+    const heading = el.querySelector("h1");
+    expect(heading.textContent).toContain("Find a venue");
+    const filterCard = heading.closest("[data-testid='venue-filters']");
+    expect(filterCard).toBeTruthy();
+    expect(filterCard.querySelector("form")).toBeTruthy();
+    expect(el.textContent).not.toContain("Venue catalogue");
+    // Grey like the coordinator's Events filter card, with no explanatory paragraph.
+    expect(filterCard.className).toContain("bg-muted");
+    expect(el.textContent).not.toContain("Every filter you set is strict");
+  });
+
   it("lists matching venues on first visit and reveals excluded ones with reasons on demand", async () => {
     const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
     const { el, venuesStore } = await mountView(VenueSearchView);

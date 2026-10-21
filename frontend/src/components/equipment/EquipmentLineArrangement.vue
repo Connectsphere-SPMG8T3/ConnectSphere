@@ -73,10 +73,10 @@ function saveNote() {
 <template>
   <article class="flex min-w-0 flex-col gap-3 border-2 border-ink bg-canvas p-4 shadow-hard sm:border-4" :aria-busy="busy">
     <div class="flex flex-wrap items-baseline justify-between gap-2">
-      <h3 class="text-lg font-black uppercase leading-tight tracking-tighter">
+      <h3 class="text-lg font-bold leading-tight">
         {{ line.equipment_name }} <span class="font-bold">× {{ line.quantity }}</span>
       </h3>
-      <span class="shrink-0 border-2 border-ink px-3 py-1 text-[10px] font-bold uppercase tracking-widest" :class="STATUS_BADGE_CLASSES[line.status]">
+      <span class="shrink-0 border-2 border-ink px-3 py-1 text-xs font-bold" :class="STATUS_BADGE_CLASSES[line.status]">
         {{ REQUEST_STATUS_LABELS[line.status] ?? line.status }}
       </span>
     </div>
@@ -106,7 +106,7 @@ function saveNote() {
     </div>
 
     <form v-if="open && askingReason && canMarkNotAvailable(line.status)" class="flex flex-col gap-2" novalidate @submit.prevent="submitReason">
-      <label :for="ids.reason" class="text-xs font-bold uppercase tracking-widest">Why is it not available? *</label>
+      <label :for="ids.reason" class="text-xs font-bold">Why is it not available? *</label>
       <textarea
         :id="ids.reason"
         v-model="reason"
@@ -126,7 +126,7 @@ function saveNote() {
     </form>
 
     <form v-if="open" class="flex flex-col gap-2 border-t-2 border-ink pt-3" novalidate @submit.prevent="saveNote">
-      <label :for="ids.notes" class="text-xs font-bold uppercase tracking-widest">Technical notes (internal)</label>
+      <label :for="ids.notes" class="text-xs font-bold">Technical notes (internal)</label>
       <textarea
         :id="ids.notes"
         v-model="notes"

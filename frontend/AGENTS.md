@@ -46,7 +46,7 @@ This is a team decision, following `docs/archive/2026-09-13-design-review.md` A3
 
 Treat this as the design brief for **any** UI work, whether a new view, a dashboard widget, or a form:
 
-> Build this in ConnectSphere's **Bauhaus constructivist** style. Use a white canvas and black ink, with primary red, blue, and yellow reserved for meaning and emphasis. Use thick black borders, hard offset shadows with no blur, and only square or perfectly round shapes. Typography is bold, geometric, and uppercase. Compose the screen from the existing `Bauhaus*` components, and don't introduce new colours, fonts, radii, or shadows. It must work on mobile and desktop, and should look like it belongs next to the venue search and coordinator dashboard screens.
+> Build this in ConnectSphere's **Bauhaus constructivist** style. Use a white canvas and black ink, with primary red, blue, and yellow reserved for meaning and emphasis. Use thick black borders, hard offset shadows with no blur, and only square or perfectly round shapes. Typography is bold and geometric, in readable sentence case. Compose the screen from the existing `Bauhaus*` components, and don't introduce new colours, fonts, radii, or shadows. It must work on mobile and desktop, and should look like it belongs next to the venue search and coordinator dashboard screens.
 
 **Tokens.** Use the Tailwind names, never raw hex values.
 
@@ -68,7 +68,7 @@ Colours carry meaning through the components. Use a component's variant (e.g. `v
 
 - **Components first.** Before writing markup, check `components/common/`: `BauhausButton`, `BauhausCard`, `BauhausInput`, `BauhausSelect`, `BauhausCheckboxGroup`, `BauhausEmptyState`, `BauhausNavbar`. If one is close, add a prop or slot rather than creating a look-alike.
 - **Shape.** Use `rounded-none` or `rounded-full` only, and borders in `border-ink` (`border-2` or `border-4`, matching the existing components).
-- **Type.** Headlines use `uppercase font-black tracking-tighter leading-[0.9]`. Labels use `font-bold uppercase tracking-widest`.
+- **Type.** Staff use the app for long administrative sessions, so type is set for reading (developer decision, 2026-10-21). Write text in **sentence case** (role names such as Event Coordinator stay capitalised) and never add `uppercase`. Use normal letter spacing (no `tracking-*`), nothing smaller than `text-xs`, and `font-bold` as the heaviest weight (no `font-black`). Headlines use `font-bold leading-tight`; labels use `text-sm font-medium` or `font-bold`. `src/views/__tests__/typography.spec.js` fails any component or view that breaks this.
 - **Interaction.** Pressable elements use `.active-press` so they press flat on click.
 - **No new visual values inline.** If a colour, shadow, or size is genuinely missing, add it to `tailwind.config.js` and tell the developer. Don't use an arbitrary `bg-[#…]`.
 - **Static class names only.** Never build a class like `` `bg-${color}` ``, because Tailwind's scanner won't see it. Use a lookup object of full class names, as `BauhausCard.vue` does.

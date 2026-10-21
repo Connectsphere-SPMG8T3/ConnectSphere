@@ -51,12 +51,12 @@ async function handleSubmit() {
   <AuthPageLayout>
     <BauhausCard background="white" accent="square" accent-color="bauhaus-red">
       <form class="flex flex-col gap-6" novalidate @submit.prevent="handleSubmit">
-        <h2 class="text-2xl font-black uppercase tracking-tight">Sign In</h2>
+        <h2 class="text-2xl font-bold">Sign in</h2>
 
         <div
           v-if="signedUpEmail && !authStore.error"
           role="status"
-          class="border-2 border-ink bg-bauhaus-yellow px-4 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-hard sm:border-4"
+          class="border-2 border-ink bg-bauhaus-yellow px-4 py-3 text-sm font-bold text-ink shadow-hard sm:border-4"
         >
           Account created. Please sign in.
         </div>
@@ -64,7 +64,7 @@ async function handleSubmit() {
         <div
           v-if="authStore.error"
           role="alert"
-          class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+          class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
         >
           {{ authStore.error }}
         </div>
@@ -87,19 +87,19 @@ async function handleSubmit() {
         />
 
         <BauhausButton type="submit" variant="primary" full-width :disabled="authStore.isLoading">
-          {{ authStore.isLoading ? "Signing In…" : "Sign In" }}
+          {{ authStore.isLoading ? "Signing in…" : "Sign in" }}
         </BauhausButton>
 
         <div class="flex flex-col gap-2 border-t-2 border-ink pt-4 text-center text-sm font-medium text-ink/70">
           <p>
             New Event Organiser?
-            <RouterLink to="/signup/organiser" class="font-bold uppercase tracking-wide text-bauhaus-blue underline">
+            <RouterLink to="/signup/organiser" class="font-bold text-bauhaus-blue underline">
               Create organiser account
             </RouterLink>
           </p>
           <p>
             New Attendee?
-            <RouterLink to="/signup/attendee" class="font-bold uppercase tracking-wide text-bauhaus-blue underline">
+            <RouterLink to="/signup/attendee" class="font-bold text-bauhaus-blue underline">
               Create attendee account
             </RouterLink>
           </p>

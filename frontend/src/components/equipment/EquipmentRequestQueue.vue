@@ -67,7 +67,7 @@ const emptyDetail = computed(() =>
 
 <template>
   <section aria-labelledby="equipment-requests-heading">
-    <h2 id="equipment-requests-heading" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+    <h2 id="equipment-requests-heading" class="mb-1 text-2xl font-bold leading-tight sm:text-3xl">
       Equipment requests
     </h2>
     <p class="mb-4 text-xs font-medium text-ink/60">
@@ -88,7 +88,7 @@ const emptyDetail = computed(() =>
 
     <div
       v-if="queue.isLoading && !queue.lines.length"
-      class="flex items-center gap-3 border-2 border-ink bg-canvas p-4 text-sm font-bold uppercase tracking-widest text-ink/70 sm:border-4"
+      class="flex items-center gap-3 border-2 border-ink bg-canvas p-4 text-sm font-bold text-ink/70 sm:border-4"
       role="status"
     >
       <span class="h-5 w-5 animate-spin rounded-full border-2 border-ink border-t-transparent" aria-hidden="true"></span>
@@ -108,10 +108,10 @@ const emptyDetail = computed(() =>
         >
           <RouterLink :to="{ name: 'tech-support-event', params: { id: line.event_id } }" class="flex flex-col gap-2 active-press">
             <div class="flex flex-wrap items-baseline justify-between gap-4">
-              <span class="text-xl font-black uppercase leading-tight tracking-tight">
+              <span class="text-xl font-bold leading-tight">
                 {{ line.equipment_name }} <span class="font-bold">× {{ line.quantity }}</span>
               </span>
-              <span class="text-xs font-bold uppercase tracking-widest text-ink/70">
+              <span class="text-xs font-bold text-ink/70">
                 {{ line.equipment_type || "Type not set" }} · {{ REQUEST_STATUS_LABELS[line.status] ?? line.status }}
               </span>
             </div>
@@ -119,7 +119,7 @@ const emptyDetail = computed(() =>
             <p v-if="line.technical_requirements" class="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm font-medium text-ink/75">
               {{ line.technical_requirements }}
             </p>
-            <span class="text-xs font-bold uppercase tracking-widest text-ink/55">
+            <span class="text-xs font-bold text-ink/55">
               {{ line.requested_by?.full_name ?? "Unknown user" }}
               <template v-if="isWaiting(line)"> · Waiting {{ waitingDays(line) ?? "—" }} days</template>
             </span>

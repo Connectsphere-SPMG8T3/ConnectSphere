@@ -2963,3 +2963,84 @@ Would push these migrations:
 - Unit: backend 1,802; frontend 1,187; build clean.
 - Manual: TC-SDEC-034 and 035 passed ([run](test-cases/runs/2026-10-21-manual-7537ce3.md)), with a headless re-check of the same pages (56 checks, both widths).
 - **Not verified:** the full browser suite; independent SQL assertions for refusing a second replacement.
+
+### 4.80. Enabler — readable type across the app
+
+On `chore/readable-typography`, branched from `main` at `b360f14`, 2026-10-21. No PBI: the developer asked for type that is easier to read for long administrative sessions, first on the coordinator dashboard and then "for the entire web app".
+
+**Changed.**
+1. Every component and view drops `uppercase`, `tracking-*`, `font-black` and `leading-[0.9]`; text below 12px (`text-[9px]`–`text-[11px]`, in `TopBar` and `VenueCalendar`) becomes `text-xs`. Big headings that had `leading-none` get `leading-tight` so descenders are not clipped. Colours, borders and shadows are unchanged.
+2. Labels that were typed in Title Case behind the uppercase style now read in sentence case: "Sign in", "My profile", "All roles", "Full name", "Organisation name", "Phone number", "Upcoming registrations", "Events attended", "Public events available", "Attendee dashboard", "Event organiser dashboard", "My events". Role names (Event Coordinator, Venue Staff, Technical Support) keep their capitals. Unit tests, e2e specs and the test-case docs that match these labels were updated.
+3. `BauhausEmptyState`'s title is `text-sm font-bold` in sentence case.
+4. `src/views/__tests__/typography.spec.js` scans every component and view and fails on any of the old classes, like `pagePadding.spec.js` does for page padding.
+5. Docs: `frontend/AGENTS.md` "Type" states the new rule and drops "uppercase" from the design prompt; `PROJECT_OVERVIEW` and `REQUIREMENTS` §6.21.1 record it as a team decision.
+
+**Decisions.** This replaces the original Bauhaus rule of uppercase, widely spaced labels (`PROJECT_OVERVIEW` design system). The developer chose to apply it app-wide rather than to one dashboard.
+
+**Verified.** Frontend 1,324 passed on this branch alone; `npm run build` succeeds. The conversion was a script over class tokens only; a check against `main` confirmed that the only other changes are the label rewrites, and three files whose multi-line class lists lost their indentation were restored. The coordinator dashboard, Events view, venue search and organiser dashboard were screenshotted in Chrome at 1440px and the coordinator Overview at 390px: no horizontal page scroll, text legible.
+
+**Not verified.** The browser e2e suite (its setup needs the Supabase CLI, which was not installed); a manual pass over the other screens, especially the venue calendar, where 12px text in small cells may crowd.
+
+### 4.81. Enabler — venue search heading in a grey filter card
+
+On `chore/venue-search-filter-card`, on top of §4.80, 2026-10-21. No PBI: a layout request from the developer.
+
+**Changed.** `VenueSearchView` loses its yellow "Venue catalogue / Find a venue" header card and the paragraph explaining the filters. The "Find a venue" heading now heads the filter card, which is a grey (`bg-muted`) section like the coordinator's Events filters, so the white fields stand out. The blue "Requesting a venue for…" card still sits above it when the page is opened from an event.
+
+**Verified.** `venueSearch.spec.js` checks that the page's `h1` sits in the grey filter card with the form and that the header copy is gone. Frontend 1,325 passed; build clean.
+
+**Not verified.** A manual look in a browser, including the order of the cards when the page is opened from an event.
+
+### 4.82. SCRUM-72 / 72-R — coordinator dashboard as a kanban status board (exact backlog record)
+
+On `chore/coordinator-status-kanban`, on top of §4.81, 2026-10-21. A layout rework of the dashboard §4.5 built, requested screen by screen by the developer; it changes how AC1 is shown, so both backlog rows are quoted. Rows read from the Product backlog sheet on 2026-10-21.
+
+| Field | 72 | 72-R |
+|---|---|---|
+| Title | Event Coordinator Dashboard | Reopened: Event Coordinator Dashboard |
+| Type | US: Core feature | US: Core feature |
+| Status | DONE 🥳 | DONE 🥳 |
+| Epic | User authorisation and authentication | User authorisation and authentication |
+| Sprint | 1 (8 September - 22 September) | 3 (6 October - 20 October) |
+| Estimate | 3 | 1 |
+| Priority | 3 | 1 |
+| Customer clarification | W7 CR-02, CR-05: reopened 08/10 as 72-R in Sprint 3 (show only assigned events and Needs alternative venue alerts). 72 stays Done in Sprint 1. | W7 CR-02, CR-05: reopened 08/10 from 72 (Done in Sprint 1, built before the Lead role and venue unavailability). Remaining work estimated at 1 point; confirm in planning poker. 72 stays Done in Sprint 1 so Sprint 1 velocity is unchanged. 20/10: AC2 is the single owner of the "Needs alternative venue" alert (removed from CR-95 AC3). |
+
+**User story, 72 (verbatim):**
+
+> As a Event coordinator, I want to be able to Access a dashboard showing pending requests, urgent alerts and schedule overviews, so that I can quickly prioritize day-to-day actions
+
+**Acceptance criteria, 72 (verbatim):**
+
+> AC1. Displays a list of incoming event requests requiring immediate action, requests awaiting initial approval/rejection, and items with newly received client clarification responses.
+> AC2. Displays status for each active event
+
+**User story, 72-R (verbatim):**
+
+> As a Event coordinator, I want to be able to See only my assigned events, with alerts for events that need a new venue, on my dashboard, so that I only act on my own events and can fix venue problems quickly
+
+**Acceptance criteria, 72-R (verbatim):**
+
+> AC1. [W7 CR-05] The dashboard shows only events assigned to me. Unassigned events and other coordinators' events are not shown.
+> AC2. [W7 CR-02] An event with a booking marked Affected shows a "Needs alternative venue" alert (CR-95 AC1).
+> AC3. The original 72 AC1-AC2 still pass.
+
+**Changed.**
+1. Overview: "Event status" is a kanban board, one column per active status with equal-height headers and its own scroll. Events needing the coordinator lead each column, red with their most urgent action as a badge (`orderBoardEvents`, ranked as §6.21.1 ranks the old action list); a column holding one gets a red header. Other cards are grey when the event is with someone else (returned, safety review) and green once confirmed (`boardEventTone`); a legend explains the colours.
+2. Removed from the Overview: the welcome header card, the "Needs your action" tiles and numbered list, and "Readiness gaps — next 14 days". The Events view lost its header card.
+3. Events view: Needs your action and In progress side by side, each showing four cards before it scrolls; each card is a whole-card link (`components/events/CoordinatorEventCard.vue`) in the board's colours, with action badge, flags and outstanding chips and a "More details →" cue. The filter card is grey.
+4. Past events (confirmed, dated before today in SGT; `groupCoordinatorEvents(cards, now).past`) and Rejected events get full-width sections on both tabs; past events leave the board.
+5. Backend: `GET /events/dashboard/coordinator` also returns `rejected_events` (`event_id`, `event_name`, `starts_at`), from the same assigned-to-me query, with no readiness or actions looked up for them.
+6. Shared helpers in `features/events/dashboard.js`: `mostUrgentActionByEvent` (now also used by `coordinatorEventCards`), `orderBoardEvents`, `boardEventTone`, `formatEventDateTime`, `flagLabel`, `BOARD_CARD_TONE_CLASSES`, `ACTION_BADGE_CLASSES`.
+7. Docs: REQUIREMENTS §6.21 and §6.21.1, IMPLEMENTATION_MAP, test cases TC-DASH-026–030 (TC-DASH-007 and 025 superseded; 003, 005, 006, 008, 009, 012, 019, 020, 022–024 rewritten), TC-AUTH-001, DEFECTS D55.
+
+**How it maps to the tickets.**
+- 72 AC1 is now met on the board rather than in a separate list: every event with an action item is red, at the top of its column, ranked by what it blocks. Given up: one order across all statuses, per-category counts, the action's description and the organiser's name on the Overview. Recorded as a **[Team decision]** in REQUIREMENTS §6.21.1. **72-R AC3 says the original 72 AC1–AC2 must still pass, so the PO should confirm this reading at review.**
+- 72 AC2: the board shows every active status with its events.
+- 72-R AC1: unchanged; the query is still scoped to the caller, and rejected events come from the same scope (TC-DASH-030 reads each one back as the coordinator).
+- 72-R AC2: the "Needs alternative venue" alert is a red card with that badge.
+- "Readiness gaps" was the team's reading of 72's "schedule overviews"; no AC required it, and story 90 will remind coordinators about upcoming events with incomplete arrangements.
+
+**Verified.** Tests were written first and failed for the expected reasons. Frontend 1,355 passed, backend 1,774 passed; build clean. Live API checks against a backend on port 8010: 59 of 60 passed ([run](test-cases/runs/2026-10-21-1731-api-db-b360f14.md)), including new TC-DASH-030 and TC-DASH-013–018. An earlier run ([run](test-cases/runs/2026-10-21-1726-api-db-b360f14.md)) failed TC-DASH-015 because the check did not yet allow `rejected_events`; the check was updated. The remaining failure, TC-SDEC-023 (500 instead of 404 on "Mark as revised" for a missing booking), is in untouched venue-booking code and passed on 2026-10-18; logged as DEFECTS D55. The Overview at 1440px and 390px and the Events view were screenshotted in Chrome: all five board columns fit at 1440px after narrowing them, and there is no horizontal page scroll.
+
+**Not verified.** The database live checks and the browser e2e suite (both need the Supabase CLI, which was not installed); the manual pass over TC-DASH-026–029 and phone width; the PO's acceptance of the AC1 change. Four frontend helpers are now used only by their tests (`readinessGaps`, `summariseActionItems`, the store's `prioritisedActions` and `readinessGaps`); removing them is a follow-up.

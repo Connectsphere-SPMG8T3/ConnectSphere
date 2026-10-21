@@ -44,11 +44,11 @@ function confirm() {
         aria-labelledby="resubmit-modal-title"
         class="w-full max-w-lg border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
       >
-        <h2 id="resubmit-modal-title" class="text-2xl font-black uppercase leading-tight tracking-tight">Resubmit this request?</h2>
+        <h2 id="resubmit-modal-title" class="text-2xl font-bold leading-tight">Resubmit this request?</h2>
         <p class="mt-4 text-base font-medium">
           "{{ props.eventName }}" goes back to your coordinator for review. Tell them what you changed.
         </p>
-        <label for="resubmit-note" class="mt-6 block text-xs font-bold uppercase tracking-widest text-ink/70">What changed (required)</label>
+        <label for="resubmit-note" class="mt-6 block text-xs font-bold text-ink/70">What changed (required)</label>
         <textarea
           id="resubmit-note"
           v-model="note"

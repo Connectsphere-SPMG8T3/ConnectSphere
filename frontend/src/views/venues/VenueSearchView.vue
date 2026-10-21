@@ -146,21 +146,12 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
 
 <template>
   <main class="py-12">
-    <BauhausCard background="yellow" accent="square" accent-color="bauhaus-red" class="mb-10">
-      <p class="text-xs font-bold uppercase tracking-widest opacity-80">Venue catalogue</p>
-      <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">Find a venue</h1>
-      <p class="mt-3 max-w-xl text-sm font-medium">
-        Enter the event's requirements. Every filter you set is strict; venues that miss one are listed separately with
-        the reason.
-      </p>
-    </BauhausCard>
-
     <BauhausCard v-if="route.query.event" background="blue" accent="none" class="mb-10 text-canvas" data-testid="booking-event-context">
       <p v-if="eventError" role="alert" class="text-sm font-bold">{{ eventError }}</p>
       <template v-else-if="bookingEvent">
-        <p class="text-xs font-bold uppercase tracking-widest opacity-80">Requesting a venue for</p>
-        <p class="mt-1 text-2xl font-black uppercase tracking-tight">{{ bookingEvent.name }}</p>
-        <p v-if="bookingSpace" class="mt-1 text-sm font-black uppercase tracking-widest">Space: {{ bookingSpace.label }}</p>
+        <p class="text-xs font-bold opacity-80">Requesting a venue for</p>
+        <p class="mt-1 text-2xl font-bold">{{ bookingEvent.name }}</p>
+        <p v-if="bookingSpace" class="mt-1 text-sm font-bold">Space: {{ bookingSpace.label }}</p>
         <p class="mt-1 text-sm font-medium">{{ eventPeriod }}</p>
         <p v-if="!canRequest" class="mt-3 text-sm font-bold">
           {{ venuePanelState(bookingEvent, bookingSpace).reason ?? "This space already has a venue." }}
@@ -170,15 +161,16 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
         </p>
         <RouterLink
           :to="{ name: 'coordinator-event', params: { id: bookingEvent.id } }"
-          class="mt-4 inline-block text-xs font-bold uppercase tracking-widest underline decoration-2 underline-offset-4"
+          class="mt-4 inline-block text-xs font-bold underline decoration-2 underline-offset-4"
         >
           Back to the event
         </RouterLink>
       </template>
-      <p v-else class="text-sm font-bold uppercase tracking-widest">Loading event…</p>
+      <p v-else class="text-sm font-bold">Loading event…</p>
     </BauhausCard>
 
-    <BauhausCard background="white" accent="none" class="mb-10">
+    <section class="mb-10 border-4 border-ink bg-muted p-5 shadow-hard" data-testid="venue-filters" aria-labelledby="find-a-venue">
+      <h1 id="find-a-venue" class="mb-6 text-3xl font-bold leading-tight sm:text-4xl">Find a venue</h1>
       <VenueCriteriaForm
         :criteria="venuesStore.criteria"
         :errors="venuesStore.fieldErrors"
@@ -186,21 +178,21 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
         @submit="venuesStore.search()"
         @reset="handleReset"
       />
-    </BauhausCard>
+    </section>
 
     <p
       v-if="venuesStore.error"
       role="alert"
-      class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+      class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
     >
       {{ venuesStore.error }}
     </p>
 
     <section v-if="venuesStore.hasSearched" aria-live="polite">
       <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <h2 class="text-2xl font-black uppercase tracking-tight">
+        <h2 class="text-2xl font-bold">
           {{ venuesStore.includedCount }} matching {{ venuesStore.includedCount === 1 ? "venue" : "venues" }}
-          <span v-if="!venuesStore.hasPeriod" class="block text-xs font-bold uppercase tracking-widest text-ink/70">
+          <span v-if="!venuesStore.hasPeriod" class="block text-xs font-bold text-ink/70">
             Add a date and time to check availability
           </span>
         </h2>
@@ -228,7 +220,7 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
       </div>
 
       <template v-if="venuesStore.showExcluded && venuesStore.excludedResults.length">
-        <h2 class="mb-6 mt-12 text-2xl font-black uppercase tracking-tight">Excluded venues</h2>
+        <h2 class="mb-6 mt-12 text-2xl font-bold">Excluded venues</h2>
         <div class="grid grid-cols-1 gap-6 opacity-90 lg:grid-cols-2">
           <VenueResultCard v-for="result in venuesStore.excludedResults" :key="result.venue.id" :result="result" />
         </div>

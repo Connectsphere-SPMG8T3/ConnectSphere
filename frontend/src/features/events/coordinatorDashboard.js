@@ -10,9 +10,10 @@
 import {
   ACTION_CATEGORY_KINDS,
   ACTIVE_COORDINATOR_STATUSES,
+  mostUrgentActionByEvent,
   outstandingReadiness,
-  prioritiseActionItems,
 } from "@/features/events/dashboard";
+import { getDateString } from "@/features/events/timezones";
 
 function normaliseText(value) {
   return String(value ?? "").trim().toLocaleLowerCase();
@@ -34,10 +35,7 @@ function statusRank(status) {
  * (ranked as the Overview ranks them) and its outstanding blocking arrangements.
  */
 export function coordinatorEventCards(activeEvents = [], actionItems = []) {
-  const actionByEvent = new Map();
-  for (const item of prioritiseActionItems(actionItems)) {
-    if (!actionByEvent.has(item.event_id)) actionByEvent.set(item.event_id, item.kind);
-  }
+  const actionByEvent = mostUrgentActionByEvent(actionItems);
 
   return activeEvents.map((event) => ({
     id: event.event_id,
@@ -47,6 +45,19 @@ export function coordinatorEventCards(activeEvents = [], actionItems = []) {
     flags: event.flags ?? [],
     actionKind: actionByEvent.get(event.event_id) ?? null,
     outstanding: outstandingReadiness(event),
+  }));
+}
+
+/** Cards for the coordinator's rejected events: closed, so nothing outstanding or waiting. */
+export function rejectedEventCards(rejectedEvents = []) {
+  return rejectedEvents.map((event) => ({
+    id: event.event_id,
+    name: event.event_name,
+    status: "rejected",
+    startsAt: event.starts_at,
+    flags: [],
+    actionKind: null,
+    outstanding: [],
   }));
 }
 
@@ -87,9 +98,26 @@ export function sortCoordinatorEvents(cards = [], { field = "date", direction = 
 }
 
 /** Events with an action waiting on the coordinator, and the rest. */
-export function groupCoordinatorEvents(cards = []) {
+/**
+ * A confirmed event whose date, in Singapore (REQUIREMENTS §4), is before
+ * today's, so one on today's date is not yet past however early it started.
+ * Undated events never are.
+ */
+function isPast(card, now) {
+  if (card.status !== "confirmed" || !Number.isFinite(instant(card.startsAt))) return false;
+  return getDateString(new Date(card.startsAt)) < getDateString(now);
+}
+
+/**
+ * Past confirmed events first go to `past`, whatever is waiting on them; the
+ * rest split by whether anything needs the coordinator.
+ */
+export function groupCoordinatorEvents(cards = [], now = new Date()) {
+  const past = cards.filter((card) => isPast(card, now));
+  const current = cards.filter((card) => !isPast(card, now));
   return {
-    needsAction: cards.filter((card) => card.actionKind),
-    inProgress: cards.filter((card) => !card.actionKind),
+    needsAction: current.filter((card) => card.actionKind),
+    inProgress: current.filter((card) => !card.actionKind),
+    past,
   };
 }

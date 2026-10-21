@@ -44,7 +44,7 @@ describe("ProfileView", () => {
       roles: ["attendee"],
     });
 
-    expect(el.textContent).not.toContain("All Roles");
+    expect(el.textContent).not.toContain("All roles");
   });
 
   it("lists every held role with human-readable labels for a multi-role account", async () => {
@@ -56,7 +56,7 @@ describe("ProfileView", () => {
       roles: ["event_coordinator", "venue_staff"],
     });
 
-    expect(el.textContent).toContain("All Roles");
+    expect(el.textContent).toContain("All roles");
     expect(el.textContent).toContain("Event Coordinator");
     expect(el.textContent).toContain("Venue Staff");
   });

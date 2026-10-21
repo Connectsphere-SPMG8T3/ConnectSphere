@@ -19,15 +19,15 @@ const emit = defineEmits(["replace"]);
 
 <template>
   <div class="mt-3 border-l-4 border-bauhaus-red pl-3" data-testid="venue-affected">
-    <p class="inline-block bg-bauhaus-red px-2 py-0.5 text-xs font-black uppercase tracking-widest text-canvas">
+    <p class="inline-block bg-bauhaus-red px-2 py-0.5 text-xs font-bold text-canvas">
       Needs alternative venue
     </p>
     <p v-if="reason" class="mt-2 text-sm font-medium">{{ reason }}</p>
     <div v-if="replacement" class="mt-3" data-testid="venue-replacement">
-      <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Replacement requested</p>
+      <p class="text-xs font-bold text-ink/70">Replacement requested</p>
       <p class="mt-1 text-sm font-bold">
         {{ replacement.venue_name ?? "Venue" }}
-        <span class="ml-2 border-2 border-ink bg-bauhaus-yellow px-2 py-0.5 text-xs font-black uppercase tracking-widest">
+        <span class="ml-2 border-2 border-ink bg-bauhaus-yellow px-2 py-0.5 text-xs font-bold">
           {{ BOOKING_STATUS_LABELS[replacement.status] ?? replacement.status }}
         </span>
       </p>

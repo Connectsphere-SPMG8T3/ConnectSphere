@@ -82,6 +82,30 @@ describe("coordinator dashboard store", () => {
     expect(store.readinessGaps({ now: new Date("2026-10-25T00:00:00Z") })).toHaveLength(1);
   });
 
+  it("keeps the rejected events, and clears them when a load fails", async () => {
+    signedInCoordinator();
+    const rejected = [{ event_id: "r1", event_name: "Turned Down", starts_at: "2026-10-30T11:00:00Z" }];
+    eventsApi.coordinatorDashboard.mockResolvedValue({ ...PAYLOAD, rejected_events: rejected });
+    const store = useCoordinatorDashboardStore();
+
+    await store.load();
+    expect(store.rejectedEvents).toEqual(rejected);
+
+    eventsApi.coordinatorDashboard.mockRejectedValue(new ApiError("Service unavailable", 503));
+    await store.load();
+    expect(store.rejectedEvents).toEqual([]);
+  });
+
+  it("reads a payload without rejected events as none", async () => {
+    signedInCoordinator();
+    eventsApi.coordinatorDashboard.mockResolvedValue(PAYLOAD);
+    const store = useCoordinatorDashboardStore();
+
+    await store.load();
+
+    expect(store.rejectedEvents).toEqual([]);
+  });
+
   it("treats a 404 as 'not built yet' and shows empty widgets without an error", async () => {
     // The events module has no `GET /events/dashboard/coordinator` route yet.
     // Until it ships, the dashboard must read as empty rather than broken.

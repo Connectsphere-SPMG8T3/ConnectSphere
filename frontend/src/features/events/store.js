@@ -12,14 +12,15 @@ import { useAuthStore } from "@/stores/auth";
  * Backing store for the Event Coordinator dashboard (SCRUM-72).
  *
  * Loads `GET /events/dashboard/coordinator` (`events.service.coordinator_dashboard`
- * in the backend), whose response shape is the state below: `action_items` and
- * `active_events`. The widgets were built against this contract before the
+ * in the backend), whose response shape is the state below: `action_items`,
+ * `active_events` and `rejected_events`. The widgets were built against this contract before the
  * endpoint existed, so they needed no change when it shipped.
  */
 export const useCoordinatorDashboardStore = defineStore("coordinatorDashboard", {
   state: () => ({
     actionItems: [],
     activeEvents: [],
+    rejectedEvents: [],
     isLoading: false,
     error: null,
     // False until a load has actually returned data. Distinguishes "the events
@@ -45,6 +46,7 @@ export const useCoordinatorDashboardStore = defineStore("coordinatorDashboard", 
     reset() {
       this.actionItems = [];
       this.activeEvents = [];
+      this.rejectedEvents = [];
       this.isAvailable = false;
     },
 
@@ -61,6 +63,7 @@ export const useCoordinatorDashboardStore = defineStore("coordinatorDashboard", 
         const payload = await auth.withSession((token) => eventsApi.coordinatorDashboard(token));
         this.actionItems = payload?.action_items ?? [];
         this.activeEvents = payload?.active_events ?? [];
+        this.rejectedEvents = payload?.rejected_events ?? [];
         this.isAvailable = true;
       } catch (err) {
         this.reset();

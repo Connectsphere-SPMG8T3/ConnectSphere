@@ -4,6 +4,7 @@ import {
   coordinatorEventCards,
   filterCoordinatorEvents,
   groupCoordinatorEvents,
+  rejectedEventCards,
   sortCoordinatorEvents,
 } from "@/features/events/coordinatorDashboard";
 
@@ -112,5 +113,61 @@ describe("groupCoordinatorEvents", () => {
 
     expect(groups.needsAction.map((card) => card.id)).toEqual(["b"]);
     expect(groups.inProgress.map((card) => card.id)).toEqual(["a"]);
+    expect(groups.past).toEqual([]);
+  });
+
+  // 22 Oct 2026, 09:00 in Singapore.
+  const NOW = new Date("2026-10-22T01:00:00Z");
+
+  it("moves confirmed events dated before today (Singapore) into past, out of the other groups", () => {
+    const cards = coordinatorEventCards(
+      [
+        event("yesterday", { status: "confirmed", starts_at: "2026-10-21T12:00:00Z" }), // 21 Oct, 8 pm SGT
+        event("flagged", { status: "confirmed", starts_at: "2026-10-01T02:00:00Z" }),
+        event("upcoming", { status: "confirmed", starts_at: "2026-11-01T02:00:00Z" }),
+      ],
+      [{ event_id: "flagged", kind: "needs_alternative_venue" }],
+    );
+
+    const groups = groupCoordinatorEvents(cards, NOW);
+
+    expect(groups.past.map((card) => card.id)).toEqual(["yesterday", "flagged"]);
+    expect(groups.needsAction).toEqual([]);
+    expect(groups.inProgress.map((card) => card.id)).toEqual(["upcoming"]);
+  });
+
+  it("keeps a confirmed event happening today in the active groups", () => {
+    // 22 Oct, 00:30 SGT: earlier than now, but the same Singapore date.
+    const cards = coordinatorEventCards([event("today", { status: "confirmed", starts_at: "2026-10-21T16:30:00Z" })]);
+
+    expect(groupCoordinatorEvents(cards, NOW).past).toEqual([]);
+  });
+
+  it("never treats an unconfirmed or undated event as past", () => {
+    const cards = coordinatorEventCards([
+      event("planning", { starts_at: "2026-10-01T02:00:00Z" }),
+      event("undated", { status: "confirmed", starts_at: null }),
+    ]);
+
+    const groups = groupCoordinatorEvents(cards, NOW);
+
+    expect(groups.past).toEqual([]);
+    expect(groups.inProgress.map((card) => card.id)).toEqual(["planning", "undated"]);
+  });
+});
+
+describe("rejectedEventCards", () => {
+  it("shapes rejected events like the other cards, with nothing outstanding or waiting", () => {
+    expect(rejectedEventCards([{ event_id: "r1", event_name: "Turned Down", starts_at: "2026-10-30T11:00:00Z" }])).toEqual([
+      {
+        id: "r1",
+        name: "Turned Down",
+        status: "rejected",
+        startsAt: "2026-10-30T11:00:00Z",
+        flags: [],
+        actionKind: null,
+        outstanding: [],
+      },
+    ]);
   });
 });

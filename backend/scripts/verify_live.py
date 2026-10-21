@@ -591,6 +591,20 @@ def _(ctx: Context) -> None:
     expect(not stray, f"action items for events not listed: {stray}")
 
 
+@check("TC-DASH-030", "Coordinator dashboard lists the caller's rejected events apart from active ones")
+def _(ctx: Context) -> None:
+    body = coordinator_dashboard(ctx)
+    rejected = {event["event_id"] for event in body["rejected_events"]}
+    overlap = rejected & {event["event_id"] for event in body["active_events"]}
+    expect(not overlap, f"events listed as both active and rejected: {overlap}")
+    headers = ctx.shared("event_coordinator").headers
+    for event_id in sorted(rejected)[:5]:
+        # Readable by the caller (so assigned to them) and really rejected.
+        response = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=headers)
+        expect_status(response, 200)
+        expect(response.json()["status"] == "rejected", f"{event_id} is listed as rejected but is {response.json()['status']}")
+
+
 @check("TC-DASH-014", "Every event under review is one action item; a returned one is none")
 def _(ctx: Context) -> None:
     body = coordinator_dashboard(ctx)
@@ -612,7 +626,7 @@ def _(ctx: Context) -> None:
 def _(ctx: Context) -> None:
     # Unassigned events are the Event Coordinator Lead's queue (REQUIREMENTS §6.5).
     body = coordinator_dashboard(ctx)
-    expect(set(body) == {"action_items", "active_events"}, f"unexpected fields: {sorted(body)}")
+    expect(set(body) == {"action_items", "active_events", "rejected_events"}, f"unexpected fields: {sorted(body)}")
 
 
 @check("TC-DASH-016", "An organiser can't read the coordinator dashboard")

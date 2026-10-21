@@ -52,7 +52,7 @@ const hours = computed(() => `${venue.value.opens_at.slice(0, 5)}–${venue.valu
     <div class="flex h-full flex-col gap-4">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 class="text-2xl font-black uppercase leading-none tracking-tight">
+          <h3 class="text-2xl font-bold leading-tight">
             <RouterLink :to="{ name: 'venue-detail', params: { id: venue.id } }" class="underline decoration-2 underline-offset-4">
               {{ venue.name }}
             </RouterLink>
@@ -63,7 +63,7 @@ const hours = computed(() => `${venue.value.opens_at.slice(0, 5)}–${venue.valu
           <SuitabilityBadge :suitability="result.suitability" />
           <span
             data-testid="availability-badge"
-            class="border-2 border-ink px-3 py-1 text-xs font-bold uppercase tracking-widest"
+            class="border-2 border-ink px-3 py-1 text-xs font-bold"
             :class="availabilityBadge.classes"
           >
             {{ availabilityBadge.text }}
@@ -72,15 +72,15 @@ const hours = computed(() => `${venue.value.opens_at.slice(0, 5)}–${venue.valu
       </div>
 
       <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Capacity</dt>
+        <dt class="text-xs font-bold text-ink/70">Capacity</dt>
         <dd class="font-medium">{{ venue.capacity }} pax</dd>
-        <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Hours</dt>
+        <dt class="text-xs font-bold text-ink/70">Hours</dt>
         <dd class="font-medium">{{ hours }}</dd>
-        <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Layouts</dt>
+        <dt class="text-xs font-bold text-ink/70">Layouts</dt>
         <dd class="font-medium">{{ layouts.length ? layouts.join(", ") : "—" }}</dd>
-        <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Facilities</dt>
+        <dt class="text-xs font-bold text-ink/70">Facilities</dt>
         <dd class="font-medium">{{ facilities.length ? facilities.join(", ") : "—" }}</dd>
-        <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Accessibility</dt>
+        <dt class="text-xs font-bold text-ink/70">Accessibility</dt>
         <dd class="font-medium">{{ accessibility.length ? accessibility.join(", ") : "None recorded" }}</dd>
       </dl>
 

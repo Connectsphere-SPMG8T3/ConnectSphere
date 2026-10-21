@@ -128,7 +128,7 @@ function emptyDetail(clearText) {
   <section aria-labelledby="booking-requests-heading">
     <h2
       id="booking-requests-heading"
-      class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl"
+      class="mb-1 text-2xl font-bold leading-tight sm:text-3xl"
     >
       Booking requests
     </h2>
@@ -144,7 +144,7 @@ function emptyDetail(clearText) {
       class="mb-6 border-4 border-ink bg-canvas p-4 shadow-hard"
       data-testid="affected-bookings"
     >
-      <h3 class="text-sm font-black uppercase tracking-widest text-bauhaus-red">Venue unavailable</h3>
+      <h3 class="text-sm font-bold text-bauhaus-red">Venue unavailable</h3>
       <p class="mt-1 text-xs font-medium text-ink/70">
         These bookings are flagged because their venue became unavailable. Open one to restore it once the venue is free.
       </p>
@@ -154,8 +154,8 @@ function emptyDetail(clearText) {
             :to="{ name: 'booking-request', params: { id: booking.id } }"
             class="flex flex-wrap items-baseline justify-between gap-2 border-l-4 border-bauhaus-red bg-surface py-2 pl-3 pr-2 active-press"
           >
-            <span class="font-black uppercase tracking-tight">{{ booking.event_name || formatEventReference(booking) }}</span>
-            <span class="text-xs font-bold uppercase tracking-widest text-ink/70">
+            <span class="font-bold">{{ booking.event_name || formatEventReference(booking) }}</span>
+            <span class="text-xs font-bold text-ink/70">
               {{ booking.venue_name }} · {{ formatPeriod(booking.period) }}
             </span>
           </RouterLink>
@@ -191,17 +191,17 @@ function emptyDetail(clearText) {
             class="flex flex-col gap-2 active-press"
           >
             <div class="flex flex-wrap items-baseline justify-between gap-4">
-              <span class="text-xl font-black uppercase leading-tight tracking-tight">
+              <span class="text-xl font-bold leading-tight">
                 {{ request.event_name || formatEventReference(request) }}
               </span>
-              <span class="text-xs font-bold uppercase tracking-widest text-ink/70">
+              <span class="text-xs font-bold text-ink/70">
                 {{ request.venue_name }} · {{ bookingStatusLabel(request.status) }}
               </span>
             </div>
             <span class="text-sm font-medium text-ink/75">
               {{ formatPeriod(request.period) }} · {{ request.coordinator_name || request.requested_by_name || "Coordinator unavailable" }}
             </span>
-            <span class="text-xs font-bold uppercase tracking-widest text-ink/55">
+            <span class="text-xs font-bold text-ink/55">
               Waiting {{ waitingDays(request) ?? "—" }} days
             </span>
             <span
@@ -216,13 +216,13 @@ function emptyDetail(clearText) {
             v-if="request.status === 'held'"
             class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t-2 border-ink/20 pt-3"
           >
-            <span class="text-xs font-bold uppercase tracking-widest" :data-testid="`hold-expiry-${request.id}`">
+            <span class="text-xs font-bold" :data-testid="`hold-expiry-${request.id}`">
               Expires {{ formatHoldExpiry(request.expires_at) ?? "—" }}
             </span>
             <button
               v-if="editingHoldId !== request.id"
               type="button"
-              class="text-xs font-black uppercase tracking-widest underline decoration-2 underline-offset-4"
+              class="text-xs font-bold underline decoration-2 underline-offset-4"
               @click="startExpiryChange(request)"
             >
               Change

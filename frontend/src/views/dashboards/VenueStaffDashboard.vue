@@ -204,11 +204,9 @@ function emptyDetail(clearText) {
         :key="tile.key"
         :href="tile.href"
         class="block"
-        :class="
-          tile.href
-            ? 'group transition-shadow hover:shadow-hard focus-visible:shadow-hard active-press'
-            : ''
-        "
+        :class="tile.href
+ ? 'group transition-shadow hover:shadow-hard focus-visible:shadow-hard active-press'
+ : ''"
       >
         <BauhausSummaryCard
           :label="tile.label"
@@ -222,7 +220,7 @@ function emptyDetail(clearText) {
             <!-- Opacity keeps the cue in the accessible name at rest. -->
             <span
               v-if="tile.href"
-              class="font-bold uppercase tracking-widest text-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              class="font-bold text-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
             >
               See the list ↓
             </span>
@@ -236,7 +234,7 @@ function emptyDetail(clearText) {
     </div>
 
     <section aria-labelledby="all-venues">
-        <h2 id="all-venues" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+        <h2 id="all-venues" class="mb-1 text-2xl font-bold leading-tight sm:text-3xl">
           All venues
         </h2>
         <!-- Not "my venues": staff work as one pool and allocation is not
@@ -255,7 +253,7 @@ function emptyDetail(clearText) {
             v-for="option in filterOptions"
             :key="option.key"
             type="button"
-            class="border-2 border-ink px-3 py-2 text-[10px] font-bold uppercase tracking-widest active-press"
+            class="border-2 border-ink px-3 py-2 text-xs font-bold active-press"
             :class="activeFilter === option.key ? 'bg-ink text-canvas' : 'bg-canvas text-ink'"
             :aria-pressed="activeFilter === option.key"
             @click="venueFilter = option.key"
@@ -277,13 +275,13 @@ function emptyDetail(clearText) {
               class="flex flex-wrap items-center justify-between gap-3 border-2 border-ink bg-canvas p-4 shadow-hard active-press sm:border-4"
             >
               <span class="flex flex-col">
-                <span class="text-base font-black uppercase leading-tight tracking-tighter">
+                <span class="text-base font-bold leading-tight">
                   {{ row.venue.name }}
                 </span>
                 <span class="mt-1 text-xs font-medium text-ink/60">{{ venueDetail(row) }}</span>
               </span>
               <span
-                class="shrink-0 px-3 py-1 text-[10px] font-bold uppercase tracking-widest"
+                class="shrink-0 px-3 py-1 text-xs font-bold"
                 :class="pillClasses[venueStatusMeta(row.status).tone]"
               >
                 {{ venueStatusMeta(row.status).label }}

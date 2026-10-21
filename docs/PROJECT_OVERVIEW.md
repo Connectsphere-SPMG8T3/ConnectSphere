@@ -126,7 +126,7 @@ A Supabase JWT's own `role` claim is the Postgres role (`authenticated`), not a 
 The frontend deliberately avoids generic UI-kit aesthetics in favour of a strict, opinionated system:
 
 - **Palette:** off-white canvas (`#F0F0F0`), stark black ink (`#121212`), and three primaries — red (`#D02020`), blue (`#1040C0`), yellow (`#F0C020`) — plus a muted grey (`#E0E0E0`).
-- **Typography:** `Outfit` (weights 400/500/700/900), headlines in uppercase `font-black tracking-tighter leading-[0.9]`, labels in `font-bold uppercase tracking-widest`.
+- **Typography:** `Outfit` (weights 400/500/700/900), set for long reading sessions since 2026-10-21: sentence case, normal letter spacing, nothing below 12px, `font-bold` as the heaviest weight (headlines `font-bold leading-tight`, labels `text-sm font-medium`). It replaced the original all-caps Bauhaus labels; `frontend/AGENTS.md` "Type" has the rule.
 - **Radii:** binary only — `rounded-none` or `rounded-full`. No soft corners anywhere.
 - **Shadows:** hard offset shadows (`shadow-hard` / `shadow-hard-lg`, mapped to `4px_4px_0px_0px_#121212` / `8px_8px_0px_0px_#121212`), with buttons pressing flat on `:active`.
 - **Components** (`frontend/src/components/common/`): `BauhausButton`, `BauhausCard` (with a geometric corner accent — circle, square, or triangle), `BauhausInput` (with validation error states), `Nav.vue` (the sidebar: brand mark, role badge, logout), plus the smaller shared pieces alongside them.

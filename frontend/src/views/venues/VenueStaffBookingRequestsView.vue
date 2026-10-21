@@ -26,8 +26,8 @@ onMounted(() => dashboard.load());
     <BauhausCard background="yellow" accent="none" class="mb-10">
       <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Venue Staff</p>
-          <h1 class="mt-2 text-3xl font-black uppercase leading-none tracking-tighter sm:text-4xl">
+          <p class="text-xs font-bold text-ink/70">Venue Staff</p>
+          <h1 class="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
             Booking requests
           </h1>
           <p class="mt-3 max-w-2xl text-sm font-medium">
@@ -36,7 +36,7 @@ onMounted(() => dashboard.load());
         </div>
         <RouterLink
           :to="{ name: 'dashboard-venue-staff' }"
-          class="border-2 border-ink bg-canvas px-4 py-3 text-center text-xs font-black uppercase tracking-widest shadow-hard active-press sm:border-4"
+          class="border-2 border-ink bg-canvas px-4 py-3 text-center text-xs font-bold shadow-hard active-press sm:border-4"
         >
           Back to dashboard
         </RouterLink>

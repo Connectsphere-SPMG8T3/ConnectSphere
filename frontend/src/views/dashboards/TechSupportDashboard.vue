@@ -318,7 +318,7 @@ function formatDate(value) {
               {{ tile.detail }}
               <span
                 v-if="tile.to"
-                class="font-bold uppercase tracking-widest text-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                class="font-bold text-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
               >
                 See the list →
               </span>
@@ -330,7 +330,7 @@ function formatDate(value) {
       <section class="mb-6" aria-labelledby="inventory-heading">
         <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 id="inventory-heading" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+            <h2 id="inventory-heading" class="mb-1 text-2xl font-bold leading-tight sm:text-3xl">
               Inventory &amp; status
             </h2>
             <p class="text-xs font-medium text-ink/60">Every piece of equipment, with the most reserved or in maintenance at any one moment in the window below.</p>
@@ -341,11 +341,11 @@ function formatDate(value) {
         </div>
 
         <div class="mb-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
+          <label class="flex flex-col gap-2 text-xs font-bold">
             Window start
             <input v-model="inventoryStartAt" type="datetime-local" :aria-invalid="inventoryWindowMessage ? 'true' : undefined" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" />
           </label>
-          <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
+          <label class="flex flex-col gap-2 text-xs font-bold">
             Window end
             <input v-model="inventoryEndAt" type="datetime-local" :aria-invalid="inventoryWindowMessage ? 'true' : undefined" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" />
           </label>
@@ -356,11 +356,11 @@ function formatDate(value) {
         <p data-testid="inventory-window" class="mb-4 text-sm font-bold" aria-live="polite">{{ inventoryWindowText }}</p>
 
         <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[1fr_14rem]">
-          <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
+          <label class="flex flex-col gap-2 text-xs font-bold">
             Search equipment
             <input v-model="inventorySearch" type="search" placeholder="Search by name" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" />
           </label>
-          <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
+          <label class="flex flex-col gap-2 text-xs font-bold">
             Status filter
             <select v-model="inventoryFilter" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4">
               <option value="all">All statuses</option>
@@ -372,14 +372,14 @@ function formatDate(value) {
           </label>
         </div>
 
-        <div v-if="inventoryLoading" class="flex items-center gap-3 border-2 border-ink bg-canvas p-4 text-sm font-bold uppercase tracking-widest text-ink/70 sm:border-4" role="status">
+        <div v-if="inventoryLoading" class="flex items-center gap-3 border-2 border-ink bg-canvas p-4 text-sm font-bold text-ink/70 sm:border-4" role="status">
           <span class="h-5 w-5 animate-spin rounded-full border-2 border-ink border-t-transparent" aria-hidden="true"></span>
           Loading inventory
         </div>
         <div v-else class="overflow-x-auto border-2 border-ink bg-canvas shadow-hard sm:border-4">
           <table class="w-full min-w-[48rem] text-left text-sm">
             <thead class="bg-ink text-canvas">
-              <tr class="text-xs uppercase tracking-widest">
+              <tr class="text-xs">
                 <th class="px-4 py-3">Equipment name</th>
                 <th class="px-4 py-3">Total stock</th>
                 <th class="px-4 py-3">Reserved</th>
@@ -390,15 +390,15 @@ function formatDate(value) {
             </thead>
             <tbody>
               <tr v-for="item in filteredInventory" :key="item.equipment_id" class="border-t-2 border-ink">
-                <td class="px-4 py-4 font-black uppercase tracking-tighter">{{ item.name }}</td>
+                <td class="px-4 py-4 font-bold">{{ item.name }}</td>
                 <td class="px-4 py-4">{{ item.total_quantity }}</td>
                 <td class="px-4 py-4">{{ item.reserved_quantity }}</td>
                 <td class="px-4 py-4">{{ item.maintenance_quantity }}</td>
-                <td class="px-4 py-4 font-black">{{ item.net_available }}</td>
-                <td class="px-4 py-4"><span class="inline-block border-2 border-ink px-3 py-1 text-[10px] font-bold uppercase tracking-widest" :class="inventoryStatus(item).classes">{{ inventoryStatus(item).label }}</span></td>
+                <td class="px-4 py-4 font-bold">{{ item.net_available }}</td>
+                <td class="px-4 py-4"><span class="inline-block border-2 border-ink px-3 py-1 text-xs font-bold" :class="inventoryStatus(item).classes">{{ inventoryStatus(item).label }}</span></td>
               </tr>
               <tr v-if="filteredInventory.length === 0">
-                <td colspan="6" class="px-4 py-8 text-center text-sm font-bold uppercase tracking-widest text-ink/60">No equipment matches this filter.</td>
+                <td colspan="6" class="px-4 py-8 text-center text-sm font-bold text-ink/60">No equipment matches this filter.</td>
               </tr>
             </tbody>
           </table>
@@ -407,22 +407,22 @@ function formatDate(value) {
 
       <div class="grid grid-cols-1 gap-6">
         <section aria-labelledby="maintenance-heading">
-          <h2 id="maintenance-heading" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+          <h2 id="maintenance-heading" class="mb-1 text-2xl font-bold leading-tight sm:text-3xl">
             Scheduled maintenance
           </h2>
           <p class="mb-4 text-xs font-medium text-ink/60">Oldest first, from the live equipment records.</p>
-          <div v-if="maintenanceLoading" class="flex items-center gap-3 border-2 border-ink bg-canvas p-4 text-sm font-bold uppercase tracking-widest text-ink/70 sm:border-4" role="status">
+          <div v-if="maintenanceLoading" class="flex items-center gap-3 border-2 border-ink bg-canvas p-4 text-sm font-bold text-ink/70 sm:border-4" role="status">
             <span class="h-5 w-5 animate-spin rounded-full border-2 border-ink border-t-transparent" aria-hidden="true"></span>
             Loading maintenance
           </div>
           <ul v-else-if="maintenanceItems.length" class="flex max-h-[28rem] flex-col gap-3 overflow-y-auto pb-1 pr-1">
             <li v-for="item in maintenanceItems" :key="item.maintenance_id" class="flex flex-col gap-2 border-2 border-ink bg-canvas p-4 shadow-hard sm:border-4">
               <div class="flex flex-wrap items-baseline justify-between gap-2">
-                <span class="text-base font-black uppercase leading-tight tracking-tighter">{{ item.equipment_name }}</span>
-                <span class="shrink-0 border-2 border-ink px-3 py-1 text-[10px] font-bold uppercase tracking-widest" :class="maintenanceStatusClass(item.status)">{{ item.status.replace("_", " ") }}</span>
+                <span class="text-base font-bold leading-tight">{{ item.equipment_name }}</span>
+                <span class="shrink-0 border-2 border-ink px-3 py-1 text-xs font-bold" :class="maintenanceStatusClass(item.status)">{{ item.status.replace("_", " ") }}</span>
               </div>
               <span class="text-sm font-medium text-ink/75">{{ item.reason || "No reason provided" }}</span>
-              <span class="text-xs font-bold uppercase tracking-widest text-ink/55">{{ formatDate(item.start_at) }} – {{ formatDate(item.end_at) }}</span>
+              <span class="text-xs font-bold text-ink/55">{{ formatDate(item.start_at) }} – {{ formatDate(item.end_at) }}</span>
             </li>
           </ul>
           <BauhausEmptyState
@@ -436,7 +436,7 @@ function formatDate(value) {
 
     <template v-else>
       <section class="mb-6" aria-labelledby="availability-heading">
-        <h2 id="availability-heading" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+        <h2 id="availability-heading" class="mb-1 text-2xl font-bold leading-tight sm:text-3xl">
           Event time window
         </h2>
         <p class="mb-4 text-xs font-medium text-ink/60">
@@ -444,11 +444,11 @@ function formatDate(value) {
         </p>
 
         <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
+          <label class="flex flex-col gap-2 text-xs font-bold">
             Start date and time
             <input v-model="startAt" type="datetime-local" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" />
           </label>
-          <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
+          <label class="flex flex-col gap-2 text-xs font-bold">
             End date and time
             <input v-model="endAt" type="datetime-local" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" />
           </label>
@@ -458,7 +458,7 @@ function formatDate(value) {
       <section class="mb-6" aria-labelledby="requested-heading">
         <div class="mb-4 flex items-end justify-between gap-4">
           <div>
-            <h2 id="requested-heading" class="mb-1 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+            <h2 id="requested-heading" class="mb-1 text-2xl font-bold leading-tight sm:text-3xl">
               Requested equipment
             </h2>
             <p class="text-xs font-medium text-ink/60">Add a row for each piece of equipment the event needs.</p>
@@ -468,7 +468,7 @@ function formatDate(value) {
 
         <ul class="flex flex-col gap-3">
           <li v-for="(item, index) in items" :key="index" class="grid grid-cols-1 gap-4 border-2 border-ink bg-canvas p-4 shadow-hard sm:grid-cols-[1fr_1fr_7rem_auto] sm:items-end sm:border-4">
-            <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
+            <label class="flex flex-col gap-2 text-xs font-bold">
               Equipment ID / type
               <select v-model="item.equipmentId" :disabled="!catalogue.length" class="border-2 border-ink bg-canvas px-3 py-3 text-sm font-medium outline-none focus:bg-bauhaus-yellow/20 disabled:opacity-60">
                 <option v-if="!catalogue.length" :value="null">{{ catalogueLoading ? "Loading equipment…" : "No equipment available" }}</option>
@@ -477,11 +477,11 @@ function formatDate(value) {
                 </option>
               </select>
             </label>
-            <label class="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest">
+            <label class="flex flex-col gap-2 text-xs font-bold">
               Needed
               <input v-model.number="item.quantityNeeded" type="number" min="1" class="border-2 border-ink bg-canvas px-3 py-3 text-sm font-medium outline-none focus:bg-bauhaus-yellow/20" />
             </label>
-            <button type="button" class="border-2 border-ink px-3 py-3 text-xs font-bold uppercase tracking-widest active-press hover:bg-bauhaus-red hover:text-canvas disabled:cursor-not-allowed disabled:opacity-40" :disabled="items.length === 1" @click="removeItem(index)">
+            <button type="button" class="border-2 border-ink px-3 py-3 text-xs font-bold active-press hover:bg-bauhaus-red hover:text-canvas disabled:cursor-not-allowed disabled:opacity-40" :disabled="items.length === 1" @click="removeItem(index)">
               Remove
             </button>
           </li>
@@ -501,16 +501,16 @@ function formatDate(value) {
 
       <section v-if="results" class="mt-10" aria-labelledby="result-heading">
         <div class="mb-4 flex flex-wrap items-end justify-between gap-4">
-          <h2 id="result-heading" class="text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+          <h2 id="result-heading" class="text-2xl font-bold leading-tight sm:text-3xl">
             Equipment status
           </h2>
-          <span class="border-2 border-ink px-4 py-2 text-xs font-bold uppercase tracking-widest" :class="results.sufficient ? pillClasses.green : pillClasses.red">{{ statusLabel }}</span>
+          <span class="border-2 border-ink px-4 py-2 text-xs font-bold" :class="results.sufficient ? pillClasses.green : pillClasses.red">{{ statusLabel }}</span>
         </div>
 
         <div class="overflow-x-auto border-2 border-ink bg-canvas shadow-hard sm:border-4">
           <table class="w-full min-w-[34rem] text-left text-sm">
             <thead class="bg-ink text-canvas">
-              <tr class="text-xs uppercase tracking-widest">
+              <tr class="text-xs">
                 <th class="px-4 py-3">Equipment name</th>
                 <th class="px-4 py-3">Needed</th>
                 <th class="px-4 py-3">Available</th>
@@ -519,10 +519,10 @@ function formatDate(value) {
             </thead>
             <tbody>
               <tr v-for="item in results.items" :key="item.equipment_id" class="border-t-2 border-ink">
-                <td class="px-4 py-4 font-black uppercase tracking-tighter">{{ item.name }}</td>
+                <td class="px-4 py-4 font-bold">{{ item.name }}</td>
                 <td class="px-4 py-4">{{ item.quantity_needed }}</td>
                 <td class="px-4 py-4">{{ item.quantity_available }}</td>
-                <td class="px-4 py-4 font-black uppercase" :class="item.sufficient ? 'text-bauhaus-green' : 'text-bauhaus-red'">{{ item.sufficient ? "Sufficient" : "Insufficient" }}</td>
+                <td class="px-4 py-4 font-bold" :class="item.sufficient ? 'text-bauhaus-green' : 'text-bauhaus-red'">{{ item.sufficient ? "Sufficient" : "Insufficient" }}</td>
               </tr>
             </tbody>
           </table>

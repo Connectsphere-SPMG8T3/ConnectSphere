@@ -62,7 +62,7 @@ function select(item) {
       <span
         v-if="store.count > 0"
         data-testid="notification-badge"
-        class="absolute -right-2 -top-2 flex h-5 min-w-[1.25rem] items-center justify-center border-2 border-ink bg-bauhaus-red px-1 text-[10px] font-black leading-none text-canvas"
+        class="absolute -right-2 -top-2 flex h-5 min-w-[1.25rem] items-center justify-center border-2 border-ink bg-bauhaus-red px-1 text-xs font-bold leading-none text-canvas"
         aria-hidden="true"
       >
         {{ badge }}
@@ -83,11 +83,11 @@ function select(item) {
       class="absolute right-0 top-full z-20 mt-3 w-72 max-w-[calc(100vw-2rem)] border-2 border-ink bg-surface shadow-hard sm:w-96 sm:border-4"
     >
       <div class="flex items-center justify-between gap-2 border-b-2 border-ink px-4 py-3">
-        <p class="text-xs font-black uppercase tracking-widest">Notifications</p>
+        <p class="text-xs font-bold">Notifications</p>
         <button
           v-if="store.count > 0"
           type="button"
-          class="border-2 border-ink bg-canvas px-2 py-1 text-[11px] font-bold uppercase tracking-widest active-press"
+          class="border-2 border-ink bg-canvas px-2 py-1 text-xs font-bold active-press"
           @click="store.markAllRead()"
         >
           Mark all as read
@@ -100,13 +100,13 @@ function select(item) {
 
       <p
         v-if="store.isLoading && store.items.length === 0"
-        class="px-4 py-3 text-xs font-bold uppercase tracking-widest text-ink/70"
+        class="px-4 py-3 text-xs font-bold text-ink/70"
       >
         Loading
       </p>
       <p
         v-else-if="!store.isLoading && !store.error && store.items.length === 0"
-        class="px-4 py-3 text-xs font-bold uppercase tracking-widest text-ink/70"
+        class="px-4 py-3 text-xs font-bold text-ink/70"
       >
         No notifications
       </p>
@@ -137,7 +137,7 @@ function select(item) {
               <span class="block text-sm text-ink" :class="item.read ? 'font-medium text-ink/70' : 'font-bold'">
                 {{ item.message }}
               </span>
-              <span class="mt-1 block text-[11px] font-bold uppercase tracking-widest text-ink/60">
+              <span class="mt-1 block text-xs font-bold text-ink/60">
                 {{ formatNotificationTime(item.created_at) }}
               </span>
             </span>
@@ -148,7 +148,7 @@ function select(item) {
       <button
         v-if="store.nextBefore"
         type="button"
-        class="block w-full border-t-2 border-ink px-4 py-3 text-xs font-bold uppercase tracking-widest active-press"
+        class="block w-full border-t-2 border-ink px-4 py-3 text-xs font-bold active-press"
         @click="store.loadMore()"
       >
         Older notifications

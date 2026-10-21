@@ -40,9 +40,9 @@ async function submit() {
 
 <template>
   <section aria-labelledby="discussion-title">
-    <h2 id="discussion-title" class="mb-6 text-2xl font-black uppercase tracking-tight">Discussion</h2>
+    <h2 id="discussion-title" class="mb-6 text-2xl font-bold">Discussion</h2>
 
-    <p v-if="store.isLoading && !store.comments.length" class="text-sm font-bold uppercase tracking-widest text-ink/70">
+    <p v-if="store.isLoading && !store.comments.length" class="text-sm font-bold text-ink/70">
       Loading comments…
     </p>
     <BauhausEmptyState
@@ -53,7 +53,7 @@ async function submit() {
     <ol v-else class="space-y-4">
       <li v-for="comment in store.comments" :key="comment.id" class="border-l-4 border-ink pl-4">
         <p class="text-xs font-bold text-ink/70">
-          <span class="font-black uppercase tracking-wide text-ink">{{ comment.author?.full_name ?? "Unknown user" }}</span>
+          <span class="font-bold text-ink">{{ comment.author?.full_name ?? "Unknown user" }}</span>
           <template v-if="comment.author?.role"> · {{ ROLE_LABELS[comment.author.role] ?? comment.author.role }}</template>
           · {{ formatter.format(new Date(comment.created_at)) }}
         </p>
@@ -70,7 +70,7 @@ async function submit() {
     </p>
 
     <form v-if="isOpen" class="mt-6" @submit.prevent="submit">
-      <label for="comment-body" class="block text-xs font-bold uppercase tracking-widest text-ink/70">Add a comment</label>
+      <label for="comment-body" class="block text-xs font-bold text-ink/70">Add a comment</label>
       <textarea
         id="comment-body"
         v-model="draft"

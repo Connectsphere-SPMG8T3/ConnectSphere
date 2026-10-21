@@ -6,8 +6,12 @@ import {
   STATUS_DESCRIPTIONS,
   STATUS_LABELS,
   actionKindMeta,
+  boardEventTone,
+  flagLabel,
+  formatEventDateTime,
   countByStatus,
   groupActiveEventsByStatus,
+  orderBoardEvents,
   outstandingReadiness,
   prioritiseActionItems,
   readinessGaps,
@@ -318,5 +322,99 @@ describe("readiness gaps (schedule overview)", () => {
     expect(readinessGaps(events, { now: NOW, days: 14 }).map((event) => event.event_id)).toEqual([
       "boundary",
     ]);
+  });
+});
+
+describe("orderBoardEvents", () => {
+  const soon = activeEvent({ event_id: "soon", starts_at: "2026-10-10T02:00:00Z" });
+  const later = activeEvent({ event_id: "later", starts_at: "2026-11-20T02:00:00Z" });
+  const latest = activeEvent({ event_id: "latest", starts_at: "2026-12-01T02:00:00Z" });
+  const events = [later, soon, latest];
+
+  it("orders by event date, soonest first, when nothing needs attention", () => {
+    const ordered = orderBoardEvents(events);
+
+    expect(ordered.map((event) => event.event_id)).toEqual(["soon", "later", "latest"]);
+    expect(ordered.every((event) => event.topAction === null)).toBe(true);
+  });
+
+  it("puts events needing attention first, most urgent kind first, then the rest by date", () => {
+    const items = [
+      actionItem({ event_id: "latest", kind: "awaiting_review" }),
+      actionItem({ event_id: "later", kind: "needs_alternative_venue" }),
+    ];
+
+    const ordered = orderBoardEvents(events, items);
+
+    expect(ordered.map((event) => event.event_id)).toEqual(["later", "latest", "soon"]);
+  });
+
+  it("ranks an event by its most urgent item and breaks equal urgency by date", () => {
+    const items = [
+      actionItem({ event_id: "latest", kind: "booking_decision" }),
+      actionItem({ event_id: "latest", kind: "cancellation_request" }),
+      actionItem({ event_id: "later", kind: "cancellation_request" }),
+    ];
+
+    const ordered = orderBoardEvents(events, items);
+
+    expect(ordered.map((event) => event.event_id)).toEqual(["later", "latest", "soon"]);
+    expect(ordered.map((event) => event.topAction)).toEqual(["cancellation_request", "cancellation_request", null]);
+  });
+
+  it("sorts an unknown action kind after the known ones but before no action", () => {
+    const items = [
+      actionItem({ event_id: "soon", kind: "something_new" }),
+      actionItem({ event_id: "latest", kind: "equipment_decision" }),
+    ];
+
+    const ordered = orderBoardEvents(events, items);
+
+    expect(ordered.map((event) => event.event_id)).toEqual(["latest", "soon", "later"]);
+  });
+
+  it("does not mutate the events it is given", () => {
+    const input = [...events];
+
+    orderBoardEvents(input, [actionItem({ event_id: "latest" })]);
+
+    expect(input).toEqual(events);
+  });
+});
+
+describe("boardEventTone", () => {
+  it("is attention for any event that needs the coordinator, whatever its status", () => {
+    for (const status of ACTIVE_COORDINATOR_STATUSES) {
+      expect(boardEventTone({ status, topAction: "needs_alternative_venue" })).toBe("attention");
+    }
+  });
+
+  it("is waiting where the event is with someone else: the organiser or the Safety Officer", () => {
+    expect(boardEventTone({ status: "returned", topAction: null })).toBe("waiting");
+    expect(boardEventTone({ status: "safety_review", topAction: null })).toBe("waiting");
+  });
+
+  it("is done for a confirmed event and plain in the coordinator's own stages", () => {
+    expect(boardEventTone({ status: "confirmed", topAction: null })).toBe("done");
+    expect(boardEventTone({ status: "under_review", topAction: null })).toBe("plain");
+    expect(boardEventTone({ status: "planning" })).toBe("plain");
+  });
+});
+
+describe("formatEventDateTime", () => {
+  it("shows an instant in Singapore time", () => {
+    expect(formatEventDateTime("2026-11-12T02:00:00Z")).toBe("12 Nov 2026, 10:00 am");
+  });
+
+  it("says the date is to be confirmed when it is missing or unreadable", () => {
+    expect(formatEventDateTime(null)).toBe("Date to be confirmed");
+    expect(formatEventDateTime("not a date")).toBe("Date to be confirmed");
+  });
+});
+
+describe("flagLabel", () => {
+  it("turns a flag key into a sentence-case label", () => {
+    expect(flagLabel("venue_affected")).toBe("Venue affected");
+    expect(flagLabel("technical_issue")).toBe("Technical issue");
   });
 });

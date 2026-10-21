@@ -231,7 +231,7 @@ watch(() => route.params.id, () => {
   <main class="py-12">
     <RouterLink
       :to="{ name: 'venue-search' }"
-      class="mb-8 inline-block text-xs font-bold uppercase tracking-widest underline decoration-2 underline-offset-4"
+      class="mb-8 inline-block text-xs font-bold underline decoration-2 underline-offset-4"
     >
       ← Back to venue search
     </RouterLink>
@@ -239,7 +239,7 @@ watch(() => route.params.id, () => {
     <p
       v-if="venuesStore.error && !venue"
       role="alert"
-      class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+      class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
     >
       {{ venuesStore.error }}
     </p>
@@ -249,13 +249,13 @@ watch(() => route.params.id, () => {
       <VenueGallery :slides="slides" :venue-name="venue.name" data-testid="venue-gallery" />
 
       <BauhausCard background="blue" accent="circle" accent-color="bauhaus-yellow" class="mb-8">
-        <p class="text-xs font-bold uppercase tracking-widest opacity-80">
+        <p class="text-xs font-bold opacity-80">
           {{ venue.is_active ? "Venue" : "Inactive venue" }}
         </p>
-        <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">{{ venue.name }}</h1>
+        <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">{{ venue.name }}</h1>
         <p class="mt-3 text-sm font-medium">{{ venue.location }}</p>
         <p v-if="venue.description" class="mt-3 max-w-xl text-sm font-medium opacity-90">{{ venue.description }}</p>
-        <p class="mt-4 text-xs font-bold uppercase tracking-widest text-ink/70">
+        <p class="mt-4 text-xs font-bold text-ink/70">
           Last updated {{ lastUpdated.at }} · by {{ lastUpdated.by }}
         </p>
         <div
@@ -263,20 +263,20 @@ watch(() => route.params.id, () => {
           data-testid="venue-inactive-banner"
           class="mt-4 border-2 border-ink bg-canvas px-4 py-3 text-ink shadow-hard sm:border-4"
         >
-          <p class="text-xs font-bold uppercase tracking-widest">Inactive: {{ inactiveReasonLabel(venue.inactive_reason) }}</p>
+          <p class="text-xs font-bold">Inactive: {{ inactiveReasonLabel(venue.inactive_reason) }}</p>
           <p v-if="venue.inactive_note" class="mt-1 text-sm font-medium">{{ venue.inactive_note }}</p>
         </div>
         <div v-if="canEdit" class="mt-4 flex flex-wrap gap-3">
           <RouterLink
             :to="{ name: 'venue-edit', params: { id: venue.id } }"
-            class="inline-block border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold uppercase tracking-widest text-ink shadow-hard active-press sm:border-4"
+            class="inline-block border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard active-press sm:border-4"
           >
             Edit venue
           </RouterLink>
           <button
             v-if="venue.is_active"
             type="button"
-            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold uppercase tracking-widest text-ink shadow-hard active-press sm:border-4"
+            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard active-press sm:border-4"
             @click="openDeactivate"
           >
             Deactivate venue
@@ -284,14 +284,14 @@ watch(() => route.params.id, () => {
           <button
             v-else
             type="button"
-            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold uppercase tracking-widest text-ink shadow-hard active-press sm:border-4"
+            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard active-press sm:border-4"
             @click="reactivateOpen = true"
           >
             Reactivate venue
           </button>
           <button
             type="button"
-            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold uppercase tracking-widest text-ink shadow-hard active-press sm:border-4"
+            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard active-press sm:border-4"
             @click="openBlock"
           >
             Block venue
@@ -351,7 +351,7 @@ watch(() => route.params.id, () => {
           :aria-selected="activeTab === tab.key ? 'true' : 'false'"
           :aria-controls="`panel-${tab.key}`"
           :tabindex="activeTab === tab.key ? 0 : -1"
-          class="border-2 border-ink px-4 py-2 text-xs font-bold uppercase tracking-widest active-press"
+          class="border-2 border-ink px-4 py-2 text-xs font-bold active-press"
           :class="activeTab === tab.key ? 'bg-ink text-canvas shadow-hard' : 'bg-canvas text-ink'"
           @click="activeTab = tab.key"
         >
@@ -367,24 +367,24 @@ watch(() => route.params.id, () => {
         background="white"
         accent="none"
       >
-        <h2 class="mb-4 text-lg font-black uppercase tracking-tight">Capacity &amp; hours</h2>
+        <h2 class="mb-4 text-lg font-bold">Capacity &amp; hours</h2>
         <dl class="grid grid-cols-2 gap-y-2 text-sm">
-          <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Capacity</dt>
+          <dt class="text-xs font-bold text-ink/70">Capacity</dt>
           <dd class="font-medium">{{ venue.capacity }} pax</dd>
-          <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Open</dt>
+          <dt class="text-xs font-bold text-ink/70">Open</dt>
           <dd class="font-medium">{{ venue.opens_at.slice(0, 5) }}–{{ venue.closes_at.slice(0, 5) }}</dd>
-          <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Default setup</dt>
+          <dt class="text-xs font-bold text-ink/70">Default setup</dt>
           <dd class="font-medium">{{ venue.setup_minutes }} minutes</dd>
-          <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Default turnaround</dt>
+          <dt class="text-xs font-bold text-ink/70">Default turnaround</dt>
           <dd class="font-medium">{{ venue.turnaround_minutes }} minutes</dd>
         </dl>
         <p class="mt-4 text-sm font-medium">Defaults apply to new booking requests only. Existing bookings keep their own times.</p>
-        <h3 class="mb-2 mt-6 text-xs font-bold uppercase tracking-widest text-ink/70">Layouts</h3>
+        <h3 class="mb-2 mt-6 text-xs font-bold text-ink/70">Layouts</h3>
         <ul class="flex flex-wrap gap-2">
           <li
             v-for="entry in venue.layouts"
             :key="entry.layout"
-            class="border-2 border-ink bg-bauhaus-yellow px-3 py-1 text-xs font-bold uppercase tracking-wide"
+            class="border-2 border-ink bg-bauhaus-yellow px-3 py-1 text-xs font-bold"
           >
             {{ layoutLabels[entry.layout] ?? entry.layout }}
             <span v-if="entry.capacity_for_layout">· {{ entry.capacity_for_layout }} pax</span>
@@ -401,28 +401,28 @@ watch(() => route.params.id, () => {
         background="white"
         accent="none"
       >
-        <h2 class="mb-4 text-lg font-black uppercase tracking-tight">Facilities &amp; access</h2>
-        <h3 class="mb-2 text-xs font-bold uppercase tracking-widest text-ink/70">Facilities</h3>
+        <h2 class="mb-4 text-lg font-bold">Facilities &amp; access</h2>
+        <h3 class="mb-2 text-xs font-bold text-ink/70">Facilities</h3>
         <ul class="mb-6 flex flex-wrap gap-2">
-          <li v-for="f in venue.facilities" :key="f" class="border-2 border-ink px-3 py-1 text-xs font-bold uppercase tracking-wide">
+          <li v-for="f in venue.facilities" :key="f" class="border-2 border-ink px-3 py-1 text-xs font-bold">
             {{ facilityLabels[f] ?? f }}
           </li>
           <li v-if="!venue.facilities.length" class="text-sm font-medium">None recorded</li>
         </ul>
-        <h3 class="mb-2 text-xs font-bold uppercase tracking-widest text-ink/70">Accessibility</h3>
+        <h3 class="mb-2 text-xs font-bold text-ink/70">Accessibility</h3>
         <ul class="flex flex-wrap gap-2">
           <li
             v-for="a in venue.accessibility_features"
             :key="a"
-            class="border-2 border-ink px-3 py-1 text-xs font-bold uppercase tracking-wide"
+            class="border-2 border-ink px-3 py-1 text-xs font-bold"
           >
             {{ accessibilityLabels[a] ?? a }}
           </li>
           <li v-if="!venue.accessibility_features.length" class="text-sm font-medium">None recorded</li>
         </ul>
         <dl class="mt-6 space-y-4 text-sm">
-          <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Emergency access</dt><dd class="mt-2 whitespace-pre-wrap break-words font-medium">{{ venue.emergency_access ?? 'Not recorded' }}</dd></div>
-          <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Restrictions</dt><dd class="mt-2 whitespace-pre-wrap break-words font-medium">{{ venue.restrictions ?? 'Not recorded' }}</dd></div>
+          <div><dt class="text-xs font-bold text-ink/70">Emergency access</dt><dd class="mt-2 whitespace-pre-wrap break-words font-medium">{{ venue.emergency_access ?? 'Not recorded' }}</dd></div>
+          <div><dt class="text-xs font-bold text-ink/70">Restrictions</dt><dd class="mt-2 whitespace-pre-wrap break-words font-medium">{{ venue.restrictions ?? 'Not recorded' }}</dd></div>
         </dl>
       </BauhausCard>
 
@@ -436,8 +436,8 @@ watch(() => route.params.id, () => {
         data-testid="upcoming-bookings"
       >
         <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 class="text-lg font-black uppercase tracking-tight">Upcoming bookings</h2>
-          <p class="text-xs font-bold uppercase tracking-widest text-ink/70">
+          <h2 class="text-lg font-bold">Upcoming bookings</h2>
+          <p class="text-xs font-bold text-ink/70">
             {{ upcomingBookingCount }} upcoming {{ upcomingBookingCount === 1 ? "booking" : "bookings" }}
           </p>
         </div>
@@ -468,7 +468,7 @@ watch(() => route.params.id, () => {
               :aria-selected="activeGroup === group.key ? 'true' : 'false'"
               :aria-controls="`panel-group-${group.key}`"
               :tabindex="activeGroup === group.key ? 0 : -1"
-              class="px-3 py-1.5 text-xs font-bold uppercase tracking-wide active-press"
+              class="px-3 py-1.5 text-xs font-bold active-press"
               :class="[pillClasses[group.tone], activeGroup === group.key ? 'shadow-hard' : 'opacity-60']"
               @click="activeGroup = group.key"
             >
@@ -489,7 +489,7 @@ watch(() => route.params.id, () => {
                 :key="booking.id"
                 class="flex flex-wrap items-center gap-x-3 gap-y-1 border-2 border-ink px-3 py-2"
               >
-                <span class="font-bold uppercase tracking-wide">{{ formatEventReference(booking) }}</span>
+                <span class="font-bold">{{ formatEventReference(booking) }}</span>
                 <span class="font-medium">{{ formatPeriod(booking.period) }}</span>
               </li>
             </ul>
@@ -507,13 +507,13 @@ watch(() => route.params.id, () => {
         accent="none"
         data-testid="upcoming-blocks"
       >
-        <h2 class="mb-4 text-lg font-black uppercase tracking-tight">Blocks</h2>
+        <h2 class="mb-4 text-lg font-bold">Blocks</h2>
         <p class="mb-4 text-xs font-medium text-ink/70">
           Singapore time. Periods venue staff have made unbookable, from now on.
         </p>
         <ul class="flex flex-col gap-2 text-sm">
           <li v-for="block in venue.upcoming_blocks" :key="block.id" class="flex flex-wrap items-center gap-3">
-            <span class="border-2 border-ink bg-bauhaus-red px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-canvas">
+            <span class="border-2 border-ink bg-bauhaus-red px-2 py-0.5 text-xs font-bold text-canvas">
               {{ blockReasonLabel(block.reason) }}
             </span>
             <span class="font-medium">{{ formatPeriod(block.period) }}</span>
@@ -532,7 +532,7 @@ watch(() => route.params.id, () => {
         accent="none"
         data-testid="edit-history"
       >
-        <h2 class="mb-4 text-lg font-black uppercase tracking-tight">History</h2>
+        <h2 class="mb-4 text-lg font-bold">History</h2>
         <p class="mb-4 text-xs font-medium text-ink/70">Every saved edit to this venue's details, newest first.</p>
 
         <BauhausEmptyState
@@ -542,7 +542,7 @@ watch(() => route.params.id, () => {
         />
         <ul v-else class="flex flex-col gap-3 text-sm">
           <li v-for="{ entry, diff } in historyEntries" :key="entry.id" class="border-2 border-ink px-3 py-2">
-            <p class="font-bold uppercase tracking-wide">
+            <p class="font-bold">
               {{ formatInstant(entry.at) }} · {{ entry.actor?.full_name ?? "Unknown user" }}
             </p>
             <ul class="mt-2 flex flex-col gap-1">

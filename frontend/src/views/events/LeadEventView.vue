@@ -72,7 +72,7 @@ async function reassign() {
     <p class="mb-6">
       <RouterLink
         :to="{ name: 'dashboard-coordinator-lead' }"
-        class="text-xs font-bold uppercase tracking-widest underline decoration-2 underline-offset-4"
+        class="text-xs font-bold underline decoration-2 underline-offset-4"
       >
         Back to dashboard
       </RouterLink>
@@ -81,14 +81,14 @@ async function reassign() {
     <p
       v-if="store.error"
       role="alert"
-      class="mb-8 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+      class="mb-8 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
     >
       {{ store.error }}
     </p>
     <p
       v-else-if="!store.hasSettled"
       role="status"
-      class="mb-8 border-2 border-ink bg-canvas px-4 py-3 text-sm font-bold uppercase tracking-wide shadow-hard sm:border-4"
+      class="mb-8 border-2 border-ink bg-canvas px-4 py-3 text-sm font-bold shadow-hard sm:border-4"
     >
       Loading event...
     </p>
@@ -102,44 +102,44 @@ async function reassign() {
 
       <template v-else>
         <BauhausCard background="yellow" accent="none" class="mb-8">
-          <p class="text-xs font-bold uppercase tracking-widest text-ink/70">
+          <p class="text-xs font-bold text-ink/70">
             {{ STATUS_LABELS[event.status] }}
           </p>
-          <h1 class="mt-2 text-3xl font-black uppercase leading-none tracking-tighter sm:text-4xl">
+          <h1 class="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
             {{ event.event_name }}
           </h1>
           <dl class="mt-5 grid gap-4 text-sm font-medium sm:grid-cols-2">
             <div>
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Date</dt>
+              <dt class="text-xs font-bold text-ink/70">Date</dt>
               <dd>{{ formatDate(event.starts_at) }}</dd>
             </div>
             <div>
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Organiser</dt>
+              <dt class="text-xs font-bold text-ink/70">Organiser</dt>
               <dd>{{ event.organiser_name ?? "Unknown" }}</dd>
             </div>
             <div>
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Coordinator</dt>
+              <dt class="text-xs font-bold text-ink/70">Coordinator</dt>
               <dd>{{ event.coordinator?.full_name ?? "Unassigned" }}</dd>
             </div>
             <div v-if="event.expected_attendance != null">
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Expected attendance</dt>
+              <dt class="text-xs font-bold text-ink/70">Expected attendance</dt>
               <dd>{{ event.expected_attendance }}</dd>
             </div>
             <div v-if="event.purpose" class="sm:col-span-2">
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Purpose</dt>
+              <dt class="text-xs font-bold text-ink/70">Purpose</dt>
               <dd>{{ event.purpose }}</dd>
             </div>
           </dl>
         </BauhausCard>
 
         <section class="border-4 border-ink bg-canvas p-5 shadow-hard" aria-labelledby="reassign-heading">
-          <h2 id="reassign-heading" class="text-2xl font-black uppercase tracking-tight">
+          <h2 id="reassign-heading" class="text-2xl font-bold">
             {{ isQueued ? "Assign" : "Reassign" }} coordinator
           </h2>
           <p
             v-if="store.reassignError"
             role="alert"
-            class="mt-4 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas"
+            class="mt-4 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas"
           >
             {{ store.reassignError }}
           </p>

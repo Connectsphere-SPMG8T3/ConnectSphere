@@ -95,25 +95,25 @@ async function submit() {
 
 <template>
   <section aria-labelledby="equipment-request-title">
-    <h2 id="equipment-request-title" class="mb-2 text-2xl font-black uppercase tracking-tight">Equipment request</h2>
+    <h2 id="equipment-request-title" class="mb-2 text-2xl font-bold">Equipment request</h2>
     <p class="mb-6 text-sm font-medium text-ink/70">Lines go to Technical Support as Pending. They check availability for the event's dates.</p>
 
     <dl v-if="store.technicalStatus" class="mb-6 grid gap-3 border-2 border-ink p-4 sm:grid-cols-2">
       <div>
-        <dt class="text-xs font-bold uppercase tracking-widest">Technical status</dt>
+        <dt class="text-xs font-bold">Technical status</dt>
         <dd class="mt-1">
-          <span class="inline-block border-2 border-ink px-3 py-1 text-[10px] font-bold uppercase tracking-widest" :class="TECHNICAL_STATUS_BADGE_CLASSES[store.technicalStatus]">
+          <span class="inline-block border-2 border-ink px-3 py-1 text-xs font-bold" :class="TECHNICAL_STATUS_BADGE_CLASSES[store.technicalStatus]">
             {{ TECHNICAL_STATUS_LABELS[store.technicalStatus] ?? store.technicalStatus }}
           </span>
         </dd>
       </div>
       <div v-if="hasLiveLines(store.lines)">
-        <dt class="text-xs font-bold uppercase tracking-widest">Exits and walkways clear</dt>
+        <dt class="text-xs font-bold">Exits and walkways clear</dt>
         <dd class="mt-1 text-sm">{{ exitConfirmationText(store.exitConfirmation) }}</dd>
       </div>
     </dl>
 
-    <p v-if="store.isLoading && !store.lines.length" class="text-sm font-bold uppercase tracking-widest text-ink/70" role="status">
+    <p v-if="store.isLoading && !store.lines.length" class="text-sm font-bold text-ink/70" role="status">
       Loading equipment…
     </p>
     <p v-else-if="store.error" role="alert" class="border-2 border-ink bg-bauhaus-red px-3 py-2 text-sm font-bold text-canvas">
@@ -127,8 +127,8 @@ async function submit() {
     <ul v-else class="space-y-3">
       <li v-for="line in store.lines" :key="line.id" class="border-2 border-ink p-4">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
-          <span class="font-black uppercase tracking-tight">{{ line.equipment_name }} <span class="font-bold">× {{ line.quantity }}</span></span>
-          <span class="border-2 border-ink px-3 py-1 text-[10px] font-bold uppercase tracking-widest" :class="STATUS_BADGE_CLASSES[line.status]">
+          <span class="font-bold">{{ line.equipment_name }} <span class="font-bold">× {{ line.quantity }}</span></span>
+          <span class="border-2 border-ink px-3 py-1 text-xs font-bold" :class="STATUS_BADGE_CLASSES[line.status]">
             {{ REQUEST_STATUS_LABELS[line.status] ?? line.status }}
           </span>
         </div>
@@ -147,9 +147,9 @@ async function submit() {
     </ul>
 
     <form v-if="isOpen" class="mt-8 space-y-6" novalidate @submit.prevent="submit">
-      <h3 class="text-sm font-bold uppercase tracking-widest">Add items</h3>
+      <h3 class="text-sm font-bold">Add items</h3>
       <fieldset v-for="(line, index) in draft" :key="index" class="min-w-0 space-y-4 border-2 border-ink p-4">
-        <legend class="px-1 text-xs font-bold uppercase tracking-widest">Item {{ index + 1 }}</legend>
+        <legend class="px-1 text-xs font-bold">Item {{ index + 1 }}</legend>
         <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_8rem]">
           <div class="min-w-0">
             <BauhausSelect
@@ -160,7 +160,7 @@ async function submit() {
               placeholder="Choose an item"
               :options="options"
             />
-            <p v-if="duplicateMessages[index]" class="mt-2 text-xs font-bold uppercase tracking-wide text-bauhaus-red">
+            <p v-if="duplicateMessages[index]" class="mt-2 text-xs font-bold text-bauhaus-red">
               {{ duplicateMessages[index] }}
             </p>
           </div>
@@ -177,8 +177,8 @@ async function submit() {
           />
         </div>
         <div>
-          <label :for="`technical-requirements-${index}`" class="block text-xs font-bold uppercase tracking-widest">
-            Technical requirements <span class="font-medium normal-case tracking-normal text-ink/60">(optional)</span>
+          <label :for="`technical-requirements-${index}`" class="block text-xs font-bold">
+            Technical requirements <span class="font-medium text-ink/60">(optional)</span>
           </label>
           <textarea
             :id="`technical-requirements-${index}`"
