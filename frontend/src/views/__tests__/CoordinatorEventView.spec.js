@@ -52,6 +52,7 @@ async function mountView(response) {
 }
 
 const button = (label) => document.querySelector(`button[aria-label="${label}"]`);
+const currentStep = (el) => el.querySelector('ol[aria-label="Event progress"] [aria-current="step"]')?.textContent ?? "";
 
 describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
   afterEach(() => {
@@ -61,6 +62,61 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     vi.clearAllMocks();
+  });
+
+  it("labels the return action Ask for amendment, and its dialog to match", async () => {
+    await mountView(eventResponse({ status: "under_review" }));
+    expect(button("Open return dialog").textContent.trim()).toBe("Ask for amendment");
+    button("Open return dialog").click();
+    await nextTick();
+    expect(document.querySelector("#return-modal-title").textContent.trim()).toBe("Ask for amendment?");
+  });
+
+  it("puts the review actions beside the title, above the progress bar", async () => {
+    const el = await mountView(eventResponse({ status: "under_review" }));
+    const actions = el.querySelector('[data-testid="review-actions"]');
+    const title = el.querySelector("h1");
+    const progress = el.querySelector('ol[aria-label="Event progress"]');
+    expect(actions.contains(button("Approve request"))).toBe(true);
+    expect(actions.parentElement).toBe(title.parentElement.parentElement);
+    expect(actions.compareDocumentPosition(progress) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the status as a progress bar in the header instead of a badge", async () => {
+    const el = await mountView(eventResponse({ status: "under_review" }));
+    const progress = el.querySelector('ol[aria-label="Event progress"]');
+    expect(progress).not.toBeNull();
+    expect(progress.querySelector('[aria-current="step"]').textContent).toContain("Under review");
+    expect(el.querySelector('[data-testid="status-outcome"]')).toBeNull();
+  });
+
+  it("shows the request ID in Request details rather than the top bar", async () => {
+    const el = await mountView(eventResponse());
+    const details = el.querySelector('[data-testid="request-details-card"]');
+    const id = details.querySelector('[data-testid="request-id"]');
+    expect(id?.textContent.trim()).toBe("event-1");
+    expect(el.textContent.match(/event-1/g)).toHaveLength(1);
+  });
+
+  it("shows the equipment request inside the Request details card", async () => {
+    const el = await mountView(eventResponse());
+    const details = el.querySelector('[data-testid="request-details-card"]');
+    expect(details).not.toBeNull();
+    expect(details.querySelector("#equipment-request-title")).not.toBeNull();
+  });
+
+  it("puts Discussion and History together in the last row, with Discussion wider", async () => {
+    const el = await mountView(eventResponse());
+    const row = el.querySelector('[data-testid="discussion-history-row"]');
+    const discussion = el.querySelector('[data-testid="discussion-card"]');
+    const history = el.querySelector('[data-testid="history-card"]');
+    expect(row).not.toBeNull();
+    expect(row.parentElement.lastElementChild).toBe(row);
+    expect(row.classList.contains("lg:col-span-2")).toBe(true);
+    expect(row.classList.contains("lg:grid-cols-3")).toBe(true);
+    expect([...row.children]).toEqual([discussion, history]);
+    expect(discussion.classList.contains("lg:col-span-2")).toBe(true);
+    expect(history.classList.contains("lg:col-span-2")).toBe(false);
   });
 
   it.each([false,true])('CR-104 shows the rejected booking and revises it (spaces=%s)', async (multi) => {
@@ -156,7 +212,7 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     eventsApi.sendForSafetyCheck.mockResolvedValue(eventResponse({status: "safety_review"}));
     button("Send for safety check").click(); await nextTick();
     expect(document.body.textContent).toContain("Send for safety check?");
-    button("Send").click(); await vi.waitFor(() => expect(el.textContent).toContain("Safety review"));
+    button("Send").click(); await vi.waitFor(() => expect(currentStep(el)).toContain("Safety review"));
     expect(button("Send for safety check")).toBeNull(); expect(eventsApi.sendForSafetyCheck).toHaveBeenCalledTimes(1);
     expect(toastState.value.message).toBe("Sent for safety check");
   });
@@ -494,7 +550,7 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     button("Approve").click();
 
     await vi.waitFor(() => expect(eventsApi.approve).toHaveBeenCalledWith("event-1", "access"));
-    await vi.waitFor(() => expect(el.textContent).toContain("Planning"));
+    await vi.waitFor(() => expect(currentStep(el)).toContain("Planning"));
     expect(button("Approve request")).toBeNull();
   });
 

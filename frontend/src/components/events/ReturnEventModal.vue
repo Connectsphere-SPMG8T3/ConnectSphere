@@ -53,7 +53,7 @@ function confirm() {
         aria-labelledby="return-modal-title"
         class="my-auto w-full max-w-2xl border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
       >
-        <h2 id="return-modal-title" class="text-2xl font-black uppercase leading-tight tracking-tight">Return for amendment?</h2>
+        <h2 id="return-modal-title" class="text-2xl font-black uppercase leading-tight tracking-tight">Ask for amendment?</h2>
         <p class="mt-4 text-base font-medium">
           "{{ props.eventName }}" goes back to the organiser to edit and resubmit. Planning waits until they do.
         </p>
