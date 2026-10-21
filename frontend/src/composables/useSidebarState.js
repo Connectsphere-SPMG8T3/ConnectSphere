@@ -2,11 +2,12 @@ import { ref, watch } from "vue";
 
 const STORAGE_KEY = "connectsphere.sidebarCollapsed";
 
+// Collapsed until the user expands it; a saved choice wins either way.
 function loadInitial() {
   try {
-    return localStorage.getItem(STORAGE_KEY) === "true";
+    return localStorage.getItem(STORAGE_KEY) !== "false";
   } catch {
-    return false;
+    return true;
   }
 }
 
