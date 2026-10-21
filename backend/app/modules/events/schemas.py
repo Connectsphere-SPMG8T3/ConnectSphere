@@ -336,6 +336,27 @@ class SafetyRejectRequest(BaseModel):
         return value.strip() if isinstance(value, str) else value
 
 
+class NamedBooking(BaseModel):
+    booking_id: UUID
+    venue_name: str | None = None
+
+
+class NamedEquipmentLine(BaseModel):
+    id: UUID
+    equipment_name: str | None = None
+
+
+class NamedVenue(BaseModel):
+    venue_id: UUID
+    venue_name: str | None = None
+
+
+class SafetyRevision(BaseModel):
+    note: str
+    by_name: str | None = None
+    at: datetime
+
+
 class SafetyDecision(BaseModel):
     id: UUID
     decision: SafetyDecisionKind
@@ -344,6 +365,10 @@ class SafetyDecision(BaseModel):
     affected_booking_ids: list[UUID] = []
     affected_equipment_request_ids: list[UUID] = []
     rejected_venue_ids: list[UUID] = []
+    affected_bookings: list[NamedBooking] = []
+    affected_equipment: list[NamedEquipmentLine] = []
+    rejected_venues: list[NamedVenue] = []
+    revision: SafetyRevision | None = None
     decided_by_name: str | None = None
     decided_at: datetime
 
@@ -635,6 +660,10 @@ class SafetyHistoryItem(BaseModel):
     decided_by_name: str | None = None
     decided_at: datetime
 
+    affected_bookings: list[NamedBooking] = []
+    affected_equipment: list[NamedEquipmentLine] = []
+    rejected_venues: list[NamedVenue] = []
+    revision: SafetyRevision | None = None
 
 class SafetyHistoryResponse(BaseModel):
     items: list[SafetyHistoryItem]

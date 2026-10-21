@@ -2926,3 +2926,40 @@ On `fix/safety-decision-wording`, branched from `main` at `276127d`, 2026-10-20.
 **Verified.** `SafetyViews.spec.js` was updated first and failed on the old text; frontend 1,169 of 1,170 passed in the full run, the one failure (`EventRequestView` resubmit, 1.5 s) passed 3 of 3 alone and is unrelated. Browser: `safety-decision.e2e.js` and `venue-buffers.e2e.js` 8/8 ([run](test-cases/runs/2026-10-20-2249-e2e-db49f93.md)), against a backend on 8010 and a frontend on 5184; none of them asserts the new copy. No API run, since no backend code changed.
 
 **Manual.** TC-SDEC-030 passed ([run](test-cases/runs/2026-10-20-manual-3622650.md)).
+
+### 4.79. Bug fix — CR-104 Safety-rejection follow-up (D52–D54)
+
+_Renumbered 2026-10-21 from D51–D53 and entry 4.76: PR #95 took D49 and 4.76, PR #92 D50 and 4.77, PR #93 D51 and 4.78. The applied migration `20261020150000` keeps the old numbers in its comments._
+
+On `fix/cr-104-safety-rejection-followup`, 2026-10-20; approved plan/spec dated 2026-10-20. A Safety-rejected booking offered no replacement path (D52), decisions displayed counts rather than names (D53), and Mark as revised recorded no coordinator explanation (D54). This is a fix, not a reopened story; no backlog sheet edits.
+
+**Changed.** Migration `20261020150000_safety_rejection_followup.sql` stores a required trimmed response in the existing `venue_booking_history.reason`, refuses revision while a live replacement exists, widens both CR-95 request functions to accept `safety_rejected`, and excludes both follow-up flags from the per-space live-booking index. Functions were copied from live definitions; `release_replaced_booking` already releases the original without checking its flag. Restore remains Affected-only. API requires `{note}` (1–1000 characters), retains active-role/assignment guards and accepts the additional replacement flag. Batched name/history lookups enrich decisions, including the coordinator's latest banner; missing names stay null. SPA adds the note dialog, duplicate-submit guard, Replace venue action and named pending state; shared decision details show names, response, author and time.
+
+**Tests first.** Task 1 SQL failed on the missing three-argument signature; migration plus checks passed in a rolled-back transaction, as did venue-deactivation checks. Task 2: 13 focused failures → 21 passing, full backend 1,779 passed. Task 3: 2 replacement failures (event and space) → 29 passing, full backend 1,786 passed. Task 4: 11 failures → 11 passing, full backend 1,797 passed. Task 5: 16 failures → 142 passing, full frontend 1,179 passed (81 files). Task 6: 6 failures → 58 passing, full frontend 1,184 passed (82 files), production build succeeds. Task 7 existing probes: 2 failures → 4 passing; new mocked live probes: 2 failures → 6 passing; browser helper: missing function failure → 7 passing. Playwright lists TC-SDEC-033 without executing setup or live mutations. Final Task 7 suites: backend 1,799 passed (one existing Starlette deprecation warning); frontend 1,185 passed across 82 files. `git diff --check` passes.
+
+**Database handoff.** `supabase db push --dry-run` output:
+
+```text
+Initialising login role...
+DRY RUN: migrations will *not* be pushed to the database.
+Connecting to remote database...
+Would push these migrations:
+ • 20261020150000_safety_rejection_followup.sql
+{"upToDate":false,"dryRun":true,"migrations":["20261020150000_safety_rejection_followup.sql"],"seeds":[],"roles":[],"message":"Finished supabase db push."}
+```
+
+**Deviations.** Use real replacement fixture/request helpers; update existing coordinator-view tests for the new dialog and named history; enrich coordinator latest decision as well as history/review; mock the new lookups in the existing safety fixture; add a disposable-only browser setup helper and its unit test. CLI telemetry required `DO_NOT_TRACK=1` because its home-directory write was blocked. Git staging and commits were attempted and refused (`.git/index.lock: Read-only file system`); no requested task commits could be created. The worktree preserves all changes, and unrelated files were left alone.
+
+**Not verified / next steps.** The migration has not been applied; no live database changes were committed. New live API checks TC-SDEC-031/032 and browser check TC-SDEC-033 are authored but not run. Task 7 recorded runs and manual pass (TC-SDEC-034/035, including 375 px wording/layout) were explicitly deferred for the developer and Claude after migration deployment. Post-deployment advisors, real HTTP/PostgREST/browser validation and changed-line coverage measurements remain outstanding. No run logs were fabricated. Developer owns migration deployment, recorded live/browser verification, manual acceptance, PR/teammate review, PO acceptance, merge and backlog Done; update sprint DoD rows before PR and merge. No push or Google Sheets edit was made.
+
+
+**Fresh review and fix pass.** A read-only reviewer found two issues: the Safety dashboard's separate recent-history query/schema omitted named arrangements/responses, and filtering out legacy null-note revisions could attribute a later rejection cycle's response to an earlier rejection. Four regression failures were observed before changes; the focused named-decision/history suite now passes 25 tests. Dashboard history now uses the same batch enrichment, and the first revision after a rejection ends that cycle even when its legacy note is null. This deliberately adjusts the plan's non-null-only lookup rule. The full suite exposed one stale repository expectation for the expanded row shape; that assertion was updated, and the repository/history/naming suite passed 42 tests. Final full backend: **1,802 passed**, one existing Starlette deprecation warning, 78.07 s. Frontend remains **1,185 passed** across 82 files; no frontend code changed in this fix pass.
+
+**Deferred minor from review.** The rolled-back SQL script does not independently assert second-live-replacement refusal or release on replacement approval. Existing SQL covered replacement acceptance/index coexistence and revision blocking; the newly authored TC-SDEC-032 covers release after approval but remains unexecuted pending deployment. Add independent rollback assertions as follow-up verification. The reviewer did not judge deployed behavior, real database concurrency, live/browser outcomes or visual/accessibility quality; those remain deferred under the developer's execution limits.
+
+**Applied and verified (2026-10-21).** The developer pushed `20261020150000`; `migration list --linked` matches and `safety_decision_checks.sql` passes against the live schema. Advisors show nothing new (remaining findings are on equipment, venue-block and auth objects this change doesn't touch). Committed by Claude after review in layered commits (Codex's sandbox couldn't write `.git`); review renamed a shadowed variable in `_named_decisions` and corrected the rejected-venue fallback to "a venue that no longer exists".
+- API and database: 172 of 175 ([run](test-cases/runs/2026-10-21-0007-api-db-43b0dcf.md)), including TC-SDEC-031 and 032. TC-ASSIGN-003 failed on the Supabase CLI's temporary login being refused and passed alone; TC-BOOK-005 and TC-EQR-008 fail on the known review-fixture drift (fixture `…0201` is in Planning), unrelated to this change.
+- Browser: TC-SDEC-033 **failed first** ([run](test-cases/runs/2026-10-21-0025-e2e-43b0dcf.md)): `VenueSearchView` accepted `&replaces=` only for an Affected booking, so Replace venue led to a search with no request buttons. Fixed test-first in `022f5fd`; TC-SDEC-033 then passed ([run](test-cases/runs/2026-10-21-0033-e2e-022f5fd.md)). The same first run passed the safety, bookings and deactivation specs; TC-BOOK-048/049/050 failed as it does on `main`.
+- Unit: backend 1,802; frontend 1,187; build clean.
+- Manual: TC-SDEC-034 and 035 passed ([run](test-cases/runs/2026-10-21-manual-7537ce3.md)), with a headless re-check of the same pages (56 checks, both widths).
+- **Not verified:** the full browser suite; independent SQL assertions for refusing a second replacement.

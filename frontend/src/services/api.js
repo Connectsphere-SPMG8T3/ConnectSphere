@@ -103,8 +103,8 @@ export const venuesApi = {
 };
 
 export const venueBookingsApi = {
-  markRevised(bookingId, token) {
-    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/mark-revised`, { method: "POST", token });
+  markRevised(bookingId, note, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/mark-revised`, { method: "POST", body: { note }, token });
   },
   // SCRUM-19: a tentative hold over the event's own period. The body carries no
   // times; the API reads them from the event.

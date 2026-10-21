@@ -474,3 +474,7 @@ def technical_view(event_id: str) -> TechnicalEventResponse:
         lines=[EquipmentRequestLine(**_embedded_line_fields(line)) for line in repository.list_event_requests(event_id)],
         history=[_history_entry(entry) for entry in repository.list_technical_history(event_id)],
     )
+
+
+def line_names(line_ids: list[str]) -> dict[str, str | None]:
+    return repository.line_names(line_ids)

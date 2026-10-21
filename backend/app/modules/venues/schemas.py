@@ -742,3 +742,14 @@ class VenueBlockResponse(BaseModel):
     saved: bool
     block: BlockSummary | None = None
     affected: list[BlockAffectedBooking] = []
+
+
+class SafetyRevisionRequest(BaseModel):
+    """D54: what the coordinator changed, or wants the Safety Officer to know."""
+
+    note: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def strip_note(cls, value):
+        return value.strip() if isinstance(value, str) else value
