@@ -2902,4 +2902,5 @@ Would push these migrations:
 - API and database: 172 of 175 ([run](test-cases/runs/2026-10-21-0007-api-db-43b0dcf.md)), including TC-SDEC-031 and 032. TC-ASSIGN-003 failed on the Supabase CLI's temporary login being refused and passed alone; TC-BOOK-005 and TC-EQR-008 fail on the known review-fixture drift (fixture `…0201` is in Planning), unrelated to this change.
 - Browser: TC-SDEC-033 **failed first** ([run](test-cases/runs/2026-10-21-0025-e2e-43b0dcf.md)): `VenueSearchView` accepted `&replaces=` only for an Affected booking, so Replace venue led to a search with no request buttons. Fixed test-first in `022f5fd`; TC-SDEC-033 then passed ([run](test-cases/runs/2026-10-21-0033-e2e-022f5fd.md)). The same first run passed the safety, bookings and deactivation specs; TC-BOOK-048/049/050 failed as it does on `main`.
 - Unit: backend 1,802; frontend 1,187; build clean.
-- **Not verified:** manual cases TC-SDEC-034 and 035; the full browser suite; independent SQL assertions for refusing a second replacement.
+- Manual: TC-SDEC-034 and 035 passed ([run](test-cases/runs/2026-10-21-manual-7537ce3.md)), with a headless re-check of the same pages (56 checks, both widths).
+- **Not verified:** the full browser suite; independent SQL assertions for refusing a second replacement.
