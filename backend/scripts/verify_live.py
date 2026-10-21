@@ -294,6 +294,40 @@ def _(ctx: Context) -> None:
     expect("Main space: awaiting venue staff approval." in event["safety_readiness"]["missing"], "Missing booking reason")
 
 
+@check("TC-SAFE-027", "Technical status from SCRUM-24 gates send: no lines pass, a pending line blocks, "
+                      "reserved and ticked lets it through", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "SAFE027")
+    event_id = throwaway_event(ctx, "SAFE027", "2031-08-20 10:00+08", "2031-08-20 12:00+08")
+    db_query(
+        "insert into public.venue_bookings (event_id, venue_id, booked_period, status) values "
+        f"('{event_id}', '{venue_id}', tstzrange('2031-08-20 10:00+08', '2031-08-20 12:00+08', '[)'), 'approved')"
+    )
+    coordinator = ctx.shared("event_coordinator")
+    event_url = f"{ctx.api}/events/{event_id}"
+
+    readiness = ctx.client.get(event_url, headers=coordinator.headers).json()["safety_readiness"]
+    expect(readiness["ready"] is True, f"an approved booking and no equipment lines is not ready: {readiness}")
+
+    line_id = throwaway_line(event_id, throwaway_equipment(ctx, "SAFE027", 2), 1)
+    readiness = ctx.client.get(event_url, headers=coordinator.headers).json()["safety_readiness"]
+    expect(readiness["ready"] is False and "Technical status is not Ready." in readiness["missing"],
+           f"a pending equipment line doesn't block: {readiness}")
+    refused = ctx.client.post(f"{event_url}/send-for-safety-check", headers=coordinator.headers)
+    expect_status(refused, 409)
+    expect("Technical status is not Ready." in refused.json()["detail"], refused.text)
+    [row] = db_query(f"select status::text as status from public.events where id = '{event_id}'")
+    expect(row["status"] == "planning", f"the refused send moved the event to {row['status']}")
+
+    tech = ctx.shared("tech_support")
+    expect_status(reserve(ctx, tech, line_id), 200)
+    expect_status(ctx.client.put(f"{ctx.api}/equipment/events/{event_id}/exit-confirmation",
+                                 headers=tech.headers, json={"confirmed": True}), 204)
+    sent = ctx.client.post(f"{event_url}/send-for-safety-check", headers=coordinator.headers)
+    expect_status(sent, 200)
+    expect(sent.json()["status"] == "safety_review", f"sent event is {sent.json()['status']}")
+
+
 # --- Login -----------------------------------------------------------------
 
 
