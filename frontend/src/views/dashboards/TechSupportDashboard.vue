@@ -313,6 +313,7 @@ function formatDate(value) {
             :background="tile.background"
             :accent="tile.accent"
             :accent-color="tile.accentColor"
+            :class="tile.to ? 'group-hover:bg-muted group-focus-visible:bg-muted' : ''"
           >
             <template #detail>
               {{ tile.detail }}
@@ -481,7 +482,7 @@ function formatDate(value) {
               Needed
               <input v-model.number="item.quantityNeeded" type="number" min="1" class="border-2 border-ink bg-canvas px-3 py-3 text-sm font-medium outline-none focus:bg-bauhaus-yellow/20" />
             </label>
-            <button type="button" class="border-2 border-ink px-3 py-3 text-xs font-bold active-press hover:bg-bauhaus-red hover:text-canvas disabled:cursor-not-allowed disabled:opacity-40" :disabled="items.length === 1" @click="removeItem(index)">
+            <button type="button" class="border-2 border-ink px-3 py-3 text-xs font-bold active-press enabled:hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" :disabled="items.length === 1" @click="removeItem(index)">
               Remove
             </button>
           </li>

@@ -58,7 +58,7 @@ const allRoleLabels = computed(() => authStore.roles.map((role) => ROLE_LABELS[r
 
         <RouterLink
           :to="authStore.dashboardPath"
-          class="mt-2 inline-block w-fit border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold shadow-hard sm:border-4"
+          class="mt-2 inline-block w-fit border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold shadow-hard hover:bg-muted sm:border-4"
         >
           &larr; Back to Dashboard
         </RouterLink>

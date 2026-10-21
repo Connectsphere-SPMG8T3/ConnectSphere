@@ -160,7 +160,7 @@ describe("OrganiserDashboard", () => {
     expect(underReviewCard.textContent).not.toContain("Action needed: review this request.");
   });
 
-  it("matches event card hover tints to their status rail colors", async () => {
+  it("uses the shared gray hover on event cards whatever their status rail color", async () => {
     const { el } = await mountDashboard();
     await openEvents(el);
 
@@ -171,16 +171,16 @@ describe("OrganiserDashboard", () => {
     const returnedCard = cardFor("Product Briefing");
     const confirmedCard = cardFor("Leadership Forum");
 
-    expect(draftCard.className).toContain("hover:bg-bauhaus-blue/10");
-    expect(returnedCard.className).toContain("hover:bg-bauhaus-red/10");
-    expect(confirmedCard.className).toContain("hover:bg-bauhaus-blue/10");
+    expect(draftCard.className).toContain("hover:bg-muted");
+    expect(returnedCard.className).toContain("hover:bg-muted");
+    expect(confirmedCard.className).toContain("hover:bg-muted");
     expect(draftCard.className).toContain("border-4");
     expect(draftCard.className).toContain("shadow-none");
     expect(draftCard.querySelector("button").className).toContain("shadow-none");
-    expect(draftCard.querySelector("button").className).toContain("hover:bg-bauhaus-blue/20");
+    expect(draftCard.querySelector("button").className).toContain("hover:bg-muted");
     expect(returnedCard.querySelector("button").className).toContain("shadow-none");
-    expect(returnedCard.querySelector("button").className).toContain("hover:bg-bauhaus-red/20");
-    expect(confirmedCard.querySelector("button").className).toContain("hover:bg-bauhaus-blue/20");
+    expect(returnedCard.querySelector("button").className).toContain("hover:bg-muted");
+    expect(confirmedCard.querySelector("button").className).toContain("hover:bg-muted");
   });
 
   it("opens the events view filtered to the selected action category", async () => {
@@ -199,18 +199,18 @@ describe("OrganiserDashboard", () => {
     expect(el.textContent).not.toContain("Annual Conference");
   });
 
-  it("uses the urgent visual treatment for returned requests and subtle hover tones for action cards", async () => {
+  it("uses the urgent visual treatment for returned requests and the shared gray hover for action cards", async () => {
     const { el } = await mountDashboard();
 
     const draftsCard = el.querySelector('[aria-label="Show Drafts events"]');
     const returnedCard = el.querySelector('[aria-label="Show Returned for amendments events"]');
     const rejectedCard = el.querySelector('[aria-label="Show Rejected events"]');
 
-    expect(draftsCard.className).toContain("bg-bauhaus-blue/10");
+    expect(draftsCard.className).toContain("hover:bg-muted");
     expect(draftsCard.querySelector("span").className).toContain("bg-bauhaus-blue");
-    expect(returnedCard.className).toContain("bg-bauhaus-red/10");
+    expect(returnedCard.className).toContain("hover:bg-muted");
     expect(returnedCard.querySelector("span").className).toContain("bg-bauhaus-red");
-    expect(rejectedCard.className).toContain("bg-bauhaus-yellow/10");
+    expect(rejectedCard.className).toContain("hover:bg-muted");
   });
 
   it("paginates status previews by two events and opens a selected event detail", async () => {

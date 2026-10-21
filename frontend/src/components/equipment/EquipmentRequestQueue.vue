@@ -51,11 +51,6 @@ const visible = computed(() =>
 // Static class names: Tailwind can't see built ones. Yellow waits on you,
 // blue is settled, red is refused or released (as on venue staff's list).
 const CARD_TONES = { pending: "yellow", re_review: "yellow", reserved: "blue", rejected: "red", released: "red" };
-const HOVER_CLASSES = {
-  yellow: "hover:bg-bauhaus-yellow/10 focus-within:bg-bauhaus-yellow/10",
-  blue: "hover:bg-bauhaus-blue/10 focus-within:bg-bauhaus-blue/10",
-  red: "hover:bg-bauhaus-red/10 focus-within:bg-bauhaus-red/10",
-};
 const tone = (line) => CARD_TONES[line.status] ?? "blue";
 
 const emptyDetail = computed(() =>
@@ -104,7 +99,7 @@ const emptyDetail = computed(() =>
           allow-overflow
           data-testid="equipment-request-card"
           :data-request-status="line.status"
-          :class="[HOVER_CLASSES[tone(line)], 'border-4 shadow-none transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none']"
+          class="border-4 shadow-none hover:bg-muted focus-within:bg-muted transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none"
         >
           <RouterLink :to="{ name: 'tech-support-event', params: { id: line.event_id } }" class="flex flex-col gap-2 active-press">
             <div class="flex flex-wrap items-baseline justify-between gap-4">

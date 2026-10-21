@@ -71,7 +71,7 @@ async function handleSearch() {
         <form
           v-if="showSearch"
           role="search"
-          class="hidden items-center border-2 border-ink bg-canvas shadow-hard focus-within:bg-bauhaus-yellow/20 sm:flex"
+          class="hidden items-center border-2 border-ink bg-canvas shadow-hard hover:bg-muted focus-within:bg-bauhaus-yellow/20 sm:flex"
           @submit.prevent="handleSearch"
         >
           <button
@@ -103,7 +103,7 @@ async function handleSearch() {
         </form>
         <button
           type="button"
-          class="flex h-10 w-10 items-center justify-center border-2 border-ink bg-canvas shadow-hard active-press sm:hidden"
+          class="flex h-10 w-10 items-center justify-center border-2 border-ink bg-canvas shadow-hard hover:bg-muted active-press sm:hidden"
           aria-label="Toggle navigation menu"
           :aria-expanded="isMobileOpen"
           @click="isMobileOpen = !isMobileOpen"

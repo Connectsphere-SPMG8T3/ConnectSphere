@@ -325,7 +325,7 @@ const cardSections = computed(() => [
                   <RouterLink
                     :to="reviewRoute(event.event_id)"
                     :data-tone="event.tone"
-                    class="w-full border-2 border-l-8 px-3 py-2 text-left transition duration-150 hover:-translate-y-0.5 hover:bg-bauhaus-yellow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transition-none"
+                    class="w-full border-2 border-l-8 px-3 py-2 text-left transition duration-150 hover:-translate-y-0.5 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transition-none"
                     :class="BOARD_CARD_TONE_CLASSES[event.tone]"
                   >
                     <p class="text-sm font-bold">{{ event.event_name }}</p>
@@ -400,7 +400,7 @@ const cardSections = computed(() => [
             />
             <button
               type="button"
-              class="h-[50px] w-12 shrink-0 border-2 border-ink bg-canvas px-3 text-lg font-bold leading-none text-ink shadow-none outline-none transition-colors hover:bg-bauhaus-yellow/20 focus:bg-bauhaus-yellow/20"
+              class="h-[50px] w-12 shrink-0 border-2 border-ink bg-canvas px-3 text-lg font-bold leading-none text-ink shadow-none outline-none transition-colors hover:bg-muted focus:bg-muted"
               :aria-label="`Toggle sort direction, currently ${directionLabel}`"
               :title="directionLabel"
               @click="toggleSortDirection"

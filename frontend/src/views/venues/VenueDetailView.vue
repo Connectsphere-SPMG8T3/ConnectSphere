@@ -269,14 +269,14 @@ watch(() => route.params.id, () => {
         <div v-if="canEdit" class="mt-4 flex flex-wrap gap-3">
           <RouterLink
             :to="{ name: 'venue-edit', params: { id: venue.id } }"
-            class="inline-block border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard active-press sm:border-4"
+            class="inline-block border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard hover:bg-muted active-press sm:border-4"
           >
             Edit venue
           </RouterLink>
           <button
             v-if="venue.is_active"
             type="button"
-            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard active-press sm:border-4"
+            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard hover:bg-muted active-press sm:border-4"
             @click="openDeactivate"
           >
             Deactivate venue
@@ -284,14 +284,14 @@ watch(() => route.params.id, () => {
           <button
             v-else
             type="button"
-            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard active-press sm:border-4"
+            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard hover:bg-muted active-press sm:border-4"
             @click="reactivateOpen = true"
           >
             Reactivate venue
           </button>
           <button
             type="button"
-            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard active-press sm:border-4"
+            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard hover:bg-muted active-press sm:border-4"
             @click="openBlock"
           >
             Block venue
@@ -352,7 +352,7 @@ watch(() => route.params.id, () => {
           :aria-controls="`panel-${tab.key}`"
           :tabindex="activeTab === tab.key ? 0 : -1"
           class="border-2 border-ink px-4 py-2 text-xs font-bold active-press"
-          :class="activeTab === tab.key ? 'bg-ink text-canvas shadow-hard' : 'bg-canvas text-ink'"
+          :class="activeTab === tab.key ? 'bg-ink text-canvas shadow-hard' : 'bg-canvas text-ink hover:bg-muted'"
           @click="activeTab = tab.key"
         >
           {{ tab.label }}<span v-if="tab.count !== null"> · {{ tab.count }}</span>
@@ -469,7 +469,7 @@ watch(() => route.params.id, () => {
               :aria-controls="`panel-group-${group.key}`"
               :tabindex="activeGroup === group.key ? 0 : -1"
               class="px-3 py-1.5 text-xs font-bold active-press"
-              :class="[pillClasses[group.tone], activeGroup === group.key ? 'shadow-hard' : 'opacity-60']"
+              :class="[pillClasses[group.tone], activeGroup === group.key ? 'shadow-hard' : 'opacity-60 hover:bg-muted hover:text-ink']"
               @click="activeGroup = group.key"
             >
               {{ group.label }} · {{ group.bookings.length }}

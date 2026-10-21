@@ -3044,3 +3044,19 @@ On `chore/coordinator-status-kanban`, on top of §4.81, 2026-10-21. A layout rew
 **Verified.** Tests were written first and failed for the expected reasons. Frontend 1,355 passed, backend 1,774 passed; build clean. Live API checks against a backend on port 8010: 59 of 60 passed ([run](test-cases/runs/2026-10-21-1731-api-db-b360f14.md)), including new TC-DASH-030 and TC-DASH-013–018. An earlier run ([run](test-cases/runs/2026-10-21-1726-api-db-b360f14.md)) failed TC-DASH-015 because the check did not yet allow `rejected_events`; the check was updated. The remaining failure, TC-SDEC-023 (500 instead of 404 on "Mark as revised" for a missing booking), is in untouched venue-booking code and passed on 2026-10-18; logged as DEFECTS D55. The Overview at 1440px and 390px and the Events view were screenshotted in Chrome: all five board columns fit at 1440px after narrowing them, and there is no horizontal page scroll.
 
 **Not verified.** The database live checks and the browser e2e suite (both need the Supabase CLI, which was not installed); the manual pass over TC-DASH-026–029 and phone width; the PO's acceptance of the AC1 change. Four frontend helpers are now used only by their tests (`readinessGaps`, `summariseActionItems`, the store's `prioritisedActions` and `readinessGaps`); removing them is a follow-up.
+
+### 4.83. Enabler — one gray hover for everything clickable
+
+On `chore/styling-consistency`, branched from `main` at `6c0b5bf`, 2026-10-22. No PBI: the developer asked for hovers to be gray instead of yellow "for standardisation", then for "all clickable buttons" to turn gray on hover.
+
+**Changed.**
+1. Every hover fill that was yellow, red or blue (cards, list rows, kebab menu items, `BauhausSelect` options, notification rows, summary cards) is now `bg-muted`; where focus had the same tint as the hover, it is gray too. The per-status hover maps in `OrganiserDashboard`, `VenueStaffBookingRequests` and `EquipmentRequestQueue` returned the same class for every tone afterwards, so they are gone and the classes sit in the templates.
+2. `BauhausButton` gains `hover:bg-muted hover:text-ink` when enabled, in every variant, so red and blue buttons stay readable on gray. Hand-built buttons and boxed links that only had `active-press` (top-bar search, bell, phone menu, sidebar collapse, notification panel buttons, gallery and calendar controls, calendar days with items, venue detail actions and tabs, back links, filter buttons, dashboard tiles, pagers, **Find a venue**, the Tech Support **Remove** button, which was red) now hover gray. Selected tabs and filters stay black; disabled controls get no hover (`enabled:hover:bg-muted`).
+3. Unchanged: focus-only yellow on text inputs and modal fields, the yellow hover text on the coordinator board's red column headers, underlined text links, and the "×" dismiss buttons.
+4. Docs: `frontend/AGENTS.md` colour table states the rule; `IMPLEMENTATION_MAP` `BauhausButton` row.
+
+**Decisions.** The developer tried blue before choosing the existing `muted` token, so no colour was added. Status colour now shows only at rest (rails, accents, badges); hovering no longer repeats it.
+
+**Verified.** `BauhausButton.spec.js` checks the hover classes in every variant and their absence when disabled; two `OrganiserDashboard.spec.js` cases that asserted status-matched hover tints now assert the gray. Frontend 1,449 passed; `npm run build` succeeds.
+
+**Not verified.** A look in a browser: whether `muted` is visible enough on white cards, and how red and blue buttons read when they turn gray with black text. Live checks were not run, since nothing crosses an integration boundary.

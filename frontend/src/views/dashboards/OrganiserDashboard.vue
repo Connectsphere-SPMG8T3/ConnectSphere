@@ -85,9 +85,9 @@ const overviewGroups = computed(() => [
     key: "needs-action",
     title: "Needs your action",
     items: [
-      { label: "Drafts", status: "draft", value: overview.value.needsAction.drafts, background: "blue", accent: "square", accentColor: "bauhaus-yellow", hoverClass: "hover:bg-bauhaus-blue/10 focus-within:bg-bauhaus-blue/10" },
-      { label: "Returned for amendments", status: "returned", value: overview.value.needsAction.returned, background: "red", accent: "circle", accentColor: "bauhaus-yellow", hoverClass: "hover:bg-bauhaus-red/10 focus-within:bg-bauhaus-red/10" },
-      { label: "Rejected", status: "rejected", value: overview.value.needsAction.rejected, background: "yellow", accent: "circle", accentColor: "bauhaus-red", hoverClass: "hover:bg-bauhaus-yellow/10 focus-within:bg-bauhaus-yellow/10" },
+      { label: "Drafts", status: "draft", value: overview.value.needsAction.drafts, background: "blue", accent: "square", accentColor: "bauhaus-yellow" },
+      { label: "Returned for amendments", status: "returned", value: overview.value.needsAction.returned, background: "red", accent: "circle", accentColor: "bauhaus-yellow" },
+      { label: "Rejected", status: "rejected", value: overview.value.needsAction.rejected, background: "yellow", accent: "circle", accentColor: "bauhaus-red" },
     ],
   },
   {
@@ -149,23 +149,6 @@ function eventCardTone(status) {
   return "blue";
 }
 
-function eventCardHoverClass(status) {
-  const hoverClasses = {
-    red: "hover:bg-bauhaus-red/10 focus-within:bg-bauhaus-red/10",
-    yellow: "hover:bg-bauhaus-yellow/10 focus-within:bg-bauhaus-yellow/10",
-    blue: "hover:bg-bauhaus-blue/10 focus-within:bg-bauhaus-blue/10",
-  };
-  return hoverClasses[eventCardTone(status)];
-}
-
-function eventActionHoverClass(status) {
-  const hoverClasses = {
-    red: "transition-colors hover:bg-bauhaus-red/20 focus:bg-bauhaus-red/20",
-    yellow: "transition-colors hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow",
-    blue: "transition-colors hover:bg-bauhaus-blue/20 focus:bg-bauhaus-blue/20",
-  };
-  return hoverClasses[eventCardTone(status)];
-}
 
 function eventAction(event) {
   actionMenuEventId.value = null;
@@ -293,7 +276,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
               :accent="item.accent"
               :accent-color="item.accentColor"
               :clickable="activeTab === 'overview'"
-              :class="item.hoverClass"
+              class="hover:bg-muted focus-within:bg-muted"
               @click="openActionCategory(item.status)"
             />
           </div>
@@ -311,7 +294,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
               v-for="group in activeEventGroups"
               :key="group.status"
               :data-status-group="group.status"
-              class="group relative min-h-[220px] border-2 border-ink bg-canvas px-4 pb-4 pt-2 shadow-hard transition duration-150 hover:-translate-y-0.5 hover:bg-bauhaus-yellow/10 focus-within:-translate-y-0.5 focus-within:bg-bauhaus-yellow/10 motion-reduce:transition-none sm:border-4 sm:px-5 sm:pb-5 sm:pt-3"
+              class="group relative min-h-[220px] border-2 border-ink bg-canvas px-4 pb-4 pt-2 shadow-hard transition duration-150 hover:-translate-y-0.5 hover:bg-muted focus-within:-translate-y-0.5 focus-within:bg-muted motion-reduce:transition-none sm:border-4 sm:px-5 sm:pb-5 sm:pt-3"
             >
               <div class="flex items-baseline justify-between gap-3">
                 <button
@@ -335,7 +318,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
                 >
                   <button
                     type="button"
-                    class="w-full border-l-4 border-ink bg-surface py-2 pl-3 text-left transition-colors hover:bg-bauhaus-yellow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                    class="w-full border-l-4 border-ink bg-surface py-2 pl-3 text-left transition-colors hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                     :aria-label="`Open ${event.name}`"
                     @click="openEventDetail(event)"
                   >
@@ -348,7 +331,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
               <div v-if="group.events.length > STATUS_PAGE_SIZE" class="absolute bottom-5 right-5 flex items-center gap-1">
                 <button
                   type="button"
-                  class="h-6 w-6 border border-ink bg-canvas p-0 text-sm font-bold leading-none shadow-none disabled:cursor-not-allowed disabled:opacity-30"
+                  class="h-6 w-6 border border-ink bg-canvas p-0 text-sm font-bold leading-none shadow-none enabled:hover:bg-muted disabled:cursor-not-allowed disabled:opacity-30"
                   :aria-label="`Previous ${group.status} events page`"
                   :disabled="statusPage(group.status) === 0"
                   @click="previousStatusPage(group.status)"
@@ -360,7 +343,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
                 </span>
                 <button
                   type="button"
-                  class="h-6 w-6 border border-ink bg-canvas p-0 text-sm font-bold leading-none shadow-none disabled:cursor-not-allowed disabled:opacity-30"
+                  class="h-6 w-6 border border-ink bg-canvas p-0 text-sm font-bold leading-none shadow-none enabled:hover:bg-muted disabled:cursor-not-allowed disabled:opacity-30"
                   :aria-label="`Next ${group.status} events page`"
                   :disabled="statusPage(group.status) >= statusPageCount(group.events.length) - 1"
                   @click="nextStatusPage(group.status, group.events.length)"
@@ -390,7 +373,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
           <BauhausSelect v-model="sortField" class="min-w-0 flex-1" label="Sort by" :options="sortOptions" :show-placeholder="false" aria-label="Sort events by" dropdown compact />
           <button
             type="button"
-            class="h-[50px] w-12 shrink-0 border-2 border-ink bg-canvas px-3 text-lg font-bold leading-none text-ink shadow-none outline-none transition-colors hover:bg-bauhaus-yellow/20 focus:bg-bauhaus-yellow/20"
+            class="h-[50px] w-12 shrink-0 border-2 border-ink bg-canvas px-3 text-lg font-bold leading-none text-ink shadow-none outline-none transition-colors hover:bg-muted focus:bg-muted"
             :aria-label="`Toggle sort direction, currently ${directionLabel}`"
             :title="directionLabel"
             @click="toggleSortDirection"
@@ -421,7 +404,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
           <span class="text-sm font-bold">{{ groupedEvents.drafts.length }} total</span>
         </div>
         <div v-if="groupedEvents.drafts.length" class="grid gap-4">
-          <BauhausCard v-for="event in groupedEvents.drafts" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow :class="[eventCardHoverClass(event.status), 'border-4 shadow-none transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none']">
+          <BauhausCard v-for="event in groupedEvents.drafts" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow class="border-4 shadow-none hover:bg-muted focus-within:bg-muted transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none">
             <div class="flex min-w-0 items-center justify-between gap-4">
               <div class="min-w-0" data-event-name>
                 <h3 data-event-name class="text-xl font-bold">{{ event.name }}</h3>
@@ -430,7 +413,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
               </div>
               <div class="relative flex shrink-0 flex-wrap justify-end gap-2">
                 <div class="hidden items-center gap-2 sm:flex">
-                  <BauhausButton :class="['shadow-none', eventActionHoverClass(event.status)]" variant="outline" @click="eventAction(event)">Edit draft</BauhausButton>
+                  <BauhausButton class="shadow-none transition-colors hover:bg-muted focus:bg-muted" variant="outline" @click="eventAction(event)">Edit draft</BauhausButton>
                   <BauhausButton
                     class="h-[52px] w-[52px] shrink-0 !p-0 shadow-none"
                     variant="outline"
@@ -447,7 +430,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
                 <div class="sm:hidden">
                   <button
                     type="button"
-                    class="h-[52px] w-[52px] border-2 border-ink bg-canvas p-0 text-ink shadow-none transition-colors hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow"
+                    class="h-[52px] w-[52px] border-2 border-ink bg-canvas p-0 text-ink shadow-none transition-colors hover:bg-muted focus:bg-muted"
                     :aria-label="`Open actions for ${event.name}`"
                     :aria-expanded="actionMenuEventId === event.id"
                     aria-haspopup="menu"
@@ -461,8 +444,8 @@ onMounted(() => eventsStore.load().catch(() => {}));
                     </svg>
                   </button>
                   <div v-if="actionMenuEventId === event.id" class="absolute bottom-full right-0 z-10 mb-2 min-w-48 border-2 border-ink bg-canvas p-2 shadow-hard" role="menu">
-                    <button type="button" class="block w-full px-3 py-2 text-left text-xs font-bold hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="eventAction(event)">Edit draft</button>
-                    <button type="button" class="mt-1 block w-full px-3 py-2 text-left text-xs font-bold hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="cloneEvent(event)">Use as template</button>
+                    <button type="button" class="block w-full px-3 py-2 text-left text-xs font-bold hover:bg-muted focus:bg-muted" role="menuitem" @click="eventAction(event)">Edit draft</button>
+                    <button type="button" class="mt-1 block w-full px-3 py-2 text-left text-xs font-bold hover:bg-muted focus:bg-muted" role="menuitem" @click="cloneEvent(event)">Use as template</button>
                   </div>
                 </div>
               </div>
@@ -478,7 +461,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
           <span class="text-sm font-bold">{{ groupedEvents.requests.length }} total</span>
         </div>
         <div v-if="groupedEvents.requests.length" class="grid gap-4">
-          <BauhausCard v-for="event in groupedEvents.requests" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow :class="[eventCardHoverClass(event.status), 'border-4 shadow-none transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none']">
+          <BauhausCard v-for="event in groupedEvents.requests" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow class="border-4 shadow-none hover:bg-muted focus-within:bg-muted transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none">
             <div class="flex min-w-0 items-center justify-between gap-4">
               <div class="min-w-0" data-event-name>
                 <h3 data-event-name class="text-xl font-bold">{{ event.name }}</h3>
@@ -492,7 +475,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
               </div>
               <div class="relative flex shrink-0 flex-wrap justify-end gap-2">
                 <div class="hidden items-center gap-2 sm:flex">
-                  <BauhausButton :class="['shadow-none', eventActionHoverClass(event.status)]" variant="outline" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</BauhausButton>
+                  <BauhausButton class="shadow-none transition-colors hover:bg-muted focus:bg-muted" variant="outline" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</BauhausButton>
                   <BauhausButton
                     class="h-[52px] w-[52px] shrink-0 !p-0 shadow-none"
                     variant="outline"
@@ -509,7 +492,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
                 <div class="sm:hidden">
                   <button
                     type="button"
-                    class="h-[52px] w-[52px] border-2 border-ink bg-canvas p-0 text-ink shadow-none transition-colors hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow"
+                    class="h-[52px] w-[52px] border-2 border-ink bg-canvas p-0 text-ink shadow-none transition-colors hover:bg-muted focus:bg-muted"
                     :aria-label="`Open actions for ${event.name}`"
                     :aria-expanded="actionMenuEventId === event.id"
                     aria-haspopup="menu"
@@ -523,8 +506,8 @@ onMounted(() => eventsStore.load().catch(() => {}));
                     </svg>
                   </button>
                   <div v-if="actionMenuEventId === event.id" class="absolute bottom-full right-0 z-10 mb-2 min-w-48 border-2 border-ink bg-canvas p-2 shadow-hard" role="menu">
-                    <button type="button" class="block w-full px-3 py-2 text-left text-xs font-bold hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</button>
-                    <button type="button" class="mt-1 block w-full px-3 py-2 text-left text-xs font-bold hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="cloneEvent(event)">Use as template</button>
+                    <button type="button" class="block w-full px-3 py-2 text-left text-xs font-bold hover:bg-muted focus:bg-muted" role="menuitem" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</button>
+                    <button type="button" class="mt-1 block w-full px-3 py-2 text-left text-xs font-bold hover:bg-muted focus:bg-muted" role="menuitem" @click="cloneEvent(event)">Use as template</button>
                   </div>
                 </div>
               </div>

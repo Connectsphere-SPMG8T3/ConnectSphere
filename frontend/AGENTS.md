@@ -58,7 +58,7 @@ Treat this as the design brief for **any** UI work, whether a new view, a dashbo
 | `bauhaus-blue` | `#1040C0` | `BauhausButton variant="secondary"` |
 | `bauhaus-yellow` | `#F0C020` | `BauhausButton variant="yellow"`, text selection |
 | `bauhaus-green` | `#2E7D32` | the `ACTIVE` status badge on the venue-staff dashboard's venue rows — the one status that needs no attention. Not a Bauhaus primary; don't spend it on anything else without saying why |
-| `muted` | `#E0E0E0` | nav link hover (every at-rest surface is white — don't fill panels with it) |
+| `muted` | `#E0E0E0` | the one hover fill for everything clickable: buttons (every `BauhausButton` variant, with `hover:text-ink` so red and blue stay readable), cards, rows, nav links, menu items and dropdown options. Never tint a hover red, blue or yellow, keep a selected tab or filter black, and give a disabled control no hover (`enabled:hover:bg-muted`) (every at-rest surface is white — don't fill panels with it) |
 | `font-sans` | Outfit 400/500/700/900 | all text |
 | `shadow-hard` / `shadow-hard-lg` | 4px / 8px offset, no blur | cards and raised elements |
 

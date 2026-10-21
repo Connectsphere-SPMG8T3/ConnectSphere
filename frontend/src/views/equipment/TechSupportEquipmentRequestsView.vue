@@ -25,7 +25,7 @@ onMounted(() => queue.load());
         </div>
         <RouterLink
           :to="{ name: 'dashboard-tech-support' }"
-          class="border-2 border-ink bg-canvas px-4 py-3 text-center text-xs font-bold shadow-hard active-press sm:border-4"
+          class="border-2 border-ink bg-canvas px-4 py-3 text-center text-xs font-bold shadow-hard hover:bg-muted active-press sm:border-4"
         >
           Back to dashboard
         </RouterLink>

@@ -286,7 +286,7 @@ watch(
                   <RouterLink
                     v-if="canFindVenue(space)"
                     :to="{ name: 'venue-search', query: { event: event.id, space: space.id } }"
-                    class="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-xs font-bold shadow-hard"
+                    class="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-xs font-bold shadow-hard hover:bg-muted"
                   >
                     Find venue
                   </RouterLink>

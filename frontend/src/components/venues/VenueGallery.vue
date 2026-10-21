@@ -78,7 +78,7 @@ const step = (delta) => {
       <button
         v-if="count > 1"
         type="button"
-        class="absolute left-3 top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas px-3 py-2 text-sm font-bold active-press"
+        class="absolute left-3 top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas px-3 py-2 text-sm font-bold hover:bg-muted active-press"
         aria-label="Previous slide"
         @click="step(-1)"
       >
@@ -87,7 +87,7 @@ const step = (delta) => {
       <button
         v-if="count > 1"
         type="button"
-        class="absolute right-3 top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas px-3 py-2 text-sm font-bold active-press"
+        class="absolute right-3 top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas px-3 py-2 text-sm font-bold hover:bg-muted active-press"
         aria-label="Next slide"
         @click="step(1)"
       >
@@ -111,7 +111,7 @@ const step = (delta) => {
           <button
             type="button"
             class="h-3 w-3 rounded-full border-2 border-ink active-press"
-            :class="i === index ? 'bg-ink' : 'bg-canvas'"
+            :class="i === index ? 'bg-ink' : 'bg-canvas hover:bg-muted'"
             :aria-label="`Go to slide ${i + 1}`"
             :aria-current="i === index ? 'true' : 'false'"
             @click="index = i"

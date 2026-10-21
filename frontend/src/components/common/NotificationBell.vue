@@ -41,7 +41,7 @@ function select(item) {
     <button
       type="button"
       class="relative flex h-10 w-10 items-center justify-center border-2 border-ink shadow-hard active-press"
-      :class="store.isOpen ? 'bg-bauhaus-yellow' : 'bg-canvas'"
+      :class="store.isOpen ? 'bg-bauhaus-yellow' : 'bg-canvas hover:bg-muted'"
       :aria-label="bellLabel"
       :aria-expanded="store.isOpen"
       @click="toggle"
@@ -87,7 +87,7 @@ function select(item) {
         <button
           v-if="store.count > 0"
           type="button"
-          class="border-2 border-ink bg-canvas px-2 py-1 text-xs font-bold active-press"
+          class="border-2 border-ink bg-canvas px-2 py-1 text-xs font-bold hover:bg-muted active-press"
           @click="store.markAllRead()"
         >
           Mark all as read
@@ -122,7 +122,7 @@ function select(item) {
             :is="item.link ? RouterLink : 'button'"
             v-bind="item.link ? { to: item.link } : { type: 'button' }"
             class="flex w-full items-start gap-3 px-4 py-3 text-left"
-            :class="item.read ? 'hover:bg-muted' : 'bg-bauhaus-yellow/20 hover:bg-bauhaus-yellow/30'"
+            :class="item.read ? 'hover:bg-muted' : 'bg-bauhaus-yellow/20 hover:bg-muted'"
             @click="select(item)"
           >
             <!-- Unread: a solid square marker on a tinted row; read: an empty slot, so text stays aligned. -->
@@ -148,7 +148,7 @@ function select(item) {
       <button
         v-if="store.nextBefore"
         type="button"
-        class="block w-full border-t-2 border-ink px-4 py-3 text-xs font-bold active-press"
+        class="block w-full border-t-2 border-ink px-4 py-3 text-xs font-bold hover:bg-muted active-press"
         @click="store.loadMore()"
       >
         Older notifications

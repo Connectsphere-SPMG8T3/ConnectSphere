@@ -79,7 +79,7 @@ function formatDate(value) {
 
 const leadRoute = (eventId) => ({ name: "lead-event", params: { id: eventId } });
 const rowClasses =
-  "block border-2 border-ink bg-canvas p-4 shadow-hard transition duration-150 hover:-translate-y-0.5 hover:bg-bauhaus-yellow/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transition-none sm:border-4 sm:p-5";
+  "block border-2 border-ink bg-canvas p-4 shadow-hard transition duration-150 hover:-translate-y-0.5 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transition-none sm:border-4 sm:p-5";
 </script>
 
 <template>

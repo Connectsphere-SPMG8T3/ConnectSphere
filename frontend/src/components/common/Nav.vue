@@ -120,7 +120,7 @@ async function handleLogout() {
   >
     <button
       type="button"
-      class="absolute -right-3 top-6 z-50 hidden h-6 w-6 items-center justify-center border-2 border-ink bg-canvas shadow-hard active-press sm:flex"
+      class="absolute -right-3 top-6 z-50 hidden h-6 w-6 items-center justify-center border-2 border-ink bg-canvas shadow-hard hover:bg-muted active-press sm:flex"
       :aria-label="isCollapsed ? 'Expand navigation' : 'Collapse navigation'"
       :aria-expanded="!isCollapsed"
       @click="isCollapsed = !isCollapsed"
