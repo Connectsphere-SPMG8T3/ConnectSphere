@@ -2869,7 +2869,7 @@ On `feature/scrum-18-venue-suitability`, branched from `main` at `69a54dd`, 2026
 - Backend 1,772 passed; frontend 1,170 passed; build clean. Live: booking checks 36/36 ([run](test-cases/runs/2026-10-20-1923-api-db-54f6e5b.md)) and TC-SUIT 7/7 ([run](test-cases/runs/2026-10-20-1929-api-db-54f6e5b.md)). Browser, narrowed at the developer's request to the booking, hold, block, buffer, deactivation and suitability specs: 21 of 22 ([run](test-cases/runs/2026-10-20-1932-e2e-54f6e5b.md)). The one failure is TC-BOOK-048/049/050, which also fails on `main`; this time every assertion in it passed and it failed closing a browser context on its last line.
 - **Not run after the BR-R3 change:** the full browser suite (the dashboard, equipment, auth and sign-up specs) and a full API run after the ordering fix (the booking and suitability checks were re-run, not the rest).
 
-### 4.76. D49 — Deactivating a venue again lists its still-flagged bookings (SCRUM-64 bug fix)
+### 4.77. D50 — Deactivating a venue again lists its still-flagged bookings (SCRUM-64 bug fix)
 
 On `fix/scrum-64-redeactivation-affected`, branched from `main` at `276127d`, 2026-10-20. Raised in the sprint review: "Given the venue is deactivated, and there are affected bookings, if it is reactivated and deactivated, then the same affected booking should show up."
 
