@@ -9,12 +9,12 @@ import EquipmentRequestPanel from "@/components/equipment/EquipmentRequestPanel.
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import EventDiscussion from "@/components/events/EventDiscussion.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
+import EventStatusProgress from "@/components/events/EventStatusProgress.vue";
 import SafetyDecisionDetails from "@/components/events/SafetyDecisionDetails.vue";
 import { useAuthStore } from "@/stores/auth";
 import RejectEventModal from "@/components/events/RejectEventModal.vue";
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import { showToast } from "@/composables/useToast";
-import { STATUS_LABELS } from "@/features/events/dashboard";
 import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { formatDecisionTime } from "@/features/venues/bookingDecision";
 import SafetyRejectedNotice from "@/components/venues/SafetyRejectedNotice.vue";
@@ -33,7 +33,6 @@ const isRejectOpen = ref(false);
 const isReturnOpen = ref(false);
 
 const event = computed(() => review.event);
-const statusLabel = computed(() => STATUS_LABELS[event.value?.status] ?? event.value?.status);
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
@@ -162,10 +161,9 @@ watch(
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl px-4 py-12 sm:px-8">
+  <main class="py-12">
     <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
       <BauhausButton variant="outline" @click="router.push({ name: 'dashboard-coordinator' })">Back to dashboard</BauhausButton>
-      <p v-if="event" class="text-xs font-bold uppercase tracking-widest text-ink/70">Request {{ event.id }}</p>
     </div>
 
     <p
@@ -178,46 +176,53 @@ watch(
 
     <template v-if="event">
       <BauhausCard background="yellow" accent="square" accent-color="bauhaus-red" class="mb-8">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div>
+        <div class="flex flex-wrap items-start justify-between gap-6">
+          <div class="min-w-0 flex-1">
             <p class="text-xs font-bold uppercase tracking-widest opacity-80">Event request</p>
-            <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">{{ event.name }}</h1>
+            <h1 class="mt-2 break-words text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">{{ event.name }}</h1>
           </div>
-          <p class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard">{{ statusLabel }}</p>
+          <div
+            v-if="showApprove || showReject || showReturn || event.status === 'planning'"
+            class="flex flex-wrap gap-3 lg:justify-end"
+            data-testid="review-actions"
+          >
+            <BauhausButton v-if="event.status === 'planning'" variant="secondary" size="sm" aria-label="Send for safety check"
+              :disabled="!canSendForSafetyCheck(event) || review.isActing"
+              :aria-describedby="event.safety_readiness?.missing.length ? 'safety-missing' : undefined"
+              @click="review.error = null; isSafetyOpen = true">Send for safety check</BauhausButton>
+            <BauhausButton
+              v-if="showApprove"
+              size="sm"
+              variant="secondary"
+              aria-label="Approve request"
+              :disabled="review.isActing"
+              @click="review.error = null; isApproveOpen = true"
+            >
+              Approve
+            </BauhausButton>
+            <BauhausButton
+              v-if="showReturn"
+              size="sm"
+              variant="yellow"
+              aria-label="Open return dialog"
+              :disabled="review.isActing"
+              @click="review.error = null; isReturnOpen = true"
+            >
+              Ask for amendment
+            </BauhausButton>
+            <BauhausButton
+              v-if="showReject"
+              size="sm"
+              variant="primary"
+              aria-label="Open reject dialog"
+              :disabled="review.isActing"
+              @click="review.error = null; isRejectOpen = true"
+            >
+              Reject
+            </BauhausButton>
+          </div>
         </div>
-        <div v-if="showApprove || showReject || showReturn || event.status === 'planning'" class="mt-6 flex flex-wrap gap-3">
-          <BauhausButton v-if="event.status === 'planning'" variant="secondary" aria-label="Send for safety check"
-            :disabled="!canSendForSafetyCheck(event) || review.isActing"
-            :aria-describedby="event.safety_readiness?.missing.length ? 'safety-missing' : undefined"
-            @click="review.error = null; isSafetyOpen = true">Send for safety check</BauhausButton>
-          <BauhausButton
-            v-if="showApprove"
-            variant="secondary"
-            aria-label="Approve request"
-            :disabled="review.isActing"
-            @click="review.error = null; isApproveOpen = true"
-          >
-            Approve
-          </BauhausButton>
-          <BauhausButton
-            v-if="showReturn"
-            variant="yellow"
-            aria-label="Open return dialog"
-            :disabled="review.isActing"
-            @click="review.error = null; isReturnOpen = true"
-          >
-            Return for amendment
-          </BauhausButton>
-          <BauhausButton
-            v-if="showReject"
-            variant="primary"
-            aria-label="Open reject dialog"
-            :disabled="review.isActing"
-            @click="review.error = null; isRejectOpen = true"
-          >
-            Reject
-          </BauhausButton>
-        </div>
+        <EventStatusProgress :status="event.status" class="mt-6" />
       </BauhausCard>
 
       <BauhausCard v-if="auth.role === 'event_coordinator' && event.status === 'planning' && event.latest_safety_decision" background="white" accent="none" class="mb-8">
@@ -246,18 +251,19 @@ watch(
       />
 
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-        <BauhausCard background="white" accent="none">
+        <BauhausCard background="white" accent="none" data-testid="request-details-card">
           <h2 class="text-2xl font-black uppercase tracking-tight">Request details</h2>
-          <dl class="mt-6 grid gap-5 sm:grid-cols-2">
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Purpose</dt><dd class="mt-1 font-medium">{{ displayValue(event.purpose) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Expected attendance</dt><dd class="mt-1 font-medium">{{ displayValue(event.expected_attendance) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Starts</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.starts_at, event.event_timezone) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Ends</dt><dd class="mt-1 font-medium">{{ displayDateTime(event.ends_at, event.event_timezone) }}</dd></div>
-            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Accessibility needs</dt><dd class="mt-1 font-medium">{{ displayValue(event.accessibility_needs) }}</dd></div>
-            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Equipment needs</dt><dd class="mt-1 font-medium">{{ displayValue(event.preliminary_equipment_needs) }}</dd></div>
-            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Description</dt><dd class="mt-1 whitespace-pre-wrap font-medium">{{ displayValue(event.description) }}</dd></div>
+          <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Request ID</dt><dd class="mt-2 break-all font-medium" data-testid="request-id">{{ event.id }}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Purpose</dt><dd class="mt-2 font-medium">{{ displayValue(event.purpose) }}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Expected attendance</dt><dd class="mt-2 font-medium">{{ displayValue(event.expected_attendance) }}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Starts</dt><dd class="mt-2 font-medium">{{ displayDateTime(event.starts_at, event.event_timezone) }}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Ends</dt><dd class="mt-2 font-medium">{{ displayDateTime(event.ends_at, event.event_timezone) }}</dd></div>
+            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Accessibility needs</dt><dd class="mt-2 font-medium">{{ displayValue(event.accessibility_needs) }}</dd></div>
+            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Equipment needs</dt><dd class="mt-2 font-medium">{{ displayValue(event.preliminary_equipment_needs) }}</dd></div>
+            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Description</dt><dd class="mt-2 whitespace-pre-wrap font-medium">{{ displayValue(event.description) }}</dd></div>
           </dl>
-          <section v-if="eventSpaces.length" class="mt-8 border-t-4 border-ink pt-6" data-testid="event-spaces">
+          <section v-if="eventSpaces.length" class="mt-6 border-t-4 border-ink pt-6" data-testid="event-spaces">
             <div class="flex items-center justify-between gap-3">
               <h3 class="text-xl font-black uppercase tracking-tight">Space requests</h3>
               <span class="text-xs font-bold uppercase tracking-widest text-ink/70" data-testid="space-count">{{ eventSpaces.length }} {{ eventSpaces.length === 1 ? "space" : "spaces" }}</span>
@@ -337,6 +343,9 @@ watch(
               </article>
             </div>
           </section>
+          <div class="mt-6 border-t-4 border-ink pt-6">
+            <EquipmentRequestPanel :event-id="event.id" :status="event.status" />
+          </div>
         </BauhausCard>
 
         <BauhausCard
@@ -460,23 +469,21 @@ watch(
           <p v-else-if="venuePanel.reason" class="mt-4 text-sm font-medium">{{ venuePanel.reason }}</p>
         </BauhausCard>
 
-        <BauhausCard background="white" accent="none">
-          <h2 class="mb-6 text-2xl font-black uppercase tracking-tight">History</h2>
-          <EventStatusHistory :entries="review.history" />
-        </BauhausCard>
-
         <BauhausCard v-if="auth.role === 'event_coordinator' && review.safetyDecisions.length" background="white" accent="none">
-          <h2 class="mb-6 text-2xl font-black uppercase">Safety decision history</h2>
-          <ol class="space-y-6"><li v-for="decision in review.safetyDecisions" :key="decision.id"><SafetyDecisionDetails :decision="decision" /></li></ol>
+          <h2 class="mb-4 text-2xl font-black uppercase">Safety decision history</h2>
+          <ol class="space-y-4"><li v-for="decision in review.safetyDecisions" :key="decision.id"><SafetyDecisionDetails :decision="decision" /></li></ol>
         </BauhausCard>
 
-        <BauhausCard background="white" accent="none">
-          <EventDiscussion :event-id="event.id" :status="event.status" />
-        </BauhausCard>
+        <div class="grid gap-8 lg:col-span-2 lg:grid-cols-3" data-testid="discussion-history-row">
+          <BauhausCard background="white" accent="none" class="lg:col-span-2" data-testid="discussion-card">
+            <EventDiscussion :event-id="event.id" :status="event.status" />
+          </BauhausCard>
 
-        <BauhausCard background="white" accent="none">
-          <EquipmentRequestPanel :event-id="event.id" :status="event.status" />
-        </BauhausCard>
+          <BauhausCard background="white" accent="none" data-testid="history-card">
+            <h2 class="mb-4 text-2xl font-black uppercase tracking-tight">History</h2>
+            <EventStatusHistory :entries="review.history" />
+          </BauhausCard>
+        </div>
       </div>
     </template>
 

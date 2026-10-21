@@ -68,7 +68,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl px-4 py-12 sm:px-8">
+  <main class="py-12">
     <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
       <BauhausButton variant="outline" @click="router.push({ name: 'dashboard-organiser' })">Back to requests</BauhausButton>
       <p v-if="event" class="text-xs font-bold uppercase tracking-widest text-ink/70">Request {{ event.id }}</p>

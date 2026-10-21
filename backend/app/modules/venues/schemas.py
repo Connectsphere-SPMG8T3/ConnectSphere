@@ -187,6 +187,7 @@ class BookingSummary(BaseModel):
     decision_reason: str | None = None
     suggestion: str | None = None
     decided_at: datetime | None = None
+    flag: str | None = None
 
 
 class Editor(BaseModel):
@@ -645,13 +646,16 @@ class VenueDeactivateRequest(BaseModel):
 
 
 class FlaggableBooking(BaseModel):
-    """A future booking that deactivating the venue would flag Affected (AC3)."""
+    """A future booking deactivating the venue affects (AC3). `flag` is null
+    when deactivation will flag it Affected now; otherwise it is already
+    flagged (for example by an earlier deactivation) and keeps that flag."""
 
     booking_id: str
     event_id: str
     event_name: str | None = None
     period: Period
     status: Literal["held", "approved"]
+    flag: Literal["affected", "conflict", "unsuitable", "safety_rejected"] | None = None
 
 
 class VenueDeactivateResponse(BaseModel):

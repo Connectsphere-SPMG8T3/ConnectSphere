@@ -459,7 +459,7 @@ def deactivate_venue(venue_id: str, actor_id: str, body: VenueDeactivateRequest)
     names = events_service.names_by_id(b.event_id for b in bookings) if bookings else {}
     affected = [
         FlaggableBooking(booking_id=b.id, event_id=b.event_id, event_name=names.get(b.event_id),
-                         period=b.period, status=b.status)
+                         period=b.period, status=b.status, flag=b.flag)
         for b in bookings
     ]
     if affected and not body.confirm:

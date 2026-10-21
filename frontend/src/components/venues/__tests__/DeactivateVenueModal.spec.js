@@ -82,6 +82,28 @@ describe("DeactivateVenueModal (SCRUM-64)", () => {
     expect(button("Deactivate venue")).toBeNull();
   });
 
+  it("lists a booking still flagged from an earlier deactivation and says it keeps that flag", async () => {
+    await mountModal({
+      affected: [
+        { ...AFFECTED[0], flag: "affected" },
+        { ...AFFECTED[0], booking_id: "d-2", event_name: "Board Retreat", flag: "safety_rejected" },
+        { ...AFFECTED[0], booking_id: "d-3", event_name: "Town Hall", flag: null },
+      ],
+    });
+    const text = document.body.textContent;
+    expect(text).toContain("These bookings are affected. Any not already flagged will be flagged Affected and their coordinators notified.");
+    expect(text).toContain("Already flagged: Affected");
+    expect(text).toContain("Already flagged: Safety rejected");
+    const rows = [...document.querySelectorAll("li")].map((li) => li.textContent);
+    expect(rows[2]).not.toContain("Already flagged");
+    expect(button("Deactivate anyway")).not.toBeNull();
+  });
+
+  it("shows an unrecognised flag as it is rather than hiding it", async () => {
+    await mountModal({ affected: [{ ...AFFECTED[0], flag: "under_review" }] });
+    expect(document.body.textContent).toContain("Already flagged: under_review");
+  });
+
   it("refers to a booking whose event has no name by its short id", async () => {
     await mountModal({ affected: [{ ...AFFECTED[0], event_name: null }] });
     expect(document.body.textContent).toContain("Event E0000000");

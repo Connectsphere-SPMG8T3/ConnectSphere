@@ -7,6 +7,7 @@ from app.core.exceptions import BookingConflictError, EquipmentInsufficientError
 from app.modules.auth.router import router as auth_router
 from app.modules.equipment.router import router as equipment_router
 from app.modules.events.router import router as events_router
+from app.modules.notifications.router import router as notifications_router
 from app.modules.venues.router import bookings_router as venue_bookings_router
 from app.modules.venues.router import router as venues_router
 
@@ -29,6 +30,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix=settings.api_v1_prefix)
 app.include_router(equipment_router, prefix=settings.api_v1_prefix)
 app.include_router(events_router, prefix=settings.api_v1_prefix)
+app.include_router(notifications_router, prefix=settings.api_v1_prefix)
 app.include_router(venues_router, prefix=settings.api_v1_prefix)
 app.include_router(venue_bookings_router, prefix=settings.api_v1_prefix)
 
