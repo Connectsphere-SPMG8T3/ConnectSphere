@@ -273,6 +273,20 @@ describe("OrganiserDashboard", () => {
     expect(el.querySelector('[aria-labelledby="requests-heading"] [data-capped-rows]').style.maxHeight).toBe("");
   });
 
+  it("greys out rejected requests on the Events tab", async () => {
+    const { el, eventsStore } = await mountDashboard();
+    eventsStore.events.push({ ...eventsStore.events[1], id: "rejected-1", name: "Refused Gala", status: "rejected" });
+    await openEvents(el);
+
+    const card = (name) =>
+      [...el.querySelectorAll('[aria-labelledby="requests-heading"] [data-event-name] h3')]
+        .find((node) => node.textContent.trim() === name)
+        .closest(".border-4");
+    expect(card("Refused Gala").className).toContain("bg-muted");
+    expect(card("Refused Gala").className).toContain("text-ink/70");
+    expect(card("Annual Conference").className).toContain("bg-surface");
+  });
+
   it("shows my events as the coordinator's kanban board, with a red Returned column", async () => {
     const { el } = await mountDashboard();
 

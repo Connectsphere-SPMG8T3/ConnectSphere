@@ -356,7 +356,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
           <span class="text-sm font-bold">{{ groupedEvents.requests.length }} total</span>
         </div>
         <div v-if="groupedEvents.requests.length" ref="requestsList" data-capped-rows class="grid gap-4 overflow-y-auto pb-2 pr-2">
-          <BauhausCard v-for="event in groupedEvents.requests" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow class="border-4 shadow-none hover:bg-muted focus-within:bg-muted transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none">
+          <BauhausCard v-for="event in groupedEvents.requests" :key="event.id" :background="eventCardTone(event.status)" :dimmed="event.status === 'rejected'" accent="none" compact allow-overflow class="border-4 shadow-none hover:bg-muted focus-within:bg-muted transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none">
             <div class="flex min-w-0 items-center justify-between gap-4">
               <div class="min-w-0" data-event-name>
                 <h3 data-event-name class="text-xl font-bold">{{ event.name }}</h3>
