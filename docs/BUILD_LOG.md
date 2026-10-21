@@ -2912,3 +2912,17 @@ On `fix/scrum-64-redeactivation-affected`, branched from `main` at `276127d`, 20
 **Verified.** Regression tests failed first for the expected reasons (`is_('flag', 'null')` called; no `flag` in the response; dialog text missing). Backend 1,775 passed (before the flag-value parametrisation; the venue files 78/78 after); frontend 1,172 passed. Live: venue checks 24/24 including TC-VENUE-097 ([run](test-cases/runs/2026-10-20-2109-api-db-d110add.md)); browser TC-VENUE-065 and 097 ([run](test-cases/runs/2026-10-20-2238-e2e-d110add.md)), against a backend on 8010 and a frontend on 5184.
 
 **Not verified.** A full API run on this commit: the first full run (160/174, before committing) failed 12 checks on the Supabase CLI's temporary login being refused and TC-BOOK-005 / TC-EQR-008 on review-fixture drift; that log was discarded and only the venue checks were re-run. The full browser suite was not run. Manual case TC-VENUE-098 passed ([run](test-cases/runs/2026-10-20-manual-3d623ab.md)).
+
+### 4.78. D51 — Safety decision form wording (CR-104 bug fix)
+
+On `fix/safety-decision-wording`, branched from `main` at `276127d`, 2026-10-20. Numbered 4.78 and D51: PR #95 took 4.76 and D49, and the re-deactivation fix (PR #92) took 4.77 and D50.
+
+**Symptom.** Sprint review: "The wording for the concern is a bit unclear." On the Safety decision card the same venue appeared under "Arrangements this concerns (optional)" (checkboxes) and "Venue to reject (required for Reject)" (radio), and the comment hint said only "Record any crowd-movement concerns here."
+
+**Cause.** The form never said that the checkboxes are sent only with Request changes, the radio only with Reject, or that the comment is required for both; Request changes and Reject simply stayed disabled.
+
+**Fix (copy only).** Comment hint: "Required to request changes or reject. Note any crowd-movement concerns here." Legends: "For Request changes: what needs changing (optional)" and "For Reject: venue that fails the safety check (required)", each with a one-line hint linked by `aria-describedby`. Wording chosen by the developer from two options. Payloads and disabled rules are unchanged.
+
+**Verified.** `SafetyViews.spec.js` was updated first and failed on the old text; frontend 1,169 of 1,170 passed in the full run, the one failure (`EventRequestView` resubmit, 1.5 s) passed 3 of 3 alone and is unrelated. Browser: `safety-decision.e2e.js` and `venue-buffers.e2e.js` 8/8 ([run](test-cases/runs/2026-10-20-2249-e2e-db49f93.md)), against a backend on 8010 and a frontend on 5184; none of them asserts the new copy. No API run, since no backend code changed.
+
+**Manual.** TC-SDEC-030 passed ([run](test-cases/runs/2026-10-20-manual-3622650.md)).

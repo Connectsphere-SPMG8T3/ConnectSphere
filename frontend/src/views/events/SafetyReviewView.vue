@@ -123,14 +123,16 @@ watch(() => route.params.id, (id) => {
           <h2 class="text-2xl font-black uppercase">Safety decision</h2>
           <label for="safety-comment" class="mt-6 block font-bold uppercase">Comment</label>
           <textarea id="safety-comment" v-model="comment" maxlength="1000" rows="5" aria-describedby="safety-comment-hint" class="mt-2 w-full border-2 border-ink bg-canvas p-3" :disabled="safety.loading" />
-          <p id="safety-comment-hint" class="mt-2 text-sm">Record any crowd-movement concerns here.</p>
-          <fieldset class="mt-6" :disabled="safety.loading">
-            <legend class="font-bold uppercase">Arrangements this concerns (optional)</legend>
+          <p id="safety-comment-hint" class="mt-2 text-sm">Required to request changes or reject. Note any crowd-movement concerns here.</p>
+          <fieldset class="mt-6" :disabled="safety.loading" aria-describedby="safety-changes-hint">
+            <legend class="font-bold uppercase">For Request changes: what needs changing (optional)</legend>
+            <p id="safety-changes-hint" class="mt-2 text-sm">Tick the venues and equipment your comment is about, so the coordinator knows what to revise.</p>
             <label v-for="venue in review.venues" :key="venue.booking_id" class="mt-3 flex items-start gap-3"><input v-model="bookingIds" type="checkbox" :value="venue.booking_id" class="mt-1" />{{ venue.venue_name }}</label>
             <label v-for="line in review.equipment_lines" :key="line.id" class="mt-3 flex items-start gap-3"><input v-model="equipmentIds" type="checkbox" :value="line.id" class="mt-1" />{{ line.equipment_name }}</label>
           </fieldset>
-          <fieldset class="mt-6" :disabled="safety.loading">
-            <legend class="font-bold uppercase">Venue to reject (required for Reject)</legend>
+          <fieldset class="mt-6" :disabled="safety.loading" aria-describedby="safety-reject-hint">
+            <legend class="font-bold uppercase">For Reject: venue that fails the safety check (required)</legend>
+            <p id="safety-reject-hint" class="mt-2 text-sm">Choose one venue. Only approved bookings can be rejected; the event goes back to Planning.</p>
             <label v-for="venue in review.venues" :key="venue.booking_id" class="mt-3 flex items-start gap-3">
               <input v-model="rejectedBookingId" type="radio" name="rejected-venue" :value="venue.booking_id" :disabled="venue.booking_status !== 'approved'" class="mt-1" />{{ venue.venue_name }}
             </label>
