@@ -1133,6 +1133,29 @@ def _(ctx: Context) -> None:
     expect(search_includes(ctx, venue_id), "the reactivated venue is not back in search")
 
 
+@check("TC-VENUE-097", "Deactivating again after reactivation previews the still-flagged booking", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "097")
+    event_id = throwaway_event(ctx, "097", "2031-07-04 10:00+08", "2031-07-04 12:00+08")
+    expect_status(request_venue(ctx, ctx.shared("event_coordinator"), event_id, venue_id), 201)
+    staff = ctx.shared("venue_staff")
+    expect_status(deactivate(ctx, staff, venue_id, confirm=True), 200)
+    expect_status(ctx.client.post(f"{ctx.api}/venues/{venue_id}/reactivate", headers=staff.headers,
+                                  json={"version": venue_version(venue_id)}), 200)
+    notices_before = db_query(f"select count(*)::int as n from public.notifications where event_id = '{event_id}'")[0]["n"]
+
+    preview = deactivate(ctx, staff, venue_id)
+    expect_status(preview, 200)
+    body = preview.json()
+    expect(body["saved"] is False and [(b["event_id"], b["flag"]) for b in body["affected"]] == [(event_id, "affected")],
+           f"second preview is {body}")
+    expect_status(deactivate(ctx, staff, venue_id, confirm=True), 200)
+    [booking] = db_query(f"select flag::text as flag from public.venue_bookings where event_id = '{event_id}'")
+    expect(booking["flag"] == "affected", f"the flag became {booking['flag']}")
+    notices_after = db_query(f"select count(*)::int as n from public.notifications where event_id = '{event_id}'")[0]["n"]
+    expect(notices_after == notices_before, f"deactivating again sent {notices_after - notices_before} more notice(s)")
+
+
 @check("TC-VENUE-069", "Only venue staff can deactivate or reactivate; a coordinator gets 403", needs_db=True)
 def _(ctx: Context) -> None:
     venue_id = throwaway_venue(ctx, "069")

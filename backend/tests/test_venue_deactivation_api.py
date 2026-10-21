@@ -15,10 +15,11 @@ EVENT_ID = "e0000000-0000-4000-8000-000000000301"
 BODY = {"reason": "permanently_closed", "note": None, "version": 3}
 
 
-def _booking(status="approved"):
+def _booking(status="approved", flag=None):
     start = datetime(2031, 5, 20, 6, tzinfo=timezone.utc)
     return BookingSummary(id="d0000000-0000-4000-8000-000000000301", event_id=EVENT_ID,
-                          period=Period(starts_at=start, ends_at=start + timedelta(hours=3)), status=status)
+                          period=Period(starts_at=start, ends_at=start + timedelta(hours=3)), status=status,
+                          flag=flag)
 
 
 @pytest.fixture()
@@ -62,6 +63,30 @@ class TestDeactivate:
         assert response.status_code == 200 and body["saved"] is False
         assert body["affected"][0]["event_name"] == "Gala" and body["affected"][0]["status"] == "held"
         assert venue["rpc"] == []
+
+    def test_a_booking_still_flagged_from_an_earlier_deactivation_is_previewed(
+        self, client, auth_headers, authenticate_as, venue
+    ):
+        """Deactivate, reactivate, deactivate again: the booking the first
+        deactivation flagged is still affected, so staff must see it again."""
+        authenticate_as("venue_staff")
+        venue["flaggable"] = [_booking(flag="affected")]
+        body = client.post(URL, json=BODY, headers=auth_headers).json()
+        assert body["saved"] is False
+        assert [(b["booking_id"], b["flag"]) for b in body["affected"]] == [(_booking().id, "affected")]
+        assert venue["rpc"] == []
+
+    @pytest.mark.parametrize("flag", ["affected", "conflict", "unsuitable", "safety_rejected"])
+    def test_every_booking_flag_is_previewed(self, client, auth_headers, authenticate_as, venue, flag):
+        authenticate_as("venue_staff")
+        venue["flaggable"] = [_booking(flag=flag)]
+        response = client.post(URL, json=BODY, headers=auth_headers)
+        assert response.status_code == 200 and response.json()["affected"][0]["flag"] == flag
+
+    def test_an_unflagged_booking_is_previewed_with_no_flag(self, client, auth_headers, authenticate_as, venue):
+        authenticate_as("venue_staff")
+        venue["flaggable"] = [_booking()]
+        assert client.post(URL, json=BODY, headers=auth_headers).json()["affected"][0]["flag"] is None
 
     def test_confirm_flags_and_returns_flagged_events_to_planning(self, client, auth_headers, authenticate_as, venue):
         authenticate_as("venue_staff")

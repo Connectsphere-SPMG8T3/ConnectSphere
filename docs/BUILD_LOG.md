@@ -2897,3 +2897,18 @@ On `feature/scrum-113-in-app-notifications`, branched from `main` at `276127d`, 
 - **The callers of `notify_registered_attendees`** (37, 115, a confirmed replacement venue, registration changes) are other developers' stories and are not wired.
 - A real tab switch for TC-NOTIF-011 (simulated in code), the panel on an actual phone, the full live API and browser suites (only the TC-NOTIF checks were run), and ADR-0004's status (left "Proposed").
 
+### 4.77. D50 — Deactivating a venue again lists its still-flagged bookings (SCRUM-64 bug fix)
+
+On `fix/scrum-64-redeactivation-affected`, branched from `main` at `276127d`, 2026-10-20. Raised in the sprint review: "Given the venue is deactivated, and there are affected bookings, if it is reactivated and deactivated, then the same affected booking should show up."
+
+**Symptom.** Deactivate a venue with a future booking (flagged Affected), reactivate it, deactivate it again: no preview, the venue saves inactive at once with `affected: []`, and venue staff are never told the booking is still affected. Reproduced read-only on the live project (future flagged bookings on Boardroom Orchid and Seminar Room 1 were missing from `list_flaggable_bookings`) and with live check TC-VENUE-097 against the old code.
+
+**Root cause.** `venues.repository.list_flaggable_bookings` filtered `flag is null`, mirroring what `flag_venue_bookings` will newly flag rather than what the deactivation affects. Reactivation keeps flags by design (AC4), so any booking already flagged (by an earlier deactivation, an edit, a block or a safety rejection) dropped out of the preview. The block preview (SCRUM-51) never had the filter.
+
+**Why the tests missed it.** The deactivation API tests replace `list_flaggable_bookings` with a stub, so the filter was never exercised; and no live or browser check deactivated the same venue twice.
+
+**Fix.** The preview reads every future held/approved booking with its `flag`; `FlaggableBooking` gains `flag` (null when this deactivation will flag it). `flag_venue_bookings` is unchanged, so an existing flag is never overwritten and nobody is notified twice. `DeactivateVenueModal` shows "Already flagged: <flag>" on those rows and adjusts its header. No migration.
+
+**Verified.** Regression tests failed first for the expected reasons (`is_('flag', 'null')` called; no `flag` in the response; dialog text missing). Backend 1,775 passed (before the flag-value parametrisation; the venue files 78/78 after); frontend 1,172 passed. Live: venue checks 24/24 including TC-VENUE-097 ([run](test-cases/runs/2026-10-20-2109-api-db-d110add.md)); browser TC-VENUE-065 and 097 ([run](test-cases/runs/2026-10-20-2238-e2e-d110add.md)), against a backend on 8010 and a frontend on 5184.
+
+**Not verified.** A full API run on this commit: the first full run (160/174, before committing) failed 12 checks on the Supabase CLI's temporary login being refused and TC-BOOK-005 / TC-EQR-008 on review-fixture drift; that log was discarded and only the venue checks were re-run. The full browser suite was not run. Manual case TC-VENUE-098 passed ([run](test-cases/runs/2026-10-20-manual-3d623ab.md)).

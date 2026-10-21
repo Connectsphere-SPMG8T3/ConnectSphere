@@ -11,6 +11,9 @@ import { formatEventReference } from "@/features/venues/dashboard";
 // back as `affected` and staff confirm with "Deactivate anyway". The API is
 // the enforcement point for every rule shown here.
 const NOTE_MAX_LENGTH = 500;
+// A flag survives reactivation, so deactivating again lists bookings that are
+// already flagged; the database keeps their flag and does not notify again.
+const FLAG_LABELS = { affected: "Affected", conflict: "Conflict", unsuitable: "Unsuitable", safety_rejected: "Safety rejected" };
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -27,6 +30,7 @@ const note = ref("");
 const needsNote = computed(() => reason.value === "other");
 const valid = computed(() => reason.value !== "" && (!needsNote.value || note.value.trim().length > 0));
 const previewing = computed(() => props.affected.length > 0);
+const someAlreadyFlagged = computed(() => props.affected.some((booking) => booking.flag));
 
 watch(
   () => props.open,
@@ -87,7 +91,13 @@ function submit(confirm) {
         <p class="mt-1 text-right text-xs font-bold text-ink/70">{{ note.length }} / {{ NOTE_MAX_LENGTH }}</p>
 
         <div v-if="previewing" class="mt-6 border-4 border-ink bg-bauhaus-yellow p-4">
-          <p class="text-sm font-bold">These bookings will be flagged Affected and their coordinators notified.</p>
+          <p class="text-sm font-bold">
+            {{
+              someAlreadyFlagged
+                ? "These bookings are affected. Any not already flagged will be flagged Affected and their coordinators notified."
+                : "These bookings will be flagged Affected and their coordinators notified."
+            }}
+          </p>
           <ul class="mt-3 space-y-2">
             <li
               v-for="booking in props.affected"
@@ -98,6 +108,9 @@ function submit(confirm) {
               <span class="block font-medium">{{ formatVenuePeriod(booking.period) }}</span>
               <span class="block text-xs font-bold uppercase tracking-widest text-ink/70">
                 {{ bookingStatusLabel(booking.status) }}
+              </span>
+              <span v-if="booking.flag" class="block text-xs font-bold uppercase tracking-widest">
+                Already flagged: {{ FLAG_LABELS[booking.flag] ?? booking.flag }}
               </span>
             </li>
           </ul>
