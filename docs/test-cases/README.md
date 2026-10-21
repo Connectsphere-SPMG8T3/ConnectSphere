@@ -15,6 +15,7 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 | [dashboards.md](dashboards.md) | SCRUM-72 coordinator, SCRUM-70 venue staff, SCRUM-71 organiser, SCRUM-73 technical support, CR-101 Event Coordinator Lead, SCRUM-12 Coordinator assignment | TC-DASH, TC-VSD, TC-ORG, TC-TSD, TC-LEAD, TC-ASSIGN |
 | [safety-decisions.md](safety-decisions.md) | CR-103 queue/review (AC1–4, AC6), CR-104 safety decisions | TC-SDEC |
 | [equipment.md](equipment.md) | SCRUM-45 equipment request | TC-EQR |
+| [notifications.md](notifications.md) | SCRUM-113 in-app notifications, SCRUM-53 attendee notices, SCRUM-90 reminders | TC-NOTIF |
 
 ## Environment
 

@@ -103,8 +103,8 @@ export const venuesApi = {
 };
 
 export const venueBookingsApi = {
-  markRevised(bookingId, token) {
-    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/mark-revised`, { method: "POST", token });
+  markRevised(bookingId, note, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/mark-revised`, { method: "POST", body: { note }, token });
   },
   // SCRUM-19: a tentative hold over the event's own period. The body carries no
   // times; the API reads them from the event.
@@ -131,6 +131,25 @@ export const venueBookingsApi = {
   // CR-95 AC9: venue staff restore an affected booking; 409 says why the venue isn't free yet.
   restore(bookingId, token) {
     return request(`/venue-bookings/${encodeURIComponent(bookingId)}/restore`, { method: "POST", token });
+  },
+};
+
+// SCRUM-113: the notification bell. Every call is scoped by the API to the caller
+// and the role their session is acting as.
+export const notificationsApi = {
+  // The 10-second poll (ADR-0004): `{count, latest_at}`.
+  unreadCount(token) {
+    return request("/notifications/unread-count", { token });
+  },
+  // `before` is the previous page's `next_before`.
+  list({ limit, before } = {}, token) {
+    return request(`/notifications${toQueryString({ limit, before })}`, { token });
+  },
+  markRead(notificationId, token) {
+    return request(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: "POST", token });
+  },
+  markAllRead(token) {
+    return request("/notifications/read-all", { method: "POST", token });
   },
 };
 

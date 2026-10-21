@@ -488,12 +488,16 @@ def list_safety_decisions(event_id: str) -> list[dict]:
 def list_recent_safety_decisions(since: datetime) -> list[dict]:
     """Every decision since `since`, any event, with its event and decider names (CR-103 AC7)."""
     response = (get_supabase_admin_client().table("event_safety_decisions")
-                .select("id, event_id, decision, comment, decided_at, event:events(name), "
+                .select("id, event_id, decision, comment, decided_at, affected_booking_ids, "
+                        "affected_equipment_request_ids, rejected_venue_ids, event:events(name), "
                         "decider:profiles!event_safety_decisions_decided_by_fkey(full_name)")
                 .gte("decided_at", since.isoformat()).order("decided_at", desc=True).execute())
     return [dict(id=row["id"], event_id=row["event_id"], event_name=(row.get("event") or {}).get("name", ""),
                  decision=row["decision"], comment=row.get("comment"), decided_at=row["decided_at"],
-                 decided_by_name=(row.get("decider") or {}).get("full_name"))
+                 decided_by_name=(row.get("decider") or {}).get("full_name"),
+                 affected_booking_ids=row.get("affected_booking_ids", []),
+                 affected_equipment_request_ids=row.get("affected_equipment_request_ids", []),
+                 rejected_venue_ids=row.get("rejected_venue_ids", []))
             for row in response.data or []]
 
 

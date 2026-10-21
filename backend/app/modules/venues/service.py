@@ -459,7 +459,7 @@ def deactivate_venue(venue_id: str, actor_id: str, body: VenueDeactivateRequest)
     names = events_service.names_by_id(b.event_id for b in bookings) if bookings else {}
     affected = [
         FlaggableBooking(booking_id=b.id, event_id=b.event_id, event_name=names.get(b.event_id),
-                         period=b.period, status=b.status)
+                         period=b.period, status=b.status, flag=b.flag)
         for b in bookings
     ]
     if affected and not body.confirm:
@@ -707,9 +707,13 @@ BOOKING_REFUSALS = {
 }
 
 
+# CR-95 AC4 / D52: both follow-up flags permit requesting another venue.
+REPLACEABLE_FLAGS = ("affected", "safety_rejected")
+
+
 def _prepare_replacement(replaces_id: str, event: dict, space_id: str | None) -> None:
     """Refuse before changing anything unless `replaces_id` is this event's (or
-    space's) own affected booking that is still held or approved, then return a
+    space's) own affected or Safety-rejected booking that is still held or approved, then return a
     Confirmed or Safety-review event to planning, which the booking functions
     require (CR-95 AC4, AC7). The coordinator has decided to replace the venue
     by asking, so the event stays in planning even if the venue they pick is
@@ -720,7 +724,7 @@ def _prepare_replacement(replaces_id: str, event: dict, space_id: str | None) ->
     if (
         row["event_id"] != event["id"]
         or row.get("event_space_request_id") != space_id
-        or row.get("flag") != "affected"
+        or row.get("flag") not in REPLACEABLE_FLAGS
         or row["status"] not in ("held", "approved")
     ):
         raise BookingConflictError(BOOKING_REFUSALS["replaced_booking_invalid"], None)
@@ -1041,17 +1045,20 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
 
 
 MARK_REVISED_REFUSALS = {
+    "replacement_pending": "A replacement venue has been requested for this booking.",
     "not_safety_rejected": "This booking isn't flagged Safety rejected.",
     "not_planning": "A booking can be marked revised only while the event is in Planning.",
 }
 
 
-def mark_safety_revision(booking_id: str, actor_id: str) -> VenueBookingDetail:
+def mark_safety_revision(booking_id: str, actor_id: str, note: str) -> VenueBookingDetail:
     """CR-104 AC3/AC4 [Team decision]: assigned coordinator marks revised.
 
     The RPC checks assignment and Planning under locks before clearing the flag.
     """
-    outcome = repository.mark_safety_revision(booking_id, actor_id)
+    outcome = repository.mark_safety_revision(booking_id, actor_id, note)
+    if outcome == "note_required":
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A note is required.")
     if outcome == "booking_not_found":
         raise BookingNotFoundError()
     if outcome == "not_assigned":
@@ -1059,3 +1066,15 @@ def mark_safety_revision(booking_id: str, actor_id: str) -> VenueBookingDetail:
     if outcome in MARK_REVISED_REFUSALS:
         raise BookingDecisionConflictError(MARK_REVISED_REFUSALS[outcome])
     return _booking_detail(repository.get_booking(booking_id))
+
+
+def booking_venue_names(booking_ids: list[str]) -> dict[str, str | None]:
+    return repository.booking_venue_names(booking_ids)
+
+
+def venue_names(venue_ids: list[str]) -> dict[str, str | None]:
+    return repository.venue_names(venue_ids)
+
+
+def safety_revisions(booking_ids: list[str]) -> list[dict]:
+    return repository.safety_revisions(booking_ids)

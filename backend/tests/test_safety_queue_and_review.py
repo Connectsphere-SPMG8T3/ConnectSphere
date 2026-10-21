@@ -16,6 +16,10 @@ DECISION={'id':BOOKING,'decision':'changes_requested','comment':'PRIVATE-LEAK-MA
 
 @pytest.fixture()
 def state(monkeypatch):
+    for name in ('booking_venue_names','venue_names'):
+        monkeypatch.setattr(venues,name,lambda _: {},raising=False)
+    monkeypatch.setattr(venues,'safety_revisions',lambda _: [],raising=False)
+    monkeypatch.setattr(equipment,'line_names',lambda _: {},raising=False)
     state={'event':event_row('safety_review'),'decisions':[deepcopy(DECISION)],'queue':[]}
     state['event'].update(organiser={'full_name':'Organiser'},coordinator={'id':COORDINATOR_ID,'full_name':'Coordinator'})
     monkeypatch.setattr(repository,'get_event',lambda _:deepcopy(state['event']))

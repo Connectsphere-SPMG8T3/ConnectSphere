@@ -191,7 +191,7 @@ describe("describeConflict (SCRUM-21 AC2)", () => {
 describe('CR-104 Safety rejected panel', () => {
   const rejected = { ...booking('approved'), flag:'safety_rejected',flag_reason:'Exits blocked',event_space_request_id:'s1' };
   it.each(['planning','safety_review'])('names the booking and limits revision in %s', (status) => {
-    expect(venuePanelState({status,venue_bookings:[rejected]})).toEqual({kind:'safety-rejected',booking:rejected,reason:'Exits blocked',canMarkRevised:status==='planning'});
+    expect(venuePanelState({status,venue_bookings:[rejected]})).toEqual({kind:'safety-rejected',booking:rejected,reason:'Exits blocked',canMarkRevised:status==='planning',canReplace:status==='planning'});
   });
   it('scopes the flag to its own space', () => {
     const other={...booking('approved'),id:'b2',event_space_request_id:'s2'};
@@ -211,4 +211,19 @@ it("CR-100 labels an occupied window beyond supported dates without presenting c
   expect(describeConflict({ kind: "booking", event_name: "Long setup",
     starts_at: "0001-01-01T00:00:00Z", ends_at: "9999-12-31T23:59:59Z" }, "Asia/Singapore"))
     .toBe('"Long setup" occupies it beyond supported dates, including setup and turnaround.');
+});
+
+
+describe("D52 Safety-rejected replacement", () => {
+  const rejected = {...booking("approved"), id: "old", flag: "safety_rejected", flag_reason: "Exits blocked"};
+  it.each(["held", "approved", "re_review"])("a %s replacement hides both actions and names it", (status) => {
+    const replacement = {...booking(status), id: "r1", replaces_booking_id: rejected.id, venue_name: "Town Hall"};
+    expect(venuePanelState({status: "planning", venue_bookings: [rejected, replacement]}))
+      .toMatchObject({kind: "safety-rejected", replacement, canMarkRevised: false, canReplace: false});
+  });
+  it("a rejected replacement brings both actions back", () => {
+    const replacement = {...booking("rejected"), id: "r1", replaces_booking_id: rejected.id};
+    expect(venuePanelState({status: "planning", venue_bookings: [rejected, replacement]}))
+      .toMatchObject({canMarkRevised: true, canReplace: true});
+  });
 });

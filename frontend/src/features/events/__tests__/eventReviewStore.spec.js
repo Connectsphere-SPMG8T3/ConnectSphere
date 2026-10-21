@@ -2,11 +2,12 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { canApprove, canReject, canReturn, canSendForSafetyCheck, REJECT_REASON_MAX_LENGTH, useEventReviewStore } from "@/features/events/eventReviewStore";
-import { ApiError, eventsApi } from "@/services/api";
+import { ApiError, eventsApi, venueBookingsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
+  venueBookingsApi: { markRevised: vi.fn() },
   eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), setPrimarySpace: vi.fn(), clearPrimarySpace: vi.fn() },
 }));
 
@@ -327,4 +328,16 @@ describe("private safety decisions", () => {
     expect(store.event).toBeNull();
   });
 
+});
+
+
+describe("D54 revision note", () => {
+  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks(); signedInCoordinator(); });
+  it("sends the note once even if called twice", async () => {
+    const store=useEventReviewStore(); store.event={...EVENT};
+    eventsApi.get.mockResolvedValue(EVENT); eventsApi.history.mockResolvedValue({entries: []});
+    await Promise.all([store.markBookingRevised("b1", "Note"), store.markBookingRevised("b1", "Note")]);
+    expect(venueBookingsApi.markRevised).toHaveBeenCalledTimes(1);
+    expect(venueBookingsApi.markRevised).toHaveBeenCalledWith("b1", "Note", "access-token");
+  });
 });

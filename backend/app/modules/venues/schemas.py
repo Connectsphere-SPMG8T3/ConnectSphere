@@ -187,6 +187,7 @@ class BookingSummary(BaseModel):
     decision_reason: str | None = None
     suggestion: str | None = None
     decided_at: datetime | None = None
+    flag: str | None = None
 
 
 class Editor(BaseModel):
@@ -645,13 +646,16 @@ class VenueDeactivateRequest(BaseModel):
 
 
 class FlaggableBooking(BaseModel):
-    """A future booking that deactivating the venue would flag Affected (AC3)."""
+    """A future booking deactivating the venue affects (AC3). `flag` is null
+    when deactivation will flag it Affected now; otherwise it is already
+    flagged (for example by an earlier deactivation) and keeps that flag."""
 
     booking_id: str
     event_id: str
     event_name: str | None = None
     period: Period
     status: Literal["held", "approved"]
+    flag: Literal["affected", "conflict", "unsuitable", "safety_rejected"] | None = None
 
 
 class VenueDeactivateResponse(BaseModel):
@@ -738,3 +742,14 @@ class VenueBlockResponse(BaseModel):
     saved: bool
     block: BlockSummary | None = None
     affected: list[BlockAffectedBooking] = []
+
+
+class SafetyRevisionRequest(BaseModel):
+    """D54: what the coordinator changed, or wants the Safety Officer to know."""
+
+    note: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def strip_note(cls, value):
+        return value.strip() if isinstance(value, str) else value

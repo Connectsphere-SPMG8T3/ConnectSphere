@@ -365,3 +365,13 @@ def list_line_statuses(event_ids: Iterable[str]) -> list[dict]:
         .execute()
     )
     return response.data or []
+
+
+def line_names(line_ids: list[str]) -> dict[str, str | None]:
+    """D53: names for all equipment lines concerned by a decision history."""
+    if not line_ids:
+        return {}
+    rows = (get_supabase_admin_client().table("equipment_requests")
+            .select("id, equipment:equipment!equipment_requests_equipment_id_fkey(name)")
+            .in_("id", line_ids).execute().data)
+    return {row["id"]: (row.get("equipment") or {}).get("name") for row in rows or []}

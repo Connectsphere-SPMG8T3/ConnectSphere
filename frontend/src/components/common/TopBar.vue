@@ -1,9 +1,10 @@
 <script setup>
-import { computed, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 
 import BrandMark from "@/components/common/BrandMark.vue";
 import { formatFriendlyDate } from "@/components/common/dateFormat";
+import NotificationBell from "@/components/common/NotificationBell.vue";
 import { useSidebarState } from "@/composables/useSidebarState";
 import { useAuthStore } from "@/stores/auth";
 import { useVenuesStore } from "@/features/venues/venueSearchStore";
@@ -11,7 +12,6 @@ import { useVenuesStore } from "@/features/venues/venueSearchStore";
 const authStore = useAuthStore();
 const venuesStore = useVenuesStore();
 const router = useRouter();
-const route = useRoute();
 const { isMobileOpen } = useSidebarState();
 
 // "Hello Jack" reads as a greeting; the full stored name reads as a form
@@ -23,20 +23,12 @@ const firstName = computed(() => authStore.profile?.full_name?.trim().split(/\s+
 // navigation — accepted rather than running a timer for it.
 const today = formatFriendlyDate(new Date());
 
-const isNotificationsOpen = ref(false);
 const query = ref("");
 
 // Search goes to the venue catalogue, which is the only searchable collection
 // that exists today, so it is only offered to the roles allowed there. Must
 // stay in sync with the /venues route's allowedRoles in router/index.js.
 const showSearch = computed(() => ["event_coordinator", "venue_staff"].includes(authStore.role));
-
-watch(
-  () => route.fullPath,
-  () => {
-    isNotificationsOpen.value = false;
-  },
-);
 
 async function handleSearch() {
   const location = query.value.trim();
@@ -74,49 +66,7 @@ async function handleSearch() {
       </div>
 
       <div class="ml-auto flex items-center gap-2 sm:gap-4">
-        <div class="relative">
-          <button
-            type="button"
-            class="flex h-10 w-10 items-center justify-center border-2 border-ink shadow-hard active-press"
-            :class="isNotificationsOpen ? 'bg-bauhaus-yellow' : 'bg-canvas'"
-            aria-label="Notifications"
-            :aria-expanded="isNotificationsOpen"
-            @click="isNotificationsOpen = !isNotificationsOpen"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="h-5 w-5"
-              aria-hidden="true"
-            >
-              <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" />
-              <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-            </svg>
-          </button>
-
-          <!-- Click-away layer: it sits in the header's stacking context, so
-               the panel above it stays clickable while the rest of the page
-               dismisses. -->
-          <div
-            v-if="isNotificationsOpen"
-            class="fixed inset-0 z-10"
-            @click="isNotificationsOpen = false"
-          ></div>
-
-          <div
-            v-if="isNotificationsOpen"
-            class="absolute right-0 top-full z-20 mt-3 w-64 border-2 border-ink bg-surface p-4 shadow-hard sm:border-4"
-          >
-            <p class="text-xs font-bold text-ink/70">No notifications</p>
-            <p class="mt-1 text-sm font-medium text-ink/60">
-              Notifications aren't sent yet, so nothing lands here.
-            </p>
-          </div>
-        </div>
+        <NotificationBell />
 
         <form
           v-if="showSearch"

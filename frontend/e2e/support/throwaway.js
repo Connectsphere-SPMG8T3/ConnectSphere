@@ -70,6 +70,15 @@ export function createThrowawayEvent(tag, startsAt, endsAt) {
   return row;
 }
 
+/** A notification for `recipientId` about a throwaway event (SCRUM-113). It is deleted with the event
+ * when the run ends (notifications cascade). Needs migration 20261021100000. */
+export function createThrowawayNotification(event, recipientId, type, message) {
+  const [row] = query(
+    `select public.add_notification('${recipientId}', '${event.id}', '${type}', '${message}') as id`,
+  );
+  return row;
+}
+
 /** A submitted event waiting in the Lead's unassigned queue (SCRUM-12): no coordinator. */
 export function createQueuedThrowawayEvent(tag, startsAt, endsAt) {
   const [row] = query(
@@ -230,4 +239,10 @@ export function deleteThrowawayVenues() {
 export function venueBufferMigrationPresent() {
   return query("select count(*) = 4 as present from information_schema.columns where table_schema = 'public' " +
     "and table_name = 'venues' and column_name in ('setup_minutes', 'turnaround_minutes', 'emergency_access', 'restrictions')")[0].present;
+}
+
+/** D52: a rejected arrangement for TC-SDEC-033; never flags shared events. */
+export function setThrowawayBookingSafetyRejected(bookingId) {
+  query(`update public.venue_bookings set flag = 'safety_rejected', flag_reason = 'live check exits', flagged_at = now() ` +
+    `where id = '${bookingId}' and event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);
 }

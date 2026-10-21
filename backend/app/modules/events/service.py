@@ -530,7 +530,7 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
         if decisions:
             latest = SafetyDecision(**decisions[0])
             if role == "event_coordinator":
-                response.latest_safety_decision = latest
+                response.latest_safety_decision = _named_decisions(decisions[:1])[0]
             else:
                 response.latest_safety_decision = SafetyDecisionSummary(
                     decision=latest.decision, reason_label=_SAFETY_LABELS[latest.decision], decided_at=latest.decided_at,
@@ -953,7 +953,9 @@ SAFETY_HISTORY_DAYS = 30
 def safety_history() -> SafetyHistoryResponse:
     """Every decision in the last 30 days, newest first, for the officers' dashboard (CR-103 AC7)."""
     since = datetime.now(timezone.utc) - timedelta(days=SAFETY_HISTORY_DAYS)
-    items = [SafetyHistoryItem(**row) for row in repository.list_recent_safety_decisions(since)]
+    rows = repository.list_recent_safety_decisions(since)
+    items = [SafetyHistoryItem(**{**row, **decision.model_dump()})
+             for row, decision in zip(rows, _named_decisions(rows))]
     items.sort(key=lambda item: (item.decided_at, str(item.id)), reverse=True)
     return SafetyHistoryResponse(items=items)
 
@@ -966,7 +968,7 @@ def safety_decisions(event_id: str, user_id: str, role: str) -> list[SafetyDecis
         _officer_event(event_id)
     else:
         raise NotAssignedCoordinatorError()
-    return [SafetyDecision(**row) for row in repository.list_safety_decisions(event_id)]
+    return _named_decisions(repository.list_safety_decisions(event_id))
 
 
 @_safety_service_available
@@ -988,5 +990,42 @@ def safety_review(event_id: str) -> SafetyReviewResponse:
                                      opens_at=row.get("registration_opens_at"), closes_at=row.get("registration_closes_at"))),
         venues=venues, equipment_lines=equipment_service.event_lines(event_id),
         exit_confirmation=equipment_service.exit_confirmation(event_id),
-        decisions=[SafetyDecision(**decision) for decision in repository.list_safety_decisions(event_id)],
+        decisions=_named_decisions(repository.list_safety_decisions(event_id)),
     )
+
+
+def _named_decisions(rows: list[dict]) -> list[SafetyDecision]:
+    """D53/D54: batch names and attach the first response after each rejection."""
+    booking_ids = sorted({str(id) for row in rows for id in row.get("affected_booking_ids", [])})
+    venue_ids = sorted({str(id) for row in rows for id in row.get("rejected_venue_ids", [])})
+    line_ids = sorted({str(id) for row in rows for id in row.get("affected_equipment_request_ids", [])})
+    bookings = venues_service.booking_venue_names(booking_ids)
+    venues = venues_service.venue_names(venue_ids)
+    lines = equipment_service.line_names(line_ids)
+    revisions = venues_service.safety_revisions(booking_ids)
+    decisions = []
+    for row in rows:
+        data = {
+            **row,
+            "affected_bookings": [{"booking_id": id, "venue_name": bookings.get(str(id))}
+                                  for id in row.get("affected_booking_ids", [])],
+            "affected_equipment": [{"id": id, "equipment_name": lines.get(str(id))}
+                                   for id in row.get("affected_equipment_request_ids", [])],
+            "rejected_venues": [{"venue_id": id, "venue_name": venues.get(str(id))}
+                                for id in row.get("rejected_venue_ids", [])],
+            "revision": None,
+        }
+        if row["decision"] == "arrangement_rejected":
+            rejected_ids = {str(id) for id in row.get("affected_booking_ids", [])}
+            decided_at = SafetyDecision(**row).decided_at
+            candidates = [revision for revision in revisions
+                          if revision["booking_id"] in rejected_ids
+                          and datetime.fromisoformat(revision["at"]) > decided_at]
+            if candidates:
+                # A legacy revision without a note ends this rejection cycle too.
+                # Never borrow a response from a later rejection of the same booking.
+                first = min(candidates, key=lambda revision: datetime.fromisoformat(revision["at"]))
+                if first["note"] is not None:
+                    data["revision"] = first
+        decisions.append(SafetyDecision(**data))
+    return decisions

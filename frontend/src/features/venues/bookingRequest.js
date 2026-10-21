@@ -95,7 +95,14 @@ function safetyRejectedPanelState(event, space) {
   const booking = bookings.find((item) => (!space || item.event_space_request_id === space.id)
     && item.flag === "safety_rejected" && LIVE_BOOKING_STATUSES.includes(item.status));
   if (!booking) return null;
-  return { kind: "safety-rejected", booking, reason: booking.flag_reason, canMarkRevised: event.status === "planning" };
+  const replacement = bookings.find((item) => item.replaces_booking_id === booking.id
+    && ["held", "approved", "re_review"].includes(item.status));
+  const canAct = !replacement && event.status === "planning";
+  return {
+    kind: "safety-rejected", booking, reason: booking.flag_reason,
+    canMarkRevised: canAct, canReplace: canAct,
+    ...(replacement ? { replacement } : {}),
+  };
 }
 
 export function venuePanelState(event, space = null) {

@@ -914,3 +914,26 @@ class TestReplacementRepository:
 
         monkeypatch.setattr(venues_repository, "get_supabase_admin_client", lambda: AdminClient([]))
         assert venues_repository.get_replaceable_booking(AFFECTED_BOOKING_ID) is None
+
+
+@pytest.mark.parametrize("flag", ["affected", "safety_rejected"])
+@pytest.mark.parametrize("for_space", [False, True])
+def test_a_flagged_booking_can_be_replaced(client, auth_headers, authenticate_as, replacement, monkeypatch, flag, for_space):
+    replacement["replaceable"]["flag"] = flag
+    authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+    if for_space:
+        replacement["replaceable"]["event_space_request_id"] = SPACE_ID
+        monkeypatch.setattr(events_service, "assigned_space", lambda *a: (deepcopy(replacement["event"]), {"id": SPACE_ID}))
+    response = (post_for_space if for_space else post)(client, auth_headers, replaces_booking_id=AFFECTED_BOOKING_ID)
+    assert response.status_code == 201
+    assert replacement["returned"] == []
+
+
+@pytest.mark.parametrize("flag", [None, "conflict", "unsuitable"])
+def test_other_flags_are_not_replaceable(client, auth_headers, authenticate_as, replacement, flag):
+    replacement["replaceable"]["flag"] = flag
+    authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+    response = post(client, auth_headers, replaces_booking_id=AFFECTED_BOOKING_ID)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "That booking is not waiting for a replacement."
+    assert replacement["order"] == []

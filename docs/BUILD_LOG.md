@@ -2869,8 +2869,102 @@ On `feature/scrum-18-venue-suitability`, branched from `main` at `69a54dd`, 2026
 - Backend 1,772 passed; frontend 1,170 passed; build clean. Live: booking checks 36/36 ([run](test-cases/runs/2026-10-20-1923-api-db-54f6e5b.md)) and TC-SUIT 7/7 ([run](test-cases/runs/2026-10-20-1929-api-db-54f6e5b.md)). Browser, narrowed at the developer's request to the booking, hold, block, buffer, deactivation and suitability specs: 21 of 22 ([run](test-cases/runs/2026-10-20-1932-e2e-54f6e5b.md)). The one failure is TC-BOOK-048/049/050, which also fails on `main`; this time every assertion in it passed and it failed closing a browser context on its last line.
 - **Not run after the BR-R3 change:** the full browser suite (the dashboard, equipment, auth and sign-up specs) and a full API run after the ordering fix (the booking and suitability checks were re-run, not the rest).
 
+### 4.76. SCRUM-113, SCRUM-53, SCRUM-90 — In-app notifications, attendee notices and reminders
 
-### 4.76. Enabler — readable type across the app
+On `feature/scrum-113-in-app-notifications`, branched from `main` at `276127d`, 2026-10-20/21, in a worktree. Written from the Product backlog rows as revised on 2026-10-20: **email is out of release 1** (team decision; the customer left the channel to us), 114 (Email organisers) left Sprint 4, and 113 and 53 became in-app only. Design: `docs/superpowers/specs/2026-10-20-sprint4-in-app-notifications-design.md`; plan: `docs/superpowers/plans/2026-10-20-sprint4-in-app-notifications.md`. The delivery mechanism was already decided by ADR-0004 (still "Proposed"): the SPA polls every 10 seconds while the tab is visible.
+
+**Changed.**
+1. **Database** (`20261021100000`): `notifications.recipient_role` and `.dedupe_key`; table `notification_types`; a `BEFORE INSERT` trigger stamps each row with the role it is for, so the roughly 30 functions that already insert notifications needed no change; `add_notification` keeps NT-R1 and takes a dedupe key.
+2. **API** (`modules/notifications`): `GET /notifications/unread-count`, `GET /notifications` (keyset-paged on `(created_at, id)`), `POST /notifications/{id}/read`, `POST /notifications/read-all`, all scoped to the caller's **active** role.
+3. **SPA:** `NotificationBell` in the top bar for every role, `features/notifications/` (store, poller, time format), `notificationsApi`. The bell starts over on a role switch and drops responses for the role the user just left.
+4. **Attendees and reminders** (`20261021110000`, `20261021120000`): `notify_registered_attendees`, `send_attendee_event_reminders` and `send_staff_arrangement_reminders`, run by `pg_cron`.
+5. Live checks TC-NOTIF-001–003 in `backend/scripts/verify_live.py`, browser checks TC-NOTIF-004–005 in `frontend/e2e/notifications.e2e.js`, database checks in `supabase/verification/notification_*_checks.sql`, manual cases TC-NOTIF-009–014.
+
+**Decisions.** The trigger resolves a type that can go to two roles by the recipient's link to the event rather than by list order alone, because the seeded coordinator is also venue staff (REQUIREMENTS §9 item 86). Reminder rows name their role explicitly and use one dedupe key per audience, for the same reason. The 3-day, once-a-day staff reminder is an **[Assumption]** (item 85). `tests/test_active_role_access.py` now treats `/notifications` as open to every signed-in role, like `/auth`.
+
+**Verified.** Tests were written first and failed for the expected reasons. Backend: 175 passed in the notification, repository and role-matrix files, the new module at 100%; the full suite earlier passed 1,830 with only the four role-matrix failures this change then fixed. Frontend: 1,235 passed with one timing flake in `EventRequestView.spec.js` that passes alone and passed in the previous full run; `npm run build` succeeds. Database: each migration with its checks ran inside one rolled-back transaction on the live project and passed. TC-NOTIF-001 passes live against this branch's backend, and TC-NOTIF-005 passes in a real browser.
+
+**Review (2026-10-21).** One fresh reviewer read the whole branch. It found no Critical issue. Four Important findings were fixed, each with a check or test that failed first: the "every type is registered" check could never fail for a new type (it now also fails on any notification whose type nobody registered); the attendee reminder job would have failed every 15 minutes until Dev 1's table exists (it now returns 0); the read policy on `notifications` still let a user read every role's rows (it now follows the active role, `notification_rls_checks.sql`); and loading older pages while a new notice arrived could duplicate or lose items (a stale older page is now dropped). The coordinator reminder for a Safety review event whose only open item is the safety check stands: AC1 counts "the safety check not done" as incomplete. Deferred as Minor: a person who fits two audiences of one type sees a copy under the wrong role (REQUIREMENTS §9 item 86), the badge can briefly undo a mark-read when a poll was already in flight, the in-flight guard compares role but not user, a few links lead to pages the recipient can no longer open (the previous coordinator's reassignment notice), the list index cannot serve the list's sort order, and an attendee reminder is once per event even if it is rescheduled.
+
+**Live verification (2026-10-21), after the developer pushed the three migrations**, against a backend on port 8123 and a frontend on port 5199. The push first reported "up to date" from both folders: the worktree had no Supabase link and the CLI fell back to the main folder. Copying the link file in and adding the already-applied `20261020150000` migration file, uncommitted, made the dry run list exactly the three.
+- Database: the 70 existing notifications all got a role, the read policy was replaced and both cron jobs exist. `notification_role_checks.sql`, `notification_rls_checks.sql` and `notification_reminder_guard_checks.sql` pass on the live project. The only new advisor is an INFO that `notification_types` has RLS on and no policy, which is intended.
+- API: TC-NOTIF-001–003, 3/3 ([run](test-cases/runs/2026-10-21-1153-api-db-121092b.md)).
+- Browser: TC-NOTIF-004 failed once because the test read the badge before the first poll had answered ([run](test-cases/runs/2026-10-21-1155-e2e-121092b.md)). The test now waits for that poll, and both checks pass ([run](test-cases/runs/2026-10-21-1156-e2e-121092b.md)).
+- Manual: the developer was away from the PC, so Claude drove the browser and sent screenshots. The developer passed TC-NOTIF-009, 013 and 014; Claude measured 010–012 ([record](test-cases/runs/2026-10-21-manual-121092b.md)). The developer asked for unread to be clearer, so the yellow left edge became a tinted row with a square marker. New defect D49: clicking the sidebar doesn't close the panel. The `EventRequestView.spec.js` timing failure seen in a full frontend run is the known D44.
+
+**Not verified.**
+- **Dev 1's `registrations` table does not exist yet.** `notify_registered_attendees` and the attendee reminder were checked against a stand-in table only; the committed checks need the real one.
+- **The callers of `notify_registered_attendees`** (37, 115, a confirmed replacement venue, registration changes) are other developers' stories and are not wired.
+- A real tab switch for TC-NOTIF-011 (simulated in code), the panel on an actual phone, the full live API and browser suites (only the TC-NOTIF checks were run), and ADR-0004's status (left "Proposed").
+
+### 4.77. D50 — Deactivating a venue again lists its still-flagged bookings (SCRUM-64 bug fix)
+
+On `fix/scrum-64-redeactivation-affected`, branched from `main` at `276127d`, 2026-10-20. Raised in the sprint review: "Given the venue is deactivated, and there are affected bookings, if it is reactivated and deactivated, then the same affected booking should show up."
+
+**Symptom.** Deactivate a venue with a future booking (flagged Affected), reactivate it, deactivate it again: no preview, the venue saves inactive at once with `affected: []`, and venue staff are never told the booking is still affected. Reproduced read-only on the live project (future flagged bookings on Boardroom Orchid and Seminar Room 1 were missing from `list_flaggable_bookings`) and with live check TC-VENUE-097 against the old code.
+
+**Root cause.** `venues.repository.list_flaggable_bookings` filtered `flag is null`, mirroring what `flag_venue_bookings` will newly flag rather than what the deactivation affects. Reactivation keeps flags by design (AC4), so any booking already flagged (by an earlier deactivation, an edit, a block or a safety rejection) dropped out of the preview. The block preview (SCRUM-51) never had the filter.
+
+**Why the tests missed it.** The deactivation API tests replace `list_flaggable_bookings` with a stub, so the filter was never exercised; and no live or browser check deactivated the same venue twice.
+
+**Fix.** The preview reads every future held/approved booking with its `flag`; `FlaggableBooking` gains `flag` (null when this deactivation will flag it). `flag_venue_bookings` is unchanged, so an existing flag is never overwritten and nobody is notified twice. `DeactivateVenueModal` shows "Already flagged: <flag>" on those rows and adjusts its header. No migration.
+
+**Verified.** Regression tests failed first for the expected reasons (`is_('flag', 'null')` called; no `flag` in the response; dialog text missing). Backend 1,775 passed (before the flag-value parametrisation; the venue files 78/78 after); frontend 1,172 passed. Live: venue checks 24/24 including TC-VENUE-097 ([run](test-cases/runs/2026-10-20-2109-api-db-d110add.md)); browser TC-VENUE-065 and 097 ([run](test-cases/runs/2026-10-20-2238-e2e-d110add.md)), against a backend on 8010 and a frontend on 5184.
+
+**Not verified.** A full API run on this commit: the first full run (160/174, before committing) failed 12 checks on the Supabase CLI's temporary login being refused and TC-BOOK-005 / TC-EQR-008 on review-fixture drift; that log was discarded and only the venue checks were re-run. The full browser suite was not run. Manual case TC-VENUE-098 passed ([run](test-cases/runs/2026-10-20-manual-3d623ab.md)).
+
+### 4.78. D51 — Safety decision form wording (CR-104 bug fix)
+
+On `fix/safety-decision-wording`, branched from `main` at `276127d`, 2026-10-20. Numbered 4.78 and D51: PR #95 took 4.76 and D49, and the re-deactivation fix (PR #92) took 4.77 and D50.
+
+**Symptom.** Sprint review: "The wording for the concern is a bit unclear." On the Safety decision card the same venue appeared under "Arrangements this concerns (optional)" (checkboxes) and "Venue to reject (required for Reject)" (radio), and the comment hint said only "Record any crowd-movement concerns here."
+
+**Cause.** The form never said that the checkboxes are sent only with Request changes, the radio only with Reject, or that the comment is required for both; Request changes and Reject simply stayed disabled.
+
+**Fix (copy only).** Comment hint: "Required to request changes or reject. Note any crowd-movement concerns here." Legends: "For Request changes: what needs changing (optional)" and "For Reject: venue that fails the safety check (required)", each with a one-line hint linked by `aria-describedby`. Wording chosen by the developer from two options. Payloads and disabled rules are unchanged.
+
+**Verified.** `SafetyViews.spec.js` was updated first and failed on the old text; frontend 1,169 of 1,170 passed in the full run, the one failure (`EventRequestView` resubmit, 1.5 s) passed 3 of 3 alone and is unrelated. Browser: `safety-decision.e2e.js` and `venue-buffers.e2e.js` 8/8 ([run](test-cases/runs/2026-10-20-2249-e2e-db49f93.md)), against a backend on 8010 and a frontend on 5184; none of them asserts the new copy. No API run, since no backend code changed.
+
+**Manual.** TC-SDEC-030 passed ([run](test-cases/runs/2026-10-20-manual-3622650.md)).
+
+### 4.79. Bug fix — CR-104 Safety-rejection follow-up (D52–D54)
+
+_Renumbered 2026-10-21 from D51–D53 and entry 4.76: PR #95 took D49 and 4.76, PR #92 D50 and 4.77, PR #93 D51 and 4.78. The applied migration `20261020150000` keeps the old numbers in its comments._
+
+On `fix/cr-104-safety-rejection-followup`, 2026-10-20; approved plan/spec dated 2026-10-20. A Safety-rejected booking offered no replacement path (D52), decisions displayed counts rather than names (D53), and Mark as revised recorded no coordinator explanation (D54). This is a fix, not a reopened story; no backlog sheet edits.
+
+**Changed.** Migration `20261020150000_safety_rejection_followup.sql` stores a required trimmed response in the existing `venue_booking_history.reason`, refuses revision while a live replacement exists, widens both CR-95 request functions to accept `safety_rejected`, and excludes both follow-up flags from the per-space live-booking index. Functions were copied from live definitions; `release_replaced_booking` already releases the original without checking its flag. Restore remains Affected-only. API requires `{note}` (1–1000 characters), retains active-role/assignment guards and accepts the additional replacement flag. Batched name/history lookups enrich decisions, including the coordinator's latest banner; missing names stay null. SPA adds the note dialog, duplicate-submit guard, Replace venue action and named pending state; shared decision details show names, response, author and time.
+
+**Tests first.** Task 1 SQL failed on the missing three-argument signature; migration plus checks passed in a rolled-back transaction, as did venue-deactivation checks. Task 2: 13 focused failures → 21 passing, full backend 1,779 passed. Task 3: 2 replacement failures (event and space) → 29 passing, full backend 1,786 passed. Task 4: 11 failures → 11 passing, full backend 1,797 passed. Task 5: 16 failures → 142 passing, full frontend 1,179 passed (81 files). Task 6: 6 failures → 58 passing, full frontend 1,184 passed (82 files), production build succeeds. Task 7 existing probes: 2 failures → 4 passing; new mocked live probes: 2 failures → 6 passing; browser helper: missing function failure → 7 passing. Playwright lists TC-SDEC-033 without executing setup or live mutations. Final Task 7 suites: backend 1,799 passed (one existing Starlette deprecation warning); frontend 1,185 passed across 82 files. `git diff --check` passes.
+
+**Database handoff.** `supabase db push --dry-run` output:
+
+```text
+Initialising login role...
+DRY RUN: migrations will *not* be pushed to the database.
+Connecting to remote database...
+Would push these migrations:
+ • 20261020150000_safety_rejection_followup.sql
+{"upToDate":false,"dryRun":true,"migrations":["20261020150000_safety_rejection_followup.sql"],"seeds":[],"roles":[],"message":"Finished supabase db push."}
+```
+
+**Deviations.** Use real replacement fixture/request helpers; update existing coordinator-view tests for the new dialog and named history; enrich coordinator latest decision as well as history/review; mock the new lookups in the existing safety fixture; add a disposable-only browser setup helper and its unit test. CLI telemetry required `DO_NOT_TRACK=1` because its home-directory write was blocked. Git staging and commits were attempted and refused (`.git/index.lock: Read-only file system`); no requested task commits could be created. The worktree preserves all changes, and unrelated files were left alone.
+
+**Not verified / next steps.** The migration has not been applied; no live database changes were committed. New live API checks TC-SDEC-031/032 and browser check TC-SDEC-033 are authored but not run. Task 7 recorded runs and manual pass (TC-SDEC-034/035, including 375 px wording/layout) were explicitly deferred for the developer and Claude after migration deployment. Post-deployment advisors, real HTTP/PostgREST/browser validation and changed-line coverage measurements remain outstanding. No run logs were fabricated. Developer owns migration deployment, recorded live/browser verification, manual acceptance, PR/teammate review, PO acceptance, merge and backlog Done; update sprint DoD rows before PR and merge. No push or Google Sheets edit was made.
+
+
+**Fresh review and fix pass.** A read-only reviewer found two issues: the Safety dashboard's separate recent-history query/schema omitted named arrangements/responses, and filtering out legacy null-note revisions could attribute a later rejection cycle's response to an earlier rejection. Four regression failures were observed before changes; the focused named-decision/history suite now passes 25 tests. Dashboard history now uses the same batch enrichment, and the first revision after a rejection ends that cycle even when its legacy note is null. This deliberately adjusts the plan's non-null-only lookup rule. The full suite exposed one stale repository expectation for the expanded row shape; that assertion was updated, and the repository/history/naming suite passed 42 tests. Final full backend: **1,802 passed**, one existing Starlette deprecation warning, 78.07 s. Frontend remains **1,185 passed** across 82 files; no frontend code changed in this fix pass.
+
+**Deferred minor from review.** The rolled-back SQL script does not independently assert second-live-replacement refusal or release on replacement approval. Existing SQL covered replacement acceptance/index coexistence and revision blocking; the newly authored TC-SDEC-032 covers release after approval but remains unexecuted pending deployment. Add independent rollback assertions as follow-up verification. The reviewer did not judge deployed behavior, real database concurrency, live/browser outcomes or visual/accessibility quality; those remain deferred under the developer's execution limits.
+
+**Applied and verified (2026-10-21).** The developer pushed `20261020150000`; `migration list --linked` matches and `safety_decision_checks.sql` passes against the live schema. Advisors show nothing new (remaining findings are on equipment, venue-block and auth objects this change doesn't touch). Committed by Claude after review in layered commits (Codex's sandbox couldn't write `.git`); review renamed a shadowed variable in `_named_decisions` and corrected the rejected-venue fallback to "a venue that no longer exists".
+- API and database: 172 of 175 ([run](test-cases/runs/2026-10-21-0007-api-db-43b0dcf.md)), including TC-SDEC-031 and 032. TC-ASSIGN-003 failed on the Supabase CLI's temporary login being refused and passed alone; TC-BOOK-005 and TC-EQR-008 fail on the known review-fixture drift (fixture `…0201` is in Planning), unrelated to this change.
+- Browser: TC-SDEC-033 **failed first** ([run](test-cases/runs/2026-10-21-0025-e2e-43b0dcf.md)): `VenueSearchView` accepted `&replaces=` only for an Affected booking, so Replace venue led to a search with no request buttons. Fixed test-first in `022f5fd`; TC-SDEC-033 then passed ([run](test-cases/runs/2026-10-21-0033-e2e-022f5fd.md)). The same first run passed the safety, bookings and deactivation specs; TC-BOOK-048/049/050 failed as it does on `main`.
+- Unit: backend 1,802; frontend 1,187; build clean.
+- Manual: TC-SDEC-034 and 035 passed ([run](test-cases/runs/2026-10-21-manual-7537ce3.md)), with a headless re-check of the same pages (56 checks, both widths).
+- **Not verified:** the full browser suite; independent SQL assertions for refusing a second replacement.
+
+### 4.80. Enabler — readable type across the app
 
 On `chore/readable-typography`, branched from `main` at `b360f14`, 2026-10-21. No PBI: the developer asked for type that is easier to read for long administrative sessions, first on the coordinator dashboard and then "for the entire web app".
 
@@ -2887,9 +2981,9 @@ On `chore/readable-typography`, branched from `main` at `b360f14`, 2026-10-21. N
 
 **Not verified.** The browser e2e suite (its setup needs the Supabase CLI, which was not installed); a manual pass over the other screens, especially the venue calendar, where 12px text in small cells may crowd.
 
-### 4.77. Enabler — venue search heading in a grey filter card
+### 4.81. Enabler — venue search heading in a grey filter card
 
-On `chore/venue-search-filter-card`, on top of §4.76, 2026-10-21. No PBI: a layout request from the developer.
+On `chore/venue-search-filter-card`, on top of §4.80, 2026-10-21. No PBI: a layout request from the developer.
 
 **Changed.** `VenueSearchView` loses its yellow "Venue catalogue / Find a venue" header card and the paragraph explaining the filters. The "Find a venue" heading now heads the filter card, which is a grey (`bg-muted`) section like the coordinator's Events filters, so the white fields stand out. The blue "Requesting a venue for…" card still sits above it when the page is opened from an event.
 
@@ -2897,9 +2991,9 @@ On `chore/venue-search-filter-card`, on top of §4.76, 2026-10-21. No PBI: a lay
 
 **Not verified.** A manual look in a browser, including the order of the cards when the page is opened from an event.
 
-### 4.78. SCRUM-72 / 72-R — coordinator dashboard as a kanban status board (exact backlog record)
+### 4.82. SCRUM-72 / 72-R — coordinator dashboard as a kanban status board (exact backlog record)
 
-On `chore/coordinator-status-kanban`, on top of §4.77, 2026-10-21. A layout rework of the dashboard §4.5 built, requested screen by screen by the developer; it changes how AC1 is shown, so both backlog rows are quoted. Rows read from the Product backlog sheet on 2026-10-21.
+On `chore/coordinator-status-kanban`, on top of §4.81, 2026-10-21. A layout rework of the dashboard §4.5 built, requested screen by screen by the developer; it changes how AC1 is shown, so both backlog rows are quoted. Rows read from the Product backlog sheet on 2026-10-21.
 
 | Field | 72 | 72-R |
 |---|---|---|
@@ -2938,7 +3032,7 @@ On `chore/coordinator-status-kanban`, on top of §4.77, 2026-10-21. A layout rew
 4. Past events (confirmed, dated before today in SGT; `groupCoordinatorEvents(cards, now).past`) and Rejected events get full-width sections on both tabs; past events leave the board.
 5. Backend: `GET /events/dashboard/coordinator` also returns `rejected_events` (`event_id`, `event_name`, `starts_at`), from the same assigned-to-me query, with no readiness or actions looked up for them.
 6. Shared helpers in `features/events/dashboard.js`: `mostUrgentActionByEvent` (now also used by `coordinatorEventCards`), `orderBoardEvents`, `boardEventTone`, `formatEventDateTime`, `flagLabel`, `BOARD_CARD_TONE_CLASSES`, `ACTION_BADGE_CLASSES`.
-7. Docs: REQUIREMENTS §6.21 and §6.21.1, IMPLEMENTATION_MAP, test cases TC-DASH-026–030 (TC-DASH-007 and 025 superseded; 003, 005, 006, 008, 009, 012, 019, 020, 022–024 rewritten), TC-AUTH-001, DEFECTS D49.
+7. Docs: REQUIREMENTS §6.21 and §6.21.1, IMPLEMENTATION_MAP, test cases TC-DASH-026–030 (TC-DASH-007 and 025 superseded; 003, 005, 006, 008, 009, 012, 019, 020, 022–024 rewritten), TC-AUTH-001, DEFECTS D55.
 
 **How it maps to the tickets.**
 - 72 AC1 is now met on the board rather than in a separate list: every event with an action item is red, at the top of its column, ranked by what it blocks. Given up: one order across all statuses, per-category counts, the action's description and the organiser's name on the Overview. Recorded as a **[Team decision]** in REQUIREMENTS §6.21.1. **72-R AC3 says the original 72 AC1–AC2 must still pass, so the PO should confirm this reading at review.**
@@ -2947,6 +3041,6 @@ On `chore/coordinator-status-kanban`, on top of §4.77, 2026-10-21. A layout rew
 - 72-R AC2: the "Needs alternative venue" alert is a red card with that badge.
 - "Readiness gaps" was the team's reading of 72's "schedule overviews"; no AC required it, and story 90 will remind coordinators about upcoming events with incomplete arrangements.
 
-**Verified.** Tests were written first and failed for the expected reasons. Frontend 1,355 passed, backend 1,774 passed; build clean. Live API checks against a backend on port 8010: 59 of 60 passed ([run](test-cases/runs/2026-10-21-1731-api-db-b360f14.md)), including new TC-DASH-030 and TC-DASH-013–018. An earlier run ([run](test-cases/runs/2026-10-21-1726-api-db-b360f14.md)) failed TC-DASH-015 because the check did not yet allow `rejected_events`; the check was updated. The remaining failure, TC-SDEC-023 (500 instead of 404 on "Mark as revised" for a missing booking), is in untouched venue-booking code and passed on 2026-10-18; logged as DEFECTS D49. The Overview at 1440px and 390px and the Events view were screenshotted in Chrome: all five board columns fit at 1440px after narrowing them, and there is no horizontal page scroll.
+**Verified.** Tests were written first and failed for the expected reasons. Frontend 1,355 passed, backend 1,774 passed; build clean. Live API checks against a backend on port 8010: 59 of 60 passed ([run](test-cases/runs/2026-10-21-1731-api-db-b360f14.md)), including new TC-DASH-030 and TC-DASH-013–018. An earlier run ([run](test-cases/runs/2026-10-21-1726-api-db-b360f14.md)) failed TC-DASH-015 because the check did not yet allow `rejected_events`; the check was updated. The remaining failure, TC-SDEC-023 (500 instead of 404 on "Mark as revised" for a missing booking), is in untouched venue-booking code and passed on 2026-10-18; logged as DEFECTS D55. The Overview at 1440px and 390px and the Events view were screenshotted in Chrome: all five board columns fit at 1440px after narrowing them, and there is no horizontal page scroll.
 
 **Not verified.** The database live checks and the browser e2e suite (both need the Supabase CLI, which was not installed); the manual pass over TC-DASH-026–029 and phone width; the PO's acceptance of the AC1 change. Four frontend helpers are now used only by their tests (`readinessGaps`, `summariseActionItems`, the store's `prioritisedActions` and `readinessGaps`); removing them is a follow-up.

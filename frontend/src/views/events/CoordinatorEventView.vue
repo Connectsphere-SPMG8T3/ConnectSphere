@@ -55,10 +55,10 @@ function findReplacement(panel, space = null) {
 
 const isAffected = (panel) => panel.kind === "affected" || panel.kind === "replacing";
 
-async function markRevised(bookingId) {
+async function markRevised(bookingId, note) {
   if (review.isActing) return;
   try {
-    await review.markBookingRevised(bookingId);
+    await review.markBookingRevised(bookingId, note);
     showToast("Marked revised. Send the event for safety check when everything is ready.");
   } catch {
     // The store exposes the API refusal in the page alert.
@@ -324,7 +324,10 @@ watch(
                   :reason="spacePanels[space.id].reason"
                   :can-mark-revised="spacePanels[space.id].canMarkRevised"
                   :busy="review.isActing"
-                  @mark-revised="markRevised(spacePanels[space.id].booking.id)"
+                  @mark-revised="(note) => markRevised(spacePanels[space.id].booking.id, note)"
+                  :can-replace="spacePanels[space.id].canReplace"
+                  :replacement="spacePanels[space.id].replacement ?? null"
+                  @replace="findReplacement(spacePanels[space.id], space)"
                 />
                 <AffectedBookingNotice
                   v-if="isAffected(spacePanels[space.id])"
@@ -380,7 +383,10 @@ watch(
               :reason="venuePanel.reason"
               :can-mark-revised="venuePanel.canMarkRevised"
               :busy="review.isActing"
-              @mark-revised="markRevised(venuePanel.booking.id)"
+              @mark-revised="(note) => markRevised(venuePanel.booking.id, note)"
+              :can-replace="venuePanel.canReplace"
+              :replacement="venuePanel.replacement ?? null"
+              @replace="findReplacement(venuePanel)"
             />
           </template>
           <template v-else-if="isAffected(venuePanel)">

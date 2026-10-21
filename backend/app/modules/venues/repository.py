@@ -210,22 +210,23 @@ def update_venue(
 
 
 def list_flaggable_bookings(venue_id: str, since: datetime) -> list[BookingSummary]:
-    """Held or approved bookings on the venue that end after `since` and carry
-    no flag yet: exactly what `flag_venue_bookings` would flag (SCRUM-64 AC3),
-    soonest first."""
+    """Held or approved bookings on the venue that end after `since`, soonest
+    first, with their current flag (SCRUM-64 AC3). Already-flagged ones are
+    included: a flag survives reactivation, so those bookings are still
+    affected, though `flag_venue_bookings` will not flag or notify them again."""
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_id, booked_period, status")
+        .select("id, event_id, booked_period, status, flag")
         .eq("venue_id", venue_id)
         .in_("status", ["approved", "held"])
-        .is_("flag", "null")
         .overlaps("occupied_period", _open_ended_literal(since))
         .execute()
     )
     bookings = [
         BookingSummary(
-            id=row["id"], event_id=row["event_id"], period=_parse_range(row["booked_period"]), status=row["status"]
+            id=row["id"], event_id=row["event_id"], period=_parse_range(row["booked_period"]), status=row["status"],
+            flag=row.get("flag"),
         )
         for row in response.data or []
     ]
@@ -812,8 +813,39 @@ def list_venue_staff_ids() -> set[str]:
     return {row["profile_id"] for row in response.data or []}
 
 
-def mark_safety_revision(booking_id: str, actor_id: str) -> str:
+def mark_safety_revision(booking_id: str, actor_id: str, note: str) -> str:
     """CR-104: the RPC clears the safety flag atomically and returns an outcome."""
     return get_supabase_admin_client().rpc(
-        "mark_safety_revision", {"p_booking_id": booking_id, "p_actor_id": actor_id}
+        "mark_safety_revision", {"p_booking_id": booking_id, "p_actor_id": actor_id, "p_note": note}
     ).execute().data
+
+
+def booking_venue_names(booking_ids: list[str]) -> dict[str, str | None]:
+    """D53: one lookup for every booking named in the decision history."""
+    if not booking_ids:
+        return {}
+    rows = (get_supabase_admin_client().table("venue_bookings")
+            .select("id, venue:venues!venue_bookings_venue_id_fkey(name)")
+            .in_("id", booking_ids).execute().data)
+    return {row["id"]: _embedded_name(row, "venue", "name") for row in rows or []}
+
+
+def venue_names(venue_ids: list[str]) -> dict[str, str | None]:
+    if not venue_ids:
+        return {}
+    rows = (get_supabase_admin_client().table("venues").select("id, name")
+            .in_("id", venue_ids).execute().data)
+    return {row["id"]: row.get("name") for row in rows or []}
+
+
+def safety_revisions(booking_ids: list[str]) -> list[dict]:
+    """D54: responses in time order, using the existing booking-history reason."""
+    if not booking_ids:
+        return []
+    rows = (get_supabase_admin_client().table("venue_booking_history")
+            .select("booking_id, reason, created_at, actor:profiles!venue_booking_history_actor_id_fkey(full_name)")
+            .eq("action", "safety_revised").in_("booking_id", booking_ids)
+            .order("created_at").execute().data)
+    return [{"booking_id": row["booking_id"], "note": row["reason"],
+             "by_name": _embedded_name(row, "actor", "full_name"), "at": row["created_at"]}
+            for row in rows or []]

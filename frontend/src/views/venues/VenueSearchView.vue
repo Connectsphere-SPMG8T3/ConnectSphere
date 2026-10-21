@@ -30,12 +30,15 @@ const requestedVenue = ref(null);
 
 const panelState = computed(() => venuePanelState(bookingEvent.value, bookingSpace.value));
 
-// Opened to replace an affected booking (`&replaces=<booking id>`, CR-95 AC4):
-// requests are offered only while that booking is still the one affected.
+// Opened to replace an affected or Safety-rejected booking (`&replaces=<booking
+// id>`, CR-95 AC4, D52): requests are offered only while that booking still
+// waits for a replacement.
+const REPLACEABLE_PANELS = ["affected", "safety-rejected"];
 const replacesId = computed(() => (route.query.replaces ? String(route.query.replaces) : null));
 const replacedBooking = computed(() => {
   const panel = panelState.value;
-  return panel.kind === "affected" && panel.canReplace && panel.booking.id === replacesId.value ? panel.booking : null;
+  return REPLACEABLE_PANELS.includes(panel.kind) && panel.canReplace && panel.booking.id === replacesId.value
+    ? panel.booking : null;
 });
 const canRequest = computed(() => panelState.value.kind === "can-request" || Boolean(replacedBooking.value));
 // A Confirmed or Safety-review event returns to Planning as the request is made (AC7).
