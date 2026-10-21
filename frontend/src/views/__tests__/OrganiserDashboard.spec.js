@@ -201,6 +201,15 @@ describe("OrganiserDashboard", () => {
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
   });
 
+  it("colours section headings red, blue, yellow in page order", async () => {
+    const { el } = await mountDashboard();
+    const tones = (ids) => ids.map((id) => el.querySelector(`h2#${id}`).dataset.tone);
+    expect(tones(["my-events-status", "past-events", "rejected-events"])).toEqual(["red", "blue", "yellow"]);
+
+    await openEvents(el);
+    expect(tones(["drafts-heading", "requests-heading"])).toEqual(["red", "blue"]);
+  });
+
   it("shows my events as the coordinator's kanban board, with a red Returned column", async () => {
     const { el } = await mountDashboard();
 

@@ -116,6 +116,12 @@ describe("CoordinatorDashboard", () => {
       expect(el.textContent.toLowerCase()).not.toContain("awaiting assignment");
     });
 
+    it("colours section headings red, blue, yellow in page order, like the organiser's", async () => {
+      const { el } = await mountDashboard();
+      const tones = ["active-events", "past-events", "rejected-events"].map((id) => el.querySelector(`h2#${id}`).dataset.tone);
+      expect(tones).toEqual(["red", "blue", "yellow"]);
+    });
+
     it("withholds every count until the first load settles (TC-DASH-003)", async () => {
       eventsApi.coordinatorDashboard.mockReturnValue(new Promise(() => {}));
 
@@ -169,8 +175,9 @@ describe("CoordinatorDashboard", () => {
       const retreat = planning.querySelector(`a[href="/coordinator/events/${SECOND_PLANNING_ID}"]`);
       const dinner = planning.querySelector(`a[href="/coordinator/events/${PLANNING_ID}"]`);
       expect(retreat.textContent).toContain("Needs alternative venue");
-      expect(retreat.className).toContain("border-bauhaus-red");
-      expect(dinner.className).not.toContain("border-bauhaus-red");
+      expect(retreat.className).toContain("border-l-bauhaus-red");
+      expect(dinner.className).not.toContain("border-l-bauhaus-red");
+      expect(retreat.className).toContain("border-ink");
       expect(el.querySelector('[aria-label="Order status board by"]')).toBeNull();
 
       // A legend explains what the red highlight means.
@@ -189,7 +196,7 @@ describe("CoordinatorDashboard", () => {
       expect(card(SECOND_PLANNING_ID).dataset.tone).toBe("attention");
       expect(card(PLANNING_ID).dataset.tone).toBe("editable");
       expect(card(CONFIRMED_ID).dataset.tone).toBe("done");
-      expect(card(CONFIRMED_ID).className).toContain("border-bauhaus-green");
+      expect(card(CONFIRMED_ID).className).toContain("border-l-bauhaus-green");
       expect(el.querySelector('[data-status-group="confirmed"]').className).not.toContain("bauhaus-green");
     });
 
@@ -277,6 +284,12 @@ describe("CoordinatorDashboard", () => {
   });
 
   describe("Events view", () => {
+    it("continues the red, blue, yellow order down the Events view", async () => {
+      const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
+      const ids = ["needs-action-events", "in-progress-events", "past-events", "rejected-events"];
+      expect(ids.map((id) => el.querySelector(`h2#${id}`).dataset.tone)).toEqual(["red", "blue", "yellow", "red"]);
+    });
+
     it("shows a card per assigned event, split by whether it needs action", async () => {
       const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
 

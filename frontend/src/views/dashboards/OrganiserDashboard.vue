@@ -9,6 +9,8 @@ import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import EventStatusBoard from "@/components/events/EventStatusBoard.vue";
 import OrganiserBoardCard from "@/components/events/OrganiserBoardCard.vue";
+import SectionHeading from "@/components/common/SectionHeading.vue";
+import { sectionTone } from "@/components/common/sectionTone";
 import calendarArrowDown from "@/assets/icons/calendar-arrow-down.svg";
 import calendarArrowUp from "@/assets/icons/calendar-arrow-up.svg";
 import arrowDownZa from "@/assets/icons/arrow-down-z-a.svg";
@@ -207,7 +209,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
       <template v-else>
         <section class="mb-10" aria-labelledby="my-events-status">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 id="my-events-status" class="text-2xl font-bold leading-tight sm:text-3xl">Event status</h2>
+            <SectionHeading id="my-events-status" :tone="sectionTone(0)">Event status</SectionHeading>
             <div class="flex items-center gap-4">
               <p class="text-sm font-medium text-ink/70">{{ boardTotal }} total</p>
               <BauhausButton class="whitespace-nowrap" variant="primary" aria-label="New event request" @click="router.push({ name: 'event-new' })">+ Request</BauhausButton>
@@ -223,13 +225,13 @@ onMounted(() => eventsStore.load().catch(() => {}));
 
         <!-- Past and rejected events, each full width below the board, as on the coordinator's Overview. -->
         <section
-          v-for="section in closedSections"
+          v-for="(section, index) in closedSections"
           :key="section.key"
           class="mb-10"
           :aria-labelledby="section.key"
         >
           <div class="mb-5 flex items-center justify-between gap-4">
-            <h2 :id="section.key" class="text-2xl font-bold">{{ section.title }}</h2>
+            <SectionHeading :id="section.key" :tone="sectionTone(index + 1)">{{ section.title }}</SectionHeading>
             <span class="text-sm font-medium text-ink/70">{{ section.events.length }} total</span>
           </div>
           <ul v-if="section.events.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -283,7 +285,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
     <template v-if="activeTab === 'events' && !eventsStore.isLoading && !eventsStore.error">
       <section v-if="showDraftsSection" class="mt-10" aria-labelledby="drafts-heading">
         <div class="mb-5 flex items-center justify-between gap-4">
-          <h2 id="drafts-heading" class="text-2xl font-bold">Drafts</h2>
+          <SectionHeading id="drafts-heading" :tone="sectionTone(0)">Drafts</SectionHeading>
           <span class="text-sm font-bold">{{ groupedEvents.drafts.length }} total</span>
         </div>
         <div v-if="groupedEvents.drafts.length" class="grid gap-4">
@@ -340,7 +342,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
 
       <section v-if="showRequestsSection" class="mt-10" aria-labelledby="requests-heading">
         <div class="mb-5 flex items-center justify-between gap-4">
-          <h2 id="requests-heading" class="text-2xl font-bold">Requests</h2>
+          <SectionHeading id="requests-heading" :tone="sectionTone(1)">Requests</SectionHeading>
           <span class="text-sm font-bold">{{ groupedEvents.requests.length }} total</span>
         </div>
         <div v-if="groupedEvents.requests.length" class="grid gap-4">

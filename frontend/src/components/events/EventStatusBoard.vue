@@ -21,19 +21,19 @@ const cardClass = BOARD_CARD_CLASSES;
 <template>
   <ul data-board-legend class="mb-4 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium">
     <li class="flex items-center gap-2">
-      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-bauhaus-red bg-bauhaus-red/10"></span>
+      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink border-l-bauhaus-red bg-bauhaus-red/10"></span>
       Red: needs your action
     </li>
     <li class="flex items-center gap-2">
-      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-bauhaus-blue bg-bauhaus-blue/10"></span>
+      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink border-l-bauhaus-blue bg-bauhaus-blue/10"></span>
       Blue: you can edit
     </li>
     <li class="flex items-center gap-2">
-      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink/40 bg-muted"></span>
+      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink border-l-ink/40 bg-muted"></span>
       Grey: waiting on others
     </li>
     <li class="flex items-center gap-2">
-      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-bauhaus-green bg-bauhaus-green/10"></span>
+      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink border-l-bauhaus-green bg-bauhaus-green/10"></span>
       Green: confirmed
     </li>
   </ul>

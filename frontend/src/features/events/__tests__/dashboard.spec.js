@@ -6,6 +6,7 @@ import {
   STATUS_DESCRIPTIONS,
   STATUS_LABELS,
   actionKindMeta,
+  BOARD_CARD_CLASSES,
   BOARD_CARD_TONE_CLASSES,
   boardEventTone,
   flagLabel,
@@ -399,7 +400,14 @@ describe("boardEventTone", () => {
     expect(boardEventTone({ status: "confirmed", topAction: null })).toBe("done");
     expect(boardEventTone({ status: "under_review", topAction: null })).toBe("editable");
     expect(boardEventTone({ status: "planning" })).toBe("editable");
-    expect(BOARD_CARD_TONE_CLASSES.editable).toContain("border-bauhaus-blue");
+    expect(BOARD_CARD_TONE_CLASSES.editable).toContain("border-l-bauhaus-blue");
+  });
+
+  it("keeps every card's outline black, with the tone only on the left stripe", () => {
+    expect(BOARD_CARD_CLASSES).toContain("border-ink");
+    for (const classes of Object.values(BOARD_CARD_TONE_CLASSES)) {
+      expect(classes).not.toMatch(/(?:^|\s)border-(?!l-)/);
+    }
   });
 });
 

@@ -40,7 +40,7 @@ const tone = computed(() => {
     data-event-card
     :data-tone="tone"
     :aria-label="`More details about ${card.name}`"
-    class="group flex w-full flex-col border-2 border-l-8 p-4 shadow-hard transition duration-150 hover:-translate-y-0.5 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transition-none sm:border-4 sm:border-l-8"
+    class="group flex w-full flex-col border-2 border-l-8 border-ink p-4 transition duration-150 hover:-translate-y-0.5 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transition-none"
     :class="BOARD_CARD_TONE_CLASSES[tone]"
   >
     <p class="text-sm text-ink/75">

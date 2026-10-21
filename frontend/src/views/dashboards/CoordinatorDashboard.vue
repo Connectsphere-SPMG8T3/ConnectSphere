@@ -23,6 +23,8 @@ import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import CoordinatorEventCard from "@/components/events/CoordinatorEventCard.vue";
 import EventStatusBoard from "@/components/events/EventStatusBoard.vue";
+import SectionHeading from "@/components/common/SectionHeading.vue";
+import { sectionTone } from "@/components/common/sectionTone";
 import calendarArrowDown from "@/assets/icons/calendar-arrow-down.svg";
 import calendarArrowUp from "@/assets/icons/calendar-arrow-up.svg";
 import arrowDownZa from "@/assets/icons/arrow-down-z-a.svg";
@@ -263,9 +265,7 @@ const cardSections = computed(() => [
     <template v-if="activeTab === 'overview' && isLoaded">
       <section class="mb-10" aria-labelledby="active-events">
         <div class="mb-4 flex items-baseline justify-between gap-3">
-          <h2 id="active-events" class="text-2xl font-bold sm:text-3xl">
-            Event status
-          </h2>
+          <SectionHeading id="active-events" :tone="sectionTone(0)">Event status</SectionHeading>
           <p class="text-sm font-medium text-ink/70">{{ boardTotal }} total</p>
         </div>
 
@@ -375,9 +375,9 @@ const cardSections = computed(() => [
 
       <!-- Needs your action and In progress side by side, stacked on narrow screens. -->
       <div v-else data-card-columns class="mt-10 grid grid-cols-1 items-start gap-10 lg:grid-cols-2 lg:gap-6">
-        <section v-for="section in cardSections" :key="section.key" :aria-labelledby="section.key">
+        <section v-for="(section, index) in cardSections" :key="section.key" :aria-labelledby="section.key">
           <div class="mb-5 flex items-center justify-between gap-4">
-            <h2 :id="section.key" class="text-2xl font-bold">{{ section.title }}</h2>
+            <SectionHeading :id="section.key" :tone="sectionTone(index)">{{ section.title }}</SectionHeading>
             <span class="text-sm font-medium text-ink/70">{{ section.cards.length }} total</span>
           </div>
           <ul
@@ -395,7 +395,8 @@ const cardSections = computed(() => [
       </div>
     </template>
 
-    <!-- Past and rejected events, each full width at the foot of either view. -->
+    <!-- Past and rejected events, each full width at the foot of either view. Their
+         heading colours continue after the board (Overview) or the two card columns (Events). -->
     <template v-if="isLoaded">
       <section
         v-for="(section, index) in closedSections"
@@ -404,7 +405,7 @@ const cardSections = computed(() => [
         :aria-labelledby="section.key"
       >
         <div class="mb-5 flex items-center justify-between gap-4">
-          <h2 :id="section.key" class="text-2xl font-bold">{{ section.title }}</h2>
+          <SectionHeading :id="section.key" :tone="sectionTone(index + (activeTab === 'events' ? 2 : 1))">{{ section.title }}</SectionHeading>
           <span class="text-sm font-medium text-ink/70">{{ section.cards.length }} total</span>
         </div>
         <ul v-if="section.cards.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
