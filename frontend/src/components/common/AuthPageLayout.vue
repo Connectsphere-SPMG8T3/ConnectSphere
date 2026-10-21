@@ -4,7 +4,7 @@
 </script>
 
 <template>
-  <main class="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4 py-12">
+  <main class="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4 py-8">
     <div class="pointer-events-none absolute -left-16 -top-16 h-64 w-64 rounded-full bg-bauhaus-yellow/70 sm:h-80 sm:w-80" aria-hidden="true" />
     <div class="pointer-events-none absolute -bottom-20 -right-20 h-72 w-72 bg-bauhaus-blue/70 sm:h-96 sm:w-96" aria-hidden="true" />
 

@@ -22,6 +22,7 @@ import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import CoordinatorEventCard from "@/components/events/CoordinatorEventCard.vue";
+import EventStatusBoard from "@/components/events/EventStatusBoard.vue";
 import calendarArrowDown from "@/assets/icons/calendar-arrow-down.svg";
 import calendarArrowUp from "@/assets/icons/calendar-arrow-up.svg";
 import arrowDownZa from "@/assets/icons/arrow-down-z-a.svg";
@@ -235,7 +236,7 @@ const cardSections = computed(() => [
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <p
       v-if="dashboard.error"
       role="alert"
@@ -268,90 +269,32 @@ const cardSections = computed(() => [
           <p class="text-sm font-medium text-ink/70">{{ boardTotal }} total</p>
         </div>
 
-        <ul data-board-legend class="mb-4 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium">
-          <li class="flex items-center gap-2">
-            <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-bauhaus-red bg-bauhaus-red/10"></span>
-            Red: needs your action
-          </li>
-          <li class="flex items-center gap-2">
-            <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink/40 bg-muted"></span>
-            Grey: waiting on others
-          </li>
-          <li class="flex items-center gap-2">
-            <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-bauhaus-green bg-bauhaus-green/10"></span>
-            Green: confirmed
-          </li>
-        </ul>
-
-        <!-- A kanban board: one column per status, in workflow order. The board
-             scrolls sideways on narrow screens; each column scrolls its own cards.
-             Each column spans the board's two rows through a subgrid, so every
-             header grows to the tallest one and the headers stay the same size. -->
-        <div class="-mx-4 overflow-x-auto px-4 pb-3 sm:mx-0 sm:px-0">
-          <div class="grid auto-cols-[minmax(13rem,1fr)] grid-flow-col grid-rows-[auto_1fr] gap-x-4">
-            <div
-              v-for="group in boardColumns"
-              :key="group.status"
-              :data-status-group="group.status"
-              class="row-span-2 grid grid-rows-subgrid gap-0 border-2 border-ink bg-canvas shadow-hard sm:border-4"
+        <EventStatusBoard :columns="boardColumns" @open-status="(status) => openEvents({ status })">
+          <template #card="{ event, cardClass }">
+            <RouterLink
+              :to="reviewRoute(event.event_id)"
+              :data-tone="event.tone"
+              :class="[cardClass, BOARD_CARD_TONE_CLASSES[event.tone]]"
             >
-              <!-- A column holding anything that needs the coordinator's attention gets a red header. -->
-              <div
-                data-column-header
-                class="border-b-2 border-ink px-3 pb-3 pt-2 sm:border-b-4"
-                :class="group.needsAttention ? 'bg-bauhaus-red text-canvas' : 'bg-muted'"
+              <p class="text-sm font-bold">{{ event.event_name }}</p>
+              <p class="text-xs text-ink/75">{{ formatEventDateTime(event.starts_at) }}</p>
+              <p
+                v-if="event.topAction"
+                class="mt-1 inline-block border-2 border-ink px-2 py-0.5 text-xs font-medium"
+                :class="ACTION_BADGE_CLASSES[actionKindMeta(event.topAction).tone]"
               >
-                <div class="flex items-baseline justify-between gap-3">
-                  <button
-                    type="button"
-                    class="text-left text-sm font-bold underline decoration-2 underline-offset-4 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                    :class="group.needsAttention
- ? 'hover:text-bauhaus-yellow focus-visible:outline-canvas'
- : 'hover:text-bauhaus-red focus-visible:outline-ink'"
-                    :aria-label="`View all ${group.label} events`"
-                    @click="openEvents({ status: group.status })"
-                  >
-                    {{ group.label }}
-                  </button>
-                  <p class="text-2xl font-bold">{{ group.events.length }}</p>
-                </div>
-                <p class="mt-1 text-xs font-medium" :class="group.needsAttention ? 'text-canvas/90' : 'text-ink/70'">
-                  {{ group.description }}
-                </p>
-              </div>
-
-              <ul v-if="group.events.length" class="max-h-[26rem] space-y-2 overflow-y-auto p-3">
-                <li v-for="event in group.events" :key="event.event_id" class="flex">
-                  <RouterLink
-                    :to="reviewRoute(event.event_id)"
-                    :data-tone="event.tone"
-                    class="w-full border-2 border-l-8 px-3 py-2 text-left transition duration-150 hover:-translate-y-0.5 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transition-none"
-                    :class="BOARD_CARD_TONE_CLASSES[event.tone]"
-                  >
-                    <p class="text-sm font-bold">{{ event.event_name }}</p>
-                    <p class="text-xs text-ink/75">{{ formatEventDateTime(event.starts_at) }}</p>
-                    <p
-                      v-if="event.topAction"
-                      class="mt-1 inline-block border-2 border-ink px-2 py-0.5 text-xs font-medium"
-                      :class="ACTION_BADGE_CLASSES[actionKindMeta(event.topAction).tone]"
-                    >
-                      {{ actionKindMeta(event.topAction).label }}
-                    </p>
-                    <p
-                      v-for="flag in event.flags ?? []"
-                      :key="flag"
-                      class="mt-1 inline-block bg-bauhaus-red px-2 py-0.5 text-xs font-medium text-canvas"
-                    >
-                      {{ flagLabel(flag) }}
-                    </p>
-                  </RouterLink>
-                </li>
-              </ul>
-
-              <p v-else class="p-3 text-sm font-medium text-ink/50">None.</p>
-            </div>
-          </div>
-        </div>
+                {{ actionKindMeta(event.topAction).label }}
+              </p>
+              <p
+                v-for="flag in event.flags ?? []"
+                :key="flag"
+                class="mt-1 inline-block bg-bauhaus-red px-2 py-0.5 text-xs font-medium text-canvas"
+              >
+                {{ flagLabel(flag) }}
+              </p>
+            </RouterLink>
+          </template>
+        </EventStatusBoard>
       </section>
 
     </template>

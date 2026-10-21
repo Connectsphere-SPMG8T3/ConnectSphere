@@ -102,7 +102,7 @@ async function reject(form) {
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <div class="mb-8">
       <RouterLink
         :to="backLink.to"

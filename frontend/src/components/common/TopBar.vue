@@ -1,17 +1,15 @@
 <script setup>
-import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed } from "vue";
 
 import BrandMark from "@/components/common/BrandMark.vue";
 import { formatFriendlyDate } from "@/components/common/dateFormat";
 import NotificationBell from "@/components/common/NotificationBell.vue";
+import RoleSwitcher from "@/components/common/RoleSwitcher.vue";
+import { useMediaQuery } from "@/composables/useMediaQuery";
 import { useSidebarState } from "@/composables/useSidebarState";
 import { useAuthStore } from "@/stores/auth";
-import { useVenuesStore } from "@/features/venues/venueSearchStore";
 
 const authStore = useAuthStore();
-const venuesStore = useVenuesStore();
-const router = useRouter();
 const { isMobileOpen } = useSidebarState();
 
 // "Hello Jack" reads as a greeting; the full stored name reads as a form
@@ -23,23 +21,8 @@ const firstName = computed(() => authStore.profile?.full_name?.trim().split(/\s+
 // navigation — accepted rather than running a timer for it.
 const today = formatFriendlyDate(new Date());
 
-const query = ref("");
-
-// Search goes to the venue catalogue, which is the only searchable collection
-// that exists today, so it is only offered to the roles allowed there. Must
-// stay in sync with the /venues route's allowedRoles in router/index.js.
-const showSearch = computed(() => ["event_coordinator", "venue_staff"].includes(authStore.role));
-
-async function handleSearch() {
-  const location = query.value.trim();
-  if (!location) return;
-  venuesStore.criteria.location = location;
-  await router.push("/venues");
-  // Pushed route or not, the view only searches on its first mount, so the
-  // store is asked directly — otherwise a search typed while already on
-  // /venues would change nothing.
-  await venuesStore.search();
-}
+// The menu holds the role switcher on phones, where the bar has no room for it.
+const isWide = useMediaQuery("(min-width: 640px)");
 </script>
 
 <template>
@@ -68,39 +51,7 @@ async function handleSearch() {
       <div class="ml-auto flex items-center gap-2 sm:gap-4">
         <NotificationBell />
 
-        <form
-          v-if="showSearch"
-          role="search"
-          class="hidden items-center border-2 border-ink bg-canvas shadow-hard hover:bg-muted focus-within:bg-bauhaus-yellow/20 sm:flex"
-          @submit.prevent="handleSearch"
-        >
-          <button
-            type="submit"
-            class="flex h-10 w-10 shrink-0 items-center justify-center active-press"
-            aria-label="Run search"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="h-5 w-5"
-              aria-hidden="true"
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path d="M20 20l-3.5-3.5" />
-            </svg>
-          </button>
-          <input
-            v-model="query"
-            type="search"
-            aria-label="Search"
-            placeholder="Search"
-            class="w-40 bg-transparent py-2 pr-4 text-sm font-medium text-ink outline-none placeholder:text-ink/40 lg:w-56"
-          />
-        </form>
+        <RoleSwitcher v-if="isWide" compact />
         <button
           type="button"
           class="flex h-10 w-10 items-center justify-center border-2 border-ink bg-canvas shadow-hard hover:bg-muted active-press sm:hidden"

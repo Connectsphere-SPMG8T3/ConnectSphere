@@ -13,7 +13,7 @@ const allRoleLabels = computed(() => authStore.roles.map((role) => ROLE_LABELS[r
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <h1 class="mb-8 text-4xl font-bold leading-tight sm:text-5xl">My profile</h1>
 
     <BauhausCard v-if="profile" background="white" accent="circle" accent-color="bauhaus-blue">

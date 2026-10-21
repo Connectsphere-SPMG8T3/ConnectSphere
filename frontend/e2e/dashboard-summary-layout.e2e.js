@@ -1,9 +1,9 @@
 // D21: all role summary rows must align even when their longest labels wrap.
-// The coordinator Overview has no summary row since 2026-10-21 (TC-DASH-025 superseded).
+// The coordinator Overview has no summary row since 2026-10-21 (TC-DASH-025 superseded),
+// nor the organiser's since 2026-10-22 (TC-ORG-010 superseded).
 import { expect, seedSession, test } from "./support/fixtures.js";
 
 const dashboards = [
-  { role: "event_organiser", caseId: "TC-ORG-010", label: "Returned for amendments", count: 3 },
   { role: "attendee", caseId: "TC-ATT-001", label: "Upcoming registrations", count: 3 },
   { role: "tech_support", caseId: "TC-TSD-017", label: "Maintenance scheduled", count: 4 },
 ];
@@ -60,13 +60,6 @@ for (const dashboard of dashboards) {
     }
     expect(errors).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath("dashboard-phone.png") });
-    if (dashboard.role === "event_organiser") {
-      const tile = page.getByRole("button", { name: "Show Returned for amendments events" });
-      await tile.focus();
-      await tile.press("Enter");
-      await expect(page).toHaveURL(/tab=events/);
-      await expect(page).toHaveURL(/status=returned/);
-    }
 
   });
 }

@@ -13,7 +13,7 @@ onMounted(() => queue.load());
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <BauhausCard background="yellow" accent="none" class="mb-10">
       <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>

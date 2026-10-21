@@ -254,20 +254,26 @@ const WAITING_ON_OTHERS_STATUSES = ["returned", "safety_review"];
  * How a status-board card is highlighted: "attention" (red) whenever the event
  * needs the coordinator (`topAction` from `orderBoardEvents`), which overrides
  * everything else; otherwise "waiting" (grey) where it is with someone else,
- * "done" (green) once confirmed, and "plain" in the coordinator's own stages.
+ * "done" (green) once confirmed, and "editable" (blue) in the coordinator's own
+ * stages, where it can edit the event directly (§6.3 "Who edits what").
  */
 export function boardEventTone(event) {
   if (event.topAction) return "attention";
   if (WAITING_ON_OTHERS_STATUSES.includes(event.status)) return "waiting";
   if (event.status === "confirmed") return "done";
-  return "plain";
+  return "editable";
 }
+
+/** Base classes for a status-board card; add a tone from `BOARD_CARD_TONE_CLASSES`. */
+export const BOARD_CARD_CLASSES =
+  "w-full border-2 border-l-8 px-3 py-2 text-left transition duration-150 hover:-translate-y-0.5 hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transition-none";
 
 /** Card classes per `boardEventTone`, shared by the status board and the Events view. */
 export const BOARD_CARD_TONE_CLASSES = {
   attention: "border-bauhaus-red bg-bauhaus-red/10",
   waiting: "border-ink/40 bg-muted",
   done: "border-bauhaus-green bg-bauhaus-green/10",
+  editable: "border-bauhaus-blue bg-bauhaus-blue/10",
   plain: "border-ink bg-canvas",
   rejected: "border-ink/30 bg-muted text-ink/70",
 };

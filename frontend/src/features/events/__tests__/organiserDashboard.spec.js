@@ -6,8 +6,9 @@ import {
   getOrganiserAction,
   groupOrganiserEvents,
   groupOrganiserActiveEvents,
-  summariseOrganiserEvents,
+  groupOrganiserClosedEvents,
   needsOrganiserAttention,
+  organiserBoardTone,
   sortOrganiserEvents,
 } from "@/features/events/organiserDashboard";
 
@@ -115,6 +116,7 @@ describe("organiser dashboard grouping and actions", () => {
     const groups = groupOrganiserActiveEvents([
       event({ id: "submitted", status: "submitted" }),
       event({ id: "review", status: "under_review" }),
+      event({ id: "returned", status: "returned" }),
       event({ id: "planning", status: "planning" }),
       event({ id: "confirmed", status: "confirmed" }),
       event({ id: "completed", status: "completed" }),
@@ -122,14 +124,62 @@ describe("organiser dashboard grouping and actions", () => {
     ]);
 
     expect(groups.map((group) => group.status)).toEqual([
+      "draft",
       "under_review",
+      "returned",
       "planning",
       "safety_review",
       "confirmed",
-      "completed",
     ]);
-    expect(groups[0].events.map((item) => item.id)).toEqual(["submitted", "review"]);
-    expect(groups[4].events.map((item) => item.id)).toEqual(["completed"]);
+    expect(groups[0].events.map((item) => item.id)).toEqual(["draft"]);
+    expect(groups[1].events.map((item) => item.id)).toEqual(["submitted", "review"]);
+    expect(groups[2].events.map((item) => item.id)).toEqual(["returned"]);
+  });
+
+  it("keeps past events off the board: completed ones, and confirmed ones whose date has gone by", () => {
+    const now = new Date("2026-10-22T04:00:00Z");
+    const events = [
+      event({ id: "upcoming", status: "confirmed", date: "2026-10-22" }),
+      event({ id: "gone", status: "confirmed", date: "2026-10-21" }),
+      event({ id: "done", status: "completed", date: "2026-11-30" }),
+      event({ id: "no-date", status: "confirmed", date: "" }),
+      event({ id: "refused", status: "rejected" }),
+      event({ id: "review", status: "under_review", date: "2026-10-01" }),
+    ];
+
+    const confirmed = groupOrganiserActiveEvents(events, now).find((group) => group.status === "confirmed");
+    expect(confirmed.events.map((item) => item.id)).toEqual(["upcoming", "no-date"]);
+
+    const closed = groupOrganiserClosedEvents(events, now);
+    expect(closed.past.map((item) => item.id)).toEqual(["gone", "done"]);
+    expect(closed.rejected.map((item) => item.id)).toEqual(["refused"]);
+  });
+
+  it("judges a past date in the event's own timezone", () => {
+    // 23:30 on the 21st in UTC is already the 22nd in Singapore, still the 21st in New York.
+    const now = new Date("2026-10-21T23:30:00Z");
+    const singapore = event({ id: "sg", status: "confirmed", date: "2026-10-21", eventTimezone: "Asia/Singapore" });
+    const newYork = event({ id: "ny", status: "confirmed", date: "2026-10-21", eventTimezone: "America/New_York" });
+    expect(groupOrganiserClosedEvents([singapore, newYork], now).past.map((item) => item.id)).toEqual(["sg"]);
+  });
+
+  it("flags only a Returned column holding events as needing the organiser's attention", () => {
+    const flagged = (events) =>
+      groupOrganiserActiveEvents(events).filter((group) => group.needsAttention).map((group) => group.status);
+
+    expect(flagged([event({ status: "returned" }), event({ id: "e2", status: "planning" })])).toEqual(["returned"]);
+    expect(flagged([event({ status: "planning" })])).toEqual([]);
+  });
+
+  it("tones board cards red when the organiser must act, grey while others work, green once confirmed", () => {
+    expect(organiserBoardTone(event({ status: "returned" }))).toBe("attention");
+    expect(organiserBoardTone(event({ status: "draft" }))).toBe("editable");
+    for (const status of ["submitted", "under_review", "planning", "safety_review"]) {
+      expect(organiserBoardTone(event({ status }))).toBe("waiting");
+    }
+    expect(organiserBoardTone(event({ status: "confirmed" }))).toBe("done");
+    expect(organiserBoardTone(event({ status: "completed" }))).toBe("done");
+    expect(organiserBoardTone(event({ status: "rejected" }))).toBe("rejected");
   });
 
   it("takes single-status group labels from STATUS_LABELS so a rename is one change (LC-R3)", () => {
@@ -146,24 +196,6 @@ describe("organiser dashboard grouping and actions", () => {
       .forEach((group) => {
         expect(`${group.label} ${group.description}`).not.toMatch(/\bapproved\b/i);
       });
-  });
-
-  it("summarises overview counts into action and lifecycle groups", () => {
-    const events = [
-      event({ id: "draft", status: "draft" }),
-      event({ id: "returned", status: "returned" }),
-      event({ id: "rejected", status: "rejected" }),
-      event({ id: "submitted", status: "submitted" }),
-      event({ id: "review", status: "under_review" }),
-      event({ id: "planning", status: "planning" }),
-      event({ id: "confirmed", status: "confirmed" }),
-      event({ id: "completed", status: "completed" }),
-    ];
-
-    expect(summariseOrganiserEvents(events)).toEqual({
-      needsAction: { drafts: 1, returned: 1, rejected: 1, total: 3 },
-      myEvents: { underReview: 2, planning: 1, safetyReview: 0, confirmed: 1, completed: 1, total: 5 },
-    });
   });
 
   it("keeps drafts separate from submitted requests and includes every lifecycle status", () => {

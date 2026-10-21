@@ -187,7 +187,7 @@ describe("CoordinatorDashboard", () => {
       // Cards, not columns, carry the tone: a confirmed event is green, one needing action red.
       const card = (id) => el.querySelector(`a[href="/coordinator/events/${id}"][data-tone]`);
       expect(card(SECOND_PLANNING_ID).dataset.tone).toBe("attention");
-      expect(card(PLANNING_ID).dataset.tone).toBe("plain");
+      expect(card(PLANNING_ID).dataset.tone).toBe("editable");
       expect(card(CONFIRMED_ID).dataset.tone).toBe("done");
       expect(card(CONFIRMED_ID).className).toContain("border-bauhaus-green");
       expect(el.querySelector('[data-status-group="confirmed"]').className).not.toContain("bauhaus-green");
@@ -306,7 +306,7 @@ describe("CoordinatorDashboard", () => {
       expect(el.querySelector('[aria-labelledby="in-progress-events"] [data-card-grid]').className).not.toContain("grid-cols-3");
       expect(card(UNDER_REVIEW_ID).dataset.tone).toBe("attention");
       expect(card(UNDER_REVIEW_ID).querySelector("[data-action-badge]").textContent).toContain("Awaiting first review");
-      expect(card(PLANNING_ID).dataset.tone).toBe("plain");
+      expect(card(PLANNING_ID).dataset.tone).toBe("editable");
       expect([...card(PLANNING_ID).querySelectorAll("[data-outstanding]")].map((chip) => chip.textContent.trim())).toEqual([
         "Venue",
       ]);

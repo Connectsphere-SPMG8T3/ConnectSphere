@@ -66,6 +66,9 @@ const EVENT_RESPONSES = [
 const mountedApps = [];
 
 async function mountDashboard() {
+  // Only Date is faked, so timers and promises behave normally.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));
   const pinia = createPinia();
   setActivePinia(pinia);
   const authStore = useAuthStore();
@@ -105,6 +108,7 @@ async function openEvents(el) {
 describe("OrganiserDashboard", () => {
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.useRealTimers();
   });
 
   beforeEach(() => {
@@ -129,14 +133,13 @@ describe("OrganiserDashboard", () => {
     expect(el.textContent).toContain("Awaiting assignment");
   });
 
-  it("shows overview counts and switches to the full events tab", async () => {
+  it("opens on the board without count tiles and switches to the full events tab", async () => {
     const { el, router } = await mountDashboard();
 
-    expect(el.textContent).toContain("Needs your action");
-    expect(el.textContent).toContain("Drafts");
-    expect(el.textContent).toContain("My events");
+    expect(el.textContent).not.toContain("Needs your action");
+    expect(el.querySelector('[aria-label="Show Drafts events"]')).toBeNull();
     expect(el.textContent).toContain("Under review");
-    expect(el.textContent).toContain("My events by status");
+    expect(el.textContent).toContain("Event status");
 
     await router.push({ name: "dashboard-organiser", query: { tab: "events" } });
     await settle();
@@ -183,37 +186,43 @@ describe("OrganiserDashboard", () => {
     expect(confirmedCard.querySelector("button").className).toContain("hover:bg-muted");
   });
 
-  it("opens the events view filtered to the selected action category", async () => {
+  it("has no welcome card on the Overview; New event request sits beside the Event status heading", async () => {
     const { el, router } = await mountDashboard();
 
-    const draftsCard = el.querySelector('[role="button"][aria-label="Show Drafts events"]');
-    draftsCard.click();
-    await vi.waitFor(() => expect(router.currentRoute.value.query).toEqual({ tab: "events", status: "draft" }));
-    await settle();
+    expect(el.textContent).not.toContain("Welcome,");
+    expect(el.querySelector("h1").className).toContain("sr-only");
+    const statusSection = el.querySelector('[aria-labelledby="my-events-status"]');
+    const headingRow = statusSection.querySelector("#my-events-status").parentElement;
+    const button = headingRow.querySelector('button[aria-label="New event request"]');
+    expect(button.textContent.trim()).toBe("+ Request");
+    expect(el.querySelectorAll('button[aria-label="New event request"]')).toHaveLength(1);
 
-    expect(router.currentRoute.value.query).toEqual({ tab: "events", status: "draft" });
-    el.querySelector('button[aria-label="Filter events by status"]').click();
-    await settle();
-    expect(el.querySelector('input[type="checkbox"][value="draft"]').checked).toBe(true);
-    expect(el.textContent).toContain("Regional Workshop");
-    expect(el.textContent).not.toContain("Annual Conference");
+    button.click();
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
   });
 
-  it("uses the urgent visual treatment for returned requests and the shared gray hover for action cards", async () => {
+  it("shows my events as the coordinator's kanban board, with a red Returned column", async () => {
     const { el } = await mountDashboard();
 
-    const draftsCard = el.querySelector('[aria-label="Show Drafts events"]');
-    const returnedCard = el.querySelector('[aria-label="Show Returned for amendments events"]');
-    const rejectedCard = el.querySelector('[aria-label="Show Rejected events"]');
+    const columns = [...el.querySelectorAll("[data-status-group]")].map((node) => node.dataset.statusGroup);
+    expect(columns).toEqual(["draft", "under_review", "returned", "planning", "safety_review", "confirmed"]);
+    expect(el.querySelector('[data-status-group="draft"] [data-event-row="draft-1"]').dataset.tone).toBe("editable");
+    expect(el.querySelector("[data-board-legend]")).not.toBeNull();
 
-    expect(draftsCard.className).toContain("hover:bg-muted");
-    expect(draftsCard.querySelector("span").className).toContain("bg-bauhaus-blue");
-    expect(returnedCard.className).toContain("hover:bg-muted");
-    expect(returnedCard.querySelector("span").className).toContain("bg-bauhaus-red");
-    expect(rejectedCard.className).toContain("hover:bg-muted");
+    const returned = el.querySelector('[data-status-group="returned"]');
+    expect(returned.querySelector("[data-column-header]").className).toContain("bg-bauhaus-red");
+    const returnedCard = returned.querySelector('[data-event-row="returned-1"]');
+    expect(returnedCard.dataset.tone).toBe("attention");
+    expect(returnedCard.textContent).toContain("Amend and resubmit");
+
+    const review = el.querySelector('[data-status-group="under_review"]');
+    expect(review.querySelector("[data-column-header]").className).toContain("bg-muted");
+    expect(review.querySelector('[data-event-row="review-1"]').dataset.tone).toBe("waiting");
+    expect(el.querySelector('[data-event-row="confirmed-1"]').dataset.tone).toBe("done");
+    expect(el.querySelector('[data-status-group="planning"]').textContent).toContain("None.");
   });
 
-  it("paginates status previews by two events and opens a selected event detail", async () => {
+  it("lists every event in a status column, without pages, and opens the one picked", async () => {
     const { el, router, eventsStore } = await mountDashboard();
     eventsStore.events.push(
       { ...eventsStore.events[2], id: "confirmed-2", name: "Confirmed Two" },
@@ -223,19 +232,48 @@ describe("OrganiserDashboard", () => {
     await settle();
 
     const confirmedGroup = el.querySelector('[data-status-group="confirmed"]');
-    expect(confirmedGroup.querySelectorAll("[data-event-row]")).toHaveLength(2);
-    expect(confirmedGroup.textContent).toContain("1 / 2");
-    expect(confirmedGroup.textContent).not.toContain("Confirmed Three");
+    expect(confirmedGroup.querySelectorAll("[data-event-row]")).toHaveLength(4);
+    expect(confirmedGroup.querySelector('[aria-label="Next confirmed events page"]')).toBeNull();
+    expect(el.textContent).toMatch(/7 total/);
 
-    confirmedGroup.querySelector('[aria-label="Next confirmed events page"]').click();
-    await settle();
-    expect(confirmedGroup.querySelectorAll("[data-event-row]")).toHaveLength(2);
-    expect(confirmedGroup.textContent).toContain("Confirmed Three");
-    expect(confirmedGroup.textContent).toContain("Confirmed Four");
-
-    confirmedGroup.querySelector('[data-event-row="confirmed-3"] button').click();
+    confirmedGroup.querySelector('[data-event-row="confirmed-3"]').click();
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-detail"));
     expect(router.currentRoute.value.params.id).toBe("confirmed-3");
+  });
+
+  it("opens drafts and returned requests on the request form, other board cards on the event page", async () => {
+    const { el } = await mountDashboard();
+    const href = (id) => el.querySelector(`[data-status-group] [data-event-row="${id}"]`).getAttribute("href");
+    expect(href("draft-1")).toBe("/events/new?id=draft-1");
+    expect(href("returned-1")).toBe("/events/new?id=returned-1");
+    expect(href("review-1")).toBe("/events/review-1");
+  });
+
+  it("puts past and rejected events in their own sections below the board", async () => {
+    const { el, eventsStore } = await mountDashboard();
+    expect(el.querySelector('[aria-labelledby="past-events"]').textContent).toContain("No past events");
+    expect(el.querySelector('[aria-labelledby="rejected-events"]').textContent).toContain("No rejected events");
+
+    eventsStore.events.push(
+      { ...eventsStore.events[2], id: "completed-1", name: "Finished Expo", status: "completed" },
+      { ...eventsStore.events[2], id: "confirmed-old", name: "Last Month Forum", date: "2026-09-15" },
+      { ...eventsStore.events[2], id: "rejected-1", name: "Refused Gala", status: "rejected" },
+    );
+    await settle();
+
+    const past = el.querySelector('[aria-labelledby="past-events"]');
+    expect([...past.querySelectorAll("[data-event-row]")].map((node) => node.dataset.eventRow)).toEqual(["completed-1", "confirmed-old"]);
+    expect(past.querySelector('[data-event-row="completed-1"]').dataset.tone).toBe("done");
+    expect(past.textContent).toContain("2 total");
+
+    const rejected = el.querySelector('[aria-labelledby="rejected-events"]');
+    expect(rejected.querySelector('[data-event-row="rejected-1"]').dataset.tone).toBe("rejected");
+    expect(rejected.textContent).toContain("Refused Gala");
+
+    const board = el.querySelector("[data-board-legend]").parentElement;
+    for (const id of ["completed-1", "confirmed-old", "rejected-1"]) {
+      expect(board.querySelector(`[data-status-group] [data-event-row="${id}"]`)).toBeNull();
+    }
   });
 
   it("opens a status-filtered events view from the status card header", async () => {
@@ -377,7 +415,7 @@ describe("OrganiserDashboard", () => {
 
     await router.push({ name: "dashboard-organiser" });
     await settle();
-    buttonByText(el, "New event request").click();
+    el.querySelector('button[aria-label="New event request"]').click();
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
     expect(router.currentRoute.value.name).toBe("event-new");
   });

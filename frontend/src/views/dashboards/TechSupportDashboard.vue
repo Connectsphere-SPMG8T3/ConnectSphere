@@ -289,7 +289,7 @@ function formatDate(value) {
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <template v-if="activeTab === 'inventory'">
       <p v-if="inventoryError" class="mb-8 border-2 border-ink bg-bauhaus-red px-5 py-4 text-sm font-bold text-canvas shadow-hard sm:border-4" role="alert">
         {{ inventoryError }}

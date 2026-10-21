@@ -83,7 +83,7 @@ const rowClasses =
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <BauhausCard background="blue" accent="none" class="mb-10">
       <p class="text-xs font-bold opacity-80">Event Coordinator Lead Dashboard</p>
       <h1 class="mt-2 text-3xl font-bold leading-tight sm:text-4xl">

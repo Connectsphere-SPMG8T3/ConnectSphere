@@ -9,7 +9,19 @@ vi.mock("@/services/api", async (importOriginal) => ({
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn(), setActiveRole: vi.fn() },
 }));
 
-async function mountNav(profile, initialPath = "/dashboard/coordinator") {
+// The role switcher sits in the sidebar only on phones, where the sidebar is
+// the slide-out menu; on wider screens it is in the top bar (TopBar.spec.js).
+function setScreen(wide) {
+  window.matchMedia = vi.fn().mockImplementation((query) => ({
+    matches: wide,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+}
+
+async function mountNav(profile, initialPath = "/dashboard/coordinator", { wide = false } = {}) {
+  setScreen(wide);
   // A fresh router (and its beforeEach guard) and a fresh auth store module
   // per test — sharing the router singleton across tests lets one test's
   // in-flight navigation (dynamic route imports are genuinely async) leak
@@ -55,6 +67,18 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
     });
 
     expect(el.querySelector('[data-testid="role-switcher"]')).toBeNull();
+  });
+
+  it("keeps the current page's link yellow at rest and gray on hover, like every other link", async () => {
+    const { el } = await mountNav(
+      { id: "u1", role: "event_organiser", roles: ["event_organiser"] },
+      "/dashboard/organiser?tab=overview",
+    );
+    const current = el.querySelector('[aria-label="Overview"]');
+    const other = el.querySelector('[aria-label="Events"]');
+    expect(current.className).toContain("bg-bauhaus-yellow");
+    expect(current.className).toContain("hover:bg-muted");
+    expect(other.className).toContain("hover:bg-muted");
   });
 
   it("shows organiser overview and events views in the side navigation", async () => {
@@ -109,6 +133,15 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
     });
 
     expect(el.querySelector('a[href^="/dashboard/tech-support"]')).toBeNull();
+  });
+
+  it("leaves the role switcher to the top bar on wider screens", async () => {
+    const { el } = await mountNav(
+      { id: "u1", role: "event_coordinator", roles: ["event_coordinator", "venue_staff"], full_name: "Multi" },
+      "/dashboard/coordinator",
+      { wide: true },
+    );
+    expect(el.querySelector('[data-testid="role-switcher"]')).toBeNull();
   });
 
   it("lists every held role with a human-readable label for a multi-role profile", async () => {

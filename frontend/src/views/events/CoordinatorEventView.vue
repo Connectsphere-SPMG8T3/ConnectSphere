@@ -161,7 +161,7 @@ watch(
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
       <BauhausButton variant="outline" @click="router.push({ name: 'dashboard-coordinator' })">Back to dashboard</BauhausButton>
     </div>

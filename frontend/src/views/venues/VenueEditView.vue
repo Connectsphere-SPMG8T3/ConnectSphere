@@ -59,7 +59,7 @@ const layoutOptions = computed(() => LAYOUTS);
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <RouterLink
       :to="{ name: 'venue-detail', params: { id: route.params.id } }"
       class="mb-8 inline-block text-xs font-bold underline decoration-2 underline-offset-4"

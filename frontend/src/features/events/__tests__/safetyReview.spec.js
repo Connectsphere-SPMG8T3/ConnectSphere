@@ -2,12 +2,10 @@
 import {expect, it} from "vitest";
 import {ACTIVE_COORDINATOR_STATUSES, readinessGaps} from "../dashboard";
 import {COMMENTABLE_STATUSES} from "../comments";
-import {summariseOrganiserEvents, groupOrganiserActiveEvents} from "../organiserDashboard";
+import {groupOrganiserActiveEvents} from "../organiserDashboard";
 it("includes safety review in dashboards and comments", () => {
  expect(ACTIVE_COORDINATOR_STATUSES).toContain("safety_review"); expect(COMMENTABLE_STATUSES).toContain("safety_review");
  const events=[{id:"e",status:"safety_review"}];
- expect(summariseOrganiserEvents(events).myEvents.safetyReview).toBe(1);
- expect(summariseOrganiserEvents(events).myEvents.total).toBe(1);
  expect(groupOrganiserActiveEvents(events).find(g=>g.status==="safety_review").events).toEqual(events);
 });
 

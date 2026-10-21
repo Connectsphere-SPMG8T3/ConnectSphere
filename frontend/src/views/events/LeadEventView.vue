@@ -68,7 +68,7 @@ async function reassign() {
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <p class="mb-6">
       <RouterLink
         :to="{ name: 'dashboard-coordinator-lead' }"

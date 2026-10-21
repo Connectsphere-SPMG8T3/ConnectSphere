@@ -13,8 +13,8 @@ import {
   test,
 } from "./support/fixtures.js";
 
-// The coordinator, venue staff and tech support dashboards open straight onto their data, with no welcome heading.
-const WELCOME_HEADING = new Set(["event_organiser", "attendee"]);
+// The coordinator, organiser, venue staff and tech support dashboards open straight onto their data, with no welcome heading.
+const WELCOME_HEADING = new Set(["attendee"]);
 
 test.describe("Login", () => {
   for (const [role, account] of Object.entries(ACCOUNTS)) {
@@ -101,7 +101,7 @@ test.describe("Session", () => {
     await page.reload();
 
     await expect(page).toHaveURL(ACCOUNTS.event_organiser.dashboard);
-    await expect(page.getByRole("heading", { name: `Welcome, ${ACCOUNTS.event_organiser.name}` })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Event status" })).toBeVisible();
   });
 
   test("TC-AUTH-030 an expired access token is renewed without signing in again", async ({ page }) => {
