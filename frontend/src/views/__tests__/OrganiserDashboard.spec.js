@@ -258,6 +258,30 @@ describe("OrganiserDashboard", () => {
     expect(href("review-1")).toBe("/events/review-1");
   });
 
+  it("lists past or rejected events one per row, three before scrolling", async () => {
+    const { el, eventsStore } = await mountDashboard();
+    for (let i = 0; i < 6; i += 1) {
+      eventsStore.events.push({ ...eventsStore.events[2], id: `rejected-${i}`, name: `Refused ${i}`, status: "rejected" });
+    }
+    // jsdom has no layout: one card a row, rows 100px apart, each card 90px tall.
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
+      if (this.matches("[data-capped-rows] > li")) {
+        const top = [...this.parentElement.children].indexOf(this) * 100;
+        return { top, bottom: top + 90 };
+      }
+      return { top: 0, bottom: 0 };
+    });
+    await settle();
+    await settle();
+    rect.mockRestore();
+
+    const rejected = el.querySelector('[aria-labelledby="rejected-events"] [data-capped-rows]');
+    expect(rejected.className).toContain("overflow-y-auto");
+    expect(rejected.className).not.toMatch(/grid-cols-[23]/);
+    expect(rejected.style.maxHeight).toBe("298px");
+    expect(el.querySelector('[aria-labelledby="past-events"] [data-capped-rows]')).toBeNull();
+  });
+
   it("puts past and rejected events in their own sections below the board", async () => {
     const { el, eventsStore } = await mountDashboard();
     expect(el.querySelector('[aria-labelledby="past-events"]').textContent).toContain("No past events");

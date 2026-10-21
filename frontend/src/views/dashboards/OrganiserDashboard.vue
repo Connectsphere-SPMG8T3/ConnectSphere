@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
+import { useCappedRows } from "@/composables/useCappedRows";
 import { useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
@@ -72,6 +73,9 @@ const showRequestsSection = computed(() => !status.value.length || status.value.
 const activeEventGroups = computed(() => groupOrganiserActiveEvents(eventsStore.events));
 const boardTotal = computed(() => activeEventGroups.value.reduce((total, group) => total + group.events.length, 0));
 const closedEvents = computed(() => groupOrganiserClosedEvents(eventsStore.events));
+// Past and Rejected list one card per row, three before they scroll.
+const closedLists = ref([]);
+useCappedRows(() => closedLists.value, [closedEvents, activeTab], 3);
 const closedSections = computed(() => [
   {
     key: "past-events",
@@ -234,7 +238,12 @@ onMounted(() => eventsStore.load().catch(() => {}));
             <SectionHeading :id="section.key" :tone="sectionTone(index + 1)">{{ section.title }}</SectionHeading>
             <span class="text-sm font-medium text-ink/70">{{ section.events.length }} total</span>
           </div>
-          <ul v-if="section.events.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <ul
+            v-if="section.events.length"
+            ref="closedLists"
+            data-capped-rows
+            class="grid grid-cols-1 gap-4 overflow-y-auto pb-2 pr-2"
+          >
             <li v-for="event in section.events" :key="event.id" class="flex">
               <OrganiserBoardCard :event="event" :schedule="formatSchedule(event)" :show-status="section.showStatus" />
             </li>

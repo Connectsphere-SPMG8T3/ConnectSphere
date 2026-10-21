@@ -14,7 +14,8 @@
  * appear, so nothing on this page invents a figure. Every event opens its
  * review page.
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useCappedRows } from "@/composables/useCappedRows";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
@@ -194,30 +195,16 @@ function clearFilters() {
   router.replace({ query: { ...route.query, status: undefined, action: undefined } });
 }
 
-// Each Events column shows at most four cards before it scrolls. Cards vary in
-// height, so the cap is measured from where the fourth card ends rather than
-// set as a fixed height, and re-measured when the cards or the width change.
-const MAX_VISIBLE_CARDS = 4;
-// Room below the last visible card for its hard shadow (4px) and hover lift.
-const CARD_LIST_SHADOW_ROOM = 8;
+// Each Events column shows four cards before it scrolls, and the Past and
+// Rejected lists three (useCappedRows).
 const cardLists = ref([]);
-
-function capCardLists() {
-  for (const list of cardLists.value) {
-    const cards = list.children;
-    if (cards.length <= MAX_VISIBLE_CARDS) {
-      list.style.maxHeight = "";
-      continue;
-    }
-    const lastVisibleBottom =
-      cards[MAX_VISIBLE_CARDS - 1].getBoundingClientRect().bottom - list.getBoundingClientRect().top;
-    list.style.maxHeight = `${lastVisibleBottom + CARD_LIST_SHADOW_ROOM}px`;
-  }
-}
-
-watch([visibleCards, activeTab, () => dashboard.hasSettled], capCardLists, { flush: "post", immediate: true });
-onMounted(() => window.addEventListener("resize", capCardLists));
-onBeforeUnmount(() => window.removeEventListener("resize", capCardLists));
+const closedLists = ref([]);
+useCappedRows(() => cardLists.value, [visibleCards, activeTab, () => dashboard.hasSettled], 4);
+useCappedRows(
+  () => closedLists.value,
+  [visibleCards, visibleRejectedCards, activeTab, () => dashboard.hasSettled],
+  3,
+);
 
 const cardSections = computed(() => [
   {
@@ -384,6 +371,7 @@ const cardSections = computed(() => [
             v-if="section.cards.length"
             ref="cardLists"
             data-card-grid
+            data-capped-rows
             class="grid grid-cols-1 gap-4 overflow-y-auto pb-2 pr-2"
           >
             <li v-for="card in section.cards" :key="card.id" class="flex">
@@ -408,7 +396,12 @@ const cardSections = computed(() => [
           <SectionHeading :id="section.key" :tone="sectionTone(index + (activeTab === 'events' ? 2 : 1))">{{ section.title }}</SectionHeading>
           <span class="text-sm font-medium text-ink/70">{{ section.cards.length }} total</span>
         </div>
-        <ul v-if="section.cards.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <ul
+          v-if="section.cards.length"
+          ref="closedLists"
+          data-capped-rows
+          class="grid grid-cols-1 gap-4 overflow-y-auto pb-2 pr-2"
+        >
           <li v-for="card in section.cards" :key="card.id" class="flex">
             <CoordinatorEventCard :card="card" :past="section.past" />
           </li>

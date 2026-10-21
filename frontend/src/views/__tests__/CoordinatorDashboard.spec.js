@@ -328,6 +328,31 @@ describe("CoordinatorDashboard", () => {
       expect(card(CONFIRMED_ID).querySelector("[data-outstanding]")).toBeNull();
     });
 
+    it("lists Past and Rejected events one per row, three before scrolling", async () => {
+      const rejected = Array.from({ length: 6 }, (_, i) => ({
+        event_id: `e0000000-0000-4000-8000-0000000004${String(i).padStart(2, "0")}`,
+        event_name: `Refused ${i}`,
+        starts_at: "2026-11-01T02:00:00Z",
+      }));
+      eventsApi.coordinatorDashboard.mockResolvedValue({ ...PAYLOAD, rejected_events: rejected });
+      const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
+        if (this.matches("[data-capped-rows] > li")) {
+          const top = [...this.parentElement.children].indexOf(this) * 100;
+          return { top, bottom: top + 90 };
+        }
+        return { top: 0, bottom: 0 };
+      });
+
+      const { el } = await mountDashboard();
+      rect.mockRestore();
+
+      const list = el.querySelector('[aria-labelledby="rejected-events"] [data-capped-rows]');
+      expect(list.className).toContain("overflow-y-auto");
+      expect(list.className).not.toMatch(/grid-cols-[23]/);
+      // The third card ends at 290px.
+      expect(list.style.maxHeight).toBe(`${290 + CARD_LIST_SHADOW_ROOM}px`);
+    });
+
     it("caps each column at four cards and scrolls the rest", async () => {
       const extra = Array.from({ length: 4 }, (_, i) => ({
         event_id: `e0000000-0000-4000-8000-00000000030${i}`,
