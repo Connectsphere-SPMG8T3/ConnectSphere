@@ -245,3 +245,22 @@ def test_upcoming_bookings_keep_a_booking_still_in_its_turnaround(monkeypatch):
     [booking_after] = repository.list_upcoming_bookings(HALL_A_ID, datetime(2031, 5, 20, 12, 44, tzinfo=timezone.utc))
     assert booking_after.id == "booking"
     assert repository.list_upcoming_bookings(HALL_A_ID, datetime(2031, 5, 20, 12, 45, tzinfo=timezone.utc)) == []
+
+
+def test_flaggable_bookings_include_ones_already_flagged(monkeypatch):
+    """SCRUM-64 re-deactivation: a booking flagged by an earlier deactivation
+    (or an edit or block) keeps its flag after reactivation, so the
+    deactivation preview must not filter it out, and reports its flag."""
+    from datetime import datetime, timezone
+
+    query = MagicMock()
+    for name in ("select", "eq", "in_", "is_", "overlaps"):
+        getattr(query, name).return_value = query
+    query.execute.return_value.data = [{"id": "booking", "event_id": "event", "status": "approved", "flag": "affected",
+        "booked_period": '["2031-05-20 10:00:00+00","2031-05-20 12:00:00+00")'}]
+    admin = MagicMock(); admin.table.return_value = query
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: admin)
+    [booking] = repository.list_flaggable_bookings(HALL_A_ID, datetime(2030, 1, 1, tzinfo=timezone.utc))
+    query.is_.assert_not_called()
+    assert "flag" in query.select.call_args.args[0]
+    assert booking.flag == "affected"

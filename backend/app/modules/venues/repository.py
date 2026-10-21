@@ -210,22 +210,23 @@ def update_venue(
 
 
 def list_flaggable_bookings(venue_id: str, since: datetime) -> list[BookingSummary]:
-    """Held or approved bookings on the venue that end after `since` and carry
-    no flag yet: exactly what `flag_venue_bookings` would flag (SCRUM-64 AC3),
-    soonest first."""
+    """Held or approved bookings on the venue that end after `since`, soonest
+    first, with their current flag (SCRUM-64 AC3). Already-flagged ones are
+    included: a flag survives reactivation, so those bookings are still
+    affected, though `flag_venue_bookings` will not flag or notify them again."""
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_id, booked_period, status")
+        .select("id, event_id, booked_period, status, flag")
         .eq("venue_id", venue_id)
         .in_("status", ["approved", "held"])
-        .is_("flag", "null")
         .overlaps("occupied_period", _open_ended_literal(since))
         .execute()
     )
     bookings = [
         BookingSummary(
-            id=row["id"], event_id=row["event_id"], period=_parse_range(row["booked_period"]), status=row["status"]
+            id=row["id"], event_id=row["event_id"], period=_parse_range(row["booked_period"]), status=row["status"],
+            flag=row.get("flag"),
         )
         for row in response.data or []
     ]
