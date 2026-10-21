@@ -294,6 +294,40 @@ def _(ctx: Context) -> None:
     expect("Main space: awaiting venue staff approval." in event["safety_readiness"]["missing"], "Missing booking reason")
 
 
+@check("TC-SAFE-027", "Technical status from SCRUM-24 gates send: no lines pass, a pending line blocks, "
+                      "reserved and ticked lets it through", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "SAFE027")
+    event_id = throwaway_event(ctx, "SAFE027", "2031-08-20 10:00+08", "2031-08-20 12:00+08")
+    db_query(
+        "insert into public.venue_bookings (event_id, venue_id, booked_period, status) values "
+        f"('{event_id}', '{venue_id}', tstzrange('2031-08-20 10:00+08', '2031-08-20 12:00+08', '[)'), 'approved')"
+    )
+    coordinator = ctx.shared("event_coordinator")
+    event_url = f"{ctx.api}/events/{event_id}"
+
+    readiness = ctx.client.get(event_url, headers=coordinator.headers).json()["safety_readiness"]
+    expect(readiness["ready"] is True, f"an approved booking and no equipment lines is not ready: {readiness}")
+
+    line_id = throwaway_line(event_id, throwaway_equipment(ctx, "SAFE027", 2), 1)
+    readiness = ctx.client.get(event_url, headers=coordinator.headers).json()["safety_readiness"]
+    expect(readiness["ready"] is False and "Technical status is not Ready." in readiness["missing"],
+           f"a pending equipment line doesn't block: {readiness}")
+    refused = ctx.client.post(f"{event_url}/send-for-safety-check", headers=coordinator.headers)
+    expect_status(refused, 409)
+    expect("Technical status is not Ready." in refused.json()["detail"], refused.text)
+    [row] = db_query(f"select status::text as status from public.events where id = '{event_id}'")
+    expect(row["status"] == "planning", f"the refused send moved the event to {row['status']}")
+
+    tech = ctx.shared("tech_support")
+    expect_status(reserve(ctx, tech, line_id), 200)
+    expect_status(ctx.client.put(f"{ctx.api}/equipment/events/{event_id}/exit-confirmation",
+                                 headers=tech.headers, json={"confirmed": True}), 204)
+    sent = ctx.client.post(f"{event_url}/send-for-safety-check", headers=coordinator.headers)
+    expect_status(sent, 200)
+    expect(sent.json()["status"] == "safety_review", f"sent event is {sent.json()['status']}")
+
+
 # --- Login -----------------------------------------------------------------
 
 
@@ -3012,6 +3046,109 @@ def _supabase_query(*args: str) -> subprocess.CompletedProcess:
         text=True,
         encoding="utf-8",
     )
+
+
+# --- SCRUM-113: the notification bell --------------------------------------------
+# Needs migration 20261021100000 applied. The notices are made for throwaway
+# events ("live-check ..."), so deleting those events at the end of the run
+# deletes them (notifications cascade); no seeded notification is changed.
+NOTIFICATIONS = "/notifications"
+
+
+def add_notice(event_id: str, recipient_id: str, notice_type: str, message: str) -> str:
+    [row] = db_query(
+        f"select public.add_notification('{recipient_id}', '{event_id}', '{notice_type}', '{message}') as id"
+    )
+    expect(row["id"], f"no {notice_type} notice was made for {recipient_id}")
+    return row["id"]
+
+
+def bell_count(ctx: Context, session: Session) -> int:
+    response = ctx.client.get(f"{ctx.api}{NOTIFICATIONS}/unread-count", headers=session.headers)
+    expect_status(response, 200)
+    return response.json()["count"]
+
+
+def bell_page(ctx: Context, session: Session, query: str = "limit=100") -> dict:
+    response = ctx.client.get(f"{ctx.api}{NOTIFICATIONS}?{query}", headers=session.headers)
+    expect_status(response, 200)
+    return response.json()
+
+
+@check("TC-NOTIF-001", "The bell endpoints need a signed-in user")
+def _(ctx: Context) -> None:
+    for method, path in (("GET", "/unread-count"), ("GET", ""), ("POST", "/read-all"),
+                         ("POST", "/e0000000-0000-4000-8000-000000000201/read")):
+        response = ctx.client.request(method, f"{ctx.api}{NOTIFICATIONS}{path}")
+        expect_status(response, 401)
+
+
+@check("TC-NOTIF-002", "The bell counts and lists only what is addressed to the role the session is acting as", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "NOTIF002", "2031-09-01 09:00+08", "2031-09-01 12:00+08")
+    session = ctx.login("event_coordinator")
+    before = bell_count(ctx, session)
+    for_coordinator = add_notice(event_id, COORDINATOR_ID, "event_assigned", "live-check notice for the coordinator")
+    add_notice(event_id, COORDINATOR_ID, "venue_booking_requested", "live-check notice for venue staff")
+
+    expect(bell_count(ctx, session) == before + 1, "the coordinator's count did not rise by exactly the one coordinator notice")
+    newest = bell_page(ctx, session)["items"][0]
+    expect(newest["message"] == "live-check notice for the coordinator", f"newest coordinator notice is {newest['message']!r}")
+    expect(newest["link"] == f"/coordinator/events/{event_id}", f"the notice links to {newest['link']!r}")
+    expect(newest["read"] is False, "a new notice reads as read")
+
+    # The same account, now acting as venue staff: the other role's notice shows, this one does not (SCRUM-76).
+    expect_status(ctx.client.post(f"{ctx.api}/auth/active-role", json={"role": "venue_staff"}, headers=session.headers), 200)
+    messages = [item["message"] for item in bell_page(ctx, session)["items"]]
+    expect("live-check notice for venue staff" in messages, "the venue staff notice is missing while acting as venue staff")
+    expect("live-check notice for the coordinator" not in messages, "a coordinator notice leaked into the venue staff bell")
+    response = ctx.client.post(f"{ctx.api}{NOTIFICATIONS}/{for_coordinator}/read", headers=session.headers)
+    expect_status(response, 404)
+    [row] = db_query(f"select read_at from public.notifications where id = '{for_coordinator}'")
+    expect(row["read_at"] is None, "marking the other role's notice changed it")
+
+
+@check("TC-NOTIF-003", "Paging, mark read and mark all read touch only the caller's own notices",
+       creates_accounts=True, needs_db=True)
+def _(ctx: Context) -> None:
+    email = ctx.throwaway_email("NOTIF003")
+    expect_status(ctx.signup(email=email), 201)
+    session = ctx.login("event_organiser", email=email, password=THROWAWAY_PASSWORD)
+    me = session.body["profile"]["id"]
+    event_id = throwaway_event(ctx, "NOTIF003", "2031-09-02 09:00+08", "2031-09-02 12:00+08")
+    # One statement, so the three share a created_at: the page boundary must not skip or repeat one.
+    made = db_query(
+        f"select public.add_notification('{me}', '{event_id}', 'event_coordinator_changed', "
+        "'live-check notice ' || n) as id from generate_series(1, 3) as n"
+    )
+    ids = {row["id"] for row in made}
+    expect(len(ids) == 3, f"expected 3 notices, made {len(ids)}")
+    someone_elses = add_notice(event_id, VENUE_STAFF_ID, "venue_booking_requested", "live-check notice for someone else")
+
+    first = bell_page(ctx, session, "limit=2")
+    expect(len(first["items"]) == 2 and first["next_before"], f"first page was {first}")
+    second = bell_page(ctx, session, f"limit=2&before={first['next_before']}")
+    expect(len(second["items"]) == 1 and second["next_before"] is None, f"second page was {second}")
+    seen = [item["id"] for item in first["items"] + second["items"]]
+    expect(set(seen) == ids and len(seen) == 3, f"paging skipped or repeated a notice: {seen}")
+
+    expect(bell_count(ctx, session) == 3, "the count is not 3")
+    url = f"{ctx.api}{NOTIFICATIONS}/{seen[0]}/read"
+    expect_status(ctx.client.post(url, headers=session.headers), 200)
+    [row] = db_query(f"select read_at::text as at from public.notifications where id = '{seen[0]}'")
+    expect(row["at"], "the notice was not marked read")
+    expect_status(ctx.client.post(url, headers=session.headers), 200)
+    [again] = db_query(f"select read_at::text as at from public.notifications where id = '{seen[0]}'")
+    expect(again["at"] == row["at"], "marking a read notice again rewrote its time")
+    expect(bell_count(ctx, session) == 2, "the count did not drop to 2")
+    expect_status(ctx.client.post(url, headers=ctx.shared("event_coordinator").headers), 404)
+
+    response = ctx.client.post(f"{ctx.api}{NOTIFICATIONS}/read-all", headers=session.headers)
+    expect_status(response, 200)
+    expect(response.json() == {"updated": 2}, f"read-all said {response.json()}")
+    expect(bell_count(ctx, session) == 0, "the count is not 0 after read-all")
+    [other] = db_query(f"select read_at from public.notifications where id = '{someone_elses}'")
+    expect(other["read_at"] is None, "read-all marked someone else's notice")
 
 
 def db_query(sql: str) -> list[dict]:

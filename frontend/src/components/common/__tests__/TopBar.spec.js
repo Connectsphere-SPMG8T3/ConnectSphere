@@ -6,6 +6,12 @@ vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn(), setActiveRole: vi.fn() },
   venuesApi: { search: vi.fn(), get: vi.fn() },
+  notificationsApi: {
+    unreadCount: vi.fn().mockResolvedValue({ count: 0, latest_at: null }),
+    list: vi.fn().mockResolvedValue({ items: [], next_before: null }),
+    markRead: vi.fn(),
+    markAllRead: vi.fn(),
+  },
 }));
 
 // Mirrors Nav.spec.js: a fresh router and store module per test so one test's
@@ -53,18 +59,23 @@ describe("TopBar", () => {
     expect(attendee.el.querySelector('[role="search"]')).toBeNull();
   });
 
-  it("opens the notifications panel on the bell and closes it on click-away", async () => {
+  it("shows the notification bell and opens its panel", async () => {
     const { el } = await mountTopBar({ id: "c1", role: "event_coordinator", full_name: "Jack Tan" });
     const bell = el.querySelector('[aria-label="Notifications"]');
     expect(el.textContent).not.toContain("No notifications");
 
     bell.click();
-    await nextTick();
-    expect(el.textContent).toContain("No notifications");
+    await vi.waitFor(() => expect(el.textContent).toContain("No notifications"));
     expect(bell.getAttribute("aria-expanded")).toBe("true");
 
     bell.click();
     await nextTick();
     expect(el.textContent).not.toContain("No notifications");
+  });
+
+  it("gives every role the bell, attendees included", async () => {
+    const { el } = await mountTopBar({ id: "a1", role: "attendee", full_name: "Mia Chen" });
+
+    expect(el.querySelector('[aria-label="Notifications"]')).not.toBeNull();
   });
 });
