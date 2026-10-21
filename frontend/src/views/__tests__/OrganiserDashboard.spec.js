@@ -210,6 +210,69 @@ describe("OrganiserDashboard", () => {
     expect(tones(["drafts-heading", "requests-heading"])).toEqual(["red", "blue"]);
   });
 
+  it("puts + Request in the grey Find my event box on the Events tab", async () => {
+    const { el, router } = await mountDashboard();
+    await openEvents(el);
+
+    // No header card: the tab opens straight onto the filter box.
+    expect(el.textContent).not.toContain("My event requests");
+    expect(el.querySelector("h1").className).toContain("sr-only");
+    const filters = el.querySelector('[aria-labelledby="event-filters"]');
+    expect(filters.className).toContain("bg-muted");
+    expect(filters.className).not.toContain("bg-canvas");
+    const button = filters.querySelector('button[aria-label="New event request"]');
+    expect(button.textContent.trim()).toBe("+ Request");
+    expect(el.querySelectorAll('button[aria-label="New event request"]')).toHaveLength(1);
+    expect(buttonByText(el, "New event request")).toBeUndefined();
+
+    button.click();
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
+  });
+
+  it("sets Drafts and Requests side by side, or one full width when a filter hides the other", async () => {
+    const { el } = await mountDashboard();
+    await openEvents(el);
+
+    const columns = el.querySelector("[data-card-columns]");
+    expect([...columns.children].map((node) => node.getAttribute("aria-labelledby"))).toEqual(["drafts-heading", "requests-heading"]);
+    expect(columns.className).toContain("lg:grid-cols-2");
+
+    const { default: router } = await import("@/router");
+    await router.push({ name: "dashboard-organiser", query: { tab: "events", status: "draft" } });
+    await settle();
+    expect(el.querySelector("[data-card-columns]").children).toHaveLength(1);
+    expect(el.querySelector("[data-card-columns]").className).not.toContain("lg:grid-cols-2");
+  });
+
+  it("shows at most five drafts or requests in each column before it scrolls", async () => {
+    const { el, eventsStore } = await mountDashboard();
+    for (let i = 0; i < 6; i += 1) {
+      eventsStore.events.push({ ...eventsStore.events[0], id: `draft-extra-${i}`, name: `Extra Draft ${i}` });
+    }
+    await openEvents(el);
+    // jsdom has no layout: one card a row, rows 100px apart, each card 90px tall.
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
+      if (this.parentElement?.matches("[data-capped-rows]")) {
+        const top = [...this.parentElement.children].indexOf(this) * 100;
+        return { top, bottom: top + 90 };
+      }
+      return { top: 0, bottom: 0 };
+    });
+    const { default: router } = await import("@/router");
+    await router.push({ name: "dashboard-organiser", query: { tab: "events", status: "draft" } });
+    await settle();
+    await router.push({ name: "dashboard-organiser", query: { tab: "events" } });
+    await settle();
+    rect.mockRestore();
+
+    const drafts = el.querySelector('[aria-labelledby="drafts-heading"] [data-capped-rows]');
+    expect(drafts.children).toHaveLength(7);
+    expect(drafts.className).toContain("overflow-y-auto");
+    // The fifth card ends at 490px.
+    expect(drafts.style.maxHeight).toBe("498px");
+    expect(el.querySelector('[aria-labelledby="requests-heading"] [data-capped-rows]').style.maxHeight).toBe("");
+  });
+
   it("shows my events as the coordinator's kanban board, with a red Returned column", async () => {
     const { el } = await mountDashboard();
 

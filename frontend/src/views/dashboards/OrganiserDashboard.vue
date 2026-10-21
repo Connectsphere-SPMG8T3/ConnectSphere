@@ -76,6 +76,10 @@ const closedEvents = computed(() => groupOrganiserClosedEvents(eventsStore.event
 // Past and Rejected list one card per row, three before they scroll.
 const closedLists = ref([]);
 useCappedRows(() => closedLists.value, [closedEvents, activeTab], 3);
+// The Events tab's Drafts and Requests columns show five cards before they scroll.
+const draftsList = ref(null);
+const requestsList = ref(null);
+useCappedRows(() => [draftsList.value, requestsList.value], [groupedEvents, activeTab, () => eventsStore.isLoading], 5);
 const closedSections = computed(() => [
   {
     key: "past-events",
@@ -191,21 +195,6 @@ onMounted(() => eventsStore.load().catch(() => {}));
 
 <template>
   <main class="py-8">
-    <BauhausCard v-if="activeTab === 'events'" background="yellow" accent="none" class="mb-10">
-      <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-xs font-bold text-ink/70">My events</p>
-          <h1 class="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
-            My event requests
-          </h1>
-          <p class="mt-3 max-w-2xl text-sm font-medium">
-            Search, filter, and open the latest external-safe information for every event you have created.
-          </p>
-        </div>
-        <BauhausButton class="shrink-0 self-start whitespace-nowrap sm:self-center" variant="primary" @click="router.push({ name: 'event-new' })">New event request</BauhausButton>
-      </div>
-    </BauhausCard>
-
     <section v-if="activeTab === 'overview'" aria-labelledby="overview-heading">
       <h1 id="overview-heading" class="sr-only">Event organiser dashboard</h1>
       <p v-if="eventsStore.error" role="alert" class="mb-8 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4">{{ eventsStore.error }}</p>
@@ -253,11 +242,16 @@ onMounted(() => eventsStore.load().catch(() => {}));
       </template>
     </section>
 
-    <section v-else class="border-4 border-ink bg-canvas p-5 shadow-hard" aria-labelledby="event-filters">
+    <!-- Grey like the coordinator's "Find an event", so the white fields stand out. -->
+    <section v-else class="border-4 border-ink bg-muted p-5 shadow-hard" aria-labelledby="event-filters">
+      <h1 class="sr-only">My events</h1>
       <div class="mb-5">
         <div class="flex items-center justify-between gap-4">
           <h2 id="event-filters" class="text-2xl font-bold">Find my event</h2>
-          <BauhausButton class="shrink-0 px-4 py-2 text-xs shadow-none sm:border-2 sm:hidden" variant="yellow" @click="clearFilters">Clear</BauhausButton>
+          <div class="flex shrink-0 items-center gap-3">
+            <BauhausButton class="shrink-0 px-4 py-2 text-xs shadow-none sm:border-2 sm:hidden" variant="yellow" @click="clearFilters">Clear</BauhausButton>
+            <BauhausButton class="whitespace-nowrap" variant="primary" aria-label="New event request" @click="router.push({ name: 'event-new' })">+ Request</BauhausButton>
+          </div>
         </div>
       </div>
       <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
@@ -291,13 +285,20 @@ onMounted(() => eventsStore.load().catch(() => {}));
       />
     </section>
 
-    <template v-if="activeTab === 'events' && !eventsStore.isLoading && !eventsStore.error">
-      <section v-if="showDraftsSection" class="mt-10" aria-labelledby="drafts-heading">
+    <!-- Drafts and Requests side by side from 1024px, as the coordinator's Events
+         columns are; one takes the full width when the status filter hides the other. -->
+    <div
+      v-if="activeTab === 'events' && !eventsStore.isLoading && !eventsStore.error"
+      data-card-columns
+      class="mt-10 grid grid-cols-1 items-start gap-10"
+      :class="{ 'lg:grid-cols-2 lg:gap-6': showDraftsSection && showRequestsSection }"
+    >
+      <section v-if="showDraftsSection" aria-labelledby="drafts-heading">
         <div class="mb-5 flex items-center justify-between gap-4">
           <SectionHeading id="drafts-heading" :tone="sectionTone(0)">Drafts</SectionHeading>
           <span class="text-sm font-bold">{{ groupedEvents.drafts.length }} total</span>
         </div>
-        <div v-if="groupedEvents.drafts.length" class="grid gap-4">
+        <div v-if="groupedEvents.drafts.length" ref="draftsList" data-capped-rows class="grid gap-4 overflow-y-auto pb-2 pr-2">
           <BauhausCard v-for="event in groupedEvents.drafts" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow class="border-4 shadow-none hover:bg-muted focus-within:bg-muted transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none">
             <div class="flex min-w-0 items-center justify-between gap-4">
               <div class="min-w-0" data-event-name>
@@ -349,12 +350,12 @@ onMounted(() => eventsStore.load().catch(() => {}));
         <BauhausEmptyState v-else title="No drafts" detail="Saved drafts will appear here." />
       </section>
 
-      <section v-if="showRequestsSection" class="mt-10" aria-labelledby="requests-heading">
+      <section v-if="showRequestsSection" aria-labelledby="requests-heading">
         <div class="mb-5 flex items-center justify-between gap-4">
           <SectionHeading id="requests-heading" :tone="sectionTone(1)">Requests</SectionHeading>
           <span class="text-sm font-bold">{{ groupedEvents.requests.length }} total</span>
         </div>
-        <div v-if="groupedEvents.requests.length" class="grid gap-4">
+        <div v-if="groupedEvents.requests.length" ref="requestsList" data-capped-rows class="grid gap-4 overflow-y-auto pb-2 pr-2">
           <BauhausCard v-for="event in groupedEvents.requests" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow class="border-4 shadow-none hover:bg-muted focus-within:bg-muted transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none">
             <div class="flex min-w-0 items-center justify-between gap-4">
               <div class="min-w-0" data-event-name>
@@ -410,6 +411,6 @@ onMounted(() => eventsStore.load().catch(() => {}));
         </div>
         <BauhausEmptyState v-else title="No submitted requests" detail="Submitted event requests will appear here." />
       </section>
-    </template>
+    </div>
   </main>
 </template>
