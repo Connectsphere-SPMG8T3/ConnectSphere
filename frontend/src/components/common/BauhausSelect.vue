@@ -101,7 +101,7 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
 
 <template>
   <div ref="container" class="flex flex-col gap-2">
-    <label :for="selectId" class="text-xs font-bold uppercase tracking-widest text-ink">
+    <label :for="selectId" class="text-xs font-bold text-ink">
       {{ label }}<span v-if="required" aria-hidden="true"> *</span>
     </label>
     <div v-if="usesMenu" class="relative">
@@ -172,10 +172,10 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
         {{ option.label }}
       </option>
     </select>
-    <p v-if="hasError" :id="errorId" class="text-xs font-bold uppercase tracking-wide text-bauhaus-red">
+    <p v-if="hasError" :id="errorId" class="text-xs font-bold text-bauhaus-red">
       {{ error }}
     </p>
-    <p v-if="hasFlag" :id="flagId" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold uppercase tracking-wide text-ink">
+    <p v-if="hasFlag" :id="flagId" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold text-ink">
       {{ flag }}
     </p>
   </div>

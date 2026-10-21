@@ -65,12 +65,12 @@ test("TC-ROLE-015 the profile lists every role of a multi-role account", async (
   await seedSession(page, await sharedSessions("event_coordinator"));
   await page.goto("/profile/me");
 
-  const allRoles = page.locator("dt", { hasText: "All Roles" }).locator("xpath=following-sibling::dd[1]");
+  const allRoles = page.locator("dt", { hasText: "All roles" }).locator("xpath=following-sibling::dd[1]");
   await expect(allRoles).toContainText("Event Coordinator");
   await expect(allRoles).toContainText("Venue Staff");
 });
 
-test("TC-ROLE-016 the profile has no All Roles section for a single-role account", async ({
+test("TC-ROLE-016 the profile has no All roles section for a single-role account", async ({
   page,
   sharedSessions,
 }) => {
@@ -78,7 +78,7 @@ test("TC-ROLE-016 the profile has no All Roles section for a single-role account
   await page.goto("/profile/me");
 
   await expect(page.getByText(ACCOUNTS.event_organiser.email)).toBeVisible();
-  await expect(page.getByText("All Roles")).toHaveCount(0);
+  await expect(page.getByText("All roles")).toHaveCount(0);
 });
 
 test("TC-ROLE-019 a page opens for the active role only", async ({ page }) => {

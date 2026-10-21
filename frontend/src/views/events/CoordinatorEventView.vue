@@ -169,7 +169,7 @@ watch(
     <p
       v-if="review.error && !isRejectOpen && !isReturnOpen"
       role="alert"
-      class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+      class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
     >
       {{ review.error }}
     </p>
@@ -178,8 +178,8 @@ watch(
       <BauhausCard background="yellow" accent="square" accent-color="bauhaus-red" class="mb-8">
         <div class="flex flex-wrap items-start justify-between gap-6">
           <div class="min-w-0 flex-1">
-            <p class="text-xs font-bold uppercase tracking-widest opacity-80">Event request</p>
-            <h1 class="mt-2 break-words text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">{{ event.name }}</h1>
+            <p class="text-xs font-bold opacity-80">Event request</p>
+            <h1 class="mt-2 break-words text-4xl font-bold leading-tight sm:text-5xl">{{ event.name }}</h1>
           </div>
           <div
             v-if="showApprove || showReject || showReturn || event.status === 'planning'"
@@ -226,16 +226,16 @@ watch(
       </BauhausCard>
 
       <BauhausCard v-if="auth.role === 'event_coordinator' && event.status === 'planning' && event.latest_safety_decision" background="white" accent="none" class="mb-8">
-        <h2 class="mb-4 text-2xl font-black uppercase">Safety Officer's decision</h2>
+        <h2 class="mb-4 text-2xl font-bold">Safety Officer's decision</h2>
         <SafetyDecisionDetails :decision="event.latest_safety_decision" />
       </BauhausCard>
 
       <BauhausCard v-if="event.status === 'planning'" background="white" accent="none" class="mb-8">
         <div v-if="event.safety_readiness?.missing.length" id="safety-missing" class="mb-6">
-          <h2 class="text-xl font-black uppercase">Not ready for safety check</h2>
+          <h2 class="text-xl font-bold">Not ready for safety check</h2>
           <ul class="mt-3 list-disc pl-5"><li v-for="missing in event.safety_readiness.missing" :key="missing">{{ missing }}</li></ul>
         </div>
-        <h2 class="text-xl font-black uppercase">For information</h2>
+        <h2 class="text-xl font-bold">For information</h2>
         <p class="mt-3">Registration: {{ event.registration_enabled ? 'Enabled' : 'Not enabled' }}</p>
         <dl v-if="event.registration_enabled" class="mt-3 grid gap-3 sm:grid-cols-3">
           <div><dt class="font-bold">Capacity</dt><dd>{{ event.registration_capacity ?? 'Not provided' }}</dd></div>
@@ -252,31 +252,31 @@ watch(
 
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         <BauhausCard background="white" accent="none" data-testid="request-details-card">
-          <h2 class="text-2xl font-black uppercase tracking-tight">Request details</h2>
+          <h2 class="text-2xl font-bold">Request details</h2>
           <dl class="mt-4 grid gap-4 sm:grid-cols-2">
-            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Request ID</dt><dd class="mt-2 break-all font-medium" data-testid="request-id">{{ event.id }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Purpose</dt><dd class="mt-2 font-medium">{{ displayValue(event.purpose) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Expected attendance</dt><dd class="mt-2 font-medium">{{ displayValue(event.expected_attendance) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Starts</dt><dd class="mt-2 font-medium">{{ displayDateTime(event.starts_at, event.event_timezone) }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Ends</dt><dd class="mt-2 font-medium">{{ displayDateTime(event.ends_at, event.event_timezone) }}</dd></div>
-            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Accessibility needs</dt><dd class="mt-2 font-medium">{{ displayValue(event.accessibility_needs) }}</dd></div>
-            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Equipment needs</dt><dd class="mt-2 font-medium">{{ displayValue(event.preliminary_equipment_needs) }}</dd></div>
-            <div class="sm:col-span-2"><dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Description</dt><dd class="mt-2 whitespace-pre-wrap font-medium">{{ displayValue(event.description) }}</dd></div>
+            <div class="sm:col-span-2"><dt class="text-xs font-bold text-ink/70">Request ID</dt><dd class="mt-2 break-all font-medium" data-testid="request-id">{{ event.id }}</dd></div>
+            <div><dt class="text-xs font-bold text-ink/70">Purpose</dt><dd class="mt-2 font-medium">{{ displayValue(event.purpose) }}</dd></div>
+            <div><dt class="text-xs font-bold text-ink/70">Expected attendance</dt><dd class="mt-2 font-medium">{{ displayValue(event.expected_attendance) }}</dd></div>
+            <div><dt class="text-xs font-bold text-ink/70">Starts</dt><dd class="mt-2 font-medium">{{ displayDateTime(event.starts_at, event.event_timezone) }}</dd></div>
+            <div><dt class="text-xs font-bold text-ink/70">Ends</dt><dd class="mt-2 font-medium">{{ displayDateTime(event.ends_at, event.event_timezone) }}</dd></div>
+            <div class="sm:col-span-2"><dt class="text-xs font-bold text-ink/70">Accessibility needs</dt><dd class="mt-2 font-medium">{{ displayValue(event.accessibility_needs) }}</dd></div>
+            <div class="sm:col-span-2"><dt class="text-xs font-bold text-ink/70">Equipment needs</dt><dd class="mt-2 font-medium">{{ displayValue(event.preliminary_equipment_needs) }}</dd></div>
+            <div class="sm:col-span-2"><dt class="text-xs font-bold text-ink/70">Description</dt><dd class="mt-2 whitespace-pre-wrap font-medium">{{ displayValue(event.description) }}</dd></div>
           </dl>
           <section v-if="eventSpaces.length" class="mt-6 border-t-4 border-ink pt-6" data-testid="event-spaces">
             <div class="flex items-center justify-between gap-3">
-              <h3 class="text-xl font-black uppercase tracking-tight">Space requests</h3>
-              <span class="text-xs font-bold uppercase tracking-widest text-ink/70" data-testid="space-count">{{ eventSpaces.length }} {{ eventSpaces.length === 1 ? "space" : "spaces" }}</span>
+              <h3 class="text-xl font-bold">Space requests</h3>
+              <span class="text-xs font-bold text-ink/70" data-testid="space-count">{{ eventSpaces.length }} {{ eventSpaces.length === 1 ? "space" : "spaces" }}</span>
             </div>
             <div class="mt-4 grid gap-4">
               <article v-for="space in eventSpaces" :key="space.id" class="border-2 border-ink bg-canvas p-4">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div class="flex flex-wrap items-center gap-2">
-                      <h4 class="text-lg font-black uppercase tracking-tight">{{ space.label }}</h4>
+                      <h4 class="text-lg font-bold">{{ space.label }}</h4>
                       <span
                         v-if="space.is_primary"
-                        class="border-2 border-ink bg-bauhaus-red px-2 py-0.5 text-xs font-black uppercase tracking-widest text-canvas"
+                        class="border-2 border-ink bg-bauhaus-red px-2 py-0.5 text-xs font-bold text-canvas"
                         data-testid="primary-badge"
                       >Primary venue</span>
                     </div>
@@ -286,7 +286,7 @@ watch(
                   <RouterLink
                     v-if="canFindVenue(space)"
                     :to="{ name: 'venue-search', query: { event: event.id, space: space.id } }"
-                    class="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard"
+                    class="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-xs font-bold shadow-hard"
                   >
                     Find venue
                   </RouterLink>
@@ -301,16 +301,16 @@ watch(
                 >
                   {{ space.is_primary ? "Unset primary" : "Make primary" }}
                 </BauhausButton>
-                <p class="mt-2 text-xs font-bold uppercase tracking-wide text-ink/70">{{ space.facilities_required?.length ? space.facilities_required.join(", ") : "No facilities specified" }}</p>
+                <p class="mt-2 text-xs font-bold text-ink/70">{{ space.facilities_required?.length ? space.facilities_required.join(", ") : "No facilities specified" }}</p>
                 <div v-if="spacePanels[space.id].booking" class="mt-3 flex flex-wrap items-center gap-3" data-testid="space-booking">
                   <RouterLink
                     :to="{ name: 'venue-detail', params: { id: spacePanels[space.id].booking.venue_id } }"
-                    class="font-black uppercase tracking-tight underline decoration-2 underline-offset-4"
+                    class="font-bold underline decoration-2 underline-offset-4"
                   >
                     {{ spacePanels[space.id].booking.venue_name ?? "Venue" }}
                   </RouterLink>
                   <span
-                    class="border-2 border-ink px-2 py-0.5 text-xs font-black uppercase tracking-widest"
+                    class="border-2 border-ink px-2 py-0.5 text-xs font-bold"
                     :class="spacePanels[space.id].booking.status === 'approved' ? 'bg-bauhaus-blue text-canvas' : 'bg-bauhaus-yellow'"
                   >
                     {{ BOOKING_STATUS_LABELS[spacePanels[space.id].booking.status] ?? spacePanels[space.id].booking.status }}
@@ -351,11 +351,11 @@ watch(
           accent="none"
           data-testid="venue-panel"
         >
-          <h2 class="text-2xl font-black uppercase tracking-tight">Venue</h2>
+          <h2 class="text-2xl font-bold">Venue</h2>
           <ul v-if="rejectedBookings.length" class="mt-4 space-y-4">
             <li v-for="rejected in rejectedBookings" :key="rejected.id" class="border-2 border-ink p-4">
-              <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Rejected by venue staff</p>
-              <p class="mt-1 font-black uppercase tracking-tight">
+              <p class="text-xs font-bold text-ink/70">Rejected by venue staff</p>
+              <p class="mt-1 font-bold">
                 <RouterLink :to="{ name: 'booking-request', params: { id: rejected.id } }" class="underline decoration-2 underline-offset-4">
                   {{ rejected.venue_name ?? "Venue" }}
                 </RouterLink>
@@ -368,7 +368,7 @@ watch(
             </li>
           </ul>
           <template v-if="venuePanel.kind === 'safety-rejected'">
-            <p class="mt-4 text-lg font-black uppercase tracking-tight">
+            <p class="mt-4 text-lg font-bold">
               <RouterLink
                 :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
                 class="underline decoration-2 underline-offset-4"
@@ -384,7 +384,7 @@ watch(
             />
           </template>
           <template v-else-if="isAffected(venuePanel)">
-            <p class="mt-4 text-lg font-black uppercase tracking-tight">
+            <p class="mt-4 text-lg font-bold">
               <RouterLink
                 :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
                 class="underline decoration-2 underline-offset-4"
@@ -400,7 +400,7 @@ watch(
             />
           </template>
           <template v-else-if="venuePanel.kind === 'booked'">
-            <p class="mt-4 text-lg font-black uppercase tracking-tight">
+            <p class="mt-4 text-lg font-bold">
               <RouterLink
                 :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
                 class="underline decoration-2 underline-offset-4"
@@ -409,7 +409,7 @@ watch(
               </RouterLink>
             </p>
             <p
-              class="mt-3 inline-block border-2 border-ink px-3 py-1 text-xs font-black uppercase tracking-widest"
+              class="mt-3 inline-block border-2 border-ink px-3 py-1 text-xs font-bold"
               :class="venuePanel.booking.status === 'approved' ? 'bg-bauhaus-blue text-canvas' : 'bg-bauhaus-yellow'"
             >
               {{ BOOKING_STATUS_LABELS[venuePanel.booking.status] ?? venuePanel.booking.status }}
@@ -426,7 +426,7 @@ watch(
             </p>
           </template>
           <template v-else-if="venuePanel.kind === 'expired'">
-            <p class="mt-4 text-lg font-black uppercase tracking-tight">
+            <p class="mt-4 text-lg font-bold">
               <RouterLink
                 :to="{ name: 'venue-detail', params: { id: venuePanel.booking.venue_id } }"
                 class="underline decoration-2 underline-offset-4"
@@ -434,7 +434,7 @@ watch(
                 {{ venuePanel.booking.venue_name ?? "Venue" }}
               </RouterLink>
             </p>
-            <p class="mt-3 inline-block border-2 border-ink bg-canvas px-3 py-1 text-xs font-black uppercase tracking-widest">
+            <p class="mt-3 inline-block border-2 border-ink bg-canvas px-3 py-1 text-xs font-bold">
               {{ BOOKING_STATUS_LABELS.expired }}
             </p>
             <p class="mt-3 text-sm font-medium" data-testid="hold-expired">
@@ -464,7 +464,7 @@ watch(
         </BauhausCard>
 
         <BauhausCard v-if="auth.role === 'event_coordinator' && review.safetyDecisions.length" background="white" accent="none">
-          <h2 class="mb-4 text-2xl font-black uppercase">Safety decision history</h2>
+          <h2 class="mb-4 text-2xl font-bold">Safety decision history</h2>
           <ol class="space-y-4"><li v-for="decision in review.safetyDecisions" :key="decision.id"><SafetyDecisionDetails :decision="decision" /></li></ol>
         </BauhausCard>
 
@@ -474,14 +474,14 @@ watch(
           </BauhausCard>
 
           <BauhausCard background="white" accent="none" data-testid="history-card">
-            <h2 class="mb-4 text-2xl font-black uppercase tracking-tight">History</h2>
+            <h2 class="mb-4 text-2xl font-bold">History</h2>
             <EventStatusHistory :entries="review.history" />
           </BauhausCard>
         </div>
       </div>
     </template>
 
-    <p v-else-if="review.isLoading" class="text-sm font-bold uppercase tracking-widest text-ink/70">Loading request…</p>
+    <p v-else-if="review.isLoading" class="text-sm font-bold text-ink/70">Loading request…</p>
 
     <ConfirmModal :open="isSafetyOpen" title="Send for safety check?"
       message="The Safety Officer will check the venue and technical arrangements. Venue and equipment can't be requested again while it's in review."

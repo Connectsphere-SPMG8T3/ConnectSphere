@@ -68,7 +68,7 @@ function submit(confirm) {
         class="my-auto w-full max-w-2xl border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
       >
         <template v-if="props.result">
-          <h2 id="block-modal-title" class="text-2xl font-black uppercase leading-tight tracking-tight">
+          <h2 id="block-modal-title" class="text-2xl font-bold leading-tight">
             Venue blocked
           </h2>
           <p v-if="props.result.block?.period" class="mt-4 text-base font-medium">
@@ -86,7 +86,7 @@ function submit(confirm) {
               >
                 <span class="block font-bold">{{ formatEventReference(booking) }}</span>
                 <span class="block font-medium">{{ formatVenuePeriod(booking.period) }}</span>
-                <span class="block text-xs font-bold uppercase tracking-widest text-ink/70">
+                <span class="block text-xs font-bold text-ink/70">
                   {{ bookingStatusLabel(booking.status) }} · {{ booking.block_reason }}
                 </span>
               </li>
@@ -99,7 +99,7 @@ function submit(confirm) {
         </template>
 
         <template v-else>
-          <h2 id="block-modal-title" class="text-2xl font-black uppercase leading-tight tracking-tight">
+          <h2 id="block-modal-title" class="text-2xl font-bold leading-tight">
             Block venue
           </h2>
           <p class="mt-4 text-base font-medium">
@@ -135,7 +135,7 @@ function submit(confirm) {
               :error="errors.reason"
             />
           </div>
-          <label for="block-detail" class="mt-4 block text-xs font-bold uppercase tracking-widest text-ink/70">
+          <label for="block-detail" class="mt-4 block text-xs font-bold text-ink/70">
             Detail {{ needsDetail ? "(required)" : "(optional)" }}
           </label>
           <textarea
@@ -147,7 +147,7 @@ function submit(confirm) {
             class="mt-2 w-full border-2 border-ink bg-canvas p-3 font-medium focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow"
           ></textarea>
           <div class="mt-1 flex justify-between gap-3 text-xs font-bold">
-            <span class="uppercase tracking-wide text-bauhaus-red">{{ errors.detail }}</span>
+            <span class="text-bauhaus-red">{{ errors.detail }}</span>
             <span class="text-ink/70">{{ form.detail.length }} / {{ BLOCK_DETAIL_MAX_LENGTH }}</span>
           </div>
 
@@ -163,7 +163,7 @@ function submit(confirm) {
               >
                 <span class="block font-bold">{{ formatEventReference(booking) }}</span>
                 <span class="block font-medium">{{ formatVenuePeriod(booking.period) }}</span>
-                <span class="block text-xs font-bold uppercase tracking-widest text-ink/70">
+                <span class="block text-xs font-bold text-ink/70">
                   {{ bookingStatusLabel(booking.status) }}
                 </span>
               </li>

@@ -54,7 +54,7 @@ test.describe("Login", () => {
     page.on("request", (request) => request.url().endsWith("/auth/login") && loginRequests.push(request));
     await page.goto("/login");
 
-    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.getByRole("button", { name: "Sign in" }).click();
 
     await expect(page.getByText("Email is required.")).toBeVisible();
     await expect(page.getByText("Password is required.")).toBeVisible();
@@ -67,7 +67,7 @@ test.describe("Login", () => {
     await page.goto("/login");
 
     await page.getByLabel("Email").fill(ACCOUNTS.attendee.email);
-    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.getByRole("button", { name: "Sign in" }).click();
 
     await expect(page.getByText("Password is required.")).toBeVisible();
     await expect(page.getByText("Email is required.")).toHaveCount(0);

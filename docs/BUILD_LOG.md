@@ -2869,3 +2869,20 @@ On `feature/scrum-18-venue-suitability`, branched from `main` at `69a54dd`, 2026
 - Backend 1,772 passed; frontend 1,170 passed; build clean. Live: booking checks 36/36 ([run](test-cases/runs/2026-10-20-1923-api-db-54f6e5b.md)) and TC-SUIT 7/7 ([run](test-cases/runs/2026-10-20-1929-api-db-54f6e5b.md)). Browser, narrowed at the developer's request to the booking, hold, block, buffer, deactivation and suitability specs: 21 of 22 ([run](test-cases/runs/2026-10-20-1932-e2e-54f6e5b.md)). The one failure is TC-BOOK-048/049/050, which also fails on `main`; this time every assertion in it passed and it failed closing a browser context on its last line.
 - **Not run after the BR-R3 change:** the full browser suite (the dashboard, equipment, auth and sign-up specs) and a full API run after the ordering fix (the booking and suitability checks were re-run, not the rest).
 
+
+### 4.76. Enabler — readable type across the app
+
+On `chore/readable-typography`, branched from `main` at `b360f14`, 2026-10-21. No PBI: the developer asked for type that is easier to read for long administrative sessions, first on the coordinator dashboard and then "for the entire web app".
+
+**Changed.**
+1. Every component and view drops `uppercase`, `tracking-*`, `font-black` and `leading-[0.9]`; text below 12px (`text-[9px]`–`text-[11px]`, in `TopBar` and `VenueCalendar`) becomes `text-xs`. Big headings that had `leading-none` get `leading-tight` so descenders are not clipped. Colours, borders and shadows are unchanged.
+2. Labels that were typed in Title Case behind the uppercase style now read in sentence case: "Sign in", "My profile", "All roles", "Full name", "Organisation name", "Phone number", "Upcoming registrations", "Events attended", "Public events available", "Attendee dashboard", "Event organiser dashboard", "My events". Role names (Event Coordinator, Venue Staff, Technical Support) keep their capitals. Unit tests, e2e specs and the test-case docs that match these labels were updated.
+3. `BauhausEmptyState`'s title is `text-sm font-bold` in sentence case.
+4. `src/views/__tests__/typography.spec.js` scans every component and view and fails on any of the old classes, like `pagePadding.spec.js` does for page padding.
+5. Docs: `frontend/AGENTS.md` "Type" states the new rule and drops "uppercase" from the design prompt; `PROJECT_OVERVIEW` and `REQUIREMENTS` §6.21.1 record it as a team decision.
+
+**Decisions.** This replaces the original Bauhaus rule of uppercase, widely spaced labels (`PROJECT_OVERVIEW` design system). The developer chose to apply it app-wide rather than to one dashboard.
+
+**Verified.** Frontend 1,324 passed on this branch alone; `npm run build` succeeds. The conversion was a script over class tokens only; a check against `main` confirmed that the only other changes are the label rewrites, and three files whose multi-line class lists lost their indentation were restored. The coordinator dashboard, Events view, venue search and organiser dashboard were screenshotted in Chrome at 1440px and the coordinator Overview at 390px: no horizontal page scroll, text legible.
+
+**Not verified.** The browser e2e suite (its setup needs the Supabase CLI, which was not installed); a manual pass over the other screens, especially the venue calendar, where 12px text in small cells may crowd.

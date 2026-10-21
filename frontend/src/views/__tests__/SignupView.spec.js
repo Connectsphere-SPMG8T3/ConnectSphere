@@ -84,11 +84,11 @@ function fill(el, label, value) {
 }
 
 function fillValidForm(el) {
-  fill(el, "Full Name", "Olivia Organiser");
+  fill(el, "Full name", "Olivia Organiser");
   fill(el, "Email", "olivia@connectsphere.dev");
   fill(el, "Password", "Secure123");
-  fill(el, "Organisation Name", "SMU Events Club");
-  fill(el, "Phone Number", "+65 9123 4567");
+  fill(el, "Organisation name", "SMU Events Club");
+  fill(el, "Phone number", "+65 9123 4567");
 }
 
 async function submit(el) {
@@ -133,9 +133,9 @@ describe("SignupView", () => {
 
     expect(el.textContent).toContain("Create an Attendee Account");
     expect(() => field(el, "Account Type")).toThrow();
-    expect(() => field(el, "Organisation Name")).toThrow();
-    expect(() => field(el, "Phone Number")).toThrow();
-    fill(el, "Full Name", "Avery Attendee");
+    expect(() => field(el, "Organisation name")).toThrow();
+    expect(() => field(el, "Phone number")).toThrow();
+    fill(el, "Full name", "Avery Attendee");
     fill(el, "Email", "avery@connectsphere.dev");
     fill(el, "Password", "Secure123");
     await submit(el);
@@ -156,25 +156,25 @@ describe("SignupView", () => {
 
     await submit(el);
 
-    expect(errorFor(el, "Full Name")).toBe("Full name is required.");
+    expect(errorFor(el, "Full name")).toBe("Full name is required.");
     expect(errorFor(el, "Email")).toBe("Email is required.");
     expect(errorFor(el, "Password")).toBe("Password is required.");
-    expect(() => field(el, "Organisation Name")).toThrow();
-    expect(() => field(el, "Phone Number")).toThrow();
+    expect(() => field(el, "Organisation name")).toThrow();
+    expect(() => field(el, "Phone number")).toThrow();
     expect(authApi.signup).not.toHaveBeenCalled();
   });
 
   it("shows which required fields are empty and does not submit", async () => {
     const { el } = await mountAt("/signup");
 
-    fill(el, "Full Name", "   ");
+    fill(el, "Full name", "   ");
     await submit(el);
 
-    expect(errorFor(el, "Full Name")).toBe("Full name is required.");
+    expect(errorFor(el, "Full name")).toBe("Full name is required.");
     expect(errorFor(el, "Email")).toBe("Email is required.");
     expect(errorFor(el, "Password")).toBe("Password is required.");
-    expect(errorFor(el, "Organisation Name")).toBe("Organisation name is required.");
-    expect(errorFor(el, "Phone Number")).toBe("");
+    expect(errorFor(el, "Organisation name")).toBe("Organisation name is required.");
+    expect(errorFor(el, "Phone number")).toBe("");
     expect(authApi.signup).not.toHaveBeenCalled();
   });
 
@@ -239,7 +239,7 @@ describe("SignupView", () => {
     expect(errorFor(el, "Password")).toBe(
       "Password must be at least 8 characters and include at least one letter and one digit.",
     );
-    expect(errorFor(el, "Organisation Name")).toBe("String should have at least 1 character");
+    expect(errorFor(el, "Organisation name")).toBe("String should have at least 1 character");
     expect(errorFor(el, "Email")).toBe("");
     expect(router.currentRoute.value.name).toBe("signup");
   });
@@ -259,9 +259,9 @@ describe("SignupView", () => {
     await submit(el);
 
     expect(el.querySelector('[role="alert"]')?.textContent.trim()).toBe(message);
-    expect(field(el, "Full Name").value).toBe("Olivia Organiser");
+    expect(field(el, "Full name").value).toBe("Olivia Organiser");
     expect(field(el, "Email").value).toBe("olivia@connectsphere.dev");
-    expect(field(el, "Organisation Name").value).toBe("SMU Events Club");
+    expect(field(el, "Organisation name").value).toBe("SMU Events Club");
     expect(router.currentRoute.value.name).toBe("signup");
   });
 
@@ -270,7 +270,7 @@ describe("SignupView", () => {
     const { el } = await mountAt("/signup");
 
     fillValidForm(el);
-    fill(el, "Phone Number", "  ");
+    fill(el, "Phone number", "  ");
     await submit(el);
 
     expect(authApi.signup).toHaveBeenCalledWith(expect.objectContaining({ phone_number: null }));

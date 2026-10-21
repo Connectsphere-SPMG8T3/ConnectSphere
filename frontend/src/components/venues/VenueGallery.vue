@@ -78,7 +78,7 @@ const step = (delta) => {
       <button
         v-if="count > 1"
         type="button"
-        class="absolute left-3 top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas px-3 py-2 text-sm font-black active-press"
+        class="absolute left-3 top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas px-3 py-2 text-sm font-bold active-press"
         aria-label="Previous slide"
         @click="step(-1)"
       >
@@ -87,7 +87,7 @@ const step = (delta) => {
       <button
         v-if="count > 1"
         type="button"
-        class="absolute right-3 top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas px-3 py-2 text-sm font-black active-press"
+        class="absolute right-3 top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas px-3 py-2 text-sm font-bold active-press"
         aria-label="Next slide"
         @click="step(1)"
       >
@@ -97,8 +97,8 @@ const step = (delta) => {
 
     <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t-2 border-ink px-4 py-3 sm:border-t-4">
       <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <p class="text-xs font-bold uppercase tracking-widest" aria-live="polite">{{ index + 1 }} of {{ count }}</p>
-        <p v-if="caption" class="text-sm font-bold uppercase tracking-wide">{{ caption }}</p>
+        <p class="text-xs font-bold" aria-live="polite">{{ index + 1 }} of {{ count }}</p>
+        <p v-if="caption" class="text-sm font-bold">{{ caption }}</p>
         <p v-if="current.kind === 'layout'" class="text-xs font-medium text-ink/60">
           Schematic arrangement — not this room's floor plan{{
             current.usesVenueCapacity ? "; capacity is the venue figure, not measured for this layout" : ""

@@ -6,17 +6,17 @@ import { useAuthStore } from "@/stores/auth";
 const authStore = useAuthStore();
 
 const metrics = [
-  { label: "Upcoming Registrations", value: "2", background: "blue", accent: "circle", accentColor: "bauhaus-yellow" },
-  { label: "Public Events Available", value: "18", background: "white", accent: "square", accentColor: "bauhaus-red" },
-  { label: "Events Attended", value: "5", background: "red", accent: "triangle", accentColor: "bauhaus-yellow" },
+  { label: "Upcoming registrations", value: "2", background: "blue", accent: "circle", accentColor: "bauhaus-yellow" },
+  { label: "Public events available", value: "18", background: "white", accent: "square", accentColor: "bauhaus-red" },
+  { label: "Events attended", value: "5", background: "red", accent: "triangle", accentColor: "bauhaus-yellow" },
 ];
 </script>
 
 <template>
   <main class="py-12">
     <BauhausCard background="blue" accent="none" class="mb-10">
-      <p class="text-xs font-bold uppercase tracking-widest opacity-80">Attendee Dashboard</p>
-      <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">
+      <p class="text-xs font-bold opacity-80">Attendee dashboard</p>
+      <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">
         Welcome, {{ authStore.profile?.full_name }}
       </h1>
       <p class="mt-3 max-w-xl text-sm font-medium">

@@ -65,7 +65,7 @@ function confirm() {
         aria-labelledby="request-venue-title"
         class="w-full max-w-lg border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
       >
-        <h2 id="request-venue-title" class="text-2xl font-black uppercase leading-tight tracking-tight">Request this venue?</h2>
+        <h2 id="request-venue-title" class="text-2xl font-bold leading-tight">Request this venue?</h2>
         <p class="mt-4 text-base font-medium">
           {{ props.venueName }} will be held for "{{ props.eventName }}" while venue staff decide. Other events can't
           book it for this time in the meantime.
@@ -94,7 +94,7 @@ function confirm() {
             The event goes back to Planning and needs the safety check again.
           </template>
         </p>
-        <label for="request-venue-note" class="mt-6 block text-xs font-bold uppercase tracking-widest text-ink/70">
+        <label for="request-venue-note" class="mt-6 block text-xs font-bold text-ink/70">
           Note for venue staff (optional)
         </label>
         <textarea

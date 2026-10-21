@@ -106,13 +106,13 @@ async function reject(form) {
     <div class="mb-8">
       <RouterLink
         :to="backLink.to"
-        class="inline-block text-xs font-bold uppercase tracking-widest underline decoration-2 underline-offset-4"
+        class="inline-block text-xs font-bold underline decoration-2 underline-offset-4"
       >
         ← {{ backLink.label }}
       </RouterLink>
     </div>
 
-    <p v-if="store.isLoading && !booking" data-testid="booking-loading" class="text-sm font-bold uppercase tracking-widest">
+    <p v-if="store.isLoading && !booking" data-testid="booking-loading" class="text-sm font-bold">
       Loading…
     </p>
 
@@ -122,7 +122,7 @@ async function reject(form) {
       <p
         v-if="store.conflict && store.error"
         role="alert"
-        class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+        class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
       >
         {{ store.error }}
       </p>
@@ -130,23 +130,23 @@ async function reject(form) {
       <BauhausCard background="yellow" accent="square" class="mb-8">
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div class="min-w-0">
-            <p class="text-xs font-bold uppercase tracking-widest opacity-80">Booking request</p>
-            <h1 class="mt-2 break-words text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">
+            <p class="text-xs font-bold opacity-80">Booking request</p>
+            <h1 class="mt-2 break-words text-4xl font-bold leading-tight sm:text-5xl">
               {{ booking.venue_name ?? "Venue" }}
             </h1>
             <p class="mt-3 text-lg font-bold">{{ event.name ?? "Unnamed event" }}</p>
             <p class="mt-1 font-medium">{{ formatBookingPeriod(booking.period) }}</p>
           </div>
-          <p class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard">
+          <p class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold shadow-hard">
             {{ bookingStatusLabel(booking.status) }}
           </p>
         </div>
         <div v-if="booking.flag === 'safety_rejected'" class="mt-6 border-l-4 border-bauhaus-red bg-canvas px-4 py-3" data-testid="booking-safety-rejected">
-          <p class="text-xs font-black uppercase tracking-widest text-bauhaus-red">Safety rejected</p>
+          <p class="text-xs font-bold text-bauhaus-red">Safety rejected</p>
           <p class="mt-1 text-sm font-medium">{{ booking.flag_reason }}</p>
         </div>
         <div v-if="isAffected" class="mt-6 border-l-4 border-bauhaus-red bg-canvas px-4 py-3" data-testid="booking-affected">
-          <p class="text-xs font-black uppercase tracking-widest text-bauhaus-red">Affected: venue unavailable</p>
+          <p class="text-xs font-bold text-bauhaus-red">Affected: venue unavailable</p>
           <p v-if="booking.flag_reason" class="mt-1 text-sm font-medium">{{ booking.flag_reason }}</p>
           <template v-if="showRestore">
             <p class="mt-2 text-sm font-medium">
@@ -188,40 +188,40 @@ async function reject(form) {
 
       <div class="grid gap-8 lg:grid-cols-2">
         <BauhausCard background="white" accent="none">
-          <h2 class="text-2xl font-black uppercase tracking-tight">What the event needs</h2>
+          <h2 class="text-2xl font-bold">What the event needs</h2>
           <dl class="mt-6 grid gap-5 sm:grid-cols-2">
             <div>
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Expected attendance</dt>
+              <dt class="text-xs font-bold text-ink/70">Expected attendance</dt>
               <dd class="mt-1 font-medium">{{ notSpecified(event.expected_attendance) }}</dd>
             </div>
             <div>
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Layout</dt>
+              <dt class="text-xs font-bold text-ink/70">Layout</dt>
               <dd class="mt-1 font-medium">
                 {{ notSpecified(LAYOUT_LABELS[event.layout_preference] ?? event.layout_preference) }}
               </dd>
             </div>
             <div class="sm:col-span-2">
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Facilities</dt>
+              <dt class="text-xs font-bold text-ink/70">Facilities</dt>
               <dd class="mt-1 font-medium">{{ notSpecified(facilities) }}</dd>
             </div>
             <div class="sm:col-span-2">
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Accessibility needs</dt>
+              <dt class="text-xs font-bold text-ink/70">Accessibility needs</dt>
               <dd class="mt-1 whitespace-pre-wrap font-medium">{{ notSpecified(event.accessibility_needs) }}</dd>
             </div>
           </dl>
         </BauhausCard>
 
         <BauhausCard background="white" accent="none">
-          <h2 class="text-2xl font-black uppercase tracking-tight">The request</h2>
+          <h2 class="text-2xl font-bold">The request</h2>
           <dl class="mt-6 grid gap-5">
             <div>
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Requested by</dt>
+              <dt class="text-xs font-bold text-ink/70">Requested by</dt>
               <dd class="mt-1 font-medium">
                 {{ booking.requested_by_name ?? "The event's coordinator" }}, {{ formatDecisionTime(booking.requested_at) }}
               </dd>
             </div>
             <div>
-              <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Note from the coordinator</dt>
+              <dt class="text-xs font-bold text-ink/70">Note from the coordinator</dt>
               <dd class="mt-1 whitespace-pre-wrap font-medium">{{ booking.request_note ?? "No note from the coordinator." }}</dd>
             </div>
           </dl>
@@ -229,28 +229,28 @@ async function reject(form) {
       </div>
 
       <BauhausCard v-if="booking.decision" background="white" accent="none" class="mt-8" data-testid="booking-decision">
-        <h2 class="text-2xl font-black uppercase tracking-tight">Rejected by venue staff</h2>
+        <h2 class="text-2xl font-bold">Rejected by venue staff</h2>
         <p class="mt-2 text-sm font-medium text-ink/70">
           {{ booking.decision.decided_by_name ?? "Venue staff" }}, {{ formatDecisionTime(booking.decision.decided_at) }}
         </p>
         <dl class="mt-6 grid gap-5">
           <div>
-            <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Reason</dt>
+            <dt class="text-xs font-bold text-ink/70">Reason</dt>
             <dd class="mt-1 whitespace-pre-wrap font-medium">{{ booking.decision.reason }}</dd>
           </div>
           <div v-if="booking.decision.suggestion">
-            <dt class="text-xs font-bold uppercase tracking-widest text-ink/70">Suggested alternative</dt>
+            <dt class="text-xs font-bold text-ink/70">Suggested alternative</dt>
             <dd class="mt-1 whitespace-pre-wrap font-medium">{{ booking.decision.suggestion }}</dd>
           </div>
         </dl>
       </BauhausCard>
 
       <BauhausCard background="white" accent="none" class="mt-8" data-testid="booking-history">
-        <h2 class="text-2xl font-black uppercase tracking-tight">History</h2>
+        <h2 class="text-2xl font-bold">History</h2>
         <p v-if="!booking.history.length" class="mt-4 text-sm font-medium">No decisions yet.</p>
         <ol v-else class="mt-6 space-y-5">
           <li v-for="(entry, index) in booking.history" :key="index" class="border-l-4 border-ink pl-4">
-            <p class="font-black uppercase tracking-tight">{{ historyActionLabel(entry.action) }}</p>
+            <p class="font-bold">{{ historyActionLabel(entry.action) }}</p>
             <p class="text-sm font-medium text-ink/70">
               {{ entry.actor_name ?? "System" }}, {{ formatDecisionTime(entry.at) }}
             </p>

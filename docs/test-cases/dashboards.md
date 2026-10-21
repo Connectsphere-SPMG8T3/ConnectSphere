@@ -311,7 +311,7 @@ The attendee dashboard remains a placeholder with existing hardcoded metrics (kn
 
 | ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
 |----|-------|----------------|------------|-------------|------------------|----------|
-| TC-ATT-001 | Summary cards align when labels wrap (D21) | Signed in as attendee on `/dashboard/attendee` | Resize to 1440, 1280, 1100, 768, 640, 375 and 320px; inspect Upcoming Registrations and Public Events Available | — | Equal card heights and aligned figures within each row, readable text without truncation, and summary row within the viewport. | 🟠 |
+| TC-ATT-001 | Summary cards align when labels wrap (D21) | Signed in as attendee on `/dashboard/attendee` | Resize to 1440, 1280, 1100, 768, 640, 375 and 320px; inspect Upcoming registrations and Public events available | — | Equal card heights and aligned figures within each row, readable text without truncation, and summary row within the viewport. | 🟠 |
 
 ### Traceability — dashboard layout fixes D20/D21
 

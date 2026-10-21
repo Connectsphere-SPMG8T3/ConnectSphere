@@ -43,12 +43,12 @@ function toggle(value, checked) {
     :aria-describedby="props.flag ? flagId : undefined"
     :data-flagged="props.flag ? 'true' : undefined"
   >
-    <legend class="mb-2 text-xs font-bold uppercase tracking-widest text-ink">{{ label }}<span v-if="required" aria-hidden="true"> *</span></legend>
+    <legend class="mb-2 text-xs font-bold text-ink">{{ label }}<span v-if="required" aria-hidden="true"> *</span></legend>
     <div class="flex flex-wrap gap-2">
       <label
         v-for="option in props.options"
         :key="option.value"
-        class="inline-flex cursor-pointer items-center gap-2 border-2 border-ink px-3 py-2 text-xs font-bold uppercase tracking-wide shadow-hard transition-colors"
+        class="inline-flex cursor-pointer items-center gap-2 border-2 border-ink px-3 py-2 text-xs font-bold shadow-hard transition-colors"
         :class="modelValue.includes(option.value) ? 'bg-bauhaus-yellow text-ink' : 'bg-canvas text-ink'"
       >
         <input
@@ -62,7 +62,7 @@ function toggle(value, checked) {
         {{ option.label }}
       </label>
     </div>
-    <p v-if="props.flag" :id="flagId" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold uppercase tracking-wide text-ink">
+    <p v-if="props.flag" :id="flagId" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold text-ink">
       {{ props.flag }}
     </p>
   </fieldset>

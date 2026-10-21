@@ -66,24 +66,24 @@ watch(() => route.params.id, (id) => {
   <main class="break-words py-12">
     <BauhausButton variant="outline" class="mb-8" @click="router.push({ name: 'dashboard-safety' })">Back to queue</BauhausButton>
     <p v-if="safety.error" role="alert" class="mb-6 border-4 border-ink p-4 font-bold">{{ safety.error }}</p>
-    <p v-if="safety.loading && !review" class="font-bold uppercase">Loading safety review…</p>
+    <p v-if="safety.loading && !review" class="font-bold">Loading safety review…</p>
     <template v-if="review">
       <BauhausCard background="yellow" accent="none" class="mb-8">
-        <h1 class="text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">{{ review.event.name }}</h1>
+        <h1 class="text-4xl font-bold leading-tight sm:text-5xl">{{ review.event.name }}</h1>
         <dl class="mt-6 grid gap-4 sm:grid-cols-2">
-          <div><dt class="font-bold uppercase">Organiser</dt><dd>{{ review.event.organiser_name }}</dd></div>
-          <div><dt class="font-bold uppercase">Coordinator</dt><dd>{{ review.event.coordinator_name ?? 'Not provided' }}</dd></div>
-          <div><dt class="font-bold uppercase">Starts</dt><dd>{{ displaySafetyTime(review.event.starts_at) }}</dd></div>
-          <div><dt class="font-bold uppercase">Ends</dt><dd>{{ displaySafetyTime(review.event.ends_at) }}</dd></div>
-          <div><dt class="font-bold uppercase">Expected attendance</dt><dd>{{ review.event.expected_attendance ?? 'Not provided' }}</dd></div>
-          <div><dt class="font-bold uppercase">Accessibility needs</dt><dd>{{ review.event.accessibility_needs || 'None specified' }}</dd></div>
+          <div><dt class="font-bold">Organiser</dt><dd>{{ review.event.organiser_name }}</dd></div>
+          <div><dt class="font-bold">Coordinator</dt><dd>{{ review.event.coordinator_name ?? 'Not provided' }}</dd></div>
+          <div><dt class="font-bold">Starts</dt><dd>{{ displaySafetyTime(review.event.starts_at) }}</dd></div>
+          <div><dt class="font-bold">Ends</dt><dd>{{ displaySafetyTime(review.event.ends_at) }}</dd></div>
+          <div><dt class="font-bold">Expected attendance</dt><dd>{{ review.event.expected_attendance ?? 'Not provided' }}</dd></div>
+          <div><dt class="font-bold">Accessibility needs</dt><dd>{{ review.event.accessibility_needs || 'None specified' }}</dd></div>
         </dl>
       </BauhausCard>
       <div class="grid min-w-0 gap-8 lg:grid-cols-2">
         <BauhausCard background="white" accent="none">
-          <h2 class="text-2xl font-black uppercase">Venues</h2>
+          <h2 class="text-2xl font-bold">Venues</h2>
           <div v-for="venue in review.venues" :key="venue.booking_id" class="mt-6 border-t-2 border-ink pt-4">
-            <h3 class="text-xl font-black uppercase">{{ venue.venue_name }}</h3>
+            <h3 class="text-xl font-bold">{{ venue.venue_name }}</h3>
             <dl class="mt-3 grid gap-3">
               <div><dt class="font-bold">Booking status</dt><dd>{{ venue.booking_status }}</dd></div>
               <div><dt class="font-bold">Capacity</dt><dd>{{ venue.capacity }}</dd></div>
@@ -96,13 +96,13 @@ watch(() => route.params.id, (id) => {
           </div>
         </BauhausCard>
         <BauhausCard background="white" accent="none">
-          <h2 class="text-2xl font-black uppercase">Equipment</h2>
+          <h2 class="text-2xl font-bold">Equipment</h2>
           <p v-if="!review.equipment_lines.length" class="mt-4">No equipment requested</p>
           <ul v-else class="mt-4 space-y-3"><li v-for="line in review.equipment_lines" :key="line.id">{{ line.equipment_name }} × {{ line.quantity }} — {{ line.status }}</li></ul>
           <p class="mt-6 font-bold">Exit confirmation</p><p v-if="review.exit_confirmation">Equipment does not block exits or walkways.</p><p>{{ exitConfirmationText(review.exit_confirmation) }}</p>
         </BauhausCard>
         <BauhausCard background="white" accent="none">
-          <h2 class="text-2xl font-black uppercase">Registration — for information</h2>
+          <h2 class="text-2xl font-bold">Registration — for information</h2>
           <p class="mt-4">{{ review.event.registration.enabled ? 'Enabled' : 'Not enabled' }}</p>
           <dl v-if="review.event.registration.enabled" class="mt-3 grid gap-3">
             <div><dt class="font-bold">Capacity</dt><dd>{{ review.event.registration.capacity ?? 'Not provided' }}</dd></div>
@@ -111,7 +111,7 @@ watch(() => route.params.id, (id) => {
           </dl>
         </BauhausCard>
         <BauhausCard background="white" accent="none">
-          <h2 class="text-2xl font-black uppercase">Earlier safety decisions</h2>
+          <h2 class="text-2xl font-bold">Earlier safety decisions</h2>
           <p v-if="!safety.decisions.length" class="mt-4">No earlier safety decisions</p>
           <ul v-else class="mt-4 space-y-4">
             <li v-for="decision in safety.decisions" :key="decision.id">
@@ -120,17 +120,17 @@ watch(() => route.params.id, (id) => {
           </ul>
         </BauhausCard>
         <BauhausCard background="white" accent="none" class="lg:col-span-2">
-          <h2 class="text-2xl font-black uppercase">Safety decision</h2>
-          <label for="safety-comment" class="mt-6 block font-bold uppercase">Comment</label>
+          <h2 class="text-2xl font-bold">Safety decision</h2>
+          <label for="safety-comment" class="mt-6 block font-bold">Comment</label>
           <textarea id="safety-comment" v-model="comment" maxlength="1000" rows="5" aria-describedby="safety-comment-hint" class="mt-2 w-full border-2 border-ink bg-canvas p-3" :disabled="safety.loading" />
           <p id="safety-comment-hint" class="mt-2 text-sm">Record any crowd-movement concerns here.</p>
           <fieldset class="mt-6" :disabled="safety.loading">
-            <legend class="font-bold uppercase">Arrangements this concerns (optional)</legend>
+            <legend class="font-bold">Arrangements this concerns (optional)</legend>
             <label v-for="venue in review.venues" :key="venue.booking_id" class="mt-3 flex items-start gap-3"><input v-model="bookingIds" type="checkbox" :value="venue.booking_id" class="mt-1" />{{ venue.venue_name }}</label>
             <label v-for="line in review.equipment_lines" :key="line.id" class="mt-3 flex items-start gap-3"><input v-model="equipmentIds" type="checkbox" :value="line.id" class="mt-1" />{{ line.equipment_name }}</label>
           </fieldset>
           <fieldset class="mt-6" :disabled="safety.loading">
-            <legend class="font-bold uppercase">Venue to reject (required for Reject)</legend>
+            <legend class="font-bold">Venue to reject (required for Reject)</legend>
             <label v-for="venue in review.venues" :key="venue.booking_id" class="mt-3 flex items-start gap-3">
               <input v-model="rejectedBookingId" type="radio" name="rejected-venue" :value="venue.booking_id" :disabled="venue.booking_status !== 'approved'" class="mt-1" />{{ venue.venue_name }}
             </label>

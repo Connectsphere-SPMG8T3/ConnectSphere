@@ -85,8 +85,8 @@ const rowClasses =
 <template>
   <main class="py-12">
     <BauhausCard background="blue" accent="none" class="mb-10">
-      <p class="text-xs font-bold uppercase tracking-widest opacity-80">Event Coordinator Lead Dashboard</p>
-      <h1 class="mt-2 text-3xl font-black uppercase leading-none tracking-tighter sm:text-4xl">
+      <p class="text-xs font-bold opacity-80">Event Coordinator Lead Dashboard</p>
+      <h1 class="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
         Welcome, {{ authStore.profile?.full_name }}
       </h1>
       <p class="mt-3 max-w-2xl text-sm font-medium">
@@ -97,14 +97,14 @@ const rowClasses =
     <p
       v-if="store.error"
       role="alert"
-      class="mb-8 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+      class="mb-8 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
     >
       {{ store.error }}
     </p>
     <p
       v-else-if="!store.hasSettled"
       role="status"
-      class="mb-8 border-2 border-ink bg-canvas px-4 py-3 text-sm font-bold uppercase tracking-wide shadow-hard sm:border-4"
+      class="mb-8 border-2 border-ink bg-canvas px-4 py-3 text-sm font-bold shadow-hard sm:border-4"
     >
       Loading events...
     </p>
@@ -130,7 +130,7 @@ const rowClasses =
       </div>
 
       <section v-if="store.coordinators.length" class="mb-10" aria-labelledby="coordinator-load">
-        <h2 id="coordinator-load" class="mb-4 text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+        <h2 id="coordinator-load" class="mb-4 text-2xl font-bold leading-tight sm:text-3xl">
           Coordinator workload
         </h2>
         <ul data-testid="coordinator-counts" class="flex flex-wrap gap-3">
@@ -139,24 +139,24 @@ const rowClasses =
             :key="person.id"
             class="flex items-baseline gap-3 border-2 border-ink bg-canvas px-4 py-2"
           >
-            <span class="text-sm font-bold uppercase tracking-tight">{{ person.full_name }}</span>
-            <span class="text-xl font-black tracking-tighter">{{ person.active_count }}</span>
+            <span class="text-sm font-bold">{{ person.full_name }}</span>
+            <span class="text-xl font-bold">{{ person.active_count }}</span>
           </li>
         </ul>
       </section>
 
       <section class="mb-10" data-testid="unassigned-queue" aria-labelledby="unassigned-heading">
         <div class="mb-5 flex items-baseline justify-between gap-4">
-          <h2 id="unassigned-heading" class="text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+          <h2 id="unassigned-heading" class="text-2xl font-bold leading-tight sm:text-3xl">
             Unassigned queue
           </h2>
-          <span class="text-sm font-bold uppercase tracking-widest">{{ queue.length }} total</span>
+          <span class="text-sm font-bold">{{ queue.length }} total</span>
         </div>
         <ul v-if="queue.length" class="grid gap-4">
           <li v-for="event in queue" :key="event.event_id">
             <RouterLink :to="leadRoute(event.event_id)" :data-lead-event="event.event_id" :class="rowClasses">
-              <p class="text-lg font-black uppercase leading-tight tracking-tighter">{{ event.event_name }}</p>
-              <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/70">
+              <p class="text-lg font-bold leading-tight">{{ event.event_name }}</p>
+              <p class="mt-1 text-xs font-bold text-ink/70">
                 {{ STATUS_LABELS[event.status] }} · {{ formatDate(event.starts_at) }}
                 <template v-if="event.organiser_name"> · {{ event.organiser_name }}</template>
               </p>
@@ -174,7 +174,7 @@ const rowClasses =
       </section>
 
       <section class="mb-10 border-4 border-ink bg-canvas p-5 shadow-hard" aria-labelledby="lead-filters">
-        <h2 id="lead-filters" class="mb-5 text-2xl font-black uppercase tracking-tight">Find an event</h2>
+        <h2 id="lead-filters" class="mb-5 text-2xl font-bold">Find an event</h2>
         <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
           <BauhausInput
             v-model="search"
@@ -209,16 +209,16 @@ const rowClasses =
 
       <section data-testid="active-events" aria-labelledby="active-heading">
         <div class="mb-5 flex items-baseline justify-between gap-4">
-          <h2 id="active-heading" class="text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+          <h2 id="active-heading" class="text-2xl font-bold leading-tight sm:text-3xl">
             Active events
           </h2>
-          <span class="text-sm font-bold uppercase tracking-widest">{{ visibleActive.length }} shown</span>
+          <span class="text-sm font-bold">{{ visibleActive.length }} shown</span>
         </div>
         <ul v-if="visibleActive.length" class="grid gap-4">
           <li v-for="event in visibleActive" :key="event.event_id">
             <RouterLink :to="leadRoute(event.event_id)" :data-lead-event="event.event_id" :class="rowClasses">
-              <p class="text-lg font-black uppercase leading-tight tracking-tighter">{{ event.event_name }}</p>
-              <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/70">
+              <p class="text-lg font-bold leading-tight">{{ event.event_name }}</p>
+              <p class="mt-1 text-xs font-bold text-ink/70">
                 {{ STATUS_LABELS[event.status] }} · {{ formatDate(event.starts_at) }}
               </p>
               <p class="mt-2 text-sm font-medium">Coordinator: {{ event.coordinator?.full_name ?? "Unassigned" }}</p>

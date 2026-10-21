@@ -173,7 +173,7 @@ describe("VenueStaffDashboard", () => {
     const el = await mountDashboard();
     const badgeFor = (venueId) =>
       [...el.querySelector(`a[href="/venues/${venueId}"]`).querySelectorAll("span")].find(
-        (s) => s.className.includes("tracking-widest") && s.textContent.trim(),
+        (s) => s.className.includes("border-ink") && s.textContent.trim(),
       );
 
     // b-1 has no block on it and is flagged active.

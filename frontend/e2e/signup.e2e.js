@@ -7,11 +7,11 @@ import { THROWAWAY_PASSWORD, throwawayEmail } from "./support/throwaway.js";
 const PASSWORD_RULE = "Password must be at least 8 characters and include at least one letter and one digit.";
 
 async function fillSignup(page, { email, password = THROWAWAY_PASSWORD, fullName = "Olivia Organiser" }) {
-  await page.getByLabel("Full Name").fill(fullName);
+  await page.getByLabel("Full name").fill(fullName);
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
-  await page.getByLabel("Organisation Name").fill("SMU Events Club");
-  await page.getByLabel("Phone Number").fill("+65 9123 4567");
+  await page.getByLabel("Organisation name").fill("SMU Events Club");
+  await page.getByLabel("Phone number").fill("+65 9123 4567");
 }
 
 function trackSignupRequests(page) {
@@ -36,7 +36,7 @@ test("TC-AUTH-037 TC-AUTH-038 an organiser signs up, signs in and opens a new ev
   expect(page.url()).not.toContain("live-check");
 
   await page.getByLabel("Password").fill(THROWAWAY_PASSWORD);
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(ACCOUNTS.event_organiser.dashboard);
 
   await page.getByRole("button", { name: "New event request" }).first().click();
@@ -50,9 +50,9 @@ test("TC-AUTH-051 an attendee signs up without organiser fields and lands on the
   await page.goto("/signup/attendee");
   await expect(page.getByRole("heading", { name: "Create an Attendee Account" })).toBeVisible();
   await expect(page.getByLabel("Account Type")).toHaveCount(0);
-  await expect(page.getByLabel("Organisation Name")).toHaveCount(0);
-  await expect(page.getByLabel("Phone Number")).toHaveCount(0);
-  await page.getByLabel("Full Name").fill("Avery Attendee");
+  await expect(page.getByLabel("Organisation name")).toHaveCount(0);
+  await expect(page.getByLabel("Phone number")).toHaveCount(0);
+  await page.getByLabel("Full name").fill("Avery Attendee");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(THROWAWAY_PASSWORD);
 
@@ -71,7 +71,7 @@ test("TC-AUTH-051 an attendee signs up without organiser fields and lands on the
   await expect(page.getByText("Account created. Please sign in.")).toBeVisible();
   await expect(page.getByLabel("Email")).toHaveValue(email);
   await page.getByLabel("Password").fill(THROWAWAY_PASSWORD);
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(ACCOUNTS.attendee.dashboard);
 });
 
@@ -79,7 +79,7 @@ test("TC-AUTH-039 empty required fields are named before anything is sent", asyn
   const signups = trackSignupRequests(page);
   await page.goto("/signup/organiser");
 
-  await page.getByLabel("Full Name").fill("   ");
+  await page.getByLabel("Full name").fill("   ");
   await page.getByRole("button", { name: "Create Account" }).click();
 
   for (const message of [
@@ -90,7 +90,7 @@ test("TC-AUTH-039 empty required fields are named before anything is sent", asyn
   ]) {
     await expect(page.getByText(message)).toBeVisible();
   }
-  await expect(page.getByLabel("Phone Number")).not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByLabel("Phone number")).not.toHaveAttribute("aria-invalid", "true");
   expect(signups).toHaveLength(0);
 });
 
@@ -128,8 +128,8 @@ test("TC-AUTH-042 an email that already has an account is refused under Email", 
 
   await expect(page.getByText("An account with this email already exists.")).toBeVisible();
   await expect(page).toHaveURL("/signup/organiser");
-  await expect(page.getByLabel("Full Name")).toHaveValue("Olivia Organiser");
-  await expect(page.getByLabel("Organisation Name")).toHaveValue("SMU Events Club");
+  await expect(page.getByLabel("Full name")).toHaveValue("Olivia Organiser");
+  await expect(page.getByLabel("Organisation name")).toHaveValue("SMU Events Club");
 });
 
 test("TC-AUTH-046 the sign-up page is only for signed-out visitors", async ({ page, browser, sharedSessions }) => {
@@ -173,7 +173,7 @@ test("TC-AUTH-047 an email typed with spaces is sent trimmed and signs in", asyn
   await expect(page).toHaveURL("/login");
   await expect(page.getByLabel("Email")).toHaveValue(email);
   await page.getByLabel("Password").fill(THROWAWAY_PASSWORD);
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(ACCOUNTS.event_organiser.dashboard);
 });
 

@@ -19,8 +19,8 @@ const BAR_CLASSES = {
 };
 const LABEL_CLASSES = {
   done: "text-ink",
-  current: "text-ink font-black",
-  returned: "text-ink font-black",
+  current: "text-ink font-bold",
+  returned: "text-ink font-bold",
   upcoming: "text-ink/50",
 };
 </script>
@@ -34,7 +34,7 @@ const LABEL_CLASSES = {
     >
       <span data-bar class="block h-3 border-2 border-ink" :class="BAR_CLASSES[step.state]" aria-hidden="true" />
       <span
-        class="mt-2 block text-[10px] font-bold uppercase leading-tight tracking-widest sm:text-xs"
+        class="mt-2 block text-xs font-bold leading-tight sm:text-xs"
         :class="LABEL_CLASSES[step.state]"
       >
         {{ step.label }}<span v-if="step.state === 'done'" class="sr-only"> (done)</span>
@@ -44,7 +44,7 @@ const LABEL_CLASSES = {
   <p
     v-else
     data-testid="status-outcome"
-    class="inline-block border-2 border-ink bg-canvas px-3 py-2 text-xs font-black uppercase tracking-widest shadow-hard"
+    class="inline-block border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold shadow-hard"
   >
     {{ progress.label }}
   </p>

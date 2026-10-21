@@ -62,24 +62,24 @@ const layoutOptions = computed(() => LAYOUTS);
   <main class="py-12">
     <RouterLink
       :to="{ name: 'venue-detail', params: { id: route.params.id } }"
-      class="mb-8 inline-block text-xs font-bold uppercase tracking-widest underline decoration-2 underline-offset-4"
+      class="mb-8 inline-block text-xs font-bold underline decoration-2 underline-offset-4"
     >
       ← Back to venue profile
     </RouterLink>
 
-    <p v-if="store.error && !store.venue" role="alert" class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4">
+    <p v-if="store.error && !store.venue" role="alert" class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4">
       {{ store.error }}
     </p>
     <p v-else-if="store.isLoading && !store.venue" class="text-sm font-medium">Loading venue…</p>
 
     <form v-else-if="store.venue" class="flex flex-col gap-8" @submit.prevent="save(false)">
       <BauhausCard background="blue" accent="circle" accent-color="bauhaus-yellow">
-        <p class="text-xs font-bold uppercase tracking-widest opacity-80">Edit venue</p>
-        <h1 class="mt-2 text-4xl font-black uppercase leading-[0.9] tracking-tighter sm:text-5xl">{{ store.venue.name }}</h1>
+        <p class="text-xs font-bold opacity-80">Edit venue</p>
+        <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">{{ store.venue.name }}</h1>
       </BauhausCard>
 
       <BauhausCard background="white" accent="none">
-        <h2 class="mb-4 text-lg font-black uppercase tracking-tight">Details</h2>
+        <h2 class="mb-4 text-lg font-bold">Details</h2>
         <div class="grid gap-4 sm:grid-cols-2">
           <BauhausInput v-model="form.name" label="Name" required />
           <BauhausInput v-model="form.location" label="Location" required />
@@ -88,7 +88,7 @@ const layoutOptions = computed(() => LAYOUTS);
           <BauhausInput v-model="form.closesAt" type="time" label="Closes" required />
         </div>
         <label class="mt-4 flex flex-col gap-2">
-          <span class="text-xs font-bold uppercase tracking-widest text-ink">Description</span>
+          <span class="text-xs font-bold text-ink">Description</span>
           <textarea
             v-model="form.description"
             rows="3"
@@ -98,27 +98,27 @@ const layoutOptions = computed(() => LAYOUTS);
       </BauhausCard>
 
       <BauhausCard background="white" accent="none">
-        <h2 class="mb-4 text-lg font-black uppercase tracking-tight">Booking defaults &amp; safety</h2>
+        <h2 class="mb-4 text-lg font-bold">Booking defaults &amp; safety</h2>
         <p class="mb-4 text-sm font-medium">Defaults apply to new booking requests only. Existing bookings keep their own setup and turnaround times.</p>
         <div class="grid gap-4 sm:grid-cols-2">
           <BauhausInput v-model="form.setupMinutes" type="number" min="0" step="1" label="Default setup (minutes)" required />
           <BauhausInput v-model="form.turnaroundMinutes" type="number" min="0" step="1" label="Default turnaround (minutes)" required />
         </div>
         <label class="mt-4 flex flex-col gap-2">
-          <span class="text-xs font-bold uppercase tracking-widest text-ink">Emergency access</span>
+          <span class="text-xs font-bold text-ink">Emergency access</span>
           <textarea v-model="form.emergencyAccess" rows="3" class="border-2 border-ink bg-canvas p-3 text-base font-medium shadow-hard focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow sm:border-4"></textarea>
         </label>
         <label class="mt-4 flex flex-col gap-2">
-          <span class="text-xs font-bold uppercase tracking-widest text-ink">Restrictions</span>
+          <span class="text-xs font-bold text-ink">Restrictions</span>
           <textarea v-model="form.restrictions" rows="3" class="border-2 border-ink bg-canvas p-3 text-base font-medium shadow-hard focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow sm:border-4"></textarea>
         </label>
       </BauhausCard>
 
       <BauhausCard background="white" accent="none">
-        <h2 class="mb-4 text-lg font-black uppercase tracking-tight">Layouts</h2>
+        <h2 class="mb-4 text-lg font-bold">Layouts</h2>
         <div class="flex flex-col gap-3">
           <div v-for="option in layoutOptions" :key="option.value" class="flex flex-wrap items-center gap-3">
-            <label class="inline-flex cursor-pointer items-center gap-2 border-2 border-ink px-3 py-2 text-xs font-bold uppercase tracking-wide shadow-hard" :class="form.selectedLayouts.includes(option.value) ? 'bg-bauhaus-yellow' : 'bg-canvas'">
+            <label class="inline-flex cursor-pointer items-center gap-2 border-2 border-ink px-3 py-2 text-xs font-bold shadow-hard" :class="form.selectedLayouts.includes(option.value) ? 'bg-bauhaus-yellow' : 'bg-canvas'">
               <input
                 type="checkbox"
                 class="h-4 w-4 accent-bauhaus-red"
@@ -141,12 +141,12 @@ const layoutOptions = computed(() => LAYOUTS);
       </BauhausCard>
 
       <BauhausCard background="white" accent="none">
-        <h2 class="mb-4 text-lg font-black uppercase tracking-tight">Facilities &amp; access</h2>
+        <h2 class="mb-4 text-lg font-bold">Facilities &amp; access</h2>
         <BauhausCheckboxGroup v-model="form.facilities" label="Facilities" :options="FACILITIES" />
         <BauhausCheckboxGroup v-model="form.accessibilityFeatures" label="Accessibility" :options="ACCESSIBILITY_FEATURES" class="mt-6" />
       </BauhausCard>
 
-      <p v-if="saveError" role="alert" class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4">
+      <p v-if="saveError" role="alert" class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4">
         {{ saveError }}
       </p>
 

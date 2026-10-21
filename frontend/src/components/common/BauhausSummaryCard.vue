@@ -13,8 +13,8 @@ defineProps({
 <template>
   <BauhausCard class="h-full">
     <!-- Minimum space keeps figures aligned; larger text can still grow. -->
-    <p class="min-h-8 text-xs font-bold uppercase leading-4 tracking-widest opacity-80">{{ label }}</p>
-    <p class="mt-2 text-5xl font-black tracking-tighter">{{ value }}</p>
+    <p class="min-h-8 text-xs font-bold leading-4 opacity-80">{{ label }}</p>
+    <p class="mt-2 text-5xl font-bold">{{ value }}</p>
     <p v-if="detail || $slots.detail" class="mt-2 flex min-h-8 items-baseline gap-2 text-xs font-medium leading-4 text-ink/60">
       <slot name="detail">{{ detail }}</slot>
     </p>

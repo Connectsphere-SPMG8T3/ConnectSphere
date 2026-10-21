@@ -14,7 +14,7 @@ defineProps({
   <div
     class="flex flex-col items-start gap-1 border-2 border-dashed border-ink/30 bg-surface px-5 py-6"
   >
-    <p class="text-xs font-bold uppercase tracking-widest text-ink/70">{{ title }}</p>
+    <p class="text-sm font-bold text-ink/80">{{ title }}</p>
     <p v-if="detail" class="max-w-prose text-sm font-medium text-ink/60">{{ detail }}</p>
   </div>
 </template>

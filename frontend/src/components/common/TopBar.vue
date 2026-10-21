@@ -63,11 +63,11 @@ async function handleSearch() {
       </RouterLink>
 
       <div class="flex min-w-0 flex-col items-start gap-0.5">
-        <p class="truncate text-base font-black uppercase tracking-tighter sm:text-xl">
+        <p class="truncate text-base font-bold sm:text-xl">
           Hello {{ firstName }}!
         </p>
         <p
-          class="whitespace-nowrap text-[11px] font-bold uppercase tracking-widest text-ink/60 sm:text-xs"
+          class="whitespace-nowrap text-xs font-bold text-ink/70"
         >
           {{ today }}
         </p>
@@ -111,7 +111,7 @@ async function handleSearch() {
             v-if="isNotificationsOpen"
             class="absolute right-0 top-full z-20 mt-3 w-64 border-2 border-ink bg-surface p-4 shadow-hard sm:border-4"
           >
-            <p class="text-xs font-bold uppercase tracking-widest text-ink/70">No notifications</p>
+            <p class="text-xs font-bold text-ink/70">No notifications</p>
             <p class="mt-1 text-sm font-medium text-ink/60">
               Notifications aren't sent yet, so nothing lands here.
             </p>

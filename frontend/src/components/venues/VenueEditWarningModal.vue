@@ -36,7 +36,7 @@ const anyUnsuitable = computed(() => props.warnings.some((warning) => warning.ou
         aria-labelledby="venue-edit-warning-title"
         class="w-full max-w-lg border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
       >
-        <h2 id="venue-edit-warning-title" class="text-2xl font-black uppercase leading-tight tracking-tight">
+        <h2 id="venue-edit-warning-title" class="text-2xl font-bold leading-tight">
           This change may affect upcoming bookings
         </h2>
         <p class="mt-4 text-base font-medium">
@@ -52,10 +52,10 @@ const anyUnsuitable = computed(() => props.warnings.some((warning) => warning.ou
             :class="['border-2 border-ink p-3', outcomeOf(warning).card]"
           >
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <p class="text-sm font-bold uppercase tracking-wide">{{ warning.event_name || `Event ${warning.event_id.slice(0, 8)}` }}</p>
+              <p class="text-sm font-bold">{{ warning.event_name || `Event ${warning.event_id.slice(0, 8)}` }}</p>
               <span
                 data-testid="outcome-badge"
-                :class="['border-2 border-ink px-2 py-0.5 text-xs font-black uppercase tracking-widest', outcomeOf(warning).badge]"
+                :class="['border-2 border-ink px-2 py-0.5 text-xs font-bold ', outcomeOf(warning).badge]"
               >
                 {{ outcomeOf(warning).label }}
               </span>

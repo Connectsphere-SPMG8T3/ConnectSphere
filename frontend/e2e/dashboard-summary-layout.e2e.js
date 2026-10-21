@@ -4,7 +4,7 @@ import { expect, seedSession, test } from "./support/fixtures.js";
 const dashboards = [
   { role: "event_organiser", caseId: "TC-ORG-010", label: "Returned for amendments", count: 3 },
   { role: "event_coordinator", caseId: "TC-DASH-025", label: "Clarification responses", count: 3 },
-  { role: "attendee", caseId: "TC-ATT-001", label: "Upcoming Registrations", count: 3 },
+  { role: "attendee", caseId: "TC-ATT-001", label: "Upcoming registrations", count: 3 },
   { role: "tech_support", caseId: "TC-TSD-017", label: "Maintenance scheduled", count: 4 },
 ];
 

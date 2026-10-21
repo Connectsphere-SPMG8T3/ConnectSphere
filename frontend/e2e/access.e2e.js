@@ -27,7 +27,7 @@ test("TC-RBAC-004 a signed-in user who opens login is sent to their dashboard", 
   await page.goto("/login");
 
   await expect(page).toHaveURL(ACCOUNTS.event_organiser.dashboard);
-  await expect(page.getByRole("button", { name: "Sign In" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(0);
 });
 
 test("TC-RBAC-005 an unknown path goes to login", async ({ page }) => {

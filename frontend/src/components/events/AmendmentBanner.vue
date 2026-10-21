@@ -23,16 +23,16 @@ const returnedAt = computed(() =>
 
 <template>
   <section data-testid="amendment-banner" class="border-4 border-ink bg-bauhaus-yellow p-6 text-ink shadow-hard sm:p-8">
-    <h2 class="text-2xl font-black uppercase tracking-tight">{{ heading }}</h2>
-    <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/70">Returned {{ returnedAt }}</p>
+    <h2 class="text-2xl font-bold">{{ heading }}</h2>
+    <p class="mt-1 text-xs font-bold text-ink/70">Returned {{ returnedAt }}</p>
     <p class="mt-4 whitespace-pre-wrap font-medium">{{ props.amendment.message }}</p>
     <div v-if="props.amendment.flagged_fields?.length" class="mt-4">
-      <p class="text-xs font-bold uppercase tracking-widest">Fields to review</p>
+      <p class="text-xs font-bold">Fields to review</p>
       <ul class="mt-2 flex flex-wrap gap-2">
         <li
           v-for="field in props.amendment.flagged_fields"
           :key="field"
-          class="border-2 border-ink bg-canvas px-3 py-1 text-xs font-bold uppercase tracking-wide"
+          class="border-2 border-ink bg-canvas px-3 py-1 text-xs font-bold"
         >
           {{ fieldLabel(field) }}
         </li>

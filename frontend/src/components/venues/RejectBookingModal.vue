@@ -55,14 +55,14 @@ function confirm() {
         aria-labelledby="reject-booking-title"
         class="max-h-full w-full max-w-lg overflow-y-auto border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
       >
-        <h2 id="reject-booking-title" class="text-2xl font-black uppercase leading-tight tracking-tight">
+        <h2 id="reject-booking-title" class="text-2xl font-bold leading-tight">
           Reject this booking request?
         </h2>
         <p class="mt-4 text-base font-medium">
           The hold on {{ props.venueName }} for "{{ props.eventName }}" will be removed and the time freed for other
           requests. The event's coordinator will see your reason and any suggestion; the organiser won't.
         </p>
-        <label for="reject-booking-reason" class="mt-6 block text-xs font-bold uppercase tracking-widest text-ink/70">
+        <label for="reject-booking-reason" class="mt-6 block text-xs font-bold text-ink/70">
           Reason (required)
         </label>
         <textarea
@@ -74,7 +74,7 @@ function confirm() {
           class="mt-2 w-full border-2 border-ink bg-canvas p-3 font-medium focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow"
         ></textarea>
         <p class="mt-1 text-right text-xs font-bold text-ink/70">{{ reason.length }} / {{ REJECTION_TEXT_MAX_LENGTH }}</p>
-        <label for="reject-booking-suggestion" class="mt-4 block text-xs font-bold uppercase tracking-widest text-ink/70">
+        <label for="reject-booking-suggestion" class="mt-4 block text-xs font-bold text-ink/70">
           Suggested alternative (optional)
         </label>
         <textarea

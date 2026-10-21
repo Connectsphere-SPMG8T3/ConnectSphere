@@ -58,7 +58,7 @@ function submit(confirm) {
         aria-labelledby="deactivate-modal-title"
         class="my-auto w-full max-w-2xl border-4 border-ink bg-canvas p-6 shadow-hard-lg sm:p-8"
       >
-        <h2 id="deactivate-modal-title" class="text-2xl font-black uppercase leading-tight tracking-tight">
+        <h2 id="deactivate-modal-title" class="text-2xl font-bold leading-tight">
           Deactivate venue?
         </h2>
         <p class="mt-4 text-base font-medium">
@@ -74,7 +74,7 @@ function submit(confirm) {
             required
           />
         </div>
-        <label for="deactivate-note" class="mt-4 block text-xs font-bold uppercase tracking-widest text-ink/70">
+        <label for="deactivate-note" class="mt-4 block text-xs font-bold text-ink/70">
           Note {{ needsNote ? "(required)" : "(optional)" }}
         </label>
         <textarea
@@ -96,7 +96,7 @@ function submit(confirm) {
             >
               <span class="block font-bold">{{ formatEventReference(booking) }}</span>
               <span class="block font-medium">{{ formatVenuePeriod(booking.period) }}</span>
-              <span class="block text-xs font-bold uppercase tracking-widest text-ink/70">
+              <span class="block text-xs font-bold text-ink/70">
                 {{ bookingStatusLabel(booking.status) }}
               </span>
             </li>

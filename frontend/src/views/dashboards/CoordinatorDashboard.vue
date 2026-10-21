@@ -241,8 +241,8 @@ const cardSections = computed(() => [
     <BauhausCard background="yellow" accent="none" class="mb-10">
       <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div v-if="activeTab === 'overview'">
-          <p class="text-xs font-bold uppercase tracking-widest text-ink/70">Event Coordinator Dashboard</p>
-          <h1 class="mt-2 text-3xl font-black uppercase leading-none tracking-tighter sm:text-4xl">
+          <p class="text-xs font-bold text-ink/70">Event Coordinator Dashboard</p>
+          <h1 class="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
             Welcome, {{ authStore.profile?.full_name }}
           </h1>
           <p class="mt-3 max-w-2xl text-sm font-medium">
@@ -251,8 +251,8 @@ const cardSections = computed(() => [
           </p>
         </div>
         <div v-else>
-          <p class="text-xs font-bold uppercase tracking-widest text-ink/70">My Events</p>
-          <h1 class="mt-2 text-3xl font-black uppercase leading-none tracking-tighter sm:text-4xl">
+          <p class="text-xs font-bold text-ink/70">My events</p>
+          <h1 class="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
             Events I'm coordinating
           </h1>
           <p class="mt-3 max-w-2xl text-sm font-medium">
@@ -272,14 +272,14 @@ const cardSections = computed(() => [
     <p
       v-if="dashboard.error"
       role="alert"
-      class="mb-8 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold uppercase tracking-wide text-canvas shadow-hard sm:border-4"
+      class="mb-8 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
     >
       {{ dashboard.error }}
     </p>
     <p
       v-else-if="!dashboard.hasSettled"
       role="status"
-      class="mb-8 border-2 border-ink bg-canvas px-4 py-3 text-sm font-bold uppercase tracking-wide shadow-hard sm:border-4"
+      class="mb-8 border-2 border-ink bg-canvas px-4 py-3 text-sm font-bold shadow-hard sm:border-4"
     >
       Loading events...
     </p>
@@ -287,7 +287,7 @@ const cardSections = computed(() => [
       v-else-if="!dashboard.isAvailable"
       class="mb-8 border-2 border-dashed border-ink/40 bg-surface px-5 py-4 text-sm font-medium text-ink/75"
     >
-      <span class="font-bold uppercase tracking-widest">Awaiting data —</span>
+      <span class="font-bold">Awaiting data —</span>
       this server doesn't provide the coordinator dashboard yet, so there is nothing to show.
     </p>
 
@@ -295,10 +295,10 @@ const cardSections = computed(() => [
     <template v-if="activeTab === 'overview' && isLoaded">
       <section class="mb-10" aria-labelledby="needs-action">
         <div class="mb-5 flex items-baseline justify-between gap-4">
-          <h2 id="needs-action" class="text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+          <h2 id="needs-action" class="text-2xl font-bold leading-tight sm:text-3xl">
             Needs your action
           </h2>
-          <span class="text-sm font-bold uppercase tracking-widest">{{ summary.total }} total</span>
+          <span class="text-sm font-bold">{{ summary.total }} total</span>
         </div>
 
         <div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -324,22 +324,22 @@ const cardSections = computed(() => [
               class="flex flex-col gap-3 border-2 border-ink bg-canvas p-5 shadow-hard transition duration-150 hover:-translate-y-0.5 hover:bg-bauhaus-yellow/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transition-none sm:flex-row sm:items-center sm:justify-between sm:border-4"
             >
               <div class="flex items-start gap-4">
-                <span class="text-2xl font-black tracking-tighter text-ink/30">{{ index + 1 }}</span>
+                <span class="text-2xl font-bold text-ink/30">{{ index + 1 }}</span>
                 <div>
-                  <p class="text-lg font-black uppercase leading-tight tracking-tighter">
+                  <p class="text-lg font-bold leading-tight">
                     {{ item.event_name }}
                   </p>
                   <p class="mt-1 text-sm font-medium text-ink/70">
                     {{ actionKindMeta(item.kind).description }}
                   </p>
-                  <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/50">
+                  <p class="mt-1 text-xs font-bold text-ink/50">
                     {{ formatDate(item.starts_at) }}
                     <template v-if="item.organiser_name"> · {{ item.organiser_name }}</template>
                   </p>
                 </div>
               </div>
               <span
-                class="shrink-0 self-start border-2 border-ink px-3 py-1 text-xs font-bold uppercase tracking-widest sm:self-center"
+                class="shrink-0 self-start border-2 border-ink px-3 py-1 text-xs font-bold sm:self-center"
                 :class="toneClasses[actionKindMeta(item.kind).tone]"
               >
                 {{ actionKindMeta(item.kind).label }}
@@ -357,10 +357,10 @@ const cardSections = computed(() => [
 
       <section class="mb-10" aria-labelledby="active-events">
         <div class="mb-4 flex items-baseline justify-between gap-3">
-          <h2 id="active-events" class="text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+          <h2 id="active-events" class="text-2xl font-bold leading-tight sm:text-3xl">
             My events by status
           </h2>
-          <p class="text-sm font-bold uppercase tracking-widest">{{ dashboard.activeEvents.length }} total</p>
+          <p class="text-sm font-bold">{{ dashboard.activeEvents.length }} total</p>
         </div>
 
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -373,13 +373,13 @@ const cardSections = computed(() => [
             <div class="flex items-baseline justify-between gap-3">
               <button
                 type="button"
-                class="text-left text-xs font-bold uppercase tracking-widest underline decoration-2 underline-offset-4 transition-colors hover:text-bauhaus-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                class="text-left text-xs font-bold underline decoration-2 underline-offset-4 transition-colors hover:text-bauhaus-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                 :aria-label="`View all ${group.label} events`"
                 @click="openEvents({ status: group.status })"
               >
                 {{ group.label }}
               </button>
-              <p class="text-3xl font-black tracking-tighter">{{ group.events.length }}</p>
+              <p class="text-3xl font-bold">{{ group.events.length }}</p>
             </div>
             <p class="mt-1 text-xs font-medium text-ink/60">{{ group.description }}</p>
 
@@ -389,12 +389,12 @@ const cardSections = computed(() => [
                   :to="reviewRoute(event.event_id)"
                   class="w-full border-l-4 border-ink bg-surface py-2 pl-3 text-left transition-colors hover:bg-bauhaus-yellow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                 >
-                  <p class="text-sm font-bold uppercase tracking-tight">{{ event.event_name }}</p>
+                  <p class="text-sm font-bold">{{ event.event_name }}</p>
                   <p class="text-xs font-medium text-ink/60">{{ formatDate(event.starts_at) }}</p>
                   <p
                     v-for="flag in event.flags ?? []"
                     :key="flag"
-                    class="mt-1 inline-block bg-bauhaus-red px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-canvas"
+                    class="mt-1 inline-block bg-bauhaus-red px-2 py-0.5 text-xs font-bold text-canvas"
                   >
                     {{ flag.replace(/_/g, " ") }}
                   </p>
@@ -408,19 +408,19 @@ const cardSections = computed(() => [
             >
               <button
                 type="button"
-                class="h-6 w-6 border border-ink bg-canvas p-0 text-sm font-black leading-none shadow-none disabled:cursor-not-allowed disabled:opacity-30"
+                class="h-6 w-6 border border-ink bg-canvas p-0 text-sm font-bold leading-none shadow-none disabled:cursor-not-allowed disabled:opacity-30"
                 :aria-label="`Previous ${group.label} events page`"
                 :disabled="statusPage(group.status) === 0"
                 @click="turnStatusPage(group, -1)"
               >
                 &lt;
               </button>
-              <span class="min-w-8 text-center text-[10px] font-bold uppercase tracking-widest">
+              <span class="min-w-8 text-center text-xs font-bold">
                 {{ statusPage(group.status) + 1 }} / {{ statusPageCount(group.events.length) }}
               </span>
               <button
                 type="button"
-                class="h-6 w-6 border border-ink bg-canvas p-0 text-sm font-black leading-none shadow-none disabled:cursor-not-allowed disabled:opacity-30"
+                class="h-6 w-6 border border-ink bg-canvas p-0 text-sm font-bold leading-none shadow-none disabled:cursor-not-allowed disabled:opacity-30"
                 :aria-label="`Next ${group.label} events page`"
                 :disabled="statusPage(group.status) >= statusPageCount(group.events.length) - 1"
                 @click="turnStatusPage(group, 1)"
@@ -436,10 +436,10 @@ const cardSections = computed(() => [
 
       <section class="mb-10" aria-labelledby="readiness">
         <div class="mb-4 flex items-baseline justify-between gap-3">
-          <h2 id="readiness" class="text-2xl font-black uppercase leading-none tracking-tighter sm:text-3xl">
+          <h2 id="readiness" class="text-2xl font-bold leading-tight sm:text-3xl">
             Readiness gaps — next 14 days
           </h2>
-          <p class="text-sm font-bold uppercase tracking-widest">{{ gaps.length }} total</p>
+          <p class="text-sm font-bold">{{ gaps.length }} total</p>
         </div>
 
         <ul v-if="gaps.length" class="grid gap-4">
@@ -448,11 +448,11 @@ const cardSections = computed(() => [
               :to="reviewRoute(event.event_id)"
               class="block border-4 border-ink bg-canvas p-4 transition duration-150 hover:-translate-y-0.5 hover:bg-bauhaus-yellow/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink motion-reduce:transition-none sm:p-5"
             >
-              <p class="text-xl font-black uppercase tracking-tight">{{ event.event_name }}</p>
-              <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/70">
+              <p class="text-xl font-bold">{{ event.event_name }}</p>
+              <p class="mt-1 text-xs font-bold text-ink/70">
                 {{ formatDate(event.starts_at) }} · {{ STATUS_LABELS[event.status] }}
               </p>
-              <p class="mt-2 text-xs font-black uppercase tracking-widest text-bauhaus-red">
+              <p class="mt-2 text-xs font-bold text-bauhaus-red">
                 Outstanding: {{ outstandingReadiness(event).join(", ") }}
               </p>
             </RouterLink>
@@ -473,7 +473,7 @@ const cardSections = computed(() => [
     <template v-if="activeTab === 'events' && isLoaded">
       <section class="border-4 border-ink bg-canvas p-5 shadow-hard" aria-labelledby="event-filters">
         <div class="mb-5 flex items-center justify-between gap-4">
-          <h2 id="event-filters" class="text-2xl font-black uppercase tracking-tight">Find an event</h2>
+          <h2 id="event-filters" class="text-2xl font-bold">Find an event</h2>
           <BauhausButton
             class="shrink-0 px-4 py-2 text-xs shadow-none sm:hidden sm:border-2"
             variant="yellow"
@@ -513,7 +513,7 @@ const cardSections = computed(() => [
             />
             <button
               type="button"
-              class="h-[50px] w-12 shrink-0 border-2 border-ink bg-canvas px-3 text-lg font-black leading-none text-ink shadow-none outline-none transition-colors hover:bg-bauhaus-yellow/20 focus:bg-bauhaus-yellow/20"
+              class="h-[50px] w-12 shrink-0 border-2 border-ink bg-canvas px-3 text-lg font-bold leading-none text-ink shadow-none outline-none transition-colors hover:bg-bauhaus-yellow/20 focus:bg-bauhaus-yellow/20"
               :aria-label="`Toggle sort direction, currently ${directionLabel}`"
               :title="directionLabel"
               @click="toggleSortDirection"
@@ -527,7 +527,7 @@ const cardSections = computed(() => [
             </BauhausButton>
           </div>
         </div>
-        <p v-if="action" class="mt-4 text-xs font-bold uppercase tracking-widest">
+        <p v-if="action" class="mt-4 text-xs font-bold">
           Showing: {{ ACTION_CATEGORY_LABELS[action] }}
         </p>
       </section>
@@ -546,8 +546,8 @@ const cardSections = computed(() => [
       <template v-else>
         <section v-for="section in cardSections" :key="section.key" class="mt-10" :aria-labelledby="section.key">
           <div class="mb-5 flex items-center justify-between gap-4">
-            <h2 :id="section.key" class="text-2xl font-black uppercase tracking-tight">{{ section.title }}</h2>
-            <span class="text-sm font-bold uppercase tracking-widest">{{ section.cards.length }} total</span>
+            <h2 :id="section.key" class="text-2xl font-bold">{{ section.title }}</h2>
+            <span class="text-sm font-bold">{{ section.cards.length }} total</span>
           </div>
           <div v-if="section.cards.length" class="grid gap-4">
             <BauhausCard
@@ -564,8 +564,8 @@ const cardSections = computed(() => [
             >
               <div class="flex min-w-0 items-center justify-between gap-4">
                 <div class="min-w-0">
-                  <h3 class="text-xl font-black uppercase tracking-tight">{{ card.name }}</h3>
-                  <p class="mt-1 text-xs font-bold uppercase tracking-widest text-ink/70">
+                  <h3 class="text-xl font-bold">{{ card.name }}</h3>
+                  <p class="mt-1 text-xs font-bold text-ink/70">
                     {{ STATUS_LABELS[card.status] }} · {{ formatDate(card.startsAt) }}
                   </p>
                   <p class="mt-2 text-sm font-medium">
@@ -575,13 +575,13 @@ const cardSections = computed(() => [
                         : "All blocking arrangements in place"
                     }}
                   </p>
-                  <p v-if="card.actionKind" class="mt-2 text-xs font-black uppercase tracking-widest text-bauhaus-red">
+                  <p v-if="card.actionKind" class="mt-2 text-xs font-bold text-bauhaus-red">
                     Action needed: {{ actionKindMeta(card.actionKind).label }}
                   </p>
                   <p
                     v-for="flag in card.flags"
                     :key="flag"
-                    class="mt-2 inline-block bg-bauhaus-red px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-canvas"
+                    class="mt-2 inline-block bg-bauhaus-red px-2 py-0.5 text-xs font-bold text-canvas"
                   >
                     {{ flag.replace(/_/g, " ") }}
                   </p>
