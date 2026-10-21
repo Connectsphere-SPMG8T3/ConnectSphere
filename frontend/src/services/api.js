@@ -134,6 +134,25 @@ export const venueBookingsApi = {
   },
 };
 
+// SCRUM-113: the notification bell. Every call is scoped by the API to the caller
+// and the role their session is acting as.
+export const notificationsApi = {
+  // The 10-second poll (ADR-0004): `{count, latest_at}`.
+  unreadCount(token) {
+    return request("/notifications/unread-count", { token });
+  },
+  // `before` is the previous page's `next_before`.
+  list({ limit, before } = {}, token) {
+    return request(`/notifications${toQueryString({ limit, before })}`, { token });
+  },
+  markRead(notificationId, token) {
+    return request(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: "POST", token });
+  },
+  markAllRead(token) {
+    return request("/notifications/read-all", { method: "POST", token });
+  },
+};
+
 export const eventsApi = {
   safetyQueue(token) {
     return request("/events/safety-queue", { token });
