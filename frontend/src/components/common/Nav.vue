@@ -42,8 +42,15 @@ const isVenueStaffRequestsActive = computed(() => route.name === "dashboard-venu
 const isEventOverviewActive = computed(
   () => route.name === eventViewsDashboard.value && route.query.tab !== "events",
 );
+// An event's own page belongs to Events, since that is where its card is listed.
+const EVENT_PAGES = {
+  event_organiser: ["event-detail"],
+  event_coordinator: ["coordinator-event"],
+};
 const isEventListActive = computed(
-  () => route.name === eventViewsDashboard.value && route.query.tab === "events",
+  () =>
+    (route.name === eventViewsDashboard.value && route.query.tab === "events") ||
+    (EVENT_PAGES[authStore.role] ?? []).includes(route.name),
 );
 // Must stay in sync with the tab names TechSupportDashboard reads from the query.
 // Inventory is the default view, so it is active unless availability is asked for.

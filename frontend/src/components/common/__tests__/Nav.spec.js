@@ -69,6 +69,24 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
     expect(el.querySelector('[data-testid="role-switcher"]')).toBeNull();
   });
 
+  it("highlights Events, not Overview, on a coordinator's event page", async () => {
+    const { el } = await mountNav(
+      { id: "c1", role: "event_coordinator", roles: ["event_coordinator"] },
+      "/coordinator/events/00000000-0000-0000-0000-000000000123",
+    );
+    expect(el.querySelector('[aria-label="Events"]').className).toContain("bg-bauhaus-yellow");
+    expect(el.querySelector('[aria-label="Overview"]').className).not.toContain("bg-bauhaus-yellow");
+  });
+
+  it("highlights Events on an organiser's event page", async () => {
+    const { el } = await mountNav(
+      { id: "u1", role: "event_organiser", roles: ["event_organiser"] },
+      "/events/00000000-0000-0000-0000-000000000123",
+    );
+    expect(el.querySelector('[aria-label="Events"]').className).toContain("bg-bauhaus-yellow");
+    expect(el.querySelector('[aria-label="Overview"]').className).not.toContain("bg-bauhaus-yellow");
+  });
+
   it("keeps the current page's link yellow at rest and gray on hover, like every other link", async () => {
     const { el } = await mountNav(
       { id: "u1", role: "event_organiser", roles: ["event_organiser"] },

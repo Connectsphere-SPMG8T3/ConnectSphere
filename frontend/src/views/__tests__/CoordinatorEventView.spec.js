@@ -64,6 +64,18 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     vi.clearAllMocks();
   });
 
+  it("goes back to the Events view, not the dashboard Overview", async () => {
+    const el = await mountView(eventResponse({ status: "planning" }));
+    const back = [...el.querySelectorAll("button")].find((node) => node.textContent.trim() === "Back to events");
+    expect(back).toBeTruthy();
+    expect(el.textContent).not.toContain("Back to dashboard");
+
+    back.click();
+    const { default: router } = await import("@/router");
+    await vi.waitFor(() => expect(router.currentRoute.value.query).toEqual({ tab: "events" }));
+    expect(router.currentRoute.value.name).toBe("dashboard-coordinator");
+  });
+
   it("labels the return action Ask for amendment, and its dialog to match", async () => {
     await mountView(eventResponse({ status: "under_review" }));
     expect(button("Open return dialog").textContent.trim()).toBe("Ask for amendment");
