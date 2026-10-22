@@ -20,7 +20,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <BauhausCard background="red" accent="none" class="mb-8">
       <p class="text-xs font-bold">Safety Officer Dashboard</p>
       <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">Safety review queue</h1>

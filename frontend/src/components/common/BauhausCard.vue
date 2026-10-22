@@ -16,6 +16,8 @@ const props = defineProps({
     default: "white",
     validator: (value) => ["white", "red", "blue", "yellow"].includes(value),
   },
+  /** Greys the card out (grey fill, faded text, grey stripe), for a closed item such as a rejected request. */
+  dimmed: { type: Boolean, default: false },
   accent: {
     type: String,
     default: "circle",
@@ -70,7 +72,7 @@ const accentBorderClasses = {
   canvas: "border-l-canvas",
 };
 
-const toneClass = computed(() => toneClasses[props.background] ?? "");
+const toneClass = computed(() => (props.dimmed ? "bg-ink/30" : toneClasses[props.background] ?? ""));
 const accentBgClass = computed(() => accentBgClasses[props.accentColor] ?? accentBgClasses["bauhaus-yellow"]);
 const accentBorderClass = computed(
   () => accentBorderClasses[props.accentColor] ?? accentBorderClasses["bauhaus-yellow"],
@@ -79,8 +81,9 @@ const accentBorderClass = computed(
 
 <template>
   <div
-    class="relative border-2 border-ink bg-surface text-ink"
+    class="relative border-2 border-ink"
     :class="[
+      dimmed ? 'bg-muted text-ink/70' : 'bg-surface text-ink',
       compact ? 'p-4 sm:p-5' : 'p-6 sm:p-8',
       allowOverflow ? 'overflow-visible' : 'overflow-hidden',
       clickable ? 'cursor-pointer transition-transform hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink' : '',

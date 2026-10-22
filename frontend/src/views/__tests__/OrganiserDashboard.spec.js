@@ -66,6 +66,9 @@ const EVENT_RESPONSES = [
 const mountedApps = [];
 
 async function mountDashboard() {
+  // Only Date is faked, so timers and promises behave normally.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));
   const pinia = createPinia();
   setActivePinia(pinia);
   const authStore = useAuthStore();
@@ -105,6 +108,7 @@ async function openEvents(el) {
 describe("OrganiserDashboard", () => {
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.useRealTimers();
   });
 
   beforeEach(() => {
@@ -129,14 +133,13 @@ describe("OrganiserDashboard", () => {
     expect(el.textContent).toContain("Awaiting assignment");
   });
 
-  it("shows overview counts and switches to the full events tab", async () => {
+  it("opens on the board without count tiles and switches to the full events tab", async () => {
     const { el, router } = await mountDashboard();
 
-    expect(el.textContent).toContain("Needs your action");
-    expect(el.textContent).toContain("Drafts");
-    expect(el.textContent).toContain("My events");
+    expect(el.textContent).not.toContain("Needs your action");
+    expect(el.querySelector('[aria-label="Show Drafts events"]')).toBeNull();
     expect(el.textContent).toContain("Under review");
-    expect(el.textContent).toContain("My events by status");
+    expect(el.textContent).toContain("Event status");
 
     await router.push({ name: "dashboard-organiser", query: { tab: "events" } });
     await settle();
@@ -160,7 +163,7 @@ describe("OrganiserDashboard", () => {
     expect(underReviewCard.textContent).not.toContain("Action needed: review this request.");
   });
 
-  it("matches event card hover tints to their status rail colors", async () => {
+  it("uses the shared gray hover on event cards whatever their status rail color", async () => {
     const { el } = await mountDashboard();
     await openEvents(el);
 
@@ -171,49 +174,141 @@ describe("OrganiserDashboard", () => {
     const returnedCard = cardFor("Product Briefing");
     const confirmedCard = cardFor("Leadership Forum");
 
-    expect(draftCard.className).toContain("hover:bg-bauhaus-blue/10");
-    expect(returnedCard.className).toContain("hover:bg-bauhaus-red/10");
-    expect(confirmedCard.className).toContain("hover:bg-bauhaus-blue/10");
+    expect(draftCard.className).toContain("hover:bg-muted");
+    expect(returnedCard.className).toContain("hover:bg-muted");
+    expect(confirmedCard.className).toContain("hover:bg-muted");
     expect(draftCard.className).toContain("border-4");
     expect(draftCard.className).toContain("shadow-none");
     expect(draftCard.querySelector("button").className).toContain("shadow-none");
-    expect(draftCard.querySelector("button").className).toContain("hover:bg-bauhaus-blue/20");
+    expect(draftCard.querySelector("button").className).toContain("hover:bg-muted");
     expect(returnedCard.querySelector("button").className).toContain("shadow-none");
-    expect(returnedCard.querySelector("button").className).toContain("hover:bg-bauhaus-red/20");
-    expect(confirmedCard.querySelector("button").className).toContain("hover:bg-bauhaus-blue/20");
+    expect(returnedCard.querySelector("button").className).toContain("hover:bg-muted");
+    expect(confirmedCard.querySelector("button").className).toContain("hover:bg-muted");
   });
 
-  it("opens the events view filtered to the selected action category", async () => {
+  it("has no welcome card on the Overview; New event request sits beside the Event status heading", async () => {
     const { el, router } = await mountDashboard();
 
-    const draftsCard = el.querySelector('[role="button"][aria-label="Show Drafts events"]');
-    draftsCard.click();
-    await vi.waitFor(() => expect(router.currentRoute.value.query).toEqual({ tab: "events", status: "draft" }));
-    await settle();
+    expect(el.textContent).not.toContain("Welcome,");
+    expect(el.querySelector("h1").className).toContain("sr-only");
+    const statusSection = el.querySelector('[aria-labelledby="my-events-status"]');
+    const headingRow = statusSection.querySelector("#my-events-status").parentElement;
+    const button = headingRow.querySelector('button[aria-label="New event request"]');
+    expect(button.textContent.trim()).toBe("+ Request");
+    expect(el.querySelectorAll('button[aria-label="New event request"]')).toHaveLength(1);
 
-    expect(router.currentRoute.value.query).toEqual({ tab: "events", status: "draft" });
-    el.querySelector('button[aria-label="Filter events by status"]').click();
-    await settle();
-    expect(el.querySelector('input[type="checkbox"][value="draft"]').checked).toBe(true);
-    expect(el.textContent).toContain("Regional Workshop");
-    expect(el.textContent).not.toContain("Annual Conference");
+    button.click();
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
   });
 
-  it("uses the urgent visual treatment for returned requests and subtle hover tones for action cards", async () => {
+  it("colours section headings red, blue, yellow in page order", async () => {
+    const { el } = await mountDashboard();
+    const tones = (ids) => ids.map((id) => el.querySelector(`h2#${id}`).dataset.tone);
+    expect(tones(["my-events-status", "past-events", "rejected-events"])).toEqual(["red", "blue", "yellow"]);
+
+    await openEvents(el);
+    expect(tones(["drafts-heading", "requests-heading"])).toEqual(["red", "blue"]);
+  });
+
+  it("puts + Request in the grey Find my event box on the Events tab", async () => {
+    const { el, router } = await mountDashboard();
+    await openEvents(el);
+
+    // No header card: the tab opens straight onto the filter box.
+    expect(el.textContent).not.toContain("My event requests");
+    expect(el.querySelector("h1").className).toContain("sr-only");
+    const filters = el.querySelector('[aria-labelledby="event-filters"]');
+    expect(filters.className).toContain("bg-muted");
+    expect(filters.className).not.toContain("bg-canvas");
+    const button = filters.querySelector('button[aria-label="New event request"]');
+    expect(button.textContent.trim()).toBe("+ Request");
+    expect(el.querySelectorAll('button[aria-label="New event request"]')).toHaveLength(1);
+    expect(buttonByText(el, "New event request")).toBeUndefined();
+
+    button.click();
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
+  });
+
+  it("sets Drafts and Requests side by side, or one full width when a filter hides the other", async () => {
+    const { el } = await mountDashboard();
+    await openEvents(el);
+
+    const columns = el.querySelector("[data-card-columns]");
+    expect([...columns.children].map((node) => node.getAttribute("aria-labelledby"))).toEqual(["drafts-heading", "requests-heading"]);
+    expect(columns.className).toContain("lg:grid-cols-2");
+
+    const { default: router } = await import("@/router");
+    await router.push({ name: "dashboard-organiser", query: { tab: "events", status: "draft" } });
+    await settle();
+    expect(el.querySelector("[data-card-columns]").children).toHaveLength(1);
+    expect(el.querySelector("[data-card-columns]").className).not.toContain("lg:grid-cols-2");
+  });
+
+  it("shows at most five drafts or requests in each column before it scrolls", async () => {
+    const { el, eventsStore } = await mountDashboard();
+    for (let i = 0; i < 6; i += 1) {
+      eventsStore.events.push({ ...eventsStore.events[0], id: `draft-extra-${i}`, name: `Extra Draft ${i}` });
+    }
+    await openEvents(el);
+    // jsdom has no layout: one card a row, rows 100px apart, each card 90px tall.
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
+      if (this.parentElement?.matches("[data-capped-rows]")) {
+        const top = [...this.parentElement.children].indexOf(this) * 100;
+        return { top, bottom: top + 90 };
+      }
+      return { top: 0, bottom: 0 };
+    });
+    const { default: router } = await import("@/router");
+    await router.push({ name: "dashboard-organiser", query: { tab: "events", status: "draft" } });
+    await settle();
+    await router.push({ name: "dashboard-organiser", query: { tab: "events" } });
+    await settle();
+    rect.mockRestore();
+
+    const drafts = el.querySelector('[aria-labelledby="drafts-heading"] [data-capped-rows]');
+    expect(drafts.children).toHaveLength(7);
+    expect(drafts.className).toContain("overflow-y-auto");
+    // The fifth card ends at 490px.
+    expect(drafts.style.maxHeight).toBe("498px");
+    expect(el.querySelector('[aria-labelledby="requests-heading"] [data-capped-rows]').style.maxHeight).toBe("");
+  });
+
+  it("greys out rejected requests on the Events tab", async () => {
+    const { el, eventsStore } = await mountDashboard();
+    eventsStore.events.push({ ...eventsStore.events[1], id: "rejected-1", name: "Refused Gala", status: "rejected" });
+    await openEvents(el);
+
+    const card = (name) =>
+      [...el.querySelectorAll('[aria-labelledby="requests-heading"] [data-event-name] h3')]
+        .find((node) => node.textContent.trim() === name)
+        .closest(".border-4");
+    expect(card("Refused Gala").className).toContain("bg-muted");
+    expect(card("Refused Gala").className).toContain("text-ink/70");
+    expect(card("Annual Conference").className).toContain("bg-surface");
+  });
+
+  it("shows my events as the coordinator's kanban board, with a red Returned column", async () => {
     const { el } = await mountDashboard();
 
-    const draftsCard = el.querySelector('[aria-label="Show Drafts events"]');
-    const returnedCard = el.querySelector('[aria-label="Show Returned for amendments events"]');
-    const rejectedCard = el.querySelector('[aria-label="Show Rejected events"]');
+    const columns = [...el.querySelectorAll("[data-status-group]")].map((node) => node.dataset.statusGroup);
+    expect(columns).toEqual(["draft", "under_review", "returned", "planning", "safety_review", "confirmed"]);
+    expect(el.querySelector('[data-status-group="draft"] [data-event-row="draft-1"]').dataset.tone).toBe("editable");
+    expect(el.querySelector("[data-board-legend]")).not.toBeNull();
 
-    expect(draftsCard.className).toContain("bg-bauhaus-blue/10");
-    expect(draftsCard.querySelector("span").className).toContain("bg-bauhaus-blue");
-    expect(returnedCard.className).toContain("bg-bauhaus-red/10");
-    expect(returnedCard.querySelector("span").className).toContain("bg-bauhaus-red");
-    expect(rejectedCard.className).toContain("bg-bauhaus-yellow/10");
+    const returned = el.querySelector('[data-status-group="returned"]');
+    expect(returned.querySelector("[data-column-header]").className).toContain("bg-bauhaus-red");
+    const returnedCard = returned.querySelector('[data-event-row="returned-1"]');
+    expect(returnedCard.dataset.tone).toBe("attention");
+    expect(returnedCard.textContent).toContain("Amend and resubmit");
+
+    const review = el.querySelector('[data-status-group="under_review"]');
+    expect(review.querySelector("[data-column-header]").className).toContain("bg-muted");
+    expect(review.querySelector('[data-event-row="review-1"]').dataset.tone).toBe("waiting");
+    expect(el.querySelector('[data-event-row="confirmed-1"]').dataset.tone).toBe("done");
+    expect(el.querySelector('[data-status-group="planning"]').textContent).toContain("None.");
   });
 
-  it("paginates status previews by two events and opens a selected event detail", async () => {
+  it("lists every event in a status column, without pages, and opens the one picked", async () => {
     const { el, router, eventsStore } = await mountDashboard();
     eventsStore.events.push(
       { ...eventsStore.events[2], id: "confirmed-2", name: "Confirmed Two" },
@@ -223,19 +318,72 @@ describe("OrganiserDashboard", () => {
     await settle();
 
     const confirmedGroup = el.querySelector('[data-status-group="confirmed"]');
-    expect(confirmedGroup.querySelectorAll("[data-event-row]")).toHaveLength(2);
-    expect(confirmedGroup.textContent).toContain("1 / 2");
-    expect(confirmedGroup.textContent).not.toContain("Confirmed Three");
+    expect(confirmedGroup.querySelectorAll("[data-event-row]")).toHaveLength(4);
+    expect(confirmedGroup.querySelector('[aria-label="Next confirmed events page"]')).toBeNull();
+    expect(el.textContent).toMatch(/7 total/);
 
-    confirmedGroup.querySelector('[aria-label="Next confirmed events page"]').click();
-    await settle();
-    expect(confirmedGroup.querySelectorAll("[data-event-row]")).toHaveLength(2);
-    expect(confirmedGroup.textContent).toContain("Confirmed Three");
-    expect(confirmedGroup.textContent).toContain("Confirmed Four");
-
-    confirmedGroup.querySelector('[data-event-row="confirmed-3"] button').click();
+    confirmedGroup.querySelector('[data-event-row="confirmed-3"]').click();
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-detail"));
     expect(router.currentRoute.value.params.id).toBe("confirmed-3");
+  });
+
+  it("opens drafts and returned requests on the request form, other board cards on the event page", async () => {
+    const { el } = await mountDashboard();
+    const href = (id) => el.querySelector(`[data-status-group] [data-event-row="${id}"]`).getAttribute("href");
+    expect(href("draft-1")).toBe("/events/new?id=draft-1");
+    expect(href("returned-1")).toBe("/events/new?id=returned-1");
+    expect(href("review-1")).toBe("/events/review-1");
+  });
+
+  it("lists past or rejected events one per row, three before scrolling", async () => {
+    const { el, eventsStore } = await mountDashboard();
+    for (let i = 0; i < 6; i += 1) {
+      eventsStore.events.push({ ...eventsStore.events[2], id: `rejected-${i}`, name: `Refused ${i}`, status: "rejected" });
+    }
+    // jsdom has no layout: one card a row, rows 100px apart, each card 90px tall.
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
+      if (this.matches("[data-capped-rows] > li")) {
+        const top = [...this.parentElement.children].indexOf(this) * 100;
+        return { top, bottom: top + 90 };
+      }
+      return { top: 0, bottom: 0 };
+    });
+    await settle();
+    await settle();
+    rect.mockRestore();
+
+    const rejected = el.querySelector('[aria-labelledby="rejected-events"] [data-capped-rows]');
+    expect(rejected.className).toContain("overflow-y-auto");
+    expect(rejected.className).not.toMatch(/grid-cols-[23]/);
+    expect(rejected.style.maxHeight).toBe("298px");
+    expect(el.querySelector('[aria-labelledby="past-events"] [data-capped-rows]')).toBeNull();
+  });
+
+  it("puts past and rejected events in their own sections below the board", async () => {
+    const { el, eventsStore } = await mountDashboard();
+    expect(el.querySelector('[aria-labelledby="past-events"]').textContent).toContain("No past events");
+    expect(el.querySelector('[aria-labelledby="rejected-events"]').textContent).toContain("No rejected events");
+
+    eventsStore.events.push(
+      { ...eventsStore.events[2], id: "completed-1", name: "Finished Expo", status: "completed" },
+      { ...eventsStore.events[2], id: "confirmed-old", name: "Last Month Forum", date: "2026-09-15" },
+      { ...eventsStore.events[2], id: "rejected-1", name: "Refused Gala", status: "rejected" },
+    );
+    await settle();
+
+    const past = el.querySelector('[aria-labelledby="past-events"]');
+    expect([...past.querySelectorAll("[data-event-row]")].map((node) => node.dataset.eventRow)).toEqual(["completed-1", "confirmed-old"]);
+    expect(past.querySelector('[data-event-row="completed-1"]').dataset.tone).toBe("done");
+    expect(past.textContent).toContain("2 total");
+
+    const rejected = el.querySelector('[aria-labelledby="rejected-events"]');
+    expect(rejected.querySelector('[data-event-row="rejected-1"]').dataset.tone).toBe("rejected");
+    expect(rejected.textContent).toContain("Refused Gala");
+
+    const board = el.querySelector("[data-board-legend]").parentElement;
+    for (const id of ["completed-1", "confirmed-old", "rejected-1"]) {
+      expect(board.querySelector(`[data-status-group] [data-event-row="${id}"]`)).toBeNull();
+    }
   });
 
   it("opens a status-filtered events view from the status card header", async () => {
@@ -377,7 +525,7 @@ describe("OrganiserDashboard", () => {
 
     await router.push({ name: "dashboard-organiser" });
     await settle();
-    buttonByText(el, "New event request").click();
+    el.querySelector('button[aria-label="New event request"]').click();
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
     expect(router.currentRoute.value.name).toBe("event-new");
   });

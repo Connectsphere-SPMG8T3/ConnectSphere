@@ -56,7 +56,12 @@ describe("CoordinatorEventCard", () => {
     });
 
     expect(link.dataset.tone).toBe("attention");
-    expect(link.className).toContain("border-bauhaus-red");
+    // A solid black outline with the tone on the thick left stripe, and no shadow.
+    expect(link.className).toContain("border-ink");
+    expect(link.className).toContain("border-l-bauhaus-red");
+    expect(link.className).not.toContain("shadow-hard");
+    // The same thin outline as a status-board card at every width.
+    expect(link.className).not.toContain("sm:border-4");
     expect(link.querySelector("[data-action-badge]").textContent).toContain("Needs alternative venue");
     expect(link.textContent).toContain("Venue affected");
     expect([...link.querySelectorAll("[data-outstanding]")].map((chip) => chip.textContent.trim())).toEqual(["Venue"]);

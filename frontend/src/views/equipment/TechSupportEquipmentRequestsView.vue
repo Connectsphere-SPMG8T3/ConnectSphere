@@ -13,7 +13,7 @@ onMounted(() => queue.load());
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <BauhausCard background="yellow" accent="none" class="mb-10">
       <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -25,7 +25,7 @@ onMounted(() => queue.load());
         </div>
         <RouterLink
           :to="{ name: 'dashboard-tech-support' }"
-          class="border-2 border-ink bg-canvas px-4 py-3 text-center text-xs font-bold shadow-hard active-press sm:border-4"
+          class="border-2 border-ink bg-canvas px-4 py-3 text-center text-xs font-bold shadow-hard hover:bg-muted active-press sm:border-4"
         >
           Back to dashboard
         </RouterLink>

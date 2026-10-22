@@ -14,7 +14,7 @@ onMounted(() => dashboard.load());
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <p
       v-if="dashboard.error"
       class="mb-8 border-2 border-ink bg-bauhaus-red px-5 py-4 text-sm font-bold text-canvas shadow-hard sm:border-4"
@@ -36,7 +36,7 @@ onMounted(() => dashboard.load());
         </div>
         <RouterLink
           :to="{ name: 'dashboard-venue-staff' }"
-          class="border-2 border-ink bg-canvas px-4 py-3 text-center text-xs font-bold shadow-hard active-press sm:border-4"
+          class="border-2 border-ink bg-canvas px-4 py-3 text-center text-xs font-bold shadow-hard hover:bg-muted active-press sm:border-4"
         >
           Back to dashboard
         </RouterLink>

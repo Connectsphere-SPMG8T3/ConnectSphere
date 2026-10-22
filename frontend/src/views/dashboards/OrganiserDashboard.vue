@@ -1,13 +1,17 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
+import { useCappedRows } from "@/composables/useCappedRows";
 import { useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
-import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
+import EventStatusBoard from "@/components/events/EventStatusBoard.vue";
+import OrganiserBoardCard from "@/components/events/OrganiserBoardCard.vue";
+import SectionHeading from "@/components/common/SectionHeading.vue";
+import { sectionTone } from "@/components/common/sectionTone";
 import calendarArrowDown from "@/assets/icons/calendar-arrow-down.svg";
 import calendarArrowUp from "@/assets/icons/calendar-arrow-up.svg";
 import arrowDownZa from "@/assets/icons/arrow-down-z-a.svg";
@@ -15,17 +19,15 @@ import arrowUpAz from "@/assets/icons/arrow-up-a-z.svg";
 import {
   filterOrganiserEvents,
   groupOrganiserActiveEvents,
+  groupOrganiserClosedEvents,
   getOrganiserAction,
   groupOrganiserEvents,
   needsOrganiserAttention,
   sortOrganiserEvents,
-  summariseOrganiserEvents,
 } from "@/features/events/organiserDashboard";
 import { STATUS_LABELS } from "@/features/events/dashboard";
-import { useAuthStore } from "@/stores/auth";
 import { useEventsStore } from "@/stores/events";
 
-const authStore = useAuthStore();
 const eventsStore = useEventsStore();
 const router = useRouter();
 const route = useRoute();
@@ -56,8 +58,6 @@ const sortOptions = [
 
 const sortFieldLabels = Object.fromEntries(sortOptions.map((option) => [option.value, option.label]));
 
-const STATUS_PAGE_SIZE = 2;
-const statusPages = ref({});
 const actionMenuEventId = ref(null);
 
 const visibleEvents = computed(() =>
@@ -70,8 +70,34 @@ const visibleEvents = computed(() =>
 const groupedEvents = computed(() => groupOrganiserEvents(visibleEvents.value));
 const showDraftsSection = computed(() => !status.value.length || status.value.includes("draft"));
 const showRequestsSection = computed(() => !status.value.length || status.value.some((value) => value !== "draft"));
-const overview = computed(() => summariseOrganiserEvents(eventsStore.events));
 const activeEventGroups = computed(() => groupOrganiserActiveEvents(eventsStore.events));
+const boardTotal = computed(() => activeEventGroups.value.reduce((total, group) => total + group.events.length, 0));
+const closedEvents = computed(() => groupOrganiserClosedEvents(eventsStore.events));
+// Past and Rejected list one card per row, three before they scroll.
+const closedLists = ref([]);
+useCappedRows(() => closedLists.value, [closedEvents, activeTab], 3);
+// The Events tab's Drafts and Requests columns show five cards before they scroll.
+const draftsList = ref(null);
+const requestsList = ref(null);
+useCappedRows(() => [draftsList.value, requestsList.value], [groupedEvents, activeTab, () => eventsStore.isLoading], 5);
+const closedSections = computed(() => [
+  {
+    key: "past-events",
+    title: "Past events",
+    events: closedEvents.value.past,
+    showStatus: true,
+    emptyTitle: "No past events",
+    emptyDetail: "Completed events, and confirmed events whose date has passed, appear here.",
+  },
+  {
+    key: "rejected-events",
+    title: "Rejected events",
+    events: closedEvents.value.rejected,
+    showStatus: false,
+    emptyTitle: "No rejected events",
+    emptyDetail: "Requests ConnectSphere rejects appear here.",
+  },
+]);
 const directionIcon = computed(() => {
   if (sortField.value === "date") return sortDirection.value === "asc" ? calendarArrowUp : calendarArrowDown;
   return sortDirection.value === "asc" ? arrowUpAz : arrowDownZa;
@@ -79,29 +105,6 @@ const directionIcon = computed(() => {
 const directionLabel = computed(
   () => `${sortDirection.value === "asc" ? "Ascending" : "Descending"} by ${sortFieldLabels[sortField.value]}`,
 );
-
-const overviewGroups = computed(() => [
-  {
-    key: "needs-action",
-    title: "Needs your action",
-    items: [
-      { label: "Drafts", status: "draft", value: overview.value.needsAction.drafts, background: "blue", accent: "square", accentColor: "bauhaus-yellow", hoverClass: "hover:bg-bauhaus-blue/10 focus-within:bg-bauhaus-blue/10" },
-      { label: "Returned for amendments", status: "returned", value: overview.value.needsAction.returned, background: "red", accent: "circle", accentColor: "bauhaus-yellow", hoverClass: "hover:bg-bauhaus-red/10 focus-within:bg-bauhaus-red/10" },
-      { label: "Rejected", status: "rejected", value: overview.value.needsAction.rejected, background: "yellow", accent: "circle", accentColor: "bauhaus-red", hoverClass: "hover:bg-bauhaus-yellow/10 focus-within:bg-bauhaus-yellow/10" },
-    ],
-  },
-  {
-    key: "my-events",
-    title: "My events",
-    items: [
-      { label: "Under review", value: overview.value.myEvents.underReview, background: "blue", accent: "circle", accentColor: "bauhaus-yellow" },
-      { label: "Planning", value: overview.value.myEvents.planning, background: "yellow", accent: "square", accentColor: "bauhaus-red" },
-      { label: "Safety review", value: overview.value.myEvents.safetyReview, background: "white", accent: "circle", accentColor: "bauhaus-blue" },
-      { label: "Confirmed", value: overview.value.myEvents.confirmed, background: "blue", accent: "triangle", accentColor: "bauhaus-yellow" },
-      { label: "Completed", value: overview.value.myEvents.completed, background: "white", accent: "circle", accentColor: "bauhaus-blue" },
-    ],
-  },
-]);
 
 watch(
   () => route.query.status,
@@ -149,23 +152,6 @@ function eventCardTone(status) {
   return "blue";
 }
 
-function eventCardHoverClass(status) {
-  const hoverClasses = {
-    red: "hover:bg-bauhaus-red/10 focus-within:bg-bauhaus-red/10",
-    yellow: "hover:bg-bauhaus-yellow/10 focus-within:bg-bauhaus-yellow/10",
-    blue: "hover:bg-bauhaus-blue/10 focus-within:bg-bauhaus-blue/10",
-  };
-  return hoverClasses[eventCardTone(status)];
-}
-
-function eventActionHoverClass(status) {
-  const hoverClasses = {
-    red: "transition-colors hover:bg-bauhaus-red/20 focus:bg-bauhaus-red/20",
-    yellow: "transition-colors hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow",
-    blue: "transition-colors hover:bg-bauhaus-blue/20 focus:bg-bauhaus-blue/20",
-  };
-  return hoverClasses[eventCardTone(status)];
-}
 
 function eventAction(event) {
   actionMenuEventId.value = null;
@@ -200,187 +186,72 @@ function toggleSortDirection() {
   sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
 }
 
-function openActionCategory(categoryStatus) {
-  router.push({ name: "dashboard-organiser", query: { tab: "events", status: categoryStatus } });
-}
-
-function openEventDetail(event) {
-  router.push({ name: "event-detail", params: { id: event.id } });
-}
-
 function openStatusEvents(groupStatus) {
   router.push({ name: "dashboard-organiser", query: { tab: "events", status: groupStatus } });
-}
-
-function statusPage(statusValue) {
-  return statusPages.value[statusValue] || 0;
-}
-
-function statusPageCount(eventCount) {
-  return Math.ceil(eventCount / STATUS_PAGE_SIZE);
-}
-
-function setStatusPage(statusValue, page) {
-  statusPages.value = { ...statusPages.value, [statusValue]: page };
-}
-
-function previousStatusPage(statusValue) {
-  setStatusPage(statusValue, Math.max(0, statusPage(statusValue) - 1));
-}
-
-function nextStatusPage(statusValue, eventCount) {
-  setStatusPage(
-    statusValue,
-    Math.min(statusPageCount(eventCount) - 1, statusPage(statusValue) + 1),
-  );
 }
 
 onMounted(() => eventsStore.load().catch(() => {}));
 </script>
 
 <template>
-  <main class="py-12">
-    <BauhausCard v-if="activeTab === 'overview'" background="yellow" accent="none" class="mb-10">
-      <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-xs font-bold text-ink/70">Event organiser dashboard</p>
-          <h1 class="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
-            Welcome, {{ authStore.profile?.full_name }}
-          </h1>
-          <p class="mt-3 max-w-2xl text-sm font-medium">
-            Your outstanding requests and the status of every event you are organising.
-          </p>
-        </div>
-        <BauhausButton class="shrink-0 self-start whitespace-nowrap sm:self-center" variant="primary" @click="router.push({ name: 'event-new' })">New event request</BauhausButton>
-      </div>
-    </BauhausCard>
-
-    <BauhausCard v-else background="yellow" accent="none" class="mb-10">
-      <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-xs font-bold text-ink/70">My events</p>
-          <h1 class="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
-            My event requests
-          </h1>
-          <p class="mt-3 max-w-2xl text-sm font-medium">
-            Search, filter, and open the latest external-safe information for every event you have created.
-          </p>
-        </div>
-        <BauhausButton class="shrink-0 self-start whitespace-nowrap sm:self-center" variant="primary" @click="router.push({ name: 'event-new' })">New event request</BauhausButton>
-      </div>
-    </BauhausCard>
-
+  <main class="py-8">
     <section v-if="activeTab === 'overview'" aria-labelledby="overview-heading">
-      <h2 id="overview-heading" class="sr-only">Event overview</h2>
+      <h1 id="overview-heading" class="sr-only">Event organiser dashboard</h1>
       <p v-if="eventsStore.error" role="alert" class="mb-8 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4">{{ eventsStore.error }}</p>
       <p v-else-if="eventsStore.isLoading" role="status" class="mb-8 border-2 border-ink bg-canvas px-4 py-3 text-sm font-bold shadow-hard sm:border-4">Loading events...</p>
       <template v-else>
-        <section class="mb-10" aria-labelledby="needs-action">
-          <div class="mb-5 flex items-baseline justify-between gap-4">
-            <h2 id="needs-action" class="text-2xl font-bold leading-tight sm:text-3xl">Needs your action</h2>
-            <span class="text-sm font-bold">
-              {{ overview.needsAction.total }} total
-            </span>
-          </div>
-          <div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            <BauhausSummaryCard
-              v-for="item in overviewGroups[0].items"
-              :key="item.label"
-              :aria-label="`Show ${item.label} events`"
-              :label="item.label"
-              :value="item.value"
-              :background="item.background"
-              :accent="item.accent"
-              :accent-color="item.accentColor"
-              :clickable="activeTab === 'overview'"
-              :class="item.hoverClass"
-              @click="openActionCategory(item.status)"
-            />
-          </div>
-
-        </section>
-
         <section class="mb-10" aria-labelledby="my-events-status">
-          <div class="mb-4 flex items-baseline justify-between gap-3">
-            <h2 id="my-events-status" class="text-2xl font-bold leading-tight sm:text-3xl">My events by status</h2>
-            <p class="text-sm font-bold">{{ overview.myEvents.total }} total</p>
-          </div>
-
-          <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <div
-              v-for="group in activeEventGroups"
-              :key="group.status"
-              :data-status-group="group.status"
-              class="group relative min-h-[220px] border-2 border-ink bg-canvas px-4 pb-4 pt-2 shadow-hard transition duration-150 hover:-translate-y-0.5 hover:bg-bauhaus-yellow/10 focus-within:-translate-y-0.5 focus-within:bg-bauhaus-yellow/10 motion-reduce:transition-none sm:border-4 sm:px-5 sm:pb-5 sm:pt-3"
-            >
-              <div class="flex items-baseline justify-between gap-3">
-                <button
-                  type="button"
-                  class="text-left text-xs font-bold underline decoration-2 underline-offset-4 transition-colors hover:text-bauhaus-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                  :aria-label="`View all ${group.label} events`"
-                  @click="openStatusEvents(group.status)"
-                >
-                  {{ group.label }}
-                </button>
-                <p class="text-3xl font-bold">{{ group.events.length }}</p>
-              </div>
-              <p class="mt-1 text-xs font-medium text-ink/60">{{ group.description }}</p>
-
-              <ul v-if="group.events.length" class="mt-4 space-y-2">
-                <li
-                  v-for="event in group.events.slice(statusPage(group.status) * STATUS_PAGE_SIZE, (statusPage(group.status) + 1) * STATUS_PAGE_SIZE)"
-                  :key="event.id"
-                  :data-event-row="event.id"
-                  class="flex"
-                >
-                  <button
-                    type="button"
-                    class="w-full border-l-4 border-ink bg-surface py-2 pl-3 text-left transition-colors hover:bg-bauhaus-yellow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                    :aria-label="`Open ${event.name}`"
-                    @click="openEventDetail(event)"
-                  >
-                    <p class="text-sm font-bold">{{ event.name }}</p>
-                    <p class="text-xs font-medium text-ink/60">{{ formatSchedule(event) }}</p>
-                  </button>
-                </li>
-              </ul>
-
-              <div v-if="group.events.length > STATUS_PAGE_SIZE" class="absolute bottom-5 right-5 flex items-center gap-1">
-                <button
-                  type="button"
-                  class="h-6 w-6 border border-ink bg-canvas p-0 text-sm font-bold leading-none shadow-none disabled:cursor-not-allowed disabled:opacity-30"
-                  :aria-label="`Previous ${group.status} events page`"
-                  :disabled="statusPage(group.status) === 0"
-                  @click="previousStatusPage(group.status)"
-                >
-                  &lt;
-                </button>
-                <span class="min-w-8 text-center text-xs font-bold">
-                  {{ statusPage(group.status) + 1 }} / {{ statusPageCount(group.events.length) }}
-                </span>
-                <button
-                  type="button"
-                  class="h-6 w-6 border border-ink bg-canvas p-0 text-sm font-bold leading-none shadow-none disabled:cursor-not-allowed disabled:opacity-30"
-                  :aria-label="`Next ${group.status} events page`"
-                  :disabled="statusPage(group.status) >= statusPageCount(group.events.length) - 1"
-                  @click="nextStatusPage(group.status, group.events.length)"
-                >
-                  &gt;
-                </button>
-              </div>
-
-              <p v-if="!group.events.length" class="mt-4 text-sm font-medium text-ink/50">None.</p>
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <SectionHeading id="my-events-status" :tone="sectionTone(0)">Event status</SectionHeading>
+            <div class="flex items-center gap-4">
+              <p class="text-sm font-medium text-ink/70">{{ boardTotal }} total</p>
+              <BauhausButton class="whitespace-nowrap" variant="primary" aria-label="New event request" @click="router.push({ name: 'event-new' })">+ Request</BauhausButton>
             </div>
           </div>
+
+          <EventStatusBoard :columns="activeEventGroups" item-key="id" @open-status="openStatusEvents">
+            <template #card="{ event }">
+              <OrganiserBoardCard :event="event" :schedule="formatSchedule(event)" />
+            </template>
+          </EventStatusBoard>
+        </section>
+
+        <!-- Past and rejected events, each full width below the board, as on the coordinator's Overview. -->
+        <section
+          v-for="(section, index) in closedSections"
+          :key="section.key"
+          class="mb-10"
+          :aria-labelledby="section.key"
+        >
+          <div class="mb-5 flex items-center justify-between gap-4">
+            <SectionHeading :id="section.key" :tone="sectionTone(index + 1)">{{ section.title }}</SectionHeading>
+            <span class="text-sm font-medium text-ink/70">{{ section.events.length }} total</span>
+          </div>
+          <ul
+            v-if="section.events.length"
+            ref="closedLists"
+            data-capped-rows
+            class="grid grid-cols-1 gap-4 overflow-y-auto pb-2 pr-2"
+          >
+            <li v-for="event in section.events" :key="event.id" class="flex">
+              <OrganiserBoardCard :event="event" :schedule="formatSchedule(event)" :show-status="section.showStatus" />
+            </li>
+          </ul>
+          <BauhausEmptyState v-else :title="section.emptyTitle" :detail="section.emptyDetail" />
         </section>
       </template>
     </section>
 
-    <section v-else class="border-4 border-ink bg-canvas p-5 shadow-hard" aria-labelledby="event-filters">
+    <!-- Grey like the coordinator's "Find an event", so the white fields stand out. -->
+    <section v-else class="border-4 border-ink bg-muted p-5 shadow-hard" aria-labelledby="event-filters">
+      <h1 class="sr-only">My events</h1>
       <div class="mb-5">
         <div class="flex items-center justify-between gap-4">
           <h2 id="event-filters" class="text-2xl font-bold">Find my event</h2>
-          <BauhausButton class="shrink-0 px-4 py-2 text-xs shadow-none sm:border-2 sm:hidden" variant="yellow" @click="clearFilters">Clear</BauhausButton>
+          <div class="flex shrink-0 items-center gap-3">
+            <BauhausButton class="shrink-0 px-4 py-2 text-xs shadow-none sm:border-2 sm:hidden" variant="yellow" @click="clearFilters">Clear</BauhausButton>
+            <BauhausButton class="whitespace-nowrap" variant="primary" aria-label="New event request" @click="router.push({ name: 'event-new' })">+ Request</BauhausButton>
+          </div>
         </div>
       </div>
       <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
@@ -390,7 +261,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
           <BauhausSelect v-model="sortField" class="min-w-0 flex-1" label="Sort by" :options="sortOptions" :show-placeholder="false" aria-label="Sort events by" dropdown compact />
           <button
             type="button"
-            class="h-[50px] w-12 shrink-0 border-2 border-ink bg-canvas px-3 text-lg font-bold leading-none text-ink shadow-none outline-none transition-colors hover:bg-bauhaus-yellow/20 focus:bg-bauhaus-yellow/20"
+            class="h-[50px] w-12 shrink-0 border-2 border-ink bg-canvas px-3 text-lg font-bold leading-none text-ink shadow-none outline-none transition-colors hover:bg-muted focus:bg-muted"
             :aria-label="`Toggle sort direction, currently ${directionLabel}`"
             :title="directionLabel"
             @click="toggleSortDirection"
@@ -414,14 +285,21 @@ onMounted(() => eventsStore.load().catch(() => {}));
       />
     </section>
 
-    <template v-if="activeTab === 'events' && !eventsStore.isLoading && !eventsStore.error">
-      <section v-if="showDraftsSection" class="mt-10" aria-labelledby="drafts-heading">
+    <!-- Drafts and Requests side by side from 1024px, as the coordinator's Events
+         columns are; one takes the full width when the status filter hides the other. -->
+    <div
+      v-if="activeTab === 'events' && !eventsStore.isLoading && !eventsStore.error"
+      data-card-columns
+      class="mt-10 grid grid-cols-1 items-start gap-10"
+      :class="{ 'lg:grid-cols-2 lg:gap-6': showDraftsSection && showRequestsSection }"
+    >
+      <section v-if="showDraftsSection" aria-labelledby="drafts-heading">
         <div class="mb-5 flex items-center justify-between gap-4">
-          <h2 id="drafts-heading" class="text-2xl font-bold">Drafts</h2>
+          <SectionHeading id="drafts-heading" :tone="sectionTone(0)">Drafts</SectionHeading>
           <span class="text-sm font-bold">{{ groupedEvents.drafts.length }} total</span>
         </div>
-        <div v-if="groupedEvents.drafts.length" class="grid gap-4">
-          <BauhausCard v-for="event in groupedEvents.drafts" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow :class="[eventCardHoverClass(event.status), 'border-4 shadow-none transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none']">
+        <div v-if="groupedEvents.drafts.length" ref="draftsList" data-capped-rows class="grid gap-4 overflow-y-auto pb-2 pr-2">
+          <BauhausCard v-for="event in groupedEvents.drafts" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow class="border-4 shadow-none hover:bg-muted focus-within:bg-muted transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none">
             <div class="flex min-w-0 items-center justify-between gap-4">
               <div class="min-w-0" data-event-name>
                 <h3 data-event-name class="text-xl font-bold">{{ event.name }}</h3>
@@ -430,7 +308,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
               </div>
               <div class="relative flex shrink-0 flex-wrap justify-end gap-2">
                 <div class="hidden items-center gap-2 sm:flex">
-                  <BauhausButton :class="['shadow-none', eventActionHoverClass(event.status)]" variant="outline" @click="eventAction(event)">Edit draft</BauhausButton>
+                  <BauhausButton class="shadow-none transition-colors hover:bg-muted focus:bg-muted" variant="outline" @click="eventAction(event)">Edit draft</BauhausButton>
                   <BauhausButton
                     class="h-[52px] w-[52px] shrink-0 !p-0 shadow-none"
                     variant="outline"
@@ -447,7 +325,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
                 <div class="sm:hidden">
                   <button
                     type="button"
-                    class="h-[52px] w-[52px] border-2 border-ink bg-canvas p-0 text-ink shadow-none transition-colors hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow"
+                    class="h-[52px] w-[52px] border-2 border-ink bg-canvas p-0 text-ink shadow-none transition-colors hover:bg-muted focus:bg-muted"
                     :aria-label="`Open actions for ${event.name}`"
                     :aria-expanded="actionMenuEventId === event.id"
                     aria-haspopup="menu"
@@ -461,8 +339,8 @@ onMounted(() => eventsStore.load().catch(() => {}));
                     </svg>
                   </button>
                   <div v-if="actionMenuEventId === event.id" class="absolute bottom-full right-0 z-10 mb-2 min-w-48 border-2 border-ink bg-canvas p-2 shadow-hard" role="menu">
-                    <button type="button" class="block w-full px-3 py-2 text-left text-xs font-bold hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="eventAction(event)">Edit draft</button>
-                    <button type="button" class="mt-1 block w-full px-3 py-2 text-left text-xs font-bold hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="cloneEvent(event)">Use as template</button>
+                    <button type="button" class="block w-full px-3 py-2 text-left text-xs font-bold hover:bg-muted focus:bg-muted" role="menuitem" @click="eventAction(event)">Edit draft</button>
+                    <button type="button" class="mt-1 block w-full px-3 py-2 text-left text-xs font-bold hover:bg-muted focus:bg-muted" role="menuitem" @click="cloneEvent(event)">Use as template</button>
                   </div>
                 </div>
               </div>
@@ -472,13 +350,13 @@ onMounted(() => eventsStore.load().catch(() => {}));
         <BauhausEmptyState v-else title="No drafts" detail="Saved drafts will appear here." />
       </section>
 
-      <section v-if="showRequestsSection" class="mt-10" aria-labelledby="requests-heading">
+      <section v-if="showRequestsSection" aria-labelledby="requests-heading">
         <div class="mb-5 flex items-center justify-between gap-4">
-          <h2 id="requests-heading" class="text-2xl font-bold">Requests</h2>
+          <SectionHeading id="requests-heading" :tone="sectionTone(1)">Requests</SectionHeading>
           <span class="text-sm font-bold">{{ groupedEvents.requests.length }} total</span>
         </div>
-        <div v-if="groupedEvents.requests.length" class="grid gap-4">
-          <BauhausCard v-for="event in groupedEvents.requests" :key="event.id" :background="eventCardTone(event.status)" accent="none" compact allow-overflow :class="[eventCardHoverClass(event.status), 'border-4 shadow-none transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none']">
+        <div v-if="groupedEvents.requests.length" ref="requestsList" data-capped-rows class="grid gap-4 overflow-y-auto pb-2 pr-2">
+          <BauhausCard v-for="event in groupedEvents.requests" :key="event.id" :background="eventCardTone(event.status)" :dimmed="event.status === 'rejected'" accent="none" compact allow-overflow class="border-4 shadow-none hover:bg-muted focus-within:bg-muted transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none">
             <div class="flex min-w-0 items-center justify-between gap-4">
               <div class="min-w-0" data-event-name>
                 <h3 data-event-name class="text-xl font-bold">{{ event.name }}</h3>
@@ -492,7 +370,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
               </div>
               <div class="relative flex shrink-0 flex-wrap justify-end gap-2">
                 <div class="hidden items-center gap-2 sm:flex">
-                  <BauhausButton :class="['shadow-none', eventActionHoverClass(event.status)]" variant="outline" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</BauhausButton>
+                  <BauhausButton class="shadow-none transition-colors hover:bg-muted focus:bg-muted" variant="outline" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</BauhausButton>
                   <BauhausButton
                     class="h-[52px] w-[52px] shrink-0 !p-0 shadow-none"
                     variant="outline"
@@ -509,7 +387,7 @@ onMounted(() => eventsStore.load().catch(() => {}));
                 <div class="sm:hidden">
                   <button
                     type="button"
-                    class="h-[52px] w-[52px] border-2 border-ink bg-canvas p-0 text-ink shadow-none transition-colors hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow"
+                    class="h-[52px] w-[52px] border-2 border-ink bg-canvas p-0 text-ink shadow-none transition-colors hover:bg-muted focus:bg-muted"
                     :aria-label="`Open actions for ${event.name}`"
                     :aria-expanded="actionMenuEventId === event.id"
                     aria-haspopup="menu"
@@ -523,8 +401,8 @@ onMounted(() => eventsStore.load().catch(() => {}));
                     </svg>
                   </button>
                   <div v-if="actionMenuEventId === event.id" class="absolute bottom-full right-0 z-10 mb-2 min-w-48 border-2 border-ink bg-canvas p-2 shadow-hard" role="menu">
-                    <button type="button" class="block w-full px-3 py-2 text-left text-xs font-bold hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</button>
-                    <button type="button" class="mt-1 block w-full px-3 py-2 text-left text-xs font-bold hover:bg-bauhaus-yellow focus:bg-bauhaus-yellow" role="menuitem" @click="cloneEvent(event)">Use as template</button>
+                    <button type="button" class="block w-full px-3 py-2 text-left text-xs font-bold hover:bg-muted focus:bg-muted" role="menuitem" @click="eventAction(event)">{{ getOrganiserAction(event).label }}</button>
+                    <button type="button" class="mt-1 block w-full px-3 py-2 text-left text-xs font-bold hover:bg-muted focus:bg-muted" role="menuitem" @click="cloneEvent(event)">Use as template</button>
                   </div>
                 </div>
               </div>
@@ -533,6 +411,6 @@ onMounted(() => eventsStore.load().catch(() => {}));
         </div>
         <BauhausEmptyState v-else title="No submitted requests" detail="Submitted event requests will appear here." />
       </section>
-    </template>
+    </div>
   </main>
 </template>

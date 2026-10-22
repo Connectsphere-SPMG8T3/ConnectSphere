@@ -114,7 +114,7 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
         :aria-invalid="hasError || undefined"
         :aria-describedby="describedBy"
         :data-flagged="hasFlag || undefined"
-        class="focus-tint flex w-full items-center justify-between border-2 border-ink px-4 py-3 text-left text-base font-medium text-ink outline-none transition-colors"
+        class="focus-tint flex w-full items-center justify-between border-2 border-ink px-4 py-3 text-left text-base font-medium text-ink outline-none transition-colors hover:bg-muted"
         :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasError ? 'border-bauhaus-red' : 'border-ink', hasFlag ? 'bg-bauhaus-yellow/30' : 'bg-canvas']"
         @focus="$event.currentTarget.style.backgroundColor = 'rgb(250, 239, 211)'"
         @blur="$event.currentTarget.style.backgroundColor = ''"
@@ -129,7 +129,7 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
       </button>
       <div v-if="isOpen" class="absolute left-0 right-0 z-20 mt-2 border-2 border-ink bg-canvas p-2 shadow-hard" role="listbox" :aria-label="label" :aria-multiselectable="multiple || undefined">
         <template v-for="option in props.options" :key="option.value">
-          <label v-if="multiple" class="flex cursor-pointer items-center gap-3 px-2 py-2 text-sm font-bold hover:bg-bauhaus-yellow/20">
+          <label v-if="multiple" class="flex cursor-pointer items-center gap-3 px-2 py-2 text-sm font-bold hover:bg-muted">
             <input
               type="checkbox"
               :value="option.value"
@@ -144,7 +144,7 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
             type="button"
             role="option"
             :aria-selected="selectedValues.includes(option.value)"
-            class="block w-full px-2 py-2 text-left text-sm font-bold hover:bg-bauhaus-yellow/20"
+            class="block w-full px-2 py-2 text-left text-sm font-bold hover:bg-muted"
             @click="selectOption(option.value)"
           >
             {{ option.label }}

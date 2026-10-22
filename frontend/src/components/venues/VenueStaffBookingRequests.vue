@@ -107,14 +107,6 @@ function requestCardTone(status) {
   return "blue";
 }
 
-function requestCardHoverClass(status) {
-  const hoverClasses = {
-    red: "hover:bg-bauhaus-red/10 focus-within:bg-bauhaus-red/10",
-    yellow: "hover:bg-bauhaus-yellow/10 focus-within:bg-bauhaus-yellow/10",
-    blue: "hover:bg-bauhaus-blue/10 focus-within:bg-bauhaus-blue/10",
-  };
-  return hoverClasses[requestCardTone(status)];
-}
 
 function emptyDetail(clearText) {
   if (!dashboard.hasSettled) return "Checking for updates…";
@@ -152,7 +144,7 @@ function emptyDetail(clearText) {
         <li v-for="booking in dashboard.affectedBookings" :key="booking.id">
           <RouterLink
             :to="{ name: 'booking-request', params: { id: booking.id } }"
-            class="flex flex-wrap items-baseline justify-between gap-2 border-l-4 border-bauhaus-red bg-surface py-2 pl-3 pr-2 active-press"
+            class="flex flex-wrap items-baseline justify-between gap-2 border-l-4 border-bauhaus-red bg-surface py-2 pl-3 pr-2 hover:bg-muted active-press"
           >
             <span class="font-bold">{{ booking.event_name || formatEventReference(booking) }}</span>
             <span class="text-xs font-bold text-ink/70">
@@ -184,7 +176,7 @@ function emptyDetail(clearText) {
           allow-overflow
           data-testid="booking-request-card"
           :data-request-status="request.status"
-          :class="[requestCardHoverClass(request.status), 'border-4 shadow-none transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none']"
+          class="border-4 shadow-none hover:bg-muted focus-within:bg-muted transition duration-150 hover:-translate-y-0.5 focus-within:-translate-y-0.5 motion-reduce:transition-none"
         >
           <RouterLink
             :to="{ name: 'booking-request', params: { id: request.id } }"

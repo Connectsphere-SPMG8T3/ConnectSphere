@@ -145,7 +145,7 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <BauhausCard v-if="route.query.event" background="blue" accent="none" class="mb-10 text-canvas" data-testid="booking-event-context">
       <p v-if="eventError" role="alert" class="text-sm font-bold">{{ eventError }}</p>
       <template v-else-if="bookingEvent">

@@ -13,7 +13,7 @@ const allRoleLabels = computed(() => authStore.roles.map((role) => ROLE_LABELS[r
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <h1 class="mb-8 text-4xl font-bold leading-tight sm:text-5xl">My profile</h1>
 
     <BauhausCard v-if="profile" background="white" accent="circle" accent-color="bauhaus-blue">
@@ -58,7 +58,7 @@ const allRoleLabels = computed(() => authStore.roles.map((role) => ROLE_LABELS[r
 
         <RouterLink
           :to="authStore.dashboardPath"
-          class="mt-2 inline-block w-fit border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold shadow-hard sm:border-4"
+          class="mt-2 inline-block w-fit border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold shadow-hard hover:bg-muted sm:border-4"
         >
           &larr; Back to Dashboard
         </RouterLink>

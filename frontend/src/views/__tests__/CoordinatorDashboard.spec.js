@@ -116,6 +116,12 @@ describe("CoordinatorDashboard", () => {
       expect(el.textContent.toLowerCase()).not.toContain("awaiting assignment");
     });
 
+    it("colours section headings red, blue, yellow in page order, like the organiser's", async () => {
+      const { el } = await mountDashboard();
+      const tones = ["active-events", "past-events", "rejected-events"].map((id) => el.querySelector(`h2#${id}`).dataset.tone);
+      expect(tones).toEqual(["red", "blue", "yellow"]);
+    });
+
     it("withholds every count until the first load settles (TC-DASH-003)", async () => {
       eventsApi.coordinatorDashboard.mockReturnValue(new Promise(() => {}));
 
@@ -169,8 +175,9 @@ describe("CoordinatorDashboard", () => {
       const retreat = planning.querySelector(`a[href="/coordinator/events/${SECOND_PLANNING_ID}"]`);
       const dinner = planning.querySelector(`a[href="/coordinator/events/${PLANNING_ID}"]`);
       expect(retreat.textContent).toContain("Needs alternative venue");
-      expect(retreat.className).toContain("border-bauhaus-red");
-      expect(dinner.className).not.toContain("border-bauhaus-red");
+      expect(retreat.className).toContain("border-l-bauhaus-red");
+      expect(dinner.className).not.toContain("border-l-bauhaus-red");
+      expect(retreat.className).toContain("border-ink");
       expect(el.querySelector('[aria-label="Order status board by"]')).toBeNull();
 
       // A legend explains what the red highlight means.
@@ -187,9 +194,9 @@ describe("CoordinatorDashboard", () => {
       // Cards, not columns, carry the tone: a confirmed event is green, one needing action red.
       const card = (id) => el.querySelector(`a[href="/coordinator/events/${id}"][data-tone]`);
       expect(card(SECOND_PLANNING_ID).dataset.tone).toBe("attention");
-      expect(card(PLANNING_ID).dataset.tone).toBe("plain");
+      expect(card(PLANNING_ID).dataset.tone).toBe("editable");
       expect(card(CONFIRMED_ID).dataset.tone).toBe("done");
-      expect(card(CONFIRMED_ID).className).toContain("border-bauhaus-green");
+      expect(card(CONFIRMED_ID).className).toContain("border-l-bauhaus-green");
       expect(el.querySelector('[data-status-group="confirmed"]').className).not.toContain("bauhaus-green");
     });
 
@@ -277,6 +284,12 @@ describe("CoordinatorDashboard", () => {
   });
 
   describe("Events view", () => {
+    it("continues the red, blue, yellow order down the Events view", async () => {
+      const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
+      const ids = ["needs-action-events", "in-progress-events", "past-events", "rejected-events"];
+      expect(ids.map((id) => el.querySelector(`h2#${id}`).dataset.tone)).toEqual(["red", "blue", "yellow", "red"]);
+    });
+
     it("shows a card per assigned event, split by whether it needs action", async () => {
       const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
 
@@ -306,13 +319,38 @@ describe("CoordinatorDashboard", () => {
       expect(el.querySelector('[aria-labelledby="in-progress-events"] [data-card-grid]').className).not.toContain("grid-cols-3");
       expect(card(UNDER_REVIEW_ID).dataset.tone).toBe("attention");
       expect(card(UNDER_REVIEW_ID).querySelector("[data-action-badge]").textContent).toContain("Awaiting first review");
-      expect(card(PLANNING_ID).dataset.tone).toBe("plain");
+      expect(card(PLANNING_ID).dataset.tone).toBe("editable");
       expect([...card(PLANNING_ID).querySelectorAll("[data-outstanding]")].map((chip) => chip.textContent.trim())).toEqual([
         "Venue",
       ]);
       expect(card(CONFIRMED_ID).dataset.tone).toBe("done");
       expect(card(CONFIRMED_ID).textContent).toContain("All arrangements in place");
       expect(card(CONFIRMED_ID).querySelector("[data-outstanding]")).toBeNull();
+    });
+
+    it("lists Past and Rejected events one per row, three before scrolling", async () => {
+      const rejected = Array.from({ length: 6 }, (_, i) => ({
+        event_id: `e0000000-0000-4000-8000-0000000004${String(i).padStart(2, "0")}`,
+        event_name: `Refused ${i}`,
+        starts_at: "2026-11-01T02:00:00Z",
+      }));
+      eventsApi.coordinatorDashboard.mockResolvedValue({ ...PAYLOAD, rejected_events: rejected });
+      const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function () {
+        if (this.matches("[data-capped-rows] > li")) {
+          const top = [...this.parentElement.children].indexOf(this) * 100;
+          return { top, bottom: top + 90 };
+        }
+        return { top: 0, bottom: 0 };
+      });
+
+      const { el } = await mountDashboard();
+      rect.mockRestore();
+
+      const list = el.querySelector('[aria-labelledby="rejected-events"] [data-capped-rows]');
+      expect(list.className).toContain("overflow-y-auto");
+      expect(list.className).not.toMatch(/grid-cols-[23]/);
+      // The third card ends at 290px.
+      expect(list.style.maxHeight).toBe(`${290 + CARD_LIST_SHADOW_ROOM}px`);
     });
 
     it("caps each column at four cards and scrolls the rest", async () => {

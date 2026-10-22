@@ -13,7 +13,7 @@ const metrics = [
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <BauhausCard background="blue" accent="none" class="mb-10">
       <p class="text-xs font-bold opacity-80">Attendee dashboard</p>
       <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">

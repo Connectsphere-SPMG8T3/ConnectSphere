@@ -6,6 +6,8 @@ import {
   STATUS_DESCRIPTIONS,
   STATUS_LABELS,
   actionKindMeta,
+  BOARD_CARD_CLASSES,
+  BOARD_CARD_TONE_CLASSES,
   boardEventTone,
   flagLabel,
   formatEventDateTime,
@@ -394,10 +396,18 @@ describe("boardEventTone", () => {
     expect(boardEventTone({ status: "safety_review", topAction: null })).toBe("waiting");
   });
 
-  it("is done for a confirmed event and plain in the coordinator's own stages", () => {
+  it("is done for a confirmed event and editable (blue) in the coordinator's own stages", () => {
     expect(boardEventTone({ status: "confirmed", topAction: null })).toBe("done");
-    expect(boardEventTone({ status: "under_review", topAction: null })).toBe("plain");
-    expect(boardEventTone({ status: "planning" })).toBe("plain");
+    expect(boardEventTone({ status: "under_review", topAction: null })).toBe("editable");
+    expect(boardEventTone({ status: "planning" })).toBe("editable");
+    expect(BOARD_CARD_TONE_CLASSES.editable).toContain("border-l-bauhaus-blue");
+  });
+
+  it("keeps every card's outline black, with the tone only on the left stripe", () => {
+    expect(BOARD_CARD_CLASSES).toContain("border-ink");
+    for (const classes of Object.values(BOARD_CARD_TONE_CLASSES)) {
+      expect(classes).not.toMatch(/(?:^|\s)border-(?!l-)/);
+    }
   });
 });
 

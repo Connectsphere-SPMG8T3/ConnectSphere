@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn(), setActiveRole: vi.fn() },
-  venuesApi: { search: vi.fn(), get: vi.fn() },
   notificationsApi: {
     unreadCount: vi.fn().mockResolvedValue({ count: 0, latest_at: null }),
     list: vi.fn().mockResolvedValue({ items: [], next_before: null }),
@@ -50,13 +49,64 @@ describe("TopBar", () => {
     expect(el.textContent).toContain(formatFriendlyDate(new Date()));
   });
 
-  it("offers search only to the roles allowed on the venue catalogue", async () => {
-    const coordinator = await mountTopBar({ id: "c1", role: "event_coordinator", full_name: "Jack Tan" });
-    expect(coordinator.el.querySelector('[role="search"]')).not.toBeNull();
+  it("has no search box", async () => {
+    const { el } = await mountTopBar({ id: "c1", role: "event_coordinator", full_name: "Jack Tan" });
+    expect(el.querySelector('[role="search"]')).toBeNull();
+  });
+
+  it("shows the Acting as switcher on wider screens for an account with several roles", async () => {
+    const { el } = await mountTopBar({
+      id: "u1", role: "event_coordinator", roles: ["event_coordinator", "venue_staff"], full_name: "Multi Role",
+    });
+    const switcher = el.querySelector('[data-testid="role-switcher"]');
+    expect(switcher.textContent).toContain("Role:");
+    const select = switcher.querySelector("select");
+    expect(select.getAttribute("aria-label")).toBe("Acting as role");
+    expect(select.value).toBe("event_coordinator");
+    expect([...select.options].map((option) => option.textContent.trim())).toEqual(["Event Coordinator", "Venue Staff"]);
+  });
+
+  it("sizes the switcher like the bell: one 40px box with a hard shadow", async () => {
+    const { el } = await mountTopBar({
+      id: "u1", role: "event_coordinator", roles: ["event_coordinator", "venue_staff"], full_name: "Multi Role",
+    });
+    const box = el.querySelector('[data-testid="role-switcher"] label');
+    // Yellow like the current page's sidebar link, since it shows the current role.
+    for (const name of ["h-10", "border-2", "border-ink", "shadow-hard", "bg-bauhaus-yellow", "hover:bg-muted"]) {
+      expect(box.classList.contains(name)).toBe(true);
+    }
+    // A mouse click focuses the select too; the ring is for keyboard focus only.
+    expect([...box.classList].some((name) => name.startsWith("focus-within:"))).toBe(false);
+    expect(box.classList.contains("has-[:focus-visible]:outline")).toBe(true);
+  });
+
+  it("switches role from the top bar and opens that role's dashboard", async () => {
+    const { el, router } = await mountTopBar({
+      id: "u1", role: "event_coordinator", roles: ["event_coordinator", "venue_staff"], full_name: "Multi Role",
+    });
+    const { authApi } = await import("@/services/api");
+    authApi.setActiveRole.mockResolvedValue({
+      id: "u1", role: "venue_staff", roles: ["event_coordinator", "venue_staff"], full_name: "Multi Role",
+    });
+    const select = el.querySelector('[data-testid="role-switcher"] select');
+    select.value = "venue_staff";
+    select.dispatchEvent(new Event("change"));
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe("/dashboard/venue-staff"));
+  });
+
+  it("shows no switcher for a single-role account, or on a phone where the menu holds it", async () => {
+    const single = await mountTopBar({ id: "c1", role: "event_coordinator", full_name: "Jack Tan" });
+    expect(single.el.querySelector('[data-testid="role-switcher"]')).toBeNull();
 
     document.body.innerHTML = "";
-    const attendee = await mountTopBar({ id: "a1", role: "attendee", full_name: "Mia Chen" });
-    expect(attendee.el.querySelector('[role="search"]')).toBeNull();
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: false, media: query, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    }));
+    const phone = await mountTopBar({
+      id: "u1", role: "event_coordinator", roles: ["event_coordinator", "venue_staff"], full_name: "Multi Role",
+    });
+    expect(phone.el.querySelector('[data-testid="role-switcher"]')).toBeNull();
+    delete window.matchMedia;
   });
 
   it("shows the notification bell and opens its panel", async () => {

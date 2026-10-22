@@ -70,6 +70,18 @@ describe("EventDetailView status", () => {
     expect(el.textContent).not.toContain("UNEXPECTED-SUMMARY"); expect(el.textContent).not.toContain("PRIVATE-COMMENT");
   });
 
+  it("goes back to the Events view of the organiser dashboard", async () => {
+    const el = await mountDetail(eventResponse({ status: "planning" }));
+    const back = [...el.querySelectorAll("button")].find((node) => node.textContent.trim() === "Back to events");
+    expect(back).toBeTruthy();
+    expect(el.textContent).not.toContain("Back to requests");
+
+    back.click();
+    const { default: router } = await import("@/router");
+    await vi.waitFor(() => expect(router.currentRoute.value.query).toEqual({ tab: "events" }));
+    expect(router.currentRoute.value.name).toBe("dashboard-organiser");
+  });
+
   it("SCRUM-82 shows confirmed arrangements", async () => {
     const el = await mountDetail(eventResponse({status: "confirmed", venue_booking: {venue_name: "Main Hall", status: "approved"}, technical_readiness: "not_required"}));
     expect(el.textContent).toContain("Arrangements"); expect(el.textContent).toContain("Main Hall"); expect(el.textContent).toContain("Not required");

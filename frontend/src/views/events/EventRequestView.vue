@@ -348,7 +348,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <BauhausCard background="yellow" accent="square" accent-color="bauhaus-red" class="mb-10">
       <p class="text-xs font-bold opacity-80">Event request</p>
       <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">

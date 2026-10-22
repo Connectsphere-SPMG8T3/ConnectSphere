@@ -261,7 +261,7 @@ function exportCalendar() {
             :key="option.key"
             type="button"
             class="px-3 py-2 text-xs font-bold active-press"
-            :class="view === option.key ? 'bg-ink text-canvas' : 'bg-canvas text-ink'"
+            :class="view === option.key ? 'bg-ink text-canvas' : 'bg-canvas text-ink hover:bg-muted'"
             :aria-pressed="view === option.key"
             @click="setView(option.key)"
           >
@@ -271,7 +271,7 @@ function exportCalendar() {
         <button
           type="button"
           class="border-2 border-ink px-3 py-2 text-xs font-bold"
-          :class="isCurrentPeriod ? 'cursor-not-allowed opacity-40' : 'bg-canvas active-press'"
+          :class="isCurrentPeriod ? 'cursor-not-allowed opacity-40' : 'bg-canvas hover:bg-muted active-press'"
           :disabled="isCurrentPeriod"
           :aria-label="isWeekView ? 'Jump to the current week' : 'Jump to the current month'"
           @click="goToToday"
@@ -281,7 +281,7 @@ function exportCalendar() {
         <button
           type="button"
           class="border-2 border-ink px-3 py-2 text-xs font-bold"
-          :class="canGoPrev ? 'bg-canvas active-press' : 'cursor-not-allowed opacity-40'"
+          :class="canGoPrev ? 'bg-canvas hover:bg-muted active-press' : 'cursor-not-allowed opacity-40'"
           :disabled="!canGoPrev"
           :aria-label="isWeekView ? 'Previous week' : 'Previous month'"
           @click="step(-1)"
@@ -290,7 +290,7 @@ function exportCalendar() {
         </button>
         <button
           type="button"
-          class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold active-press"
+          class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold hover:bg-muted active-press"
           :aria-label="isWeekView ? 'Next week' : 'Next month'"
           @click="step(1)"
         >
@@ -299,7 +299,7 @@ function exportCalendar() {
         <button
           type="button"
           class="border-2 border-ink px-3 py-2"
-          :class="items.length ? 'bg-canvas active-press' : 'cursor-not-allowed opacity-40'"
+          :class="items.length ? 'bg-canvas hover:bg-muted active-press' : 'cursor-not-allowed opacity-40'"
           :disabled="!items.length"
           aria-label="Export every block and pending request as a calendar file"
           title="Export as calendar file (.ics)"
@@ -370,7 +370,7 @@ function exportCalendar() {
                 :class="[
                   index ? 'border-l border-ink/15' : '',
                   selectedDayKey === cell.key ? 'bg-bauhaus-yellow/40' : '',
-                  cell.hasItems ? 'cursor-pointer' : 'cursor-default',
+                  cell.hasItems ? 'cursor-pointer hover:bg-muted' : 'cursor-default',
                 ]"
                 :aria-pressed="selectedDayKey === cell.key"
                 :aria-label="`${formatSelectedDay(cell.key)}, ${cell.items.length} item${cell.items.length === 1 ? '' : 's'}`"
@@ -434,7 +434,7 @@ function exportCalendar() {
             :class="[
               index ? 'border-l border-ink/15' : '',
               selectedDayKey === cell.key ? 'bg-bauhaus-yellow/40' : '',
-              cell.hasItems ? 'cursor-pointer' : 'cursor-default',
+              cell.hasItems ? 'cursor-pointer hover:bg-muted' : 'cursor-default',
             ]"
             :aria-pressed="selectedDayKey === cell.key"
             :aria-label="`${formatSelectedDay(cell.key)}, ${cell.items.length} item${cell.items.length === 1 ? '' : 's'}`"

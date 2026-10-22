@@ -17,7 +17,7 @@ describe("page padding", () => {
 
   it.each(mains)("%s uses the shared page container", (_path, main) => {
     const classes = main.match(/class="([^"]*)"/)?.[1].split(/\s+/) ?? [];
-    expect(classes).toContain("py-12");
+    expect(classes).toContain("py-8");
     expect(classes.filter((name) => /^(?:[a-z]+:)?(?:px|pl|pr|mx|max-w)-/.test(name))).toEqual([]);
   });
 });

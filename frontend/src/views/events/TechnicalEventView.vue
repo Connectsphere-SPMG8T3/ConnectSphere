@@ -33,7 +33,7 @@ watch(() => route.params.id, (id) => { if (id) store.load(id); }, { immediate: t
 </script>
 
 <template>
-  <main class="break-words py-12">
+  <main class="break-words py-8">
     <BauhausButton variant="outline" class="mb-8" @click="router.push({ name: 'dashboard-tech-support' })">Back to dashboard</BauhausButton>
     <p v-if="store.error" role="alert" class="mb-6 border-4 border-ink p-4 font-bold">{{ store.error }}</p>
     <p v-if="store.isLoading && !view" class="font-bold" role="status">Loading equipment…</p>

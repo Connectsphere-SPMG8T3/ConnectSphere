@@ -182,7 +182,7 @@ function emptyDetail(clearText) {
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <p
       v-if="dashboard.error"
       class="mb-8 border-2 border-ink bg-bauhaus-red px-5 py-4 text-sm font-bold text-canvas shadow-hard sm:border-4"
@@ -214,6 +214,7 @@ function emptyDetail(clearText) {
           :background="tile.background"
           :accent="tile.accent"
           :accent-color="tile.accentColor"
+          :class="tile.href ? 'group-hover:bg-muted group-focus-visible:bg-muted' : ''"
         >
           <template #detail>
             {{ tile.detail }}
@@ -254,7 +255,7 @@ function emptyDetail(clearText) {
             :key="option.key"
             type="button"
             class="border-2 border-ink px-3 py-2 text-xs font-bold active-press"
-            :class="activeFilter === option.key ? 'bg-ink text-canvas' : 'bg-canvas text-ink'"
+            :class="activeFilter === option.key ? 'bg-ink text-canvas' : 'bg-canvas text-ink hover:bg-muted'"
             :aria-pressed="activeFilter === option.key"
             @click="venueFilter = option.key"
           >
@@ -272,7 +273,7 @@ function emptyDetail(clearText) {
           <li v-for="row in venueRows" :key="row.venue.id">
             <RouterLink
               :to="{ name: 'venue-detail', params: { id: row.venue.id } }"
-              class="flex flex-wrap items-center justify-between gap-3 border-2 border-ink bg-canvas p-4 shadow-hard active-press sm:border-4"
+              class="flex flex-wrap items-center justify-between gap-3 border-2 border-ink bg-canvas p-4 shadow-hard hover:bg-muted active-press sm:border-4"
             >
               <span class="flex flex-col">
                 <span class="text-base font-bold leading-tight">

@@ -44,7 +44,7 @@ const classes = computed(() => [
   variantClasses[props.variant],
   sizeClasses[props.size],
   props.fullWidth ? "w-full" : "",
-  props.disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer active-press",
+  props.disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-muted hover:text-ink active-press",
 ]);
 </script>
 

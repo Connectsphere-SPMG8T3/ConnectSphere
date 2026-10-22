@@ -161,9 +161,9 @@ watch(
 </script>
 
 <template>
-  <main class="py-12">
+  <main class="py-8">
     <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
-      <BauhausButton variant="outline" @click="router.push({ name: 'dashboard-coordinator' })">Back to dashboard</BauhausButton>
+      <BauhausButton variant="outline" @click="router.push({ name: 'dashboard-coordinator', query: { tab: 'events' } })">Back to events</BauhausButton>
     </div>
 
     <p
@@ -286,7 +286,7 @@ watch(
                   <RouterLink
                     v-if="canFindVenue(space)"
                     :to="{ name: 'venue-search', query: { event: event.id, space: space.id } }"
-                    class="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-xs font-bold shadow-hard"
+                    class="border-2 border-ink bg-bauhaus-yellow px-3 py-2 text-xs font-bold shadow-hard hover:bg-muted"
                   >
                     Find venue
                   </RouterLink>
