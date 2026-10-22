@@ -111,6 +111,8 @@ Write the test before the implementation, for any new feature or bugfix:
 
 This applies at whatever layer the change lives in — `pytest` in `backend/tests/` for backend/API behaviour, component/unit tests for frontend logic, and `docs/test-cases/` entries for user-facing behaviour that needs a manual trace to a PBI ID. Don't write the implementation first and backfill tests afterward — that's covered by "Definition of done" below but the order matters, not just the coverage.
 
+**Don't change an existing test to make it pass.** When new work makes an existing test fail, the test is reporting a regression: fix the code, not the test. Never edit, loosen, skip or delete an existing test (its assertions, fixtures, expected values or mocks) just so the suite goes green. Change it only when the behaviour it checks has deliberately changed: an acceptance criterion of the PBI you're implementing, a customer clarification (`QA-<row>`) or a decision the developer made replaces the old behaviour. Then say so in the commit message and the PR description, naming the test and the AC or decision that changed it. If you're not sure the old behaviour should change, stop and ask the developer.
+
 The team's DoD sets the coverage bar: 100% of new and changed code in `backend/app/` and `frontend/src/`, or each uncovered line is listed with the reason (`docs/CI.md` §4 item 2).
 
 ## Verification: "it imports" is not "it works"
