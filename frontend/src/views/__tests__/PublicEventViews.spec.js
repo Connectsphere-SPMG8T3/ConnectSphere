@@ -4,6 +4,7 @@ import { RouterView } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registrationsApi } from "@/services/api";
+import { dismissToast, toastState } from "@/composables/useToast";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
@@ -61,11 +62,13 @@ async function mountAt(path, { signedInAs } = {}) {
 describe("public event pages", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    dismissToast();
   });
 
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+    dismissToast();
   });
 
   it("shows public events as one accessible navigation link per card", async () => {
@@ -73,7 +76,7 @@ describe("public event pages", () => {
     const { el } = await mountAt("/");
 
     await vi.waitFor(() => expect(el.textContent).toContain("Evening with the City"));
-    const eventLink = el.querySelector('a[href="/public/events/event-1"]');
+    const eventLink = el.querySelector('a[href="/attendee/events/event-1"]');
     expect(eventLink?.textContent).toContain("View event");
     expect(eventLink?.querySelector("button")).toBeNull();
     expect(el.textContent).toContain("Registration open");
@@ -81,32 +84,57 @@ describe("public event pages", () => {
 
   it("returns a signed-out visitor to the event after choosing Register", async () => {
     registrationsApi.event.mockResolvedValue(event());
-    const { el, router } = await mountAt("/public/events/event-1");
+    const { el, router } = await mountAt("/attendee/events/event-1");
 
     await vi.waitFor(() => expect(el.textContent).toContain("Civic Hall"));
     [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Register").click();
 
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("login"));
-    expect(router.currentRoute.value.query.redirect).toBe("/public/events/event-1");
+    expect(router.currentRoute.value.query.redirect).toBe("/attendee/events/event-1");
   });
 
   it("confirms an Attendee registration immediately", async () => {
-    registrationsApi.event.mockResolvedValue(event());
+    registrationsApi.event
+      .mockResolvedValueOnce(event())
+      .mockResolvedValueOnce(event({ registered_count: 13 }));
     registrationsApi.register.mockResolvedValue({ registration_id: "registration-1", status: "registered" });
-    const { el } = await mountAt("/public/events/event-1", {
+    const { el } = await mountAt("/attendee/events/event-1", {
       signedInAs: { id: "attendee-1", full_name: "Avery Attendee", role: "attendee", roles: ["attendee"] },
     });
 
     await vi.waitFor(() => expect(el.textContent).toContain("Civic Hall"));
     [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Register").click();
 
-    await vi.waitFor(() => expect(el.textContent).toContain("Registration confirmed."));
+    await vi.waitFor(() => expect(el.textContent).toContain("13 of 80 places registered"));
+    const button = [...el.querySelectorAll("button")].find((item) => item.textContent.trim() === "Registered");
+    expect(button?.disabled).toBe(true);
+    expect(toastState.value).toMatchObject({ message: "You are registered for this event.", tone: "success" });
+    expect(registrationsApi.event).toHaveBeenCalledTimes(2);
     expect(registrationsApi.register).toHaveBeenCalledWith("event-1", "access");
+  });
+
+  it("uses the refreshed server count for an existing registration", async () => {
+    registrationsApi.event
+      .mockResolvedValueOnce(event())
+      .mockResolvedValueOnce(event({ registered_count: 12 }));
+    registrationsApi.register.mockResolvedValue({ registration_id: "registration-1", status: "already_registered" });
+    const { el } = await mountAt("/attendee/events/event-1", {
+      signedInAs: { id: "attendee-1", full_name: "Avery Attendee", role: "attendee", roles: ["attendee"] },
+    });
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Civic Hall"));
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Register").click();
+
+    await vi.waitFor(() => expect(toastState.value).toMatchObject({ message: "You are already registered for this event." }));
+    expect(el.textContent).toContain("12 of 80 places registered");
+    const button = [...el.querySelectorAll("button")].find((item) => item.textContent.trim() === "Registered");
+    expect(button?.disabled).toBe(true);
+    expect(toastState.value).toMatchObject({ tone: "success" });
   });
 
   it("shows Join waitlist only as a non-enrolling CTA when enabled", async () => {
     registrationsApi.event.mockResolvedValue(event({ availability: "full" }));
-    const { el } = await mountAt("/public/events/event-1");
+    const { el } = await mountAt("/attendee/events/event-1");
 
     await vi.waitFor(() => expect(el.textContent).toContain("Join waitlist"));
     expect([...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Join waitlist").disabled).toBe(true);
@@ -115,7 +143,7 @@ describe("public event pages", () => {
 
   it("does not offer a waitlist action when waitlisting is disabled", async () => {
     registrationsApi.event.mockResolvedValue(event({ availability: "full", waitlist_enabled: false }));
-    const { el } = await mountAt("/public/events/event-1");
+    const { el } = await mountAt("/attendee/events/event-1");
 
     await vi.waitFor(() => expect(el.textContent).toContain("Full"));
     expect(el.textContent).not.toContain("Join waitlist");

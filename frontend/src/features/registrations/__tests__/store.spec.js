@@ -74,6 +74,20 @@ describe("registration discovery store", () => {
     expect(store.registrationResult).toEqual({ status: "registered" });
   });
 
+  it("keeps a successful registration when the place-count refresh fails", async () => {
+    registrationsApi.register.mockResolvedValue({ status: "registered" });
+    registrationsApi.event.mockRejectedValue(new Error("Refresh failed."));
+    const store = useRegistrationStore();
+    store.event = { id: "event-1", registered_count: 12 };
+
+    const result = await store.register("event-1");
+
+    expect(result).toEqual({ status: "registered" });
+    expect(store.registrationResult).toEqual({ status: "registered" });
+    expect(store.event.registered_count).toBe(12);
+    expect(store.error).toBe("You are registered, but the updated place count could not be loaded.");
+  });
+
   it("marks the event full when the atomic registration rejects the final-place race", async () => {
     const store = useRegistrationStore();
     store.event = { id: "event-1", availability: "open" };

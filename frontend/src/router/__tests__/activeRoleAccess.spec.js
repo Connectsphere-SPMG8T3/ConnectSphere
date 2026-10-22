@@ -72,7 +72,7 @@ describe("route access follows the active role (SCRUM-76)", () => {
 
   it.each([
     ["public-events", "/"],
-    ["public-event-detail", "/public/events/e1"],
+    ["public-event-detail", "/attendee/events/e1"],
   ])("keeps %s available without a session", async (name, path) => {
     const router = await loadAppActingAs("attendee");
     const route = router.getRoutes().find((entry) => entry.name === name);
@@ -80,6 +80,7 @@ describe("route access follows the active role (SCRUM-76)", () => {
     expect(route.meta).toEqual({ requiresAuth: false });
     await router.push(path);
     expect(router.currentRoute.value.name).toBe(name);
+    expect(router.currentRoute.value.path).toBe(path);
   });
 
   // Extended timeout: it re-imports the router once per role x held-role combination.

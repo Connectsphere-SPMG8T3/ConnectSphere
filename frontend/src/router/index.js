@@ -18,7 +18,7 @@ const routes = [
     meta: { requiresAuth: false },
   },
   {
-    path: "/public/events/:id",
+    path: "/attendee/events/:id",
     name: "public-event-detail",
     component: () => import("@/views/registrations/PublicEventDetailView.vue"),
     meta: { requiresAuth: false },

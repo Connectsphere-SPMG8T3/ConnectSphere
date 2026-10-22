@@ -48,6 +48,13 @@ export const useRegistrationStore = defineStore("registrations", {
       this.error = null;
       try {
         this.registrationResult = await auth.withSession((token) => registrationsApi.register(eventId, token));
+        if (this.event?.id === eventId) {
+          try {
+            this.event = await registrationsApi.event(eventId);
+          } catch {
+            this.error = "You are registered, but the updated place count could not be loaded.";
+          }
+        }
         return this.registrationResult;
       } catch (error) {
         if (error.status === 409 && /full/i.test(error.message)) {
