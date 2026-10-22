@@ -3081,3 +3081,26 @@ On `chore/styling-consistency`, on top of §4.83, 2026-10-22. No PBI: the develo
 **Verified.** Tests were written first and failed for the expected reasons. New: `EventStatusBoard.spec.js` (columns, header colour, slot, legend, `open-status`); `organiserDashboard.spec.js` (column order, the attention flag, tones, past and rejected grouping, past judged in the event's timezone); `OrganiserDashboard.spec.js` (board columns and tones, no pages, total, past and rejected sections, a card opening its event; the clock is fixed so the fixtures' dates do not drift into the past). `CoordinatorDashboard.spec.js` passes on the extracted board, with only its two planning-card tone assertions changed from `plain` to `editable`. Frontend 1,498 passed; build clean. The e2e edits were not run (no Supabase CLI).
 
 **Not verified.** The manual pass over TC-ORG-011–014 and TC-DASH-026's colours, including phone width and how the board and sections look next to the coordinator's.
+
+### 4.85. Bug fix D56 — attendee notifications read SCRUM-43's registrations table
+
+On `fix/notifications-event-registrations`, 2026-10-22. Defect: DEFECTS D56 (High). Affects SCRUM-53 AC4 and every future caller of `notify_registered_attendees`.
+
+**Symptom.** After SCRUM-43's migration `20261022100000` was applied to the shared project, the day-before attendee reminder sent nothing, and the attendee helper failed whenever it was called.
+
+**Reproduction (live, 2026-10-22).** `to_regclass('public.registrations')` is null and `public.event_registrations` exists. `select public.send_attendee_event_reminders()` returned 0 (its guard found no `registrations` table, so the 15-minute cron job did nothing). `select public.notify_registered_attendees(...)` raised `42P01: relation "public.registrations" does not exist`. Both run in rolled-back transactions.
+
+**Root cause.** PR #95 (§4.76) was written before SCRUM-43 existed and assumed its table would be `public.registrations(event_id, attendee_id, status)`. SCRUM-43 named it `public.event_registrations`. The columns and the `'registered'` value matched; only the name did not. Both functions are plpgsql, so creating them against a missing table raised no error.
+
+**Why the checks missed it.** `notification_attendee_checks.sql` and `notification_reminder_checks.sql` created their own stand-in `public.registrations` inside the transaction, so they tested the assumed name, not SCRUM-43's table. The reminder's guard then turned the mismatch into a quiet 0 rather than an error.
+
+**Fix.** Migration `20261022120000_notifications_read_event_registrations.sql` redefines both functions to read `public.event_registrations`; signatures, grants, filter (`status = 'registered'`, so withdrawn and cancelled are never notified) and messages are unchanged. The reminder keeps its guard, now on `event_registrations`, because `main` does not have SCRUM-43's migration yet. The three verification scripts now insert into the real table with its real statuses (`cancelled` replaces `waitlisted`, which the table does not allow; a withdrawn row carries `withdrawn_at`), so they can no longer pass against a stand-in.
+
+**Blast radius.** No backend or frontend code names the table. The only references were the two functions, the three verification scripts, and docs (IMPLEMENTATION_MAP, test cases; the SCRUM-113 spec and plan are left as the history of the assumption). Data: the one live registration is for an event on 26 Nov, so no reminder was missed and nothing needs repairing.
+
+**Verified.** RED: the updated attendee checks failed live with `42P01`, and the reminder checks with "expected exactly one attendee reminder, got 0". GREEN: run after the migration in the same rolled-back transaction, NOTIFICATION ATTENDEE CHECKS, NOTIFICATION REMINDER CHECKS and NOTIFICATION REMINDER GUARD CHECKS all passed. Afterwards the live function was confirmed unchanged and no rows were left behind.
+
+After the developer pushed `20261022120000`, all three checks passed against the live functions, the `attendee-event-reminders` cron runs succeeded, and the security advisors showed nothing new.
+
+**Not verified.** Nothing outstanding for the database. The callers of `notify_registered_attendees` (37, 115, 43, 55, 86, the replacement venue) are other stories and are not wired yet.
+

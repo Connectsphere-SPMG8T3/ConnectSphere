@@ -1,6 +1,6 @@
 -- SCRUM-53 AC4 and SCRUM-90: the scheduled reminders. Needs Dev 1's
--- public.registrations(event_id, attendee_id, status) and migrations
--- 20261021100000 to 20261021120000. Run with the Supabase MCP execute_sql or
+-- public.event_registrations (SCRUM-43, migration 20261022100000) and migrations
+-- 20261021100000 to 20261021120000 and 20261022120000. Run with the Supabase MCP execute_sql or
 -- `psql "$DATABASE_URL" -f`. Raises on the first failure and returns
 -- NOTIFICATION REMINDER CHECKS PASSED otherwise. Everything runs inside
 -- `begin; ... rollback;`.
@@ -28,12 +28,12 @@ insert into public.events (id, organiser_id, coordinator_id, status, name, start
     ('e0000000-0000-4000-8000-0000000007d4', 'a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002',
      'planning', 'Staff nothing waiting (rolled back)', now() + interval '2 days', now() + interval '2 days 2 hours');
 
-insert into public.registrations (event_id, attendee_id, status)
-select e.id, r.attendee_id, r.status
+insert into public.event_registrations (event_id, attendee_id, status, withdrawn_at)
+select e.id, r.attendee_id, r.status, case when r.status = 'withdrawn' then now() end
   from (values ('e0000000-0000-4000-8000-0000000007c1'::uuid), ('e0000000-0000-4000-8000-0000000007c2'::uuid),
                ('e0000000-0000-4000-8000-0000000007c3'::uuid)) as e(id)
  cross join (values ('a0000000-0000-4000-8000-000000000005'::uuid, 'registered'),
-                    ('a0000000-0000-4000-8000-000000000003'::uuid, 'waitlisted'),
+                    ('a0000000-0000-4000-8000-000000000003'::uuid, 'cancelled'),
                     ('a0000000-0000-4000-8000-000000000002'::uuid, 'withdrawn')) as r(attendee_id, status);
 
 -- Venue 6 is the one the other checks use. Its bookings are within the next two days only here.
