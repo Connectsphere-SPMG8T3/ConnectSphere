@@ -3100,5 +3100,7 @@ On `fix/notifications-event-registrations`, 2026-10-22. Defect: DEFECTS D56 (Hig
 
 **Verified.** RED: the updated attendee checks failed live with `42P01`, and the reminder checks with "expected exactly one attendee reminder, got 0". GREEN: run after the migration in the same rolled-back transaction, NOTIFICATION ATTENDEE CHECKS, NOTIFICATION REMINDER CHECKS and NOTIFICATION REMINDER GUARD CHECKS all passed. Afterwards the live function was confirmed unchanged and no rows were left behind.
 
-**Not verified.** The checks against the live functions after the push (pending the developer's `supabase db push`).
+After the developer pushed `20261022120000`, all three checks passed against the live functions, the `attendee-event-reminders` cron runs succeeded, and the security advisors showed nothing new.
+
+**Not verified.** Nothing outstanding for the database. The callers of `notify_registered_attendees` (37, 115, 43, 55, 86, the replacement venue) are other stories and are not wired yet.
 
