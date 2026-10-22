@@ -1,6 +1,6 @@
 -- SCRUM-53 public.notify_registered_attendees. Needs Dev 1's
--- public.registrations(event_id, attendee_id, status) and migration
--- 20261021110000. Run with the Supabase MCP execute_sql or
+-- public.event_registrations (SCRUM-43, migration 20261022100000) and migrations
+-- 20261021110000 and 20261022120000. Run with the Supabase MCP execute_sql or
 -- `psql "$DATABASE_URL" -f`. Raises on the first failure and returns
 -- NOTIFICATION ATTENDEE CHECKS PASSED otherwise. Everything runs inside
 -- `begin; ... rollback;`.
@@ -13,11 +13,11 @@ insert into public.events (id, organiser_id, coordinator_id, status, name) value
     ('e0000000-0000-4000-8000-0000000007b1', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000000002', 'confirmed', 'Attendee check (rolled back)');
 
-insert into public.registrations (event_id, attendee_id, status) values
-    ('e0000000-0000-4000-8000-0000000007b1', 'a0000000-0000-4000-8000-000000000005', 'registered'),
-    ('e0000000-0000-4000-8000-0000000007b1', 'a0000000-0000-4000-8000-000000000004', 'registered'),
-    ('e0000000-0000-4000-8000-0000000007b1', 'a0000000-0000-4000-8000-000000000003', 'waitlisted'),
-    ('e0000000-0000-4000-8000-0000000007b1', 'a0000000-0000-4000-8000-000000000002', 'withdrawn');
+insert into public.event_registrations (event_id, attendee_id, status, withdrawn_at) values
+    ('e0000000-0000-4000-8000-0000000007b1', 'a0000000-0000-4000-8000-000000000005', 'registered', null),
+    ('e0000000-0000-4000-8000-0000000007b1', 'a0000000-0000-4000-8000-000000000004', 'registered', null),
+    ('e0000000-0000-4000-8000-0000000007b1', 'a0000000-0000-4000-8000-000000000003', 'cancelled', null),
+    ('e0000000-0000-4000-8000-0000000007b1', 'a0000000-0000-4000-8000-000000000002', 'withdrawn', now());
 
 do $$
 declare
@@ -32,7 +32,7 @@ begin
         raise exception 'ATTENDEE FAIL: expected 1 notified (registered, not the actor), got %', v_count;
     end if;
     if (select count(*) from public.notifications where event_id = v_event) <> 1 then
-        raise exception 'ATTENDEE FAIL: waitlisted, withdrawn or actor rows were written';
+        raise exception 'ATTENDEE FAIL: cancelled, withdrawn or actor rows were written';
     end if;
     if not exists (
         select 1 from public.notifications
