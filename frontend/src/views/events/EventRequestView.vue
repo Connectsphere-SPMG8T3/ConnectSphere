@@ -480,6 +480,14 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
             <input v-model="form.registrationEnabled" type="checkbox" class="h-5 w-5 accent-bauhaus-yellow" />
             Enable attendee registration
           </label>
+          <label v-if="form.registrationEnabled" class="mt-4 flex items-start gap-3 text-sm font-bold">
+            <input v-model="form.reRegistrationAllowed" type="checkbox" class="mt-0.5 h-5 w-5 shrink-0 accent-bauhaus-yellow" />
+            Allow registration again after withdrawal
+          </label>
+          <label v-if="form.registrationEnabled" class="mt-4 flex items-start gap-3 text-sm font-bold">
+            <input v-model="form.waitlistEnabled" type="checkbox" class="mt-0.5 h-5 w-5 shrink-0 accent-bauhaus-yellow" />
+            Show waitlist option when full
+          </label>
           <p v-if="flagFor('registrationEnabled')" class="mt-2 border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold">{{ FLAG_TEXT }}</p>
           <div v-if="form.registrationEnabled" class="mt-5 flex flex-col gap-5">
             <BauhausInput v-model="form.registrationCapacity" label="Registration capacity" required type="number" :error="fieldErrors.registrationCapacity" :flag="flagFor('registrationCapacity')" />

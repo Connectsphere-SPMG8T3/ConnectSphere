@@ -2,6 +2,7 @@ import { createApp, h, nextTick } from "vue";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
+import { EVENT_FIELD_LABELS } from "@/features/events/amendment";
 
 const mounted = [];
 
@@ -47,7 +48,7 @@ describe("ReturnEventModal (SCRUM-33)", () => {
 
     expect(document.body.textContent).toContain("Partner Summit");
     expect(document.querySelector("textarea").getAttribute("maxlength")).toBe("1000");
-    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(15);
+    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(EVENT_FIELD_LABELS.length);
   });
 
   it("cannot be confirmed without a message, even with fields flagged", async () => {

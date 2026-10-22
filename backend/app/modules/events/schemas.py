@@ -17,6 +17,7 @@ class EventStatus(str, Enum):
     planning = "planning"
     safety_review = "safety_review"
     confirmed = "confirmed"
+    preparation = "preparation"
     rejected = "rejected"
     cancelled = "cancelled"
     completed = "completed"
@@ -160,6 +161,8 @@ class EventFields(BaseModel):
     registration_capacity: int | None = Field(default=None, ge=1)
     registration_opens_at: datetime | None = None
     registration_closes_at: datetime | None = None
+    re_registration_allowed: bool = True
+    waitlist_enabled: bool = True
 
     @field_validator("event_timezone")
     @classmethod
@@ -191,6 +194,8 @@ class EventUpdateRequest(BaseModel):
     registration_capacity: int | None = Field(default=None, ge=1)
     registration_opens_at: datetime | None = None
     registration_closes_at: datetime | None = None
+    re_registration_allowed: bool | None = None
+    waitlist_enabled: bool | None = None
 
     @field_validator("event_timezone")
     @classmethod
@@ -223,6 +228,8 @@ class EventField(str, Enum):
     registration_capacity = "registration_capacity"
     registration_opens_at = "registration_opens_at"
     registration_closes_at = "registration_closes_at"
+    re_registration_allowed = "re_registration_allowed"
+    waitlist_enabled = "waitlist_enabled"
 
 
 class AmendmentRequest(BaseModel):

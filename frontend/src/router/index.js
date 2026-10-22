@@ -13,7 +13,15 @@ const routes = [
   },
   {
     path: "/",
-    redirect: "/login",
+    name: "public-events",
+    component: () => import("@/views/registrations/PublicEventDirectoryView.vue"),
+    meta: { requiresAuth: false },
+  },
+  {
+    path: "/public/events/:id",
+    name: "public-event-detail",
+    component: () => import("@/views/registrations/PublicEventDetailView.vue"),
+    meta: { requiresAuth: false },
   },
   {
     path: "/login",
@@ -162,7 +170,7 @@ const routes = [
   },
   {
     path: "/:pathMatch(.*)*",
-    redirect: "/login",
+    redirect: "/",
   },
 ];
 

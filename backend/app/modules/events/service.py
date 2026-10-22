@@ -98,6 +98,8 @@ CLONE_FIELDS = (
     "preliminary_equipment_needs",
     "registration_enabled",
     "registration_capacity",
+    "re_registration_allowed",
+    "waitlist_enabled",
 )
 
 

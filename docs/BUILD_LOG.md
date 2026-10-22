@@ -1,5 +1,4 @@
 # ConnectSphere — Build Log
-
 **What each story, fix and enabler actually built, in the order it landed.** Append-only.
 
 This is the requirement → code → test trail the course rubric rewards. Each entry quotes its backlog record verbatim (the Jira issue until Sprint 2, the Product backlog sheet row from Sprint 3) and records how the ticket was interpreted, what was built, and how it was verified.
@@ -3044,7 +3043,6 @@ On `chore/coordinator-status-kanban`, on top of §4.81, 2026-10-21. A layout rew
 **Verified.** Tests were written first and failed for the expected reasons. Frontend 1,355 passed, backend 1,774 passed; build clean. Live API checks against a backend on port 8010: 59 of 60 passed ([run](test-cases/runs/2026-10-21-1731-api-db-b360f14.md)), including new TC-DASH-030 and TC-DASH-013–018. An earlier run ([run](test-cases/runs/2026-10-21-1726-api-db-b360f14.md)) failed TC-DASH-015 because the check did not yet allow `rejected_events`; the check was updated. The remaining failure, TC-SDEC-023 (500 instead of 404 on "Mark as revised" for a missing booking), is in untouched venue-booking code and passed on 2026-10-18; logged as DEFECTS D55. The Overview at 1440px and 390px and the Events view were screenshotted in Chrome: all five board columns fit at 1440px after narrowing them, and there is no horizontal page scroll.
 
 **Not verified.** The database live checks and the browser e2e suite (both need the Supabase CLI, which was not installed); the manual pass over TC-DASH-026–029 and phone width; the PO's acceptance of the AC1 change. Four frontend helpers are now used only by their tests (`readinessGaps`, `summariseActionItems`, the store's `prioritisedActions` and `readinessGaps`); removing them is a follow-up.
-
 ### 4.83. Enabler — one gray hover for everything clickable
 
 On `chore/styling-consistency`, branched from `main` at `6c0b5bf`, 2026-10-22. No PBI: the developer asked for hovers to be gray instead of yellow "for standardisation", then for "all clickable buttons" to turn gray on hover.
@@ -3081,3 +3079,18 @@ On `chore/styling-consistency`, on top of §4.83, 2026-10-22. No PBI: the develo
 **Verified.** Tests were written first and failed for the expected reasons. New: `EventStatusBoard.spec.js` (columns, header colour, slot, legend, `open-status`); `organiserDashboard.spec.js` (column order, the attention flag, tones, past and rejected grouping, past judged in the event's timezone); `OrganiserDashboard.spec.js` (board columns and tones, no pages, total, past and rejected sections, a card opening its event; the clock is fixed so the fixtures' dates do not drift into the past). `CoordinatorDashboard.spec.js` passes on the extracted board, with only its two planning-card tone assertions changed from `plain` to `editable`. Frontend 1,498 passed; build clean. The e2e edits were not run (no Supabase CLI).
 
 **Not verified.** The manual pass over TC-ORG-011–014 and TC-DASH-026's colours, including phone width and how the board and sections look next to the coordinator's.
+### 4.85. Story 43 — Register for a Confirmed Event
+
+Implemented on `feature/scrum-43-attendee-event-registration`. Confirmed estimate: 2 story points. The user story supplied for this work: “As an Attendee, I want to browse events, and register through the event page, so I can secure a place or understand why I cannot register.” Public discovery is available without signing in; registration returns an unauthenticated visitor to the event after login or Attendee signup.
+
+**Scope decisions.** Waitlist enrollment, ordering, invitations and all later waitlist behavior remain Story 86. Story 43 exposes the waitlist-enabled setting and shows a Join waitlist CTA when a full event has waitlisting enabled; the CTA does not enroll anyone. The `preparation` enum value is added for public discovery and registration, but its lifecycle transition and completion job remain Story 68. No backlog sheet changes were made.
+
+**Changed.**
+1. Backend `modules/registrations` adds public event directory/detail reads with dedicated response schemas and an active-role Attendee registration endpoint. Registration status uses instant-based opening/closing boundaries and the effective capacity: the lower of organiser capacity and the primary venue capacity, or the smallest confirmed venue capacity when there is no primary venue.
+2. Migration `20261022100000_registration.sql` adds the registration table, active-registration uniqueness, Attendee-own-row RLS, event settings and `register_for_event`. The RPC locks the event row before checking capacity, so concurrent requests cannot create registrations past the final place. It returns Full rather than writing a waitlisted record.
+3. Frontend adds the public directory `/` and attendee event page `/attendee/events/:id`, registration state/API calls, organiser settings for re-registration and waitlisting, and login/signup return-path handling.
+4. Updated REQUIREMENTS §6.18, IMPLEMENTATION_MAP, and TC-REG-001–007 in `docs/test-cases/events.md`. The cases include anonymous discovery, event-timezone boundaries, venue capacity, registration, active-role denial, final-place concurrency and CTA-only waitlist behavior.
+
+**Automated verification.** Backend registrations slice: 30 passed with 100% line coverage for the module. Frontend: 1,184 tests across 83 files passed; 96.85% overall line coverage, with the registration store and both public event views at 100%; production build passed. Direct Story 43 API contract spec: 24 passed. The full backend suite remains pending.
+
+**Follow-up verification (2026-10-22).** Live migration/schema and registration checks were exercised; TC-REG-001–007 passed, with AC8 re-registration after withdrawal still unverified. The consolidated manual record is [here](test-cases/runs/2026-10-22-1501-manual-deb2c66.md). The full backend suite and full browser E2E suite remain pending. The notification migrations currently reference `public.registrations`, while Story 43 creates `public.event_registrations`; reconcile this separate cross-story contract before attendee notification jobs are expected to work.

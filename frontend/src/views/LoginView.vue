@@ -19,6 +19,14 @@ const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 
+function signupLocation(role) {
+  return {
+    name: "signup",
+    params: { role },
+    query: route.query.redirect ? { redirect: route.query.redirect } : {},
+  };
+}
+
 function validate() {
   fieldErrors.value = { email: "", password: "" };
   let isValid = true;
@@ -93,13 +101,13 @@ async function handleSubmit() {
         <div class="flex flex-col gap-2 border-t-2 border-ink pt-4 text-center text-sm font-medium text-ink/70">
           <p>
             New Event Organiser?
-            <RouterLink to="/signup/organiser" class="font-bold text-bauhaus-blue underline">
+            <RouterLink :to="signupLocation('organiser')" class="font-bold text-bauhaus-blue underline">
               Create organiser account
             </RouterLink>
           </p>
           <p>
             New Attendee?
-            <RouterLink to="/signup/attendee" class="font-bold text-bauhaus-blue underline">
+            <RouterLink :to="signupLocation('attendee')" class="font-bold text-bauhaus-blue underline">
               Create attendee account
             </RouterLink>
           </p>

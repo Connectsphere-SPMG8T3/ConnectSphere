@@ -1,6 +1,28 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { eventsApi, notificationsApi, venueBookingsApi } from "@/services/api";
+import { eventsApi, notificationsApi, registrationsApi, venueBookingsApi } from "@/services/api";
+
+describe("Story 43 public registration API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads public events and registers with the attendee session", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ status: 200, ok: true, json: async () => ({ events: [] }) })
+      .mockResolvedValueOnce({ status: 200, ok: true, json: async () => ({ id: "event/one" }) })
+      .mockResolvedValueOnce({ status: 201, ok: true, json: async () => ({ status: "registered" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(registrationsApi.directory()).resolves.toEqual({ events: [] });
+    await expect(registrationsApi.event("event/one")).resolves.toEqual({ id: "event/one" });
+    await expect(registrationsApi.register("event/one", "attendee-token")).resolves.toEqual({ status: "registered" });
+
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.method, options.headers.Authorization])).toEqual([
+      ["http://localhost:8000/api/v1/public/events", "GET", undefined],
+      ["http://localhost:8000/api/v1/public/events/event%2Fone", "GET", undefined],
+      ["http://localhost:8000/api/v1/public/events/event%2Fone/registrations", "POST", "Bearer attendee-token"],
+    ]);
+  });
+});
 
 describe("eventsApi.clone", () => {
   afterEach(() => {

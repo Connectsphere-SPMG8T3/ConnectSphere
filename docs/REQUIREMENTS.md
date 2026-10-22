@@ -1062,25 +1062,30 @@ available(type, W) = total_quantity
 
 **Behaviour**
 - Registration is configured by the organiser when creating or updating the request, including when it opens and closes (QA2-2). **Attendees must register before attending**: without a registration an attendee can see the event but cannot attend it (QA2-2).
-- Attendees browse `confirmed` and `preparation` events with registration enabled that haven't started. They see public information only (AUTH-R2), and for a multi-venue event only its **primary venue** (BR-R17, QA3-26).
-- **Register** shows the result immediately: "Registered", "Waitlisted", "Registration not open yet", or "Registration closed".
+- The public event directory shows `confirmed` and `preparation` events regardless of whether registration is currently open. Visitors see only the dedicated public event fields (AUTH-R2).
+- The event page shows its designated primary venue when one exists; otherwise it shows all confirmed venues. **[Team decision]** This follows the confirmed Story 43 acceptance criteria and CR-97's primary-space setting; the previous primary-only rule is superseded for events without a designated primary venue.
+- The event page reports registration as **Not open**, **Closed**, **Full**, or **Open**. Disabled registration or a time before `opens_at` is Not open; at or after `closes_at` is Closed; capacity reached during an active window is Full; otherwise it is Open. Time comparisons use instants and display uses the event timezone.
+- Effective registration capacity is the lower of the organiser's registration capacity and venue capacity. For multiple confirmed venues, use the primary venue's capacity, or the smallest confirmed venue capacity when no primary venue is designated.
+- **Register** is offered only when Open. A successful registration immediately returns Registered; an existing active registration is returned as already registered. A full event with waitlisting enabled presents the **Join waitlist** call to action; Story 86 owns joining, invitations, and all other waitlist behavior.
 - **My registrations** separates upcoming and past events.
 - **Withdraw** is allowed until the withdrawal cutoff.
 - Organisers (own events) and assigned coordinators see registered, waitlisted, and withdrawn counts, remaining places, and the attendee list.
 
 **Rules**
-- **RG-R1:** Registration is possible only when the event is `confirmed` or in `preparation` **[Team decision]** (Preparation follows confirmation, QA3-3), registration is enabled, and now is between `opens_at` and `closes_at` (QA-89, W1 Step 11).
-- **RG-R2:** **Registrations stop at capacity** (QA-107, QA2-20). Registration capacity can never exceed the venue's capacity (QA2-11), so venue overflow cannot arise from registrations. Capacity is enforced atomically (DB-3).
-- **RG-R3:** A duplicate active registration is refused (DB-2). Re-registering after withdrawal is allowed only if the event setting permits it (QA-136).
+- **RG-R1:** Registration is possible only when the event is `confirmed` or in `preparation` **[Team decision]** (Preparation follows confirmation, QA3-3), registration is enabled, and now is at or after `opens_at` and before `closes_at` (QA-89, W1 Step 11).
+- **RG-R2:** **Registrations stop at effective capacity** (QA-107, QA2-20). Effective capacity is the lower of organiser and applicable venue capacity. Capacity is enforced atomically in the database (DB-3); a last-place race creates no second registration.
+- **RG-R3:** A duplicate active registration is not created; the existing status is returned (DB-2). Re-registering after withdrawal is allowed only if the per-event setting permits it (QA-136; default yes).
 - **RG-R4:** When the event is cancelled, registrations are cancelled and attendees notified (QA-114). When the event is rescheduled, attendees **stay registered** and are notified. **[Team decision]** Reconfirmation was left to us (QA-124).
-- **RG-R5 (waitlist; customer-confirmed in Session 2, QA2-20, so now core behaviour):**
+- **RG-R5 (waitlist; enrollment and invitation behavior belongs to Story 86):**
   - A registration made when the event is full becomes `waitlisted`, in first-come-first-served order (QA-9, QA-129, QA2-20).
   - The organiser decides whether to **close registration** at capacity or **leave it open** with the waitlist (QA2-20). **[Team decision]** This is the existing `closes_at` setting plus a "waitlist enabled" toggle, default on.
   - When a place frees up, the **earliest waitlisted attendee is notified and invited** (`invited`, `invited_until = now + 24h`). They are **not registered automatically** (QA-30, QA-40, QA-78).
   - If they don't accept by `invited_until`, the invitation passes to the next waitlisted attendee. **[Team decision]** The 24-hour window was left to us (QA-121).
   - While an invitation is open, that place is reserved for the invitee.
 
-**Acceptance criteria**
+**Story 43 boundary:** Story 43 exposes the waitlist-enabled setting and shows the **Join waitlist** call to action when full. It does not create waitlist records or implement queue ordering, invitations, acceptance, expiry, withdrawal, or notifications; those remain Story 86.
+
+**Broader registration and waitlist acceptance criteria** (SCRUM-55/56/86; not Story 43's scope)
 - **Given** capacity 50 with 49 registered, **when** two attendees register simultaneously, **then** exactly one is `registered` and the other is `waitlisted`.
 - **Given** registration opens tomorrow, **when** I try to register, **then** I see "Registration opens on <date>."
 - **Given** I'm registered, **when** I withdraw before the cutoff, **then** a place frees up and I see a withdrawal confirmation. If someone is waitlisted, they're invited and notified, and not registered automatically.
