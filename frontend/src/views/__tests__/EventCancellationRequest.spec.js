@@ -116,6 +116,22 @@ describe("Story 84 organiser requests cancellation", () => {
     expect(eventsApi.history).toHaveBeenCalledTimes(2);
   });
 
+  it("still shows the request when the history can't be reloaded", async () => {
+    const el = await mountDetail(eventResponse());
+    eventsApi.requestCancellation.mockResolvedValue(OPEN_REQUEST);
+
+    button(el, "Request cancellation").click();
+    await nextTick();
+    await typeReason(REASON);
+    eventsApi.get.mockResolvedValue(eventResponse({ open_cancellation_request: OPEN_REQUEST }));
+    eventsApi.history.mockRejectedValue(new Error("Network down"));
+    button(dialog(), "Send request").click();
+
+    await vi.waitFor(() => expect(eventsApi.history).toHaveBeenCalledTimes(2));
+    expect(el.querySelector('[data-testid="cancellation-request-banner"]')).toBeTruthy();
+    expect(el.querySelector('[role="alert"]')).toBeNull();
+  });
+
   it("keeps the dialog open with the API's reason when the request is refused", async () => {
     const el = await mountDetail(eventResponse());
     eventsApi.requestCancellation.mockRejectedValue(
