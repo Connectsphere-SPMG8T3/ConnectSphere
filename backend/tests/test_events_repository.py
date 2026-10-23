@@ -493,3 +493,30 @@ def test_planning_context_reads_what_venue_staff_judge_a_booking_by(monkeypatch)
     for column in ("status", "accessibility_needs", "expected_attendance", "layout_preference", "facilities_required"):
         assert column in selects[0]
     assert repository.list_planning_context([]) == []
+
+
+def test_request_event_cancellation_sends_the_reason_statuses_and_both_messages(monkeypatch):
+    """Story 84 RPC contract: the function answers one jsonb object, not rows."""
+    sent = {}
+    answer = {"outcome": "ok", "request": {"id": "r1", "kind": "cancellation", "status": "open"}}
+
+    class Rpc:
+        def execute(self):
+            return SimpleNamespace(data=answer)
+
+    class AdminClient:
+        def rpc(self, name, params):
+            sent["name"], sent["params"] = name, params
+            return Rpc()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    result = repository.request_event_cancellation(
+        "event-1", "user-1", "Speaker withdrew", ["planning", "submitted"],
+        coordinator_message="to coordinator", lead_message="to leads")
+
+    assert result == answer
+    assert sent == {"name": "request_event_cancellation", "params": {
+        "p_event_id": "event-1", "p_actor_id": "user-1", "p_reason": "Speaker withdrew",
+        "p_from_statuses": ["planning", "submitted"],
+        "p_coordinator_message": "to coordinator", "p_lead_message": "to leads"}}
