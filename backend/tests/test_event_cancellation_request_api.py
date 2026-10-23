@@ -101,7 +101,7 @@ class TestRequestCancellation:
         assert call["reason"] == REASON
 
     @pytest.mark.parametrize("status", ["submitted", "under_review", "returned", "planning",
-                                        "safety_review", "confirmed"])
+                                        "safety_review", "confirmed", "preparation"])
     def test_every_status_after_submission_accepts_a_request(self, client, auth_headers, act_as, events, status):
         events["store"][EVENT_ID]["status"] = status
         act_as()
@@ -119,7 +119,7 @@ class TestRequestCancellation:
         assert "draft" not in call["from_statuses"]
         assert {"rejected", "cancelled", "completed"}.isdisjoint(call["from_statuses"])
         assert {"submitted", "under_review", "returned", "planning", "safety_review",
-                "confirmed"} <= set(call["from_statuses"])
+                "confirmed", "preparation"} <= set(call["from_statuses"])
 
     def test_the_reason_is_trimmed(self, client, auth_headers, act_as, events):
         act_as()

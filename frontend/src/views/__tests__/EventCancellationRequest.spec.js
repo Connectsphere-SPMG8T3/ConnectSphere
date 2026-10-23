@@ -76,7 +76,7 @@ describe("Story 84 organiser requests cancellation", () => {
     vi.clearAllMocks();
   });
 
-  it.each(["submitted", "under_review", "returned", "planning", "safety_review", "confirmed"])(
+  it.each(["submitted", "under_review", "returned", "planning", "safety_review", "confirmed", "preparation"])(
     "offers Request cancellation while the event is %s",
     async (status) => {
       const el = await mountDetail(eventResponse({ status }));

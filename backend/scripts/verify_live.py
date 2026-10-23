@@ -3333,6 +3333,16 @@ def _(ctx: Context) -> None:
            "no cancellation_request item on the coordinator dashboard")
 
 
+@check("TC-CANCEL-013", "A preparation event accepts a request and stays in preparation", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "84-013", "2031-10-09 09:00+08", "2031-10-09 12:00+08", status="preparation")
+    expect_status(request_cancellation(ctx, event_id), 201)
+    rows = db_query(f"select status from public.event_change_requests where event_id = '{event_id}'")
+    expect(rows == [{"status": "open"}], f"rows: {rows}")
+    [event] = db_query(f"select status from public.events where id = '{event_id}'")
+    expect(event["status"] == "preparation", f"requesting moved the event to {event['status']}")
+
+
 def db_query(sql: str) -> list[dict]:
     completed = _supabase_query(sql)
     if completed.returncode != 0:
