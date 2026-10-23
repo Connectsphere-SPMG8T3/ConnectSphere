@@ -434,3 +434,37 @@ class TestOnlyTheAssignedCoordinatorDecides:
 
         assert response.status_code == 403
         assert events["calls"] == [] and rejections["calls"] == []
+
+
+class TestHistoryRecordsTheDecision:
+    """AC6: the decision, the reason, who made it and when, for organiser and coordinator."""
+
+    @pytest.fixture()
+    def history(self, monkeypatch, events):
+        monkeypatch.setattr(repository, "list_status_history", lambda event_id: [])
+        monkeypatch.setattr(repository, "list_assignment_history", lambda event_id: [])
+        monkeypatch.setattr(repository, "list_cancellation_requests", lambda event_id: [
+            {"id": REQUEST_ID, "reason": REQUEST_REASON, "requested_at": "2026-10-23T09:00:00+00:00",
+             "requested_by": {"id": ORGANISER_ID, "full_name": "Olivia Organiser"},
+             "status": "rejected", "decision_reason": REJECTION_REASON,
+             "decided_at": "2026-10-24T10:00:00+00:00",
+             "decided_by": {"id": COORDINATOR_ID, "full_name": "Cora Coordinator"}},
+        ])
+
+    @pytest.mark.parametrize(("role", "user_id"), [("event_organiser", ORGANISER_ID),
+                                                    ("event_coordinator", COORDINATOR_ID)])
+    def test_a_rejected_request_shows_who_rejected_it_and_why(self, client, auth_headers, act_as, history,
+                                                             role, user_id):
+        act_as(role, user_id=user_id)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers)
+
+        assert response.status_code == 200
+        rejected, requested = response.json()["entries"]
+        assert rejected == {
+            "id": f"{REQUEST_ID}:rejected", "kind": "cancellation_rejected",
+            "from_status": None, "to_status": None, "from_coordinator": None, "to_coordinator": None,
+            "actor": {"id": COORDINATOR_ID, "full_name": "Cora Coordinator"},
+            "reason": REJECTION_REASON, "at": "2026-10-24T10:00:00Z",
+        }
+        assert requested["kind"] == "cancellation_requested"

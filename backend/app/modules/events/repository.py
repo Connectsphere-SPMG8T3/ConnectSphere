@@ -500,12 +500,14 @@ def get_open_cancellation_request(event_id: str) -> dict | None:
 
 def list_cancellation_requests(event_id: str) -> list[dict]:
     """Story 84 AC5: every cancellation request on the event, newest first, for its
-    history. Who asked is embedded; it is null if their profile was deleted."""
+    history, with story 115's decision. Who asked and who decided are embedded; each
+    is null if their profile was deleted."""
     response = (
         get_supabase_admin_client()
         .table("event_change_requests")
-        .select("id, reason, requested_at, "
-                "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)")
+        .select("id, reason, requested_at, status, decision_reason, decided_at, "
+                "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name), "
+                "decided_by:profiles!event_change_requests_decided_by_fkey(id, full_name)")
         .eq("event_id", event_id)
         .eq("kind", "cancellation")
         .order("requested_at", desc=True)
