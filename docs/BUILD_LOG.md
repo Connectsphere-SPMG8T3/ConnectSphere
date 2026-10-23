@@ -3218,6 +3218,7 @@ On `feature/scrum-115-cancel-event`, 2026-10-23, branched from story 84's PR #10
 - API and database run [194/194](test-cases/runs/2026-10-23-1749-api-db-14105cf.md), including TC-CANCEL-014–018.
 - Browser run [90/92](test-cases/runs/2026-10-23-1840-e2e-14105cf.md); TC-CANCEL-019 and 020 passed. The two failures are outside this story. TC-RBAC-005 still expects unknown paths to go to `/login`, but story 43 (PR #100) sends them to the public directory at `/`. TC-TSD-017 fails as in every browser run since 2026-10-20.
 
+- Manual pass [TC-CANCEL-021–023](test-cases/runs/2026-10-23-2135-manual-e90024d.md) passed.
+
 **Not verified.**
-- The manual pass (TC-CANCEL-021–023) hasn't happened.
 - No story moves events into `preparation` yet (story 68), so a direct cancel from Preparation is unit-tested only.
