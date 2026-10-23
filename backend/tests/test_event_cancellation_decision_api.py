@@ -130,3 +130,71 @@ class TestApproveCancellationRequest:
         assert {"under_review", "returned", "planning", "safety_review", "confirmed",
                 "preparation"} <= set(call["from_statuses"])
         assert {"draft", "rejected", "cancelled", "completed"}.isdisjoint(call["from_statuses"])
+
+
+def past_start():
+    return (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+
+
+class TestApprovalRefused:
+    def test_without_an_open_request_there_is_nothing_to_approve(self, client, auth_headers, act_as, events):
+        events["request"]["value"] = None
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "There is no open cancellation request for this event."
+        assert events["calls"] == []
+
+    def test_a_started_event_cannot_be_cancelled(self, client, auth_headers, act_as, events):
+        """Q11, LC-R5: once it has started it runs to completed."""
+        events["store"][EVENT_ID]["starts_at"] = past_start()
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "This event has already started, so it can't be cancelled."
+        assert events["calls"] == []
+
+    def test_an_event_with_no_start_time_is_refused(self, client, auth_headers, act_as, events):
+        """Q5: unreachable after submission, so it fails closed."""
+        events["store"][EVENT_ID]["starts_at"] = None
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "This event has no start time, so it can't be cancelled."
+        assert events["calls"] == []
+
+    @pytest.mark.parametrize("status", ["rejected", "cancelled", "completed"])
+    def test_a_closed_event_cannot_be_cancelled(self, client, auth_headers, act_as, events, status):
+        """AC4."""
+        events["store"][EVENT_ID]["status"] = status
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == f"An event that is {status} can't be cancelled."
+        assert events["calls"] == []
+
+    @pytest.mark.parametrize(("outcome", "status_code", "detail"), [
+        ("status_changed", 409, "This event was updated by someone else. Reload."),
+        ("no_open_request", 409, "There is no open cancellation request for this event."),
+        ("started", 409, "This event has already started, so it can't be cancelled."),
+        ("not_assigned", 403, None),
+        ("not_found", 404, None),
+    ])
+    def test_the_rpc_recheck_under_the_lock_decides(self, client, auth_headers, act_as, events,
+                                                    outcome, status_code, detail):
+        events["outcome"]["value"] = outcome
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == status_code
+        if detail:
+            assert response.json()["detail"] == detail

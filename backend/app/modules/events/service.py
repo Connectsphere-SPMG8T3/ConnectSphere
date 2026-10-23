@@ -402,6 +402,22 @@ def request_cancellation(event_id: str, organiser_id: str, organiser_name: str, 
     return EventChangeRequest(**result["request"])
 
 
+NO_OPEN_CANCELLATION_MESSAGE = "There is no open cancellation request for this event."
+EVENT_STARTED_MESSAGE = "This event has already started, so it can't be cancelled."
+
+
+def _refuse_cancelling_closed_or_started(row: dict) -> None:
+    """Story 115 AC4 and LC-R5: a closed event can't be cancelled, and nor can one that
+    has started (Q11). A submitted event always has a start time, so a missing one
+    fails closed (Q5)."""
+    if row["status"] in lifecycle.CANCELLATION_REQUEST_REFUSED:
+        raise EventConflictError(f"An event that is {row['status']} can't be cancelled.")
+    if row.get("starts_at") is None:
+        raise EventConflictError("This event has no start time, so it can't be cancelled.")
+    if _parse_datetime(row["starts_at"]) <= datetime.now(timezone.utc):
+        raise EventConflictError(EVENT_STARTED_MESSAGE)
+
+
 def _cancel(row: dict, coordinator_id: str, from_statuses: list[str], reason: str, *,
             require_open_request: bool, organiser_message: str) -> EventResponse:
     """Story 115: the cancellation both approval and direct cancel end in. The RPC
@@ -415,7 +431,16 @@ def _cancel(row: dict, coordinator_id: str, from_statuses: list[str], reason: st
         attendee_message=f'"{name}" has been cancelled. Your registration is cancelled.',
         safety_message=f'"{name}" was cancelled and no longer needs its safety check.',
     )
-    if result["outcome"] != "ok":
+    outcome = result["outcome"]
+    if outcome == "not_found":
+        raise EventNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "no_open_request":
+        raise EventConflictError(NO_OPEN_CANCELLATION_MESSAGE)
+    if outcome == "started":
+        raise EventConflictError(EVENT_STARTED_MESSAGE)
+    if outcome != "ok":
         raise EventConflictError(STALE_EVENT_MESSAGE)
     return _to_response(result["event"])
 
@@ -423,7 +448,10 @@ def _cancel(row: dict, coordinator_id: str, from_statuses: list[str], reason: st
 def approve_cancellation(event_id: str, coordinator_id: str) -> EventResponse:
     """Story 115 AC1: the assigned coordinator approves the organiser's open request."""
     row = _assigned_event(event_id, coordinator_id)
+    _refuse_cancelling_closed_or_started(row)
     request = repository.get_open_cancellation_request(event_id)
+    if not request:
+        raise EventConflictError(NO_OPEN_CANCELLATION_MESSAGE)
     return _cancel(
         row, coordinator_id, lifecycle.cancellation_requestable_from(),
         f"Cancellation approved. Organiser's reason: {request['reason']}",
