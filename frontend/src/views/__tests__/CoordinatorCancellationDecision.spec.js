@@ -177,4 +177,48 @@ describe("Story 115 coordinator decides a cancellation", () => {
     await vi.waitFor(() => expect(dialog().querySelector('[role="alert"]').textContent)
       .toContain("This event has already started, so it can't be cancelled."));
   });
+
+  it("shows a refused approval in the page", async () => {
+    const el = await mountView(eventResponse({ open_cancellation_request: OPEN_REQUEST }));
+    eventsApi.approveCancellation.mockRejectedValue(
+      Object.assign(new Error("This event was updated by someone else. Reload."), { status: 409 }));
+
+    button(el, "Approve cancellation").click();
+    await nextTick();
+    [...dialog().querySelectorAll("button")].find((b) => b.textContent.trim() === "Cancel the event").click();
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent)
+      .toContain("This event was updated by someone else. Reload."));
+  });
+
+  it("keeps a refused rejection in its dialog", async () => {
+    const el = await mountView(eventResponse({ open_cancellation_request: OPEN_REQUEST }));
+    eventsApi.rejectCancellation.mockRejectedValue(
+      Object.assign(new Error("There is no open cancellation request for this event."), { status: 409 }));
+
+    button(el, "Reject cancellation").click();
+    await nextTick();
+    await typeReason("Not now");
+    button(dialog(), "Reject cancellation request").click();
+
+    await vi.waitFor(() => expect(dialog().querySelector('[role="alert"]').textContent)
+      .toContain("There is no open cancellation request for this event."));
+  });
+
+  it.each([
+    ["Reject cancellation", { open_cancellation_request: OPEN_REQUEST }],
+    ["Cancel event", {}],
+  ])("closes the %s dialog without sending anything", async (label, overrides) => {
+    const el = await mountView(eventResponse(overrides));
+
+    button(el, label).click();
+    await nextTick();
+    button(dialog(), "Close").click();
+    await nextTick();
+
+    expect(dialog()).toBeNull();
+    expect(eventsApi.rejectCancellation).not.toHaveBeenCalled();
+    expect(eventsApi.cancelEvent).not.toHaveBeenCalled();
+  });
 });
+

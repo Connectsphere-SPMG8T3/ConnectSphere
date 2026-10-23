@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   venueBookingsApi: { markRevised: vi.fn() },
-  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), setPrimarySpace: vi.fn(), clearPrimarySpace: vi.fn() },
+  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), setPrimarySpace: vi.fn(), clearPrimarySpace: vi.fn(), cancelEvent: vi.fn() },
 }));
 
 const EVENT = { id: "event-1", name: "Partner Summit", status: "under_review", version: 3 };
@@ -339,5 +339,21 @@ describe("D54 revision note", () => {
     await Promise.all([store.markBookingRevised("b1", "Note"), store.markBookingRevised("b1", "Note")]);
     expect(venueBookingsApi.markRevised).toHaveBeenCalledTimes(1);
     expect(venueBookingsApi.markRevised).toHaveBeenCalledWith("b1", "Note", "access-token");
+  });
+
+  it("story 115 keeps the cancelled event shown when reading it again fails", async () => {
+    signedInCoordinator();
+    const store = useEventReviewStore();
+    store.event = { ...EVENT, status: "confirmed" };
+    store.historyEventId = EVENT.id;
+    eventsApi.cancelEvent.mockResolvedValue({ ...EVENT, status: "cancelled" });
+    eventsApi.history.mockResolvedValue({ entries: [] });
+    eventsApi.get.mockRejectedValue(new ApiError("Service unavailable", 503));
+
+    await expect(store.cancelEvent("  No replacement venue  ")).resolves.toMatchObject({ status: "cancelled" });
+
+    expect(eventsApi.cancelEvent).toHaveBeenCalledWith(EVENT.id, "No replacement venue", "access-token");
+    expect(store.event.status).toBe("cancelled");
+    expect(store.error).toBeNull();
   });
 });
