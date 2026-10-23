@@ -264,6 +264,21 @@ export const eventsApi = {
   },
 };
 
+export const registrationsApi = {
+  directory() {
+    return request("/public/events");
+  },
+  event(eventId) {
+    return request(`/public/events/${encodeURIComponent(eventId)}`);
+  },
+  register(eventId, token) {
+    return request(`/public/events/${encodeURIComponent(eventId)}/registrations`, {
+      method: "POST",
+      token,
+    });
+  },
+};
+
 export const equipmentApi = {
   checkEquipmentAvailability(payload, token) {
     return request("/equipment/availability/check", {

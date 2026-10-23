@@ -38,6 +38,10 @@ SESSION_ID = "22222222-2222-2222-2222-222222222222"
 # role gate, is what test_notifications_api.TestActiveRoleDenial proves with a
 # user who holds a second role.
 OPEN_PREFIXES = (f"{settings.api_v1_prefix}/auth", f"{settings.api_v1_prefix}/notifications")
+PUBLIC_EVENT_READS = {
+    f"{settings.api_v1_prefix}/public/events",
+    f"{settings.api_v1_prefix}/public/events/{{event_id}}",
+}
 
 
 def _protected_routes() -> list[tuple[str, str]]:
@@ -48,6 +52,8 @@ def _protected_routes() -> list[tuple[str, str]]:
         if route.path.startswith(OPEN_PREFIXES):
             continue
         for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
+            if method == "GET" and route.path in PUBLIC_EVENT_READS:
+                continue
             routes.append((method, route.path))
     return routes
 

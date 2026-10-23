@@ -17,6 +17,8 @@ export const EVENT_FIELD_LABELS = [
   { value: "registration_capacity", label: "Registration capacity" },
   { value: "registration_opens_at", label: "Registration opens" },
   { value: "registration_closes_at", label: "Registration closes" },
+  { value: "re_registration_allowed", label: "Re-registration after withdrawal" },
+  { value: "waitlist_enabled", label: "Waitlist when full" },
 ];
 
 // Mirrors the API's AMENDMENT_TEXT_MAX_LENGTH ([Assumption], REQUIREMENTS §9).
@@ -42,6 +44,8 @@ const FORM_KEYS_BY_FIELD = {
   registration_capacity: ["registrationCapacity"],
   registration_opens_at: ["registrationOpensAt"],
   registration_closes_at: ["registrationClosesAt"],
+  re_registration_allowed: ["reRegistrationAllowed"],
+  waitlist_enabled: ["waitlistEnabled"],
 };
 
 export function fieldLabel(field) {

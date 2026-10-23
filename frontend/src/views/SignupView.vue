@@ -1,6 +1,6 @@
 <script setup>
 import { ref, toRef } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 import AuthPageLayout from "@/components/common/AuthPageLayout.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
@@ -72,6 +72,7 @@ function serverFieldErrors(detail) {
 }
 
 const router = useRouter();
+const route = useRoute();
 
 async function handleSubmit() {
   if (!validate()) return;
@@ -92,7 +93,11 @@ async function handleSubmit() {
     }
     await authApi.signup(details);
     // History state, not the query string, so the email stays out of the URL.
-    router.push({ name: "login", state: { signedUpEmail: form.value.email } });
+    router.push({
+      name: "login",
+      query: route.query.redirect ? { redirect: route.query.redirect } : {},
+      state: { signedUpEmail: form.value.email },
+    });
   } catch (error) {
     if (error.status === 409) fieldErrors.value = { email: error.message };
     else if (error.status === 422 && Array.isArray(error.detail)) fieldErrors.value = serverFieldErrors(error.detail);

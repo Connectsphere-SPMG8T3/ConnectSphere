@@ -29,7 +29,7 @@ TRANSITIONS: dict[str, tuple[frozenset[EventStatus], EventStatus]] = {
     # Safety rejected. Both return the event to planning (CR-104 AC2/AC3).
     "safety_request_changes": (frozenset({EventStatus.safety_review}), EventStatus.planning),
     "safety_reject": (frozenset({EventStatus.safety_review}), EventStatus.planning),
-    # TODO(68 AC8): add EventStatus.preparation once it exists (CR-104 AC6, QA3-16).
+    # Story 68 owns the transition into Preparation (CR-104 AC6, QA3-16).
     "approved_change": (frozenset({EventStatus.confirmed}), EventStatus.planning),
     # An arrangement stopped being ready during review (CR-104 AC10).
     "safety_withdraw": (frozenset({EventStatus.safety_review}), EventStatus.planning),

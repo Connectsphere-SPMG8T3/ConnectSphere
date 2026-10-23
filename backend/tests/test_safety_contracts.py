@@ -129,6 +129,6 @@ def test_reject_text_trimmed_and_legacy_arrays_ignored():
     assert result.model_dump().keys()=={'reason','booking_id'}
 
 def test_approved_change_sources_until_68_lands():
-    # CR-104 AC6: add preparation here when 68 AC8 creates it.
+    # Story 43 adds the enum for registration; Story 68 owns this transition.
     assert lifecycle.allowed_from('approved_change') == ['confirmed']
-    assert 'preparation' not in {s.value for s in schemas.EventStatus}
+    assert 'preparation' in {s.value for s in schemas.EventStatus}

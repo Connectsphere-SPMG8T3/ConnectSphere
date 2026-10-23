@@ -25,7 +25,7 @@ const ROLES = [
 ];
 // Routes that need no allowedRoles: the public sign-in and sign-up pages
 // (a signed-in session is sent to its dashboard) and the shared profile.
-const OPEN_TO_ANY_ROLE = ["login", "signup", "profile"];
+const OPEN_TO_ANY_ROLE = ["public-events", "public-event-detail", "login", "signup", "profile"];
 
 async function loadAppActingAs(activeRole, heldRoles = ROLES) {
   localStorage.setItem(
@@ -70,6 +70,19 @@ describe("route access follows the active role (SCRUM-76)", () => {
     expect(withoutRoles).toEqual([]);
   });
 
+  it.each([
+    ["public-events", "/"],
+    ["public-event-detail", "/attendee/events/e1"],
+  ])("keeps %s available without a session", async (name, path) => {
+    const router = await loadAppActingAs("attendee");
+    const route = router.getRoutes().find((entry) => entry.name === name);
+
+    expect(route.meta).toEqual({ requiresAuth: false });
+    await router.push(path);
+    expect(router.currentRoute.value.name).toBe(name);
+    expect(router.currentRoute.value.path).toBe(path);
+  });
+
   // Extended timeout: it re-imports the router once per role x held-role combination.
   it("opens each route only for the role the session is acting as, even when the account holds all of them", async () => {
     const routes = await protectedRoutes();
@@ -84,7 +97,7 @@ describe("route access follows the active role (SCRUM-76)", () => {
         expect(opened, `${route.name} while acting as ${activeRole}`).toBe(route.allowedRoles.includes(activeRole));
       }
     }
-  }, 20_000);
+  }, 45_000);
 
   it("sends a session acting as another role to its own dashboard", async () => {
     // An organiser who also holds the coordinator role, currently acting as the organiser.

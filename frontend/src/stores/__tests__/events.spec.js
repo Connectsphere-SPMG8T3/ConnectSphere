@@ -47,6 +47,8 @@ describe("event store", () => {
       ends_at: "2026-10-10T10:00:00.000Z",
       expected_attendance: 150,
       registration_enabled: false,
+      re_registration_allowed: true,
+      waitlist_enabled: true,
       registration_opens_at: "2026-09-20T02:00:00.000Z",
       registration_closes_at: "2026-10-09T11:00:00.000Z",
     });
@@ -80,7 +82,7 @@ describe("event store", () => {
 
     const result = await store.saveDraft(event);
 
-    expect(eventsApi.create).toHaveBeenCalledWith({ name: event.name, event_timezone: "Asia/Singapore", registration_enabled: false }, "access");
+    expect(eventsApi.create).toHaveBeenCalledWith({ name: event.name, event_timezone: "Asia/Singapore", registration_enabled: false, re_registration_allowed: true, waitlist_enabled: true }, "access");
     expect(result.id).toBe("e1");
     expect(store.events).toEqual([result]);
   });
@@ -142,7 +144,7 @@ describe("event store", () => {
     const result = await store.createAndSubmit(event);
 
     expect(eventsApi.create).toHaveBeenCalledWith(
-      { name: event.name, event_timezone: "Asia/Singapore", registration_enabled: false },
+      { name: event.name, event_timezone: "Asia/Singapore", registration_enabled: false, re_registration_allowed: true, waitlist_enabled: true },
       "access",
     );
     // Submitting edits the draft the create call just made, so empty fields go as null.

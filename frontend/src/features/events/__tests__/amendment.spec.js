@@ -10,7 +10,7 @@ describe("amendment field labels (SCRUM-33)", () => {
       "name", "purpose", "description", "starts_at", "event_timezone", "ends_at",
       "expected_attendance", "layout_preference", "facilities_required", "accessibility_needs",
       "preliminary_equipment_needs", "registration_enabled", "registration_capacity",
-      "registration_opens_at", "registration_closes_at",
+      "registration_opens_at", "registration_closes_at", "re_registration_allowed", "waitlist_enabled",
     ]);
     expect(new Set(values).size).toBe(values.length);
   });
