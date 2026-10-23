@@ -4,10 +4,12 @@ database by supabase/verification/event_cancellation_request_checks.sql."""
 
 from copy import deepcopy
 from datetime import datetime, timezone
+from unittest.mock import MagicMock
 
 import pytest
 
 from app.modules.events import repository
+from tests.conftest import make_table_mock
 
 ORGANISER_ID = "a0000000-0000-4000-8000-000000000001"
 COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
@@ -93,3 +95,146 @@ class TestRequestCancellation:
         assert call["event_id"] == EVENT_ID
         assert call["actor_id"] == ORGANISER_ID
         assert call["reason"] == REASON
+
+    @pytest.mark.parametrize("status", ["submitted", "under_review", "returned", "planning",
+                                        "safety_review", "confirmed"])
+    def test_every_status_after_submission_accepts_a_request(self, client, auth_headers, act_as, events, status):
+        events["store"][EVENT_ID]["status"] = status
+        act_as()
+
+        response = request_cancellation(client, auth_headers)
+
+        assert response.status_code == 201
+
+    def test_the_rpc_rechecks_every_status_but_the_refused_ones(self, client, auth_headers, act_as, events):
+        act_as()
+
+        request_cancellation(client, auth_headers)
+
+        [call] = events["calls"]
+        assert "draft" not in call["from_statuses"]
+        assert {"rejected", "cancelled", "completed"}.isdisjoint(call["from_statuses"])
+        assert {"submitted", "under_review", "returned", "planning", "safety_review",
+                "confirmed"} <= set(call["from_statuses"])
+
+    def test_the_reason_is_trimmed(self, client, auth_headers, act_as, events):
+        act_as()
+
+        request_cancellation(client, auth_headers, reason=f"  {REASON}  ")
+
+        assert events["calls"][0]["reason"] == REASON
+
+    def test_the_coordinator_is_told_who_asked_and_why(self, client, auth_headers, act_as, events):
+        act_as()
+
+        request_cancellation(client, auth_headers)
+
+        call = events["calls"][0]
+        assert call["coordinator_message"] == (
+            f'Test event_organiser requested to cancel "Partner Summit". Reason: {REASON}')
+        assert call["lead_message"] == 'Cancellation requested for unassigned event "Partner Summit".'
+
+
+class TestRefusedRequests:
+    @pytest.mark.parametrize("status", ["rejected", "cancelled", "completed"])
+    def test_a_closed_event_cannot_have_a_request(self, client, auth_headers, act_as, events, status):
+        events["store"][EVENT_ID]["status"] = status
+        act_as()
+
+        response = request_cancellation(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == f"Cancellation can't be requested for an event that is {status}."
+        assert events["calls"] == []
+
+    def test_a_draft_is_discarded_instead(self, client, auth_headers, act_as, events):
+        events["store"][EVENT_ID]["status"] = "draft"
+        act_as()
+
+        response = request_cancellation(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "A draft can't be cancelled. Discard the draft instead."
+        assert events["calls"] == []
+
+    def test_a_second_open_request_is_refused(self, client, auth_headers, act_as, events):
+        events["outcome"]["value"] = "already_open"
+        act_as()
+
+        response = request_cancellation(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "A cancellation request is already open for this event."
+
+    def test_an_event_that_moved_on_under_the_lock_is_a_conflict(self, client, auth_headers, act_as, events):
+        events["outcome"]["value"] = "status_changed"
+        act_as()
+
+        response = request_cancellation(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "This event was updated by someone else. Reload."
+
+    @pytest.mark.parametrize("outcome", ["not_found", "not_owner"])
+    def test_an_event_gone_or_changed_hands_under_the_lock_is_not_found(self, client, auth_headers, act_as,
+                                                                       events, outcome):
+        events["outcome"]["value"] = outcome
+        act_as()
+
+        response = request_cancellation(client, auth_headers)
+
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize("reason", ["", "   ", "x" * 1001, None])
+    def test_a_missing_blank_or_overlong_reason_is_rejected(self, client, auth_headers, act_as, events, reason):
+        act_as()
+
+        response = request_cancellation(client, auth_headers, reason=reason)
+
+        assert response.status_code == 422
+        assert events["calls"] == []
+
+
+class TestWhoCanRequest:
+    def test_another_organiser_gets_not_found(self, client, auth_headers, act_as, events):
+        act_as(user_id=OTHER_ORGANISER_ID)
+
+        response = request_cancellation(client, auth_headers)
+
+        assert response.status_code == 404
+        assert events["calls"] == []
+
+    def test_a_missing_event_is_not_found(self, client, auth_headers, act_as, events):
+        act_as()
+
+        response = request_cancellation(client, auth_headers, event_id=MISSING_EVENT_ID)
+
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize("role", ["event_coordinator", "event_coordinator_lead", "venue_staff",
+                                      "tech_support", "safety_officer", "attendee"])
+    def test_other_roles_are_forbidden(self, client, auth_headers, act_as, events, role):
+        act_as(role, user_id=COORDINATOR_ID)
+
+        response = request_cancellation(client, auth_headers)
+
+        assert response.status_code == 403
+        assert events["calls"] == []
+
+    def test_the_owner_acting_as_another_role_is_forbidden(self, client, auth_headers, monkeypatch, events):
+        """SCRUM-76: the owner's account also holds coordinator and is acting as it."""
+        profile = {"id": ORGANISER_ID, "email": "multi@connectsphere.dev", "full_name": "Multi Role",
+                   "role": "event_organiser", "organisation_name": None, "department": None,
+                   "phone_number": None}
+        anon = MagicMock()
+        anon.auth.get_claims.return_value = {"claims": {
+            "sub": ORGANISER_ID, "aud": "authenticated", "email": profile["email"],
+            "session_id": "22222222-2222-2222-2222-222222222222"}}
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client",
+                            lambda: make_table_mock(profile, session_active_role={"role": "event_coordinator"}))
+
+        response = request_cancellation(client, auth_headers)
+
+        assert response.status_code == 403
+        assert events["calls"] == []

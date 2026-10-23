@@ -383,11 +383,22 @@ def request_cancellation(event_id: str, organiser_id: str, organiser_name: str, 
     """Story 84: record the owner's cancellation request. Nothing is released until the
     coordinator decides (story 115)."""
     row = _owned_event(event_id, organiser_id)
+    if row["status"] == EventStatus.draft:
+        raise EventConflictError("A draft can't be cancelled. Discard the draft instead.")
+    if row["status"] not in lifecycle.cancellation_requestable_from():
+        raise EventConflictError(f"Cancellation can't be requested for an event that is {row['status']}.")
     result = repository.request_event_cancellation(
         event_id, organiser_id, reason, lifecycle.cancellation_requestable_from(),
         coordinator_message=f'{organiser_name} requested to cancel "{row["name"]}". Reason: {reason}',
         lead_message=f'Cancellation requested for unassigned event "{row["name"]}".',
     )
+    outcome = result["outcome"]
+    if outcome in ("not_found", "not_owner"):
+        raise EventNotFoundError()
+    if outcome == "already_open":
+        raise EventConflictError("A cancellation request is already open for this event.")
+    if outcome != "ok":
+        raise EventConflictError(STALE_EVENT_MESSAGE)
     return EventChangeRequest(**result["request"])
 
 
