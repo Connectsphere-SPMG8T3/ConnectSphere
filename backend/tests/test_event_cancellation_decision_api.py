@@ -132,6 +132,94 @@ class TestApproveCancellationRequest:
         assert {"draft", "rejected", "cancelled", "completed"}.isdisjoint(call["from_statuses"])
 
 
+REJECTION_REASON = "The venue is already paid for; let's talk about a smaller format"
+
+
+@pytest.fixture()
+def rejections(monkeypatch, events):
+    """A fake `reject_cancellation_request` that answers like the RPC."""
+    calls = []
+    outcome = {"value": "ok"}
+
+    def reject_cancellation_request(event_id, actor_id, reason, organiser_message):
+        calls.append({"event_id": event_id, "actor_id": actor_id, "reason": reason,
+                      "organiser_message": organiser_message})
+        return {"outcome": outcome["value"]}
+
+    monkeypatch.setattr(repository, "reject_cancellation_request", reject_cancellation_request)
+    return {"calls": calls, "outcome": outcome}
+
+
+def reject(client, auth_headers, reason=REJECTION_REASON):
+    return client.post(f"/api/v1/events/{EVENT_ID}/cancellation-request/reject",
+                       json={"reason": reason}, headers=auth_headers)
+
+
+class TestRejectCancellationRequest:
+    def test_rejecting_keeps_the_event_as_it_was(self, client, auth_headers, act_as, events, rejections):
+        act_as()
+
+        response = reject(client, auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "confirmed"
+        assert response.json()["open_cancellation_request"] is None
+        [call] = rejections["calls"]
+        assert call["event_id"] == EVENT_ID
+        assert call["actor_id"] == COORDINATOR_ID
+        assert call["reason"] == REJECTION_REASON
+        assert events["calls"] == []
+
+    def test_the_organiser_is_told_why(self, client, auth_headers, act_as, events, rejections):
+        act_as()
+
+        reject(client, auth_headers)
+
+        assert rejections["calls"][0]["organiser_message"] == (
+            f'Your request to cancel "Partner Summit" was rejected: {REJECTION_REASON}')
+
+    def test_the_reason_is_trimmed(self, client, auth_headers, act_as, events, rejections):
+        act_as()
+
+        reject(client, auth_headers, reason=f"  {REJECTION_REASON}  ")
+
+        assert rejections["calls"][0]["reason"] == REJECTION_REASON
+
+    @pytest.mark.parametrize("reason", ["", "   ", "x" * 1001, None])
+    def test_a_missing_blank_or_overlong_reason_is_rejected(self, client, auth_headers, act_as, events,
+                                                            rejections, reason):
+        """AC2, CR-R3."""
+        act_as()
+
+        response = reject(client, auth_headers, reason=reason)
+
+        assert response.status_code == 422
+        assert rejections["calls"] == []
+
+    def test_without_an_open_request_there_is_nothing_to_reject(self, client, auth_headers, act_as, events,
+                                                                rejections):
+        events["request"]["value"] = None
+        act_as()
+
+        response = reject(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "There is no open cancellation request for this event."
+        assert rejections["calls"] == []
+
+    @pytest.mark.parametrize(("outcome", "status_code"), [
+        ("no_open_request", 409), ("not_assigned", 403), ("not_found", 404),
+    ])
+    def test_the_rpc_recheck_under_the_lock_decides(self, client, auth_headers, act_as, events, rejections,
+                                                    outcome, status_code):
+        rejections["outcome"]["value"] = outcome
+        act_as()
+
+        response = reject(client, auth_headers)
+
+        assert response.status_code == status_code
+
+
 COORDINATOR_REASON = "No replacement venue could be found"
 
 

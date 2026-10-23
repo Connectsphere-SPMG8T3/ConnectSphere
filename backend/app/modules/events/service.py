@@ -460,6 +460,26 @@ def approve_cancellation(event_id: str, coordinator_id: str) -> EventResponse:
     )
 
 
+def reject_cancellation(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
+    """Story 115 AC2: the assigned coordinator rejects the open request with a reason.
+    The event keeps its status and its arrangements."""
+    row = _assigned_event(event_id, coordinator_id)
+    if not repository.get_open_cancellation_request(event_id):
+        raise EventConflictError(NO_OPEN_CANCELLATION_MESSAGE)
+    result = repository.reject_cancellation_request(
+        event_id, coordinator_id, reason,
+        organiser_message=f'Your request to cancel "{row["name"]}" was rejected: {reason}',
+    )
+    outcome = result["outcome"]
+    if outcome == "not_found":
+        raise EventNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome != "ok":
+        raise EventConflictError(NO_OPEN_CANCELLATION_MESSAGE)
+    return _to_response(row)
+
+
 def cancel_event(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
     """Story 115 AC3: the assigned coordinator cancels without an organiser request. An
     open request is closed as approved by the same call (Q9)."""
