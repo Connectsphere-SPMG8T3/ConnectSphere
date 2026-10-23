@@ -199,6 +199,11 @@ def request_cancellation(event_id: UUID, body: CancellationRequestCreate,
     return service.request_cancellation(str(event_id), current_user.id, current_user.full_name, body.reason)
 
 
+@router.post("/{event_id}/cancellation-request/approve", response_model=EventResponse)
+def approve_cancellation(event_id: UUID, current_user: EventCoordinator) -> EventResponse:
+    return service.approve_cancellation(str(event_id), current_user.id)
+
+
 @router.post("/{event_id}/safety-approve", response_model=EventResponse)
 def safety_approve(event_id: UUID, current_user: SafetyOfficer,
                    body: SafetyApproveRequest | None = None) -> EventResponse:

@@ -402,6 +402,36 @@ def request_cancellation(event_id: str, organiser_id: str, organiser_name: str, 
     return EventChangeRequest(**result["request"])
 
 
+def _cancel(row: dict, coordinator_id: str, from_statuses: list[str], reason: str, *,
+            require_open_request: bool, organiser_message: str) -> EventResponse:
+    """Story 115: the cancellation both approval and direct cancel end in. The RPC
+    rechecks everything under the event's lock."""
+    name = row["name"]
+    result = repository.cancel_event(
+        row["id"], coordinator_id, row["version"], from_statuses, reason,
+        require_open_request=require_open_request,
+        organiser_message=organiser_message,
+        staff_message=f'"{name}" was cancelled. Its venue bookings and equipment reservations are released.',
+        attendee_message=f'"{name}" has been cancelled. Your registration is cancelled.',
+        safety_message=f'"{name}" was cancelled and no longer needs its safety check.',
+    )
+    if result["outcome"] != "ok":
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return _to_response(result["event"])
+
+
+def approve_cancellation(event_id: str, coordinator_id: str) -> EventResponse:
+    """Story 115 AC1: the assigned coordinator approves the organiser's open request."""
+    row = _assigned_event(event_id, coordinator_id)
+    request = repository.get_open_cancellation_request(event_id)
+    return _cancel(
+        row, coordinator_id, lifecycle.cancellation_requestable_from(),
+        f"Cancellation approved. Organiser's reason: {request['reason']}",
+        require_open_request=True,
+        organiser_message=f'Your request to cancel "{row["name"]}" was approved. The event is cancelled.',
+    )
+
+
 def _validate_submission(row: dict) -> None:
     errors = []
     has_space_requests = bool(row.get("spaces"))

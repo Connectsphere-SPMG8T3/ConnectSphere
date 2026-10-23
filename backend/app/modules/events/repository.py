@@ -315,6 +315,38 @@ def request_event_cancellation(
     return response.data
 
 
+def cancel_event(
+    event_id: str,
+    actor_id: str,
+    expected_version: int,
+    from_statuses: list[str],
+    reason: str,
+    require_open_request: bool,
+    organiser_message: str,
+    staff_message: str,
+    attendee_message: str,
+    safety_message: str,
+) -> dict:
+    """Story 115: run `public.cancel_event` under the event's lock. It cancels the event,
+    closes an open cancellation request as approved, releases its venue bookings,
+    equipment and registrations, and notifies everyone involved, in one transaction.
+    Answers `{outcome, event}`: ok / not_found / not_assigned / status_changed /
+    no_open_request / started."""
+    response = get_supabase_admin_client().rpc("cancel_event", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_expected_version": expected_version,
+        "p_from_statuses": from_statuses,
+        "p_reason": reason,
+        "p_require_open_request": require_open_request,
+        "p_organiser_message": organiser_message,
+        "p_staff_message": staff_message,
+        "p_attendee_message": attendee_message,
+        "p_safety_message": safety_message,
+    }).execute()
+    return response.data
+
+
 def list_status_history(event_id: str) -> list[dict]:
     """Newest first. The actor is embedded through the FK named in the migration.
     On a timestamp tie the creation row (no from_status) sorts last, since
