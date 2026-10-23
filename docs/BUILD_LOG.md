@@ -3124,7 +3124,7 @@ Implemented on `feature/scrum-43-attendee-event-registration`. Confirmed estimat
 
 ### 4.87. Story 84 — Request cancellation of my event
 
-On `feature/scrum-84-request-cancellation`, 2026-10-23. PBI 84 (Event status management), split on 20/10 from the coordinator's side, which is now 115. Numbered after story 43's §4.86 on PR #100, which is not merged yet.
+On `feature/scrum-84-request-cancellation`, 2026-10-23. PBI 84 (Event status management), split on 20/10 from the coordinator's side, which is now 115. Numbered after story 43's §4.86 (PR #100); the branch was rebased onto it.
 
 **What was built.**
 - **Database** (migration `20261023100000_event_cancellation_requests.sql`):
@@ -3157,11 +3157,18 @@ On `feature/scrum-84-request-cancellation`, 2026-10-23. PBI 84 (Event status man
 **Live checks added.**
 - TC-CANCEL-001–006 in `verify_live.py`, on throwaway events.
 - `event_cancellation_request_checks.sql` (TC-CANCEL-007, 008), added to the database run.
+- TC-CANCEL-013 in `verify_live.py`: a `preparation` event accepts a request, added after the rebase onto PR #100.
 - TC-CANCEL-009 in `e2e/cancellation-request.e2e.js`.
 - Manual cases TC-CANCEL-010–012 in `docs/test-cases/events.md`.
 
+**Verified (2026-10-23).**
+- Migration `20261023100000` applied with `supabase db push`; the linked ledger matches the branch.
+- API and database run [188/188](test-cases/runs/2026-10-23-1609-api-db-1b7cad7.md), after the seeded review fixtures 201/202 were reset with `event_review_fixture_reset.sql` (rejected on 21–22 Oct, before this branch; a first run failed only on that and was deleted as a setup failure).
+- Browser run [89/90](test-cases/runs/2026-10-23-1627-e2e-1b7cad7.md); TC-CANCEL-009 passed. The failure is TC-TSD-017 (tech-support summary row, 1 card found where 4 are expected), which has failed the same way in every recorded browser run since 2026-10-20 (earlier BUILD_LOG entries report it; it isn't in DEFECTS.md); this story doesn't touch that dashboard.
+- Manual pass [TC-CANCEL-010–012](test-cases/runs/2026-10-23-1610-manual-cb76541.md) passed. At the developer's request the coordinator's banner now heads the organiser's reason with "Comments:".
+- After the rebase onto PR #100: backend 1956 and frontend 1539 passed; TC-CANCEL-001–008 and 013 and TC-CANCEL-009 passed again, unrecorded.
+
 **Not verified.**
-- The migration is not applied to the live project, so none of the live checks, the SQL script or the manual pass have run yet.
-- Preparation events can't be exercised until the `preparation` status reaches `main` (PR #100) and story 68 moves events into it.
+- No story moves events into `preparation` yet (story 68), so TC-CANCEL-013 sets the status directly on a throwaway event.
 - AC4 is proven only at the database: story 32 has no API that creates a change request.
 - AC6 (the organiser hears the decision) is delivered by 115.
