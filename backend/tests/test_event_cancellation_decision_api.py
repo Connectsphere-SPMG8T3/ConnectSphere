@@ -5,10 +5,12 @@ supabase/verification/event_cancellation_decision_checks.sql."""
 
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 
 import pytest
 
 from app.modules.events import repository
+from tests.conftest import make_table_mock
 
 ORGANISER_ID = "a0000000-0000-4000-8000-000000000001"
 COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
@@ -367,3 +369,68 @@ class TestApprovalRefused:
         assert response.status_code == status_code
         if detail:
             assert response.json()["detail"] == detail
+
+
+OTHER_COORDINATOR_ID = "a0000000-0000-4000-8000-000000000004"
+
+DECISIONS = [
+    ("approve", lambda client, headers: approve(client, headers)),
+    ("reject", lambda client, headers: reject(client, headers)),
+    ("cancel", lambda client, headers: cancel(client, headers)),
+]
+
+
+class TestOnlyTheAssignedCoordinatorDecides:
+    """AC5, SCRUM-76: every decision is the assigned coordinator's, acting as coordinator."""
+
+    @pytest.mark.parametrize(("name", "decide"), DECISIONS)
+    def test_another_coordinator_is_forbidden(self, client, auth_headers, act_as, events, rejections,
+                                              name, decide):
+        act_as(user_id=OTHER_COORDINATOR_ID)
+
+        response = decide(client, auth_headers)
+
+        assert response.status_code == 403
+        assert events["calls"] == [] and rejections["calls"] == []
+
+    @pytest.mark.parametrize(("name", "decide"), DECISIONS)
+    @pytest.mark.parametrize("role", ["event_organiser", "event_coordinator_lead", "venue_staff",
+                                      "tech_support", "safety_officer", "attendee"])
+    def test_other_roles_are_forbidden(self, client, auth_headers, act_as, events, rejections,
+                                       role, name, decide):
+        act_as(role, user_id=COORDINATOR_ID)
+
+        response = decide(client, auth_headers)
+
+        assert response.status_code == 403
+        assert events["calls"] == [] and rejections["calls"] == []
+
+    @pytest.mark.parametrize(("name", "decide"), DECISIONS)
+    def test_a_draft_is_not_found(self, client, auth_headers, act_as, events, rejections, name, decide):
+        events["store"][EVENT_ID]["status"] = "draft"
+        act_as()
+
+        response = decide(client, auth_headers)
+
+        assert response.status_code == 404
+        assert events["calls"] == [] and rejections["calls"] == []
+
+    @pytest.mark.parametrize(("name", "decide"), DECISIONS)
+    def test_the_coordinator_acting_as_another_role_is_forbidden(self, client, auth_headers, monkeypatch,
+                                                                 events, rejections, name, decide):
+        """The assigned coordinator's account also holds organiser and is acting as it."""
+        profile = {"id": COORDINATOR_ID, "email": "multi@connectsphere.dev", "full_name": "Multi Role",
+                   "role": "event_coordinator", "organisation_name": None, "department": None,
+                   "phone_number": None}
+        anon = MagicMock()
+        anon.auth.get_claims.return_value = {"claims": {
+            "sub": COORDINATOR_ID, "aud": "authenticated", "email": profile["email"],
+            "session_id": "33333333-3333-3333-3333-333333333333"}}
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client",
+                            lambda: make_table_mock(profile, session_active_role={"role": "event_organiser"}))
+
+        response = decide(client, auth_headers)
+
+        assert response.status_code == 403
+        assert events["calls"] == [] and rejections["calls"] == []
