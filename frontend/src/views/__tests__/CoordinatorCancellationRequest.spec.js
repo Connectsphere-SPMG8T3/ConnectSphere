@@ -69,6 +69,9 @@ describe("Story 84 coordinator sees an open cancellation request", () => {
     const banner = el.querySelector('[data-testid="cancellation-request-banner"]');
     expect(banner.textContent).toContain("Cancellation requested by Priya Nair");
     expect(banner.textContent).toContain(REASON);
+    const comments = banner.querySelector('[data-testid="cancellation-request-comments"]');
+    expect(comments.previousElementSibling.textContent.trim()).toBe("Comments:");
+    expect(comments.textContent).toBe(REASON);
     expect(banner.textContent).toContain("Arrangements stay held until you decide.");
     expect(banner.querySelector("button")).toBeNull();
   });
