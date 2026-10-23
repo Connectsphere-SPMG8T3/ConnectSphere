@@ -132,6 +132,87 @@ class TestApproveCancellationRequest:
         assert {"draft", "rejected", "cancelled", "completed"}.isdisjoint(call["from_statuses"])
 
 
+COORDINATOR_REASON = "No replacement venue could be found"
+
+
+def cancel(client, auth_headers, reason=COORDINATOR_REASON):
+    return client.post(f"/api/v1/events/{EVENT_ID}/cancel", json={"reason": reason}, headers=auth_headers)
+
+
+class TestDirectCancel:
+    @pytest.mark.parametrize("status", ["planning", "confirmed", "preparation"])
+    def test_the_coordinator_cancels_with_a_reason(self, client, auth_headers, act_as, events, status):
+        events["store"][EVENT_ID]["status"] = status
+        events["request"]["value"] = None
+        act_as()
+
+        response = cancel(client, auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "cancelled"
+        [call] = events["calls"]
+        assert call["from_statuses"] == ["confirmed", "planning", "preparation"]
+        assert call["reason"] == COORDINATOR_REASON
+        assert call["require_open_request"] is False
+
+    def test_the_organiser_is_told_why(self, client, auth_headers, act_as, events):
+        act_as()
+
+        cancel(client, auth_headers)
+
+        assert events["calls"][0]["organiser_message"] == (
+            f'"Partner Summit" was cancelled by its coordinator. Reason: {COORDINATOR_REASON}')
+
+    def test_the_reason_is_trimmed(self, client, auth_headers, act_as, events):
+        act_as()
+
+        cancel(client, auth_headers, reason=f"  {COORDINATOR_REASON}  ")
+
+        assert events["calls"][0]["reason"] == COORDINATOR_REASON
+
+    @pytest.mark.parametrize("status", ["submitted", "under_review", "returned", "safety_review"])
+    def test_other_open_statuses_need_the_organisers_request(self, client, auth_headers, act_as, events, status):
+        """AC3 lists Planning, Confirmed and Preparation only (Q4)."""
+        events["store"][EVENT_ID]["status"] = status
+        act_as()
+
+        response = cancel(client, auth_headers)
+
+        assert response.status_code == 409
+        assert events["calls"] == []
+
+    @pytest.mark.parametrize("status", ["rejected", "cancelled", "completed"])
+    def test_a_closed_event_cannot_be_cancelled(self, client, auth_headers, act_as, events, status):
+        """AC4."""
+        events["store"][EVENT_ID]["status"] = status
+        act_as()
+
+        response = cancel(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == f"An event that is {status} can't be cancelled."
+        assert events["calls"] == []
+
+    def test_a_started_event_cannot_be_cancelled(self, client, auth_headers, act_as, events):
+        events["store"][EVENT_ID]["starts_at"] = past_start()
+        act_as()
+
+        response = cancel(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "This event has already started, so it can't be cancelled."
+        assert events["calls"] == []
+
+    @pytest.mark.parametrize("reason", ["", "   ", "x" * 1001, None])
+    def test_a_missing_blank_or_overlong_reason_is_rejected(self, client, auth_headers, act_as, events, reason):
+        act_as()
+
+        response = cancel(client, auth_headers, reason=reason)
+
+        assert response.status_code == 422
+        assert events["calls"] == []
+
+
 def past_start():
     return (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
 

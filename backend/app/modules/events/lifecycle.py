@@ -33,6 +33,10 @@ TRANSITIONS: dict[str, tuple[frozenset[EventStatus], EventStatus]] = {
     "approved_change": (frozenset({EventStatus.confirmed}), EventStatus.planning),
     # An arrangement stopped being ready during review (CR-104 AC10).
     "safety_withdraw": (frozenset({EventStatus.safety_review}), EventStatus.planning),
+    # The coordinator cancels without an organiser request (story 115 AC3, QA2-5, QA2-6).
+    # An approved request cancels from any status a request is accepted in instead.
+    "cancel": (frozenset({EventStatus.planning, EventStatus.confirmed, EventStatus.preparation}),
+               EventStatus.cancelled),
 }
 
 

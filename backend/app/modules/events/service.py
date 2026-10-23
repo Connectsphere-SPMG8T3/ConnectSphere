@@ -460,6 +460,19 @@ def approve_cancellation(event_id: str, coordinator_id: str) -> EventResponse:
     )
 
 
+def cancel_event(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
+    """Story 115 AC3: the assigned coordinator cancels without an organiser request. An
+    open request is closed as approved by the same call (Q9)."""
+    row = _assigned_event(event_id, coordinator_id)
+    _refuse_cancelling_closed_or_started(row)
+    lifecycle.target("cancel", row["status"])
+    return _cancel(
+        row, coordinator_id, lifecycle.allowed_from("cancel"), reason,
+        require_open_request=False,
+        organiser_message=f'"{row["name"]}" was cancelled by its coordinator. Reason: {reason}',
+    )
+
+
 def _validate_submission(row: dict) -> None:
     errors = []
     has_space_requests = bool(row.get("spaces"))
