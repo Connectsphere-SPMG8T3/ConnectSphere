@@ -13,15 +13,6 @@ For the full business context (roles, the Scrum item this implements, and the ar
 
 **Contributing?** The team's Scrum process is in the [Team A-HA! Scrum Playbook](https://docs.google.com/document/d/1wd96yzFLZQ1FNZQFfbxzSQvRzzqs9ZJkgrZUEBKbItg/edit), and the backlog is in the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit). [docs/DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md) is the checklist every backlog item has to clear before it counts as Done. [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md) walks through each step from Ready to Done: PR review, the PO's acceptance, merge, and setting the item to Done in the backlog. The working rules behind it (branch naming, test-first development, the security baseline) are in [AGENTS.md](AGENTS.md), which applies to human contributors as much as to AI agents.
 
-## Current scope: SCRUM-48 — Secure Login & Role-Based Dashboards
-
-Implements the foundational authentication service:
-
-1. Login with email/password against Supabase Auth, issuing a JWT session.
-2. Role-based redirection to one of seven role dashboards.
-3. `GET /profile/me` (frontend) / `GET /api/v1/auth/me` (backend) to view the authenticated user's profile.
-4. Route guards that intercept unauthorised access and redirect to login or an appropriate dashboard.
-
 ## Getting started
 
 See [Run instructions](#run-instructions) below for the full local setup.
@@ -120,17 +111,17 @@ To measure coverage, run `pytest --cov` here, or `npm run test:coverage` in `fro
 
 ### Seeded test accounts
 
-| Role | Email | Password | Notes |
-|------|-------|----------|-------|
-| Event Organiser | organiser@connectsphere.dev | Cs1234 | Single role |
-| Event Coordinator | coordinator@connectsphere.dev | Cs1234 | Dual-role account (double hat): also holds **Venue Staff** in `user_roles` for SCRUM-74/75 role switcher testing |
-| Venue Staff | venue.staff@connectsphere.dev | Cs1234 | Single role |
-| Technical Support | tech.support@connectsphere.dev | Cs1234 | Single role |
-| Attendee | attendee@connectsphere.dev | Cs1234 | Single role |
-| Safety Officer | safety.officer@connectsphere.dev | Cs1234 | Single role (CR-103 AC5) |
-| Event Coordinator Lead | coordinator.lead@connectsphere.dev | Cs1234 | Single role (12 AC12) |
-| Event Coordinator Lead (second) | coordinator.lead2@connectsphere.dev | Cs1234 | Single role; a second Lead, so CR-101 AC5's scope (each Lead sees the events they assigned) can be tested |
-| Event Coordinator (second) | coordinator2@connectsphere.dev | Cs1234 | Single role; a second coordinator for assignment and cross-coordinator checks |
+| Role | Name | Email | Password | Notes |
+|------|------|-------|----------|-------|
+| Event Organiser | Olivia Tan | organiser@connectsphere.dev | Cs1234 | Single role |
+| Event Coordinator | Marcus Lim | coordinator@connectsphere.dev | Cs1234 | Dual-role account (double hat): also holds **Venue Staff** in `user_roles` for SCRUM-74/75 role switcher testing |
+| Venue Staff | Priya Nair | venue.staff@connectsphere.dev | Cs1234 | Single role |
+| Technical Support | Daniel Wong | tech.support@connectsphere.dev | Cs1234 | Single role |
+| Attendee | Siti Rahman | attendee@connectsphere.dev | Cs1234 | Single role |
+| Safety Officer | Hafiz Ismail | safety.officer@connectsphere.dev | Cs1234 | Single role (CR-103 AC5) |
+| Event Coordinator Lead | Grace Chua | coordinator.lead@connectsphere.dev | Cs1234 | Single role (12 AC12) |
+| Event Coordinator Lead (second) | Daniel Foo | coordinator.lead2@connectsphere.dev | Cs1234 | Single role; a second Lead, so CR-101 AC5's scope (each Lead sees the events they assigned) can be tested |
+| Event Coordinator (second) | Nadia Koh | coordinator2@connectsphere.dev | Cs1234 | Single role; a second coordinator for assignment and cross-coordinator checks |
 
 ## Architecture notes
 
