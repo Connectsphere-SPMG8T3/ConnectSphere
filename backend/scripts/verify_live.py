@@ -119,6 +119,7 @@ DB_SCRIPTS = [
     ("venue_block_create_checks.sql", "TC-BLOCK-008–013 (SCRUM-51 database half: refusals, history, flags, links, notices, RLS)"),
     ("equipment_reservation_checks.sql", "TC-EQR-016–020, 022–025 (SCRUM-24 database half)"),
     ("event_cancellation_request_checks.sql", "TC-CANCEL-007, 008 (story 84 database half: superseding, index, RLS)"),
+    ("event_cancellation_decision_checks.sql", "TC-CANCEL-018 (story 115 database half: releases, notices, refusals)"),
 ]
 
 
@@ -3341,6 +3342,128 @@ def _(ctx: Context) -> None:
     expect(rows == [{"status": "open"}], f"rows: {rows}")
     [event] = db_query(f"select status from public.events where id = '{event_id}'")
     expect(event["status"] == "preparation", f"requesting moved the event to {event['status']}")
+
+
+# --- Story 115: the coordinator decides, or cancels directly -----------------------
+# Throwaway events again; their bookings, lines and registrations go with them.
+
+ATTENDEE_ID = "a0000000-0000-4000-8000-000000000005"
+DECISION_REASON = "live-check: no replacement venue"
+
+
+def cancellation_fixture(ctx: Context, case: str, day: str, status: str = "confirmed") -> tuple[str, str, str]:
+    """An event holding an approved venue booking, a pending equipment line and one
+    registration. Returns (event, booking, line)."""
+    event_id = throwaway_event(ctx, case, f"{day} 10:00+08", f"{day} 12:00+08", status=status)
+    venue_id = throwaway_venue(ctx, case)
+    [booking] = db_query(
+        "insert into public.venue_bookings (event_id, venue_id, occupied_period, status) values "
+        f"('{event_id}', '{venue_id}', tstzrange('{day} 10:00+08', '{day} 12:00+08', '[)'), 'approved') returning id"
+    )
+    line_id = throwaway_line(event_id, throwaway_equipment(ctx, case, 5), 2)
+    db_query(f"insert into public.event_registrations (event_id, attendee_id) values ('{event_id}', '{ATTENDEE_ID}')")
+    return event_id, booking["id"], line_id
+
+
+def decide(ctx: Context, event_id: str, path: str, reason: str | None = None,
+           session: Session | None = None) -> httpx.Response:
+    session = session or ctx.shared("event_coordinator")
+    body = {"reason": reason} if reason is not None else None
+    return ctx.client.post(f"{ctx.api}/events/{event_id}/{path}", headers=session.headers, json=body)
+
+
+@check("TC-CANCEL-014", "Approving cancels the event and releases its venue, equipment and registrations",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id, line_id = cancellation_fixture(ctx, "115-014", "2031-11-03")
+    expect_status(request_cancellation(ctx, event_id), 201)
+    response = decide(ctx, event_id, "cancellation-request/approve")
+    expect_status(response, 200)
+    expect(response.json()["status"] == "cancelled", f"the event is {response.json()['status']}")
+    [booking] = db_query(f"select status::text from public.venue_bookings where id = '{booking_id}'")
+    expect(booking["status"] == "released", f"the venue booking is {booking['status']}")
+    [line] = db_query(f"select status::text from public.equipment_requests where id = '{line_id}'")
+    expect(line["status"] == "released", f"the equipment line is {line['status']}")
+    [registration] = db_query(f"select status from public.event_registrations where event_id = '{event_id}'")
+    expect(registration["status"] == "cancelled", f"the registration is {registration['status']}")
+    [request] = db_query(f"select status, decided_by from public.event_change_requests where event_id = '{event_id}'")
+    expect(request == {"status": "approved", "decided_by": COORDINATOR_ID}, f"request: {request}")
+    notices = db_query(
+        "select type, recipient_role::text as role from public.notifications "
+        f"where event_id = '{event_id}' and type in ('event_cancelled', 'attendee_event_cancelled')"
+    )
+    roles = {n["role"] for n in notices}
+    expect({"event_organiser", "attendee", "venue_staff", "tech_support"} <= roles, f"notified roles: {roles}")
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history",
+                             headers=ctx.shared("event_organiser").headers).json()["entries"]
+    entry = next((e for e in history if e.get("to_status") == "cancelled"), None)
+    expect(entry and CANCEL_REASON in (entry["reason"] or "") and entry["actor"], f"history: {history}")
+
+
+@check("TC-CANCEL-015", "Rejecting keeps the event and its arrangements; the organiser sees why", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id, _line = cancellation_fixture(ctx, "115-015", "2031-11-04", status="planning")
+    expect_status(request_cancellation(ctx, event_id), 201)
+    expect_status(decide(ctx, event_id, "cancellation-request/reject", "   "), 422)
+    response = decide(ctx, event_id, "cancellation-request/reject", DECISION_REASON)
+    expect_status(response, 200)
+    expect(response.json()["status"] == "planning", f"the event is {response.json()['status']}")
+    [booking] = db_query(f"select status::text from public.venue_bookings where id = '{booking_id}'")
+    expect(booking["status"] == "approved", f"rejecting changed the booking to {booking['status']}")
+    notices = db_query(
+        "select recipient_role::text as role, message from public.notifications "
+        f"where event_id = '{event_id}' and type = 'event_cancellation_rejected'"
+    )
+    expect(len(notices) == 1 and notices[0]["role"] == "event_organiser" and DECISION_REASON in notices[0]["message"],
+           f"notices: {notices}")
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history",
+                             headers=ctx.shared("event_organiser").headers).json()["entries"]
+    entry = next((e for e in history if e["kind"] == "cancellation_rejected"), None)
+    expect(entry and entry["reason"] == DECISION_REASON and entry["actor"], f"history: {history}")
+    again = decide(ctx, event_id, "cancellation-request/approve")
+    expect_status(again, 409)
+    expect_detail(again, "There is no open cancellation request for this event.")
+
+
+@check("TC-CANCEL-016", "The coordinator cancels directly only from planning, confirmed or preparation, before the start",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id, _line = cancellation_fixture(ctx, "115-016", "2031-11-05", status="planning")
+    expect_status(request_cancellation(ctx, event_id), 201)
+    response = decide(ctx, event_id, "cancel", DECISION_REASON)
+    expect_status(response, 200)
+    [request] = db_query(f"select status, decision_reason from public.event_change_requests where event_id = '{event_id}'")
+    expect(request == {"status": "approved", "decision_reason": DECISION_REASON}, f"request: {request}")
+    [booking] = db_query(f"select status::text from public.venue_bookings where id = '{booking_id}'")
+    expect(booking["status"] == "released", f"the venue booking is {booking['status']}")
+
+    for status in ("under_review", "safety_review", "rejected", "completed"):
+        other = throwaway_event(ctx, f"115-016-{status}", "2031-11-06 10:00+08", "2031-11-06 12:00+08", status=status)
+        expect_status(decide(ctx, other, "cancel", DECISION_REASON), 409)
+        [event] = db_query(f"select status::text from public.events where id = '{other}'")
+        expect(event["status"] == status, f"a refused cancel moved a {status} event to {event['status']}")
+    started = throwaway_event(ctx, "115-016-started", "2020-01-01 10:00+08", "2099-01-01 12:00+08", status="confirmed")
+    refused = decide(ctx, started, "cancel", DECISION_REASON)
+    expect_status(refused, 409)
+    expect_detail(refused, "This event has already started, so it can't be cancelled.")
+
+
+@check("TC-CANCEL-017", "Only the assigned coordinator, acting as coordinator, decides a cancellation", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "115-017", "2031-11-07 10:00+08", "2031-11-07 12:00+08", status="confirmed")
+    expect_status(request_cancellation(ctx, event_id), 201)
+    for role in ("event_organiser", "event_coordinator_lead", "venue_staff", "tech_support", "safety_officer", "attendee"):
+        session = ctx.shared(role)
+        expect_status(decide(ctx, event_id, "cancellation-request/approve", session=session), 403)
+        expect_status(decide(ctx, event_id, "cancellation-request/reject", DECISION_REASON, session=session), 403)
+        expect_status(decide(ctx, event_id, "cancel", DECISION_REASON, session=session), 403)
+    unassigned = throwaway_event(ctx, "115-017-unassigned", "2031-11-08 10:00+08", "2031-11-08 12:00+08",
+                                 status="confirmed", assigned=False)
+    expect_status(decide(ctx, unassigned, "cancel", DECISION_REASON), 403)
+    [request] = db_query(f"select status from public.event_change_requests where event_id = '{event_id}'")
+    [event] = db_query(f"select status::text from public.events where id = '{event_id}'")
+    expect(request["status"] == "open" and event["status"] == "confirmed",
+           f"a refused decision changed something: request {request}, event {event}")
 
 
 def db_query(sql: str) -> list[dict]:
