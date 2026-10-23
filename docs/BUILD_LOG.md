@@ -3213,7 +3213,11 @@ On `feature/scrum-115-cancel-event`, 2026-10-23, branched from story 84's PR #10
 - TC-CANCEL-019, 020 in `e2e/cancellation-decision.e2e.js`.
 - Manual cases TC-CANCEL-021–023 in `docs/test-cases/events.md`.
 
+**Verified (2026-10-23).**
+- Migration `20261024100000` applied with `supabase db push` by the developer; the ledger lists it, and both functions and both notification types exist on the live project.
+- API and database run [194/194](test-cases/runs/2026-10-23-1749-api-db-14105cf.md), including TC-CANCEL-014–018.
+- Browser run [90/92](test-cases/runs/2026-10-23-1840-e2e-14105cf.md); TC-CANCEL-019 and 020 passed. The two failures are outside this story. TC-RBAC-005 still expects unknown paths to go to `/login`, but story 43 (PR #100) sends them to the public directory at `/`. TC-TSD-017 fails as in every browser run since 2026-10-20.
+
 **Not verified.**
-- Migration `20261024100000` is not applied to the live project, so none of the live checks, the database script or the browser checks have run, and no run log is recorded. The database functions are checked only by reading them.
 - The manual pass (TC-CANCEL-021–023) hasn't happened.
 - No story moves events into `preparation` yet (story 68), so a direct cancel from Preparation is unit-tested only.
