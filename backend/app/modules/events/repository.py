@@ -274,6 +274,29 @@ def transition_event(
     return rows[0] if rows else None
 
 
+def request_event_cancellation(
+    event_id: str,
+    actor_id: str,
+    reason: str,
+    from_statuses: list[str],
+    coordinator_message: str,
+    lead_message: str,
+) -> dict:
+    """Story 84: run `public.request_event_cancellation` under the event's lock. It
+    records the request, supersedes an open change request (CR-R1) and notifies the
+    assigned coordinator, or every Lead while the event is unassigned. Answers
+    `{outcome, request}`: ok / not_found / not_owner / status_changed / already_open."""
+    response = get_supabase_admin_client().rpc("request_event_cancellation", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_reason": reason,
+        "p_from_statuses": from_statuses,
+        "p_coordinator_message": coordinator_message,
+        "p_lead_message": lead_message,
+    }).execute()
+    return response.data
+
+
 def list_status_history(event_id: str) -> list[dict]:
     """Newest first. The actor is embedded through the FK named in the migration.
     On a timestamp tie the creation row (no from_status) sorts last, since

@@ -508,6 +508,34 @@ class EventHistoryResponse(BaseModel):
     entries: list[EventHistoryEntry]
 
 
+CANCELLATION_REASON_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as a rejection reason
+
+
+class CancellationRequestCreate(BaseModel):
+    """Story 84 AC1: the organiser's reason for asking to cancel."""
+
+    reason: str = Field(max_length=CANCELLATION_REASON_MAX_LENGTH)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def reason_is_not_blank(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("A cancellation reason is required.")
+        return value.strip()
+
+
+class EventChangeRequest(BaseModel):
+    """A change or cancellation request on an event (REQUIREMENTS §6.19). Story 84
+    builds the cancellation kind; SCRUM-32/37 add change requests to the same table."""
+
+    id: str
+    kind: str
+    status: str
+    reason: str
+    requested_by: HistoryActor | None = None
+    requested_at: datetime
+
+
 # SCRUM-72: the Event Coordinator dashboard. The SPA's store
 # (`frontend/src/features/events/store.js`) fixed this shape first, and it does
 # the ranking itself, so action items are returned unordered.

@@ -47,6 +47,7 @@ from app.modules.events.schemas import (
     LeadEvent,
     EventComment,
     EventCommentsResponse,
+    EventChangeRequest,
     EventCreateRequest,
     EventHistoryEntry,
     EventHistoryResponse,
@@ -376,6 +377,18 @@ def resubmit(event_id: str, organiser_id: str, body: EventResubmitRequest) -> Ev
     if not updated:
         raise EventConflictError(STALE_EVENT_MESSAGE)
     return _to_response(updated)
+
+
+def request_cancellation(event_id: str, organiser_id: str, organiser_name: str, reason: str) -> EventChangeRequest:
+    """Story 84: record the owner's cancellation request. Nothing is released until the
+    coordinator decides (story 115)."""
+    row = _owned_event(event_id, organiser_id)
+    result = repository.request_event_cancellation(
+        event_id, organiser_id, reason, lifecycle.cancellation_requestable_from(),
+        coordinator_message=f'{organiser_name} requested to cancel "{row["name"]}". Reason: {reason}',
+        lead_message=f'Cancellation requested for unassigned event "{row["name"]}".',
+    )
+    return EventChangeRequest(**result["request"])
 
 
 def _validate_submission(row: dict) -> None:
