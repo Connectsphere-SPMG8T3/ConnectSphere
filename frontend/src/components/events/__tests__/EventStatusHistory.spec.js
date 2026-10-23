@@ -107,4 +107,17 @@ describe("EventStatusHistory (QA-70)", () => {
     expect(item.textContent).toContain("by Priya Nair");
     expect(item.textContent).toContain("Speaker withdrew");
   });
+
+  it("story 115 heads a rejected cancellation request with who rejected it and why", async () => {
+    const el = await mountHistory([
+      { id: "r1:rejected", kind: "cancellation_rejected", from_status: null, to_status: null,
+        reason: "The venue is already paid for", at: "2026-10-24T02:00:00Z",
+        actor: { id: "c1", full_name: "Marcus Lim" } },
+    ]);
+
+    const [item] = el.querySelectorAll("li");
+    expect(item.querySelector("p").textContent).toBe("Cancellation request rejected");
+    expect(item.textContent).toContain("by Marcus Lim");
+    expect(item.textContent).toContain("The venue is already paid for");
+  });
 });
