@@ -534,6 +534,9 @@ def _for_role(booking: dict, role: str) -> dict:
 def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
     row = _visible_event(event_id, user_id, role)
     response = _with_amendment(row)
+    open_request = repository.get_open_cancellation_request(event_id)
+    if open_request:
+        response.open_cancellation_request = EventChangeRequest(**open_request)
     if role == "event_coordinator" and row["status"] == "planning":
         response.safety_readiness = _safety_readiness_for(row)
     if role == "event_coordinator" or row["status"] == "confirmed":

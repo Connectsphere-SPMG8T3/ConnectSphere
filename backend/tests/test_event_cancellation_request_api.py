@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.modules.events import repository
+from app.modules.venues import repository as venues_repository
 from tests.conftest import make_table_mock
 
 ORGANISER_ID = "a0000000-0000-4000-8000-000000000001"
@@ -238,3 +239,47 @@ class TestWhoCanRequest:
 
         assert response.status_code == 403
         assert events["calls"] == []
+
+
+OPEN_REQUEST = {
+    "id": REQUEST_ID, "kind": "cancellation", "status": "open", "reason": REASON,
+    "requested_by": {"id": ORGANISER_ID, "full_name": "Olivia Organiser"},
+    "requested_at": "2026-10-23T09:00:00+00:00",
+}
+
+
+@pytest.fixture()
+def open_request(monkeypatch, events):
+    """The event's open cancellation request as the repository returns it (None: no request)."""
+    current = {"value": deepcopy(OPEN_REQUEST)}
+    monkeypatch.setattr(repository, "get_open_cancellation_request", lambda event_id: deepcopy(current["value"]))
+    return current
+
+
+class TestEventDetailShowsTheOpenRequest:
+    def test_the_owner_sees_their_open_request(self, client, auth_headers, act_as, open_request):
+        act_as()
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["open_cancellation_request"] == {
+            **OPEN_REQUEST, "requested_at": "2026-10-23T09:00:00Z"}
+
+    def test_the_assigned_coordinator_sees_it_too(self, client, auth_headers, act_as, open_request, monkeypatch):
+        monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)
+        monkeypatch.setattr(venues_repository, "list_booking_statuses", lambda event_ids: [])
+        act_as("event_coordinator", user_id=COORDINATOR_ID)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["open_cancellation_request"]["reason"] == REASON
+
+    def test_no_open_request_reads_as_null(self, client, auth_headers, act_as, open_request):
+        open_request["value"] = None
+        act_as()
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.json()["open_cancellation_request"] is None

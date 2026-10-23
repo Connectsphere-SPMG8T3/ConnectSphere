@@ -520,3 +520,28 @@ def test_request_event_cancellation_sends_the_reason_statuses_and_both_messages(
         "p_event_id": "event-1", "p_actor_id": "user-1", "p_reason": "Speaker withdrew",
         "p_from_statuses": ["planning", "submitted"],
         "p_coordinator_message": "to coordinator", "p_lead_message": "to leads"}}
+
+
+def test_get_open_cancellation_request_reads_the_open_cancellation_with_its_requester(monkeypatch):
+    row = {"id": "r1", "kind": "cancellation", "status": "open", "reason": "x",
+           "requested_at": "2026-10-23T09:00:00+00:00", "requested_by": {"id": "u1", "full_name": "Olivia"}}
+    client = TableClient(SimpleNamespace(data=row))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.get_open_cancellation_request("event-1") == row
+    [query] = client.queries
+    assert query.calls == [
+        ("table", "event_change_requests"),
+        ("select", "id, kind, status, reason, requested_at, "
+                   "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)"),
+        ("eq", "event_id", "event-1"),
+        ("eq", "kind", "cancellation"),
+        ("eq", "status", "open"),
+        ("maybe_single",),
+    ]
+
+
+def test_get_open_cancellation_request_is_none_when_nothing_is_open(monkeypatch):
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: TableClient(None))
+
+    assert repository.get_open_cancellation_request("event-1") is None

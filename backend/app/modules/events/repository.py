@@ -417,6 +417,23 @@ def get_open_amendment(event_id: str) -> dict | None:
     return response.data if response else None
 
 
+def get_open_cancellation_request(event_id: str) -> dict | None:
+    """Story 84: the event's open cancellation request, with who asked. At most one
+    is open per event (partial unique index, CR-R1)."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_change_requests")
+        .select("id, kind, status, reason, requested_at, "
+                "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)")
+        .eq("event_id", event_id)
+        .eq("kind", "cancellation")
+        .eq("status", "open")
+        .maybe_single()
+        .execute()
+    )
+    return response.data if response else None
+
+
 def list_comments(event_id: str) -> list[dict]:
     """The event's discussion thread, oldest first (SCRUM-61). The author is embedded
     through the FK named in the migration; it is null if their profile was deleted."""

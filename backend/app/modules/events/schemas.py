@@ -389,6 +389,23 @@ class EventSpaceVenueBooking(EventVenueBooking):
     pass
 
 
+class HistoryActor(BaseModel):
+    id: str
+    full_name: str
+
+
+class EventChangeRequest(BaseModel):
+    """A change or cancellation request on an event (REQUIREMENTS §6.19). Story 84
+    builds the cancellation kind; SCRUM-32/37 add change requests to the same table."""
+
+    id: str
+    kind: str
+    status: str
+    reason: str
+    requested_by: HistoryActor | None = None
+    requested_at: datetime
+
+
 class EventResponse(EventFields):
     id: str
     organiser_id: str
@@ -424,6 +441,8 @@ class EventResponse(EventFields):
     rejected_bookings: list[EventRejectedBooking] = []
     safety_readiness: SafetyReadiness | None = None
     latest_safety_decision: SafetyDecision | SafetyDecisionSummary | None = None
+    # Story 84: the open cancellation request, on a single-event read only.
+    open_cancellation_request: EventChangeRequest | None = None
     venue_bookings: list[EventSpaceVenueBooking] = []
 
 
@@ -484,11 +503,6 @@ class EventResubmitRequest(EventUpdateRequest):
         return _required_text(value, "A resubmission note is required.")
 
 
-class HistoryActor(BaseModel):
-    id: str
-    full_name: str
-
-
 class EventHistoryEntry(BaseModel):
     """One line of an event's history: a status change, or a reassignment (SCRUM-12), which
     is not a status change and so carries the two coordinators instead of statuses."""
@@ -522,18 +536,6 @@ class CancellationRequestCreate(BaseModel):
         if not isinstance(value, str) or not value.strip():
             raise ValueError("A cancellation reason is required.")
         return value.strip()
-
-
-class EventChangeRequest(BaseModel):
-    """A change or cancellation request on an event (REQUIREMENTS §6.19). Story 84
-    builds the cancellation kind; SCRUM-32/37 add change requests to the same table."""
-
-    id: str
-    kind: str
-    status: str
-    reason: str
-    requested_by: HistoryActor | None = None
-    requested_at: datetime
 
 
 # SCRUM-72: the Event Coordinator dashboard. The SPA's store
