@@ -8,14 +8,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.modules.equipment import service as equipment_service
 from app.modules.events import repository
 from app.modules.venues import repository as venues_repository
+from app.modules.venues import service as venues_service
 from tests.conftest import make_table_mock
 
 ORGANISER_ID = "a0000000-0000-4000-8000-000000000001"
 COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
 OTHER_ORGANISER_ID = "a0000000-0000-4000-8000-000000000003"
 EVENT_ID = "e0000000-0000-4000-8000-000000000841"
+OTHER_EVENT_ID = "e0000000-0000-4000-8000-000000000842"
 MISSING_EVENT_ID = "e0000000-0000-4000-8000-0000000008ff"
 REQUEST_ID = "c0000000-0000-4000-8000-000000000841"
 REASON = "Our keynote speaker has withdrawn"
@@ -315,3 +318,46 @@ class TestHistoryRecordsTheRequest:
             "reason": REASON, "at": "2026-10-23T09:00:00Z",
         }
         assert second["id"] == "h2"
+
+
+class TestCoordinatorDashboardListsTheRequest:
+    @pytest.fixture()
+    def dashboard_data(self, monkeypatch):
+        rows = [
+            {"id": EVENT_ID, "name": "Partner Summit", "status": "confirmed",
+             "starts_at": "2026-11-12T10:00:00+08:00", "submitted_at": "2026-09-20T09:00:00+08:00",
+             "technical_readiness": "not_required", "preliminary_equipment_needs": None,
+             "organiser": {"full_name": "Olivia Organiser"}},
+            {"id": OTHER_EVENT_ID, "name": "Year-End Dinner", "status": "planning",
+             "starts_at": "2026-12-12T19:00:00+08:00", "submitted_at": "2026-09-21T09:00:00+08:00",
+             "technical_readiness": "not_required", "preliminary_equipment_needs": None,
+             "organiser": {"full_name": "Olivia Organiser"}},
+        ]
+        asked = {}
+
+        def open_requests(event_ids):
+            asked["ids"] = list(event_ids)
+            return {EVENT_ID: "2026-10-23T09:00:00+00:00"}
+
+        monkeypatch.setattr(repository, "list_coordinator_events", lambda coordinator_id, statuses: rows)
+        monkeypatch.setattr(repository, "list_latest_resubmissions", lambda ids: {})
+        monkeypatch.setattr(repository, "list_open_cancellation_requests", open_requests)
+        monkeypatch.setattr(venues_service, "booking_statuses_by_event", lambda ids: {})
+        monkeypatch.setattr(venues_service, "affected_event_ids", lambda ids: set())
+        monkeypatch.setattr(equipment_service, "equipment_readiness_by_event", lambda ids: {})
+        return asked
+
+    def test_an_open_request_is_an_action_item_dated_when_it_was_asked(self, client, auth_headers, act_as,
+                                                                        dashboard_data):
+        act_as("event_coordinator", user_id=COORDINATOR_ID)
+
+        response = client.get("/api/v1/events/dashboard/coordinator", headers=auth_headers)
+
+        assert response.status_code == 200
+        items = [item for item in response.json()["action_items"] if item["kind"] == "cancellation_request"]
+        assert items == [{
+            "event_id": EVENT_ID, "event_name": "Partner Summit", "kind": "cancellation_request",
+            "starts_at": "2026-11-12T10:00:00+08:00", "occurred_at": "2026-10-23T09:00:00Z",
+            "organiser_name": "Olivia Organiser",
+        }]
+        assert set(dashboard_data["ids"]) == {EVENT_ID, OTHER_EVENT_ID}

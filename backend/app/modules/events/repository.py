@@ -140,6 +140,24 @@ def list_latest_resubmissions(event_ids: Iterable[str]) -> dict[str, str]:
     return latest
 
 
+def list_open_cancellation_requests(event_ids: Iterable[str]) -> dict[str, str]:
+    """Story 84: `{event_id: requested_at}` of each event's open cancellation request
+    (at most one per event, CR-R1), for the coordinator dashboard."""
+    ids = list(event_ids)
+    if not ids:
+        return {}
+    response = (
+        get_supabase_admin_client()
+        .table("event_change_requests")
+        .select("event_id, requested_at")
+        .in_("event_id", ids)
+        .eq("kind", "cancellation")
+        .eq("status", "open")
+        .execute()
+    )
+    return {row["event_id"]: row["requested_at"] for row in response.data or []}
+
+
 def list_event_names(event_ids: Iterable[str]) -> dict[str, str]:
     """`{event_id: name}` for the ids given, skipping any that no longer exist.
 

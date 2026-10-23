@@ -547,12 +547,13 @@ class CancellationRequestCreate(BaseModel):
 
 class CoordinatorActionKind(str, Enum):
     """The action kinds the server can produce today. The SPA's `ACTION_KINDS`
-    lists more (change and cancellation requests, booking and equipment
-    decisions, re-review outcomes); those arrive with the stories that build
-    their data, and until then their widgets stay empty (REQUIREMENTS §6.21)."""
+    lists more (change requests, booking and equipment decisions, re-review
+    outcomes); those arrive with the stories that build their data, and until
+    then their widgets stay empty (REQUIREMENTS §6.21)."""
 
     needs_alternative_venue = "needs_alternative_venue"
     arrangement_issue = "arrangement_issue"
+    cancellation_request = "cancellation_request"
     resubmitted = "resubmitted"
     awaiting_review = "awaiting_review"
 

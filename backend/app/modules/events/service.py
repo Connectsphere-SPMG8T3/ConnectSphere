@@ -665,10 +665,11 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
     """Everything the Event Coordinator dashboard shows, in one round trip (SCRUM-72).
 
     Only events assigned to the caller, never drafts (DR-R2). Action kinds whose
-    data doesn't exist yet (change and cancellation requests, booking and
-    equipment decisions, re-review outcomes) are not produced, so their widgets
-    stay empty rather than invent anything (REQUIREMENTS §6.21). The SPA ranks
-    the items, so they are returned unordered.
+    data doesn't exist yet (change requests, booking and equipment decisions,
+    re-review outcomes) are not produced, so their widgets stay empty rather
+    than invent anything (REQUIREMENTS §6.21). An open cancellation request
+    (story 84) is an item of its own, beside the event's other one. The SPA
+    ranks the items, so they are returned unordered.
 
     The caller's rejected events come back in the same query, listed apart:
     they are closed, so no arrangement or action is looked up for them.
@@ -684,6 +685,7 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
     under_review_ids = [row["id"] for row in rows if row["status"] == "under_review"]
 
     resubmissions = repository.list_latest_resubmissions(under_review_ids)
+    cancellation_requests = repository.list_open_cancellation_requests(event_ids)
     bookings = venues_service.booking_statuses_by_event(event_ids) if event_ids else {}
     affected = venues_service.affected_event_ids(event_ids) if event_ids else set()
     equipment = equipment_service.equipment_readiness_by_event(event_ids) if event_ids else {}
@@ -701,6 +703,17 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
                     kind=kind,
                     starts_at=row.get("starts_at"),
                     occurred_at=resubmitted_at or row.get("submitted_at"),
+                    organiser_name=(row.get("organiser") or {}).get("full_name"),
+                )
+            )
+        if row["id"] in cancellation_requests:
+            action_items.append(
+                CoordinatorActionItem(
+                    event_id=row["id"],
+                    event_name=row["name"],
+                    kind=CoordinatorActionKind.cancellation_request,
+                    starts_at=row.get("starts_at"),
+                    occurred_at=cancellation_requests[row["id"]],
                     organiser_name=(row.get("organiser") or {}).get("full_name"),
                 )
             )

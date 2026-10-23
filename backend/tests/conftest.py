@@ -151,6 +151,7 @@ def cancellation_requests_offline(monkeypatch, request):
     if request.node.path.name != "test_events_repository.py":
         monkeypatch.setattr("app.modules.events.repository.get_open_cancellation_request", lambda event_id: None)
         monkeypatch.setattr("app.modules.events.repository.list_cancellation_requests", lambda event_id: [])
+        monkeypatch.setattr("app.modules.events.repository.list_open_cancellation_requests", lambda event_ids: {})
 
 
 @pytest.fixture(autouse=True)
