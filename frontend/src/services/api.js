@@ -245,6 +245,10 @@ export const eventsApi = {
   reject(eventId, reason, token) {
     return request(`/events/${encodeURIComponent(eventId)}/reject`, { method: "POST", body: { reason }, token });
   },
+  // Story 84: the owner asks to cancel; 409 says why the event can't take a request.
+  requestCancellation(eventId, reason, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/cancellation-request`, { method: "POST", body: { reason }, token });
+  },
   // SCRUM-33: the coordinator returns a request; the organiser resubmits it.
   returnForAmendment(eventId, payload, token) {
     return request(`/events/${encodeURIComponent(eventId)}/return`, { method: "POST", body: payload, token });
