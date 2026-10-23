@@ -571,6 +571,11 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
     _visible_event(event_id, user_id, role)
     entries = [EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
     entries += [EventHistoryEntry(kind="reassignment", **row) for row in repository.list_assignment_history(event_id)]
+    entries += [
+        EventHistoryEntry(kind="cancellation_requested", id=row["id"], actor=row["requested_by"],
+                          reason=row["reason"], at=row["requested_at"])
+        for row in repository.list_cancellation_requests(event_id)
+    ]
     # Stable, so entries sharing a time keep the repository's order (the creation row last).
     entries.sort(key=lambda entry: entry.at, reverse=True)
     return EventHistoryResponse(entries=entries)

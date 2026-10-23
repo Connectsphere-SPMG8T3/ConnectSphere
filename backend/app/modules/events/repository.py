@@ -434,6 +434,22 @@ def get_open_cancellation_request(event_id: str) -> dict | None:
     return response.data if response else None
 
 
+def list_cancellation_requests(event_id: str) -> list[dict]:
+    """Story 84 AC5: every cancellation request on the event, newest first, for its
+    history. Who asked is embedded; it is null if their profile was deleted."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_change_requests")
+        .select("id, reason, requested_at, "
+                "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)")
+        .eq("event_id", event_id)
+        .eq("kind", "cancellation")
+        .order("requested_at", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
 def list_comments(event_id: str) -> list[dict]:
     """The event's discussion thread, oldest first (SCRUM-61). The author is embedded
     through the FK named in the migration; it is null if their profile was deleted."""

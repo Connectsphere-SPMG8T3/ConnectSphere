@@ -545,3 +545,21 @@ def test_get_open_cancellation_request_is_none_when_nothing_is_open(monkeypatch)
     monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: TableClient(None))
 
     assert repository.get_open_cancellation_request("event-1") is None
+
+
+def test_list_cancellation_requests_reads_every_cancellation_on_the_event(monkeypatch):
+    rows = [{"id": "r1", "reason": "x", "requested_at": "2026-10-23T09:00:00+00:00",
+             "requested_by": {"id": "u1", "full_name": "Olivia"}}]
+    client = TableClient(SimpleNamespace(data=rows))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.list_cancellation_requests("event-1") == rows
+    [query] = client.queries
+    assert query.calls == [
+        ("table", "event_change_requests"),
+        ("select", "id, reason, requested_at, "
+                   "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)"),
+        ("eq", "event_id", "event-1"),
+        ("eq", "kind", "cancellation"),
+        ("order", "requested_at", {"desc": True}),
+    ]

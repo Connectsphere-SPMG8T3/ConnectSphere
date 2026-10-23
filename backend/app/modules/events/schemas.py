@@ -505,7 +505,9 @@ class EventResubmitRequest(EventUpdateRequest):
 
 class EventHistoryEntry(BaseModel):
     """One line of an event's history: a status change, or a reassignment (SCRUM-12), which
-    is not a status change and so carries the two coordinators instead of statuses."""
+    is not a status change and so carries the two coordinators instead of statuses, or a
+    cancellation request (story 84, `cancellation_requested`), which carries only who asked
+    and why."""
 
     id: str
     kind: str = "status"

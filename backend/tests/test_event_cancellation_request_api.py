@@ -283,3 +283,35 @@ class TestEventDetailShowsTheOpenRequest:
         response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
 
         assert response.json()["open_cancellation_request"] is None
+
+
+class TestHistoryRecordsTheRequest:
+    @pytest.fixture()
+    def history(self, monkeypatch, events):
+        monkeypatch.setattr(repository, "list_status_history", lambda event_id: [
+            {"id": "h2", "from_status": "under_review", "to_status": "planning", "reason": None,
+             "at": "2026-10-20T09:00:00+00:00", "actor": {"id": COORDINATOR_ID, "full_name": "Cora Coordinator"}},
+        ])
+        monkeypatch.setattr(repository, "list_assignment_history", lambda event_id: [])
+        monkeypatch.setattr(repository, "list_cancellation_requests", lambda event_id: [
+            {"id": REQUEST_ID, "reason": REASON, "requested_at": "2026-10-23T09:00:00+00:00",
+             "requested_by": {"id": ORGANISER_ID, "full_name": "Olivia Organiser"}},
+        ])
+
+    @pytest.mark.parametrize(("role", "user_id"), [("event_organiser", ORGANISER_ID),
+                                                    ("event_coordinator", COORDINATOR_ID)])
+    def test_the_request_is_the_newest_entry_with_who_why_and_when(self, client, auth_headers, act_as,
+                                                                   history, role, user_id):
+        act_as(role, user_id=user_id)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers)
+
+        assert response.status_code == 200
+        first, second = response.json()["entries"]
+        assert first == {
+            "id": REQUEST_ID, "kind": "cancellation_requested", "from_status": None, "to_status": None,
+            "from_coordinator": None, "to_coordinator": None,
+            "actor": {"id": ORGANISER_ID, "full_name": "Olivia Organiser"},
+            "reason": REASON, "at": "2026-10-23T09:00:00Z",
+        }
+        assert second["id"] == "h2"
