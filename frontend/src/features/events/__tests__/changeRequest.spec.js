@@ -108,6 +108,12 @@ describe("describeChanges", () => {
     ]);
   });
 
+  it("falls back to the field name for a space field this client doesn't know", () => {
+    const changes = { event: [], spaces: [{ space_id: "s1", label: "Main hall", fields: [{ field: "stage_depth", before: 2, after: 3 }] }] };
+
+    expect(describeChanges(changes)[0].label).toBe("Main hall: stage_depth");
+  });
+
   it("is empty for a request without changes", () => {
     expect(describeChanges(null)).toEqual([]);
   });
