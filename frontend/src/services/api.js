@@ -249,6 +249,16 @@ export const eventsApi = {
   requestCancellation(eventId, reason, token) {
     return request(`/events/${encodeURIComponent(eventId)}/cancellation-request`, { method: "POST", body: { reason }, token });
   },
+  // Story 115: the assigned coordinator decides the request, or cancels directly.
+  approveCancellation(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/cancellation-request/approve`, { method: "POST", token });
+  },
+  rejectCancellation(eventId, reason, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/cancellation-request/reject`, { method: "POST", body: { reason }, token });
+  },
+  cancelEvent(eventId, reason, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/cancel`, { method: "POST", body: { reason }, token });
+  },
   // SCRUM-33: the coordinator returns a request; the organiser resubmits it.
   returnForAmendment(eventId, payload, token) {
     return request(`/events/${encodeURIComponent(eventId)}/return`, { method: "POST", body: payload, token });

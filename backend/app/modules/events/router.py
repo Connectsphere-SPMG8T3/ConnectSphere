@@ -22,6 +22,7 @@ from app.modules.events.schemas import (
     EventCreateRequest,
     EventHistoryResponse,
     EventAssignRequest,
+    EventCancelRequest,
     EventChangeRequest,
     EventReassignRequest,
     EventRejectRequest,
@@ -197,6 +198,21 @@ def resubmit_event(event_id: UUID, body: EventResubmitRequest, current_user: Eve
 def request_cancellation(event_id: UUID, body: CancellationRequestCreate,
                          current_user: EventOrganiser) -> EventChangeRequest:
     return service.request_cancellation(str(event_id), current_user.id, current_user.full_name, body.reason)
+
+
+@router.post("/{event_id}/cancellation-request/approve", response_model=EventResponse)
+def approve_cancellation(event_id: UUID, current_user: EventCoordinator) -> EventResponse:
+    return service.approve_cancellation(str(event_id), current_user.id)
+
+
+@router.post("/{event_id}/cancellation-request/reject", response_model=EventResponse)
+def reject_cancellation(event_id: UUID, body: EventRejectRequest, current_user: EventCoordinator) -> EventResponse:
+    return service.reject_cancellation(str(event_id), current_user.id, body.reason)
+
+
+@router.post("/{event_id}/cancel", response_model=EventResponse)
+def cancel_event(event_id: UUID, body: EventCancelRequest, current_user: EventCoordinator) -> EventResponse:
+    return service.cancel_event(str(event_id), current_user.id, body.reason)
 
 
 @router.post("/{event_id}/safety-approve", response_model=EventResponse)

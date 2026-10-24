@@ -365,3 +365,24 @@ describe("notificationsApi (SCRUM-113)", () => {
     );
   });
 });
+
+describe("Story 115 cancellation decisions", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("posts approve, reject and direct cancel with the coordinator's session", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ id: "event/one" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await eventsApi.approveCancellation("event/one", "token");
+    await eventsApi.rejectCancellation("event/one", "Venue already paid", "token");
+    await eventsApi.cancelEvent("event/one", "No replacement venue", "token");
+
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.method, options.body])).toEqual([
+      ["http://localhost:8000/api/v1/events/event%2Fone/cancellation-request/approve", "POST", undefined],
+      ["http://localhost:8000/api/v1/events/event%2Fone/cancellation-request/reject", "POST",
+        JSON.stringify({ reason: "Venue already paid" })],
+      ["http://localhost:8000/api/v1/events/event%2Fone/cancel", "POST", JSON.stringify({ reason: "No replacement venue" })],
+    ]);
+    expect(fetchMock.mock.calls.every(([, options]) => options.headers.Authorization === "Bearer token")).toBe(true);
+  });
+});

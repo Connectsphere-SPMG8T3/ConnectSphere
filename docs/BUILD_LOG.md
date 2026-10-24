@@ -3172,3 +3172,59 @@ On `feature/scrum-84-request-cancellation`, 2026-10-23. PBI 84 (Event status man
 - No story moves events into `preparation` yet (story 68), so TC-CANCEL-013 sets the status directly on a throwaway event.
 - AC4 is proven only at the database: story 32 has no API that creates a change request.
 - AC6 (the organiser hears the decision) is delivered by 115.
+
+### 4.88. Story 115 — Cancel an event
+
+On `feature/scrum-115-cancel-event`, 2026-10-23, branched from story 84's PR #104. PBI 115 (Event status management): the coordinator's side of the 84 split.
+
+**What was built.**
+- **Database** (migration `20261024100000_cancel_event.sql`):
+  - `transition_event` now releases venue bookings for a cancelled event, as it already did for a rejected one (BR-R4, QA3-27). Equipment was already released.
+  - `cancel_event` (ADR-0007) is the one path for approval and direct cancel. It locks the event, re-checks the coordinator, the start time and (for approval) the open request, then calls `transition_event`. It closes an open request as `approved`, notifies the registered attendees and cancels their registrations, and notifies every venue staff and tech support account, plus the Safety Officers from safety review. It returns an outcome code.
+  - `reject_cancellation_request` closes the open request as `rejected` with the reason and notifies the organiser.
+  - Two notification types: `event_cancelled` and `event_cancellation_rejected`.
+- **API:**
+  - `POST /events/{id}/cancellation-request/approve`, `/cancellation-request/reject` and `/cancel`, for the assigned coordinator in the coordinator role.
+  - `lifecycle` gains a `cancel` row (planning, confirmed, preparation).
+  - The history gains `cancellation_rejected` entries; `list_cancellation_requests` reads each decision.
+- **SPA:**
+  - The coordinator's request banner offers Approve cancellation (confirmed in a dialog) and Reject cancellation (reason required).
+  - A Cancel event action for a planning, confirmed or preparation event that hasn't started, with a reason.
+  - `CancellationReasonModal` holds both reasons. After a decision the event is read again so the page keeps its venue details.
+  - `EventStatusHistory` heads rejections "Cancellation request rejected".
+
+**Decisions** (from the planning session; recorded in REQUIREMENTS §6.19 CR-R10–CR-R13 and §9 items 91–92):
+- Approval and direct cancel both stop at the event's start time; a missing start time is refused.
+- Direct cancel only from Planning, Confirmed and Preparation; it closes an open request as approved.
+- Staff are notified as pools, the Safety Officers only from safety review.
+- An approval's history entry carries the organiser's reason.
+- A new request is allowed after a rejection; the rejection shows in the notice and history only.
+- Another coordinator gets 403, not 404, following `_assigned_event` (SCRUM-34/52).
+
+**Tests.** Written test-first in vertical slices, one commit each:
+- **Backend:** `test_event_cancellation_decision_api.py` (approval, its refusals and the RPC's outcome codes; direct cancel; rejection; the access matrix for all three routes including the SCRUM-76 denial; the rejection history entry) and both RPC contracts in `test_events_repository.py`.
+- **Frontend:** `CoordinatorCancellationDecision.spec.js`, a case in `EventStatusHistory.spec.js`, the store's failed re-read in `eventReviewStore.spec.js`, and the three calls in `api.spec.js`.
+- **Existing tests changed:** `test_list_cancellation_requests_reads_every_cancellation_on_the_event` now expects the wider select (AC6 reads the decision); `CoordinatorCancellationRequest.spec.js` expected a banner with no buttons and now expects exactly approve and reject (Q10). Both are named in their commits.
+- **Results:** backend 2042 passed, frontend 1562 passed, with every new line covered; `npm run build` is clean.
+
+**Live checks added.**
+- TC-CANCEL-014–017 in `verify_live.py`, on throwaway events, venues and equipment.
+- `event_cancellation_decision_checks.sql` (TC-CANCEL-018), added to the database run.
+- TC-CANCEL-019, 020 in `e2e/cancellation-decision.e2e.js`.
+- Manual cases TC-CANCEL-021–023 in `docs/test-cases/events.md`.
+
+**Verified (2026-10-23).**
+- Migration `20261024100000` applied with `supabase db push` by the developer; the ledger lists it, and both functions and both notification types exist on the live project.
+- API and database run [194/194](test-cases/runs/2026-10-23-1749-api-db-14105cf.md), including TC-CANCEL-014–018.
+- Browser run [90/92](test-cases/runs/2026-10-23-1840-e2e-14105cf.md); TC-CANCEL-019 and 020 passed. The two failures are outside this story. TC-RBAC-005 still expects unknown paths to go to `/login`, but story 43 (PR #100) sends them to the public directory at `/`. TC-TSD-017 fails as in every browser run since 2026-10-20.
+
+- Manual pass [TC-CANCEL-021–023](test-cases/runs/2026-10-23-2135-manual-e90024d.md) passed.
+
+**Not verified.**
+- No story moves events into `preparation` yet (story 68), so a direct cancel from Preparation is unit-tested only.
+
+**Follow-up (2026-10-24): rejecting the event closes an open request.**
+- Rejecting an event left its open cancellation request open. The coordinator still saw the banner on the rejected event; Approve cancellation answered 409, and Reject cancellation told the organiser their request was turned down.
+- Migration `20261025110000_close_cancellation_request_on_ended_event.sql` adds a trigger that closes the open request as `superseded` when the event becomes `rejected` or `completed` (CR-R22), the same way story 32 closes change requests. Reject remains a decision on the event, available with or without a request.
+- Tests: a failing case added to `event_cancellation_decision_checks.sql` first, then TC-CANCEL-024 in `verify_live.py`. No API or SPA code changed: the event read and the dashboard already list open requests only.
+- Verified (2026-10-24): migration applied to the live project with its ledger row; [TC-CANCEL-024](test-cases/runs/2026-10-24-2031-api-db-c197023.md) and [TC-CANCEL-018](test-cases/runs/2026-10-24-2032-api-db-c197023.md) pass. Only the checks this change touches were run, not the full suite. Every other rolled-back verification script also passed with the migration in place, except `event_cancellation_request_checks.sql`, which already fails on the live project because of story 32's `changes_only_on_change` constraint (story 32's branch updates it).

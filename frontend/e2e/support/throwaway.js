@@ -133,6 +133,15 @@ export function setThrowawayEventStatus(event, status) {
   query(`update public.events set status = '${status}' where id = '${event.id}'`);
 }
 
+/** The organiser's open cancellation request on a throwaway event (story 115). It is
+ * deleted with the event when the run ends (requests cascade). */
+export function createThrowawayCancellationRequest(event, reason) {
+  query(
+    "insert into public.event_change_requests (event_id, kind, reason, requested_by) values " +
+      `('${event.id}', 'cancellation', '${reason}', 'a0000000-0000-4000-8000-000000000001')`,
+  );
+}
+
 /** Free-text accessibility needs on a throwaway event (SCRUM-18). */
 export function setThrowawayEventAccessibilityNeeds(event, needs) {
   query(`update public.events set accessibility_needs = '${needs}' where id = '${event.id}'`);
