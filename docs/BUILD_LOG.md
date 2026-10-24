@@ -3284,7 +3284,8 @@ On `feature/scrum-32-request-event-changes`, 2026-10-24, stacked on PR #106 (sto
 - API and database run [198/201](test-cases/runs/2026-10-24-1646-api-db-68cfce6.md), with TC-CHANGE-001–007 passing. TC-VENUE-066, TC-VENUE-067 and TC-BOOK-002 failed with a 404 for an event or venue the check had just created, and passed when re-run unchanged and unrecorded straight afterwards. Story 32 doesn't touch those paths; the cause isn't established.
 - Browser run [91/93](test-cases/runs/2026-10-24-1718-e2e-68cfce6.md), with TC-CHANGE-008 passing. TC-RBAC-005 and TC-TSD-017 failed as in story 115's run. A first recorded browser run was deleted as a setup failure: the machine lost DNS for the Supabase host, so logins returned 500.
 
+- Manual pass [TC-CHANGE-009–012](test-cases/runs/2026-10-24-1732-manual-a310ea8.md) passed, on throwaway events Claude created for it.
+
 **Not verified.**
-- The manual pass TC-CHANGE-009–012 (layout at 375px, wording, notifications, history) is the developer's and hasn't been done yet.
 - In change mode, a value typed before the event finishes loading is overwritten by the loaded value. The draft and amend modes behave the same way; it is reported, not fixed.
 - Deciding and applying a change, and the notices to venue staff, tech support and attendees, are story 37.
