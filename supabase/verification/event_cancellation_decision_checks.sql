@@ -33,7 +33,14 @@ insert into public.events (id, organiser_id, coordinator_id, status, name, start
     -- A draft: not found to every coordinator.
     ('e0000000-0000-4000-8000-000000001b06', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000000002', 'draft', 'Draft check (rolled back)',
-     null, null);
+     null, null),
+    -- Rejected or completed with a request still open: the request closes with it.
+    ('e0000000-0000-4000-8000-000000001b07', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'under_review', 'Event rejected check (rolled back)',
+     '2031-03-19 10:00+08', '2031-03-19 12:00+08'),
+    ('e0000000-0000-4000-8000-000000001b08', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'confirmed', 'Event completed check (rolled back)',
+     '2031-03-20 10:00+08', '2031-03-20 12:00+08');
 
 insert into public.venue_bookings (event_id, venue_id, occupied_period, status) values
     ('e0000000-0000-4000-8000-000000001b01', 'b0000000-0000-4000-8000-000000000001',
@@ -51,7 +58,9 @@ insert into public.event_change_requests (event_id, kind, reason, requested_by) 
     ('e0000000-0000-4000-8000-000000001b01', 'cancellation', 'Speaker withdrew', 'a0000000-0000-4000-8000-000000000001'),
     ('e0000000-0000-4000-8000-000000001b02', 'cancellation', 'Budget cut', 'a0000000-0000-4000-8000-000000000001'),
     ('e0000000-0000-4000-8000-000000001b03', 'cancellation', 'Low sign-ups', 'a0000000-0000-4000-8000-000000000001'),
-    ('e0000000-0000-4000-8000-000000001b04', 'cancellation', 'Clash with a holiday', 'a0000000-0000-4000-8000-000000000001');
+    ('e0000000-0000-4000-8000-000000001b04', 'cancellation', 'Clash with a holiday', 'a0000000-0000-4000-8000-000000000001'),
+    ('e0000000-0000-4000-8000-000000001b07', 'cancellation', 'Sponsor pulled out', 'a0000000-0000-4000-8000-000000000001'),
+    ('e0000000-0000-4000-8000-000000001b08', 'cancellation', 'Venue too far', 'a0000000-0000-4000-8000-000000000001');
 
 do $$
 declare
@@ -61,6 +70,8 @@ declare
     v_safety uuid := 'e0000000-0000-4000-8000-000000001b04';
     v_started uuid := 'e0000000-0000-4000-8000-000000001b05';
     v_draft uuid := 'e0000000-0000-4000-8000-000000001b06';
+    v_rejected uuid := 'e0000000-0000-4000-8000-000000001b07';
+    v_completed uuid := 'e0000000-0000-4000-8000-000000001b08';
     v_organiser uuid := 'a0000000-0000-4000-8000-000000000001';
     v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
     v_venue_staff uuid := 'a0000000-0000-4000-8000-000000000003';
@@ -211,6 +222,30 @@ begin
      where event_id = v_safety and type = 'event_cancelled' and recipient_id = v_officer
        and recipient_role = 'safety_officer' and message = 'to safety';
     if v_rows <> 1 then raise exception 'DECISION FAIL: the Safety Officer was not told once (Q12)'; end if;
+
+    -- CR-R22: rejecting the event closes its open request; it can no longer be decided.
+    select version into v_version from public.events where id = v_rejected;
+    perform public.transition_event(v_rejected, v_coordinator, array['under_review', 'planning'], 'rejected',
+        v_version, 'Out of scope', 'event_rejected', 'o');
+    select * into v_request from public.event_change_requests where event_id = v_rejected;
+    if v_request.status <> 'superseded' or v_request.decided_at is null
+       or v_request.decision_reason <> 'Closed because the event was rejected.' then
+        raise exception 'DECISION FAIL: rejecting the event left its cancellation request open (CR-R22)';
+    end if;
+    v_result := public.reject_cancellation_request(v_rejected, v_coordinator, 'x', 'o');
+    if v_result->>'outcome' is distinct from 'no_open_request' then
+        raise exception 'DECISION FAIL: a rejected event''s request could still be rejected: %', v_result;
+    end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = v_rejected and type = 'event_cancellation_rejected';
+    if v_rows <> 0 then raise exception 'DECISION FAIL: closing the request told the organiser it was rejected'; end if;
+
+    -- CR-R22: so does completing it, whatever moves it there.
+    update public.events set status = 'completed' where id = v_completed;
+    select * into v_request from public.event_change_requests where event_id = v_completed;
+    if v_request.status <> 'superseded' or v_request.decision_reason <> 'Closed because the event was completed.' then
+        raise exception 'DECISION FAIL: completing the event left its cancellation request open (CR-R22)';
+    end if;
 
     -- API-only: not callable by signed-in or anonymous users.
     if has_function_privilege('authenticated',
