@@ -249,3 +249,177 @@ class TestRefusedRequests:
         response = request_change(client, auth_headers, event={"description": "Updated"}, reason="  ")
 
         assert "A reason for the change is required." in response.text
+
+
+class TestProposedChanges:
+    def test_a_space_change_is_recorded_under_its_space_and_is_significant(
+            self, client, auth_headers, act_as, events):
+        act_as()
+
+        response = request_change(client, auth_headers, spaces=[{"id": SPACE_ID, "expected_pax": 120}])
+
+        assert response.status_code == 201
+        call = events["calls"][0]
+        assert call["changes"] == {"event": [], "spaces": [{
+            "space_id": SPACE_ID, "label": "Main hall",
+            "fields": [{"field": "expected_pax", "before": 80, "after": 120}],
+        }]}
+        assert call["significant"] is True
+
+    def test_event_and_space_changes_are_recorded_together(self, client, auth_headers, act_as, events):
+        act_as()
+
+        request_change(client, auth_headers, event={"expected_attendance": 120, "name": "Partner Summit 2026"},
+                       spaces=[{"id": SPACE_ID, "layout_preference": "banquet"}])
+
+        call = events["calls"][0]
+        assert call["changes"]["event"] == [
+            {"field": "name", "before": "Partner Summit", "after": "Partner Summit 2026"},
+            {"field": "expected_attendance", "before": 80, "after": 120},
+        ]
+        assert call["changes"]["spaces"][0]["fields"] == [
+            {"field": "layout_preference", "before": "theatre", "after": "banquet"},
+        ]
+        assert call["significant"] is True
+
+    @pytest.mark.parametrize("field, value", [
+        ("name", "Partner Summit 2026"), ("purpose", "Annual partner meeting"),
+        ("accessibility_needs", "Step-free access"), ("waitlist_enabled", False),
+    ])
+    def test_ordinary_fields_alone_are_not_significant(self, client, auth_headers, act_as, events, field, value):
+        act_as()
+
+        request_change(client, auth_headers, event={field: value})
+
+        assert events["calls"][0]["significant"] is False
+
+    @pytest.mark.parametrize("field, value", [
+        ("expected_attendance", 120), ("layout_preference", "banquet"),
+        ("facilities_required", ["projector", "microphone"]),
+        ("preliminary_equipment_needs", "Two wireless microphones"),
+        ("event_timezone", "Asia/Tokyo"), ("ends_at", "2026-11-12T13:00:00+08:00"),
+    ])
+    def test_date_time_attendance_venue_and_equipment_fields_are_significant(
+            self, client, auth_headers, act_as, events, field, value):
+        act_as()
+
+        request_change(client, auth_headers, event={field: value})
+
+        assert events["calls"][0]["significant"] is True
+
+    def test_a_space_label_alone_is_not_significant(self, client, auth_headers, act_as, events):
+        act_as()
+
+        request_change(client, auth_headers, spaces=[{"id": SPACE_ID, "label": "Grand hall"}])
+
+        assert events["calls"][0]["significant"] is False
+
+    def test_values_that_only_look_different_are_not_changes(self, client, auth_headers, act_as, events):
+        """Q10: facilities compare as a set, blank text is no text, times compare as instants."""
+        events["store"][EVENT_ID]["facilities_required"] = ["projector", "microphone"]
+        events["store"][EVENT_ID]["spaces"][0]["facilities_required"] = ["projector", "microphone"]
+        act_as()
+
+        response = request_change(
+            client, auth_headers,
+            event={"facilities_required": ["microphone", "projector"], "description": "   ",
+                   "starts_at": "2026-11-12T02:00:00Z", "name": "Partner Summit",
+                   "purpose": "Annual partner meeting"},
+            spaces=[{"id": SPACE_ID, "facilities_required": ["microphone", "projector"], "label": "Main hall"}],
+        )
+
+        assert response.status_code == 201
+        assert events["calls"][0]["changes"] == {"event": [
+            {"field": "purpose", "before": "Quarterly partner meeting", "after": "Annual partner meeting"},
+        ], "spaces": []}
+
+    def test_a_request_that_changes_nothing_is_rejected(self, client, auth_headers, act_as, events):
+        act_as()
+
+        response = request_change(client, auth_headers, event={"name": "Partner Summit"},
+                                  spaces=[{"id": SPACE_ID, "expected_pax": 80}])
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "Change at least one detail."
+        assert events["calls"] == []
+
+    def test_a_space_that_is_not_the_events_is_rejected(self, client, auth_headers, act_as, events):
+        act_as()
+
+        response = request_change(client, auth_headers,
+                                  spaces=[{"id": "f0000000-0000-4000-8000-0000000003ff", "expected_pax": 120}])
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "One of the spaces is not part of this event."
+        assert events["calls"] == []
+
+    @pytest.mark.parametrize("event, spaces, field", [
+        ({"starts_at": "2020-01-01T10:00:00+08:00"}, [], "starts_at"),
+        ({"ends_at": "2026-11-12T09:00:00+08:00"}, [], "ends_at"),
+        ({}, [{"id": SPACE_ID, "starts_at": "2026-11-12T09:00:00+08:00",
+               "ends_at": "2026-11-12T11:00:00+08:00"}], "starts_at"),
+    ])
+    def test_a_change_that_breaks_a_submission_rule_is_rejected(self, client, auth_headers, act_as, events,
+                                                                event, spaces, field):
+        """CR-R19: the proposed event must pass the same rules as a submission."""
+        act_as()
+
+        response = request_change(client, auth_headers, event=event, spaces=spaces)
+
+        assert response.status_code == 422
+        assert field in {error["loc"][-1] for error in response.json()["detail"]}
+        assert events["calls"] == []
+
+    def test_a_rule_the_event_already_breaks_does_not_block_an_unrelated_change(
+            self, client, auth_headers, act_as, events):
+        """CR-R19: registration opened yesterday; changing the description still works."""
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        events["store"][EVENT_ID].update(registration_enabled=True, registration_capacity=80,
+                                         registration_opens_at=yesterday,
+                                         registration_closes_at="2026-11-11T18:00:00+08:00")
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Two keynotes"})
+
+        assert response.status_code == 201
+
+    def test_the_coordinator_is_told_what_changes_and_why(self, client, auth_headers, act_as, events):
+        act_as()
+
+        request_change(client, auth_headers, event={"expected_attendance": 120},
+                       spaces=[{"id": SPACE_ID, "layout_preference": "banquet"}])
+
+        call = events["calls"][0]
+        assert call["coordinator_message"] == (
+            'Test event_organiser requested changes to "Partner Summit": expected attendance, '
+            f'Main hall layout. Reason: {REASON}')
+        assert call["lead_message"] == 'Changes requested for unassigned event "Partner Summit".'
+
+    def test_clearing_a_text_field_records_no_text_and_trims_new_text(self, client, auth_headers, act_as, events):
+        events["store"][EVENT_ID]["accessibility_needs"] = "Step-free access"
+        act_as()
+
+        request_change(client, auth_headers, event={"accessibility_needs": "   ", "description": "  Two keynotes "})
+
+        assert events["calls"][0]["changes"]["event"] == [
+            {"field": "description", "before": None, "after": "Two keynotes"},
+            {"field": "accessibility_needs", "before": "Step-free access", "after": None},
+        ]
+
+    @pytest.mark.parametrize("field", ["name", "purpose"])
+    def test_a_required_field_cannot_be_cleared(self, client, auth_headers, act_as, events, field):
+        act_as()
+
+        response = request_change(client, auth_headers, event={field: "     "})
+
+        assert response.status_code == 422
+        assert field in {error["loc"][-1] for error in response.json()["detail"]}
+        assert events["calls"] == []
+
+    def test_a_space_label_cannot_be_cleared(self, client, auth_headers, act_as, events):
+        act_as()
+
+        response = request_change(client, auth_headers, spaces=[{"id": SPACE_ID, "label": "   "}])
+
+        assert response.status_code == 422
+        assert events["calls"] == []

@@ -416,19 +416,57 @@ def _refuse_change_request(row: dict) -> None:
         raise EventConflictError("This event has already started, so changes can't be requested.")
 
 
+def _proposed_changes(row: dict, body: ChangeRequestCreate) -> tuple[dict, dict]:
+    """CR-R16: the proposal diffed against the stored event and its spaces, and the
+    event as it would be with the changes applied."""
+    spaces = {space["id"]: space for space in row.get("spaces") or []}
+    proposed_spaces = {
+        str(space.id): {field: change_fields.trimmed(value)
+                        for field, value in space.model_dump(mode="json", exclude_unset=True, exclude={"id"}).items()}
+        for space in body.spaces
+    }
+    if not proposed_spaces.keys() <= spaces.keys():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="One of the spaces is not part of this event.")
+    proposed = {field: change_fields.trimmed(value)
+                for field, value in body.event.model_dump(mode="json", exclude_unset=True).items()}
+    changes = {"event": change_fields.diff(row, proposed), "spaces": []}
+    for space_id, values in proposed_spaces.items():
+        fields = change_fields.diff(spaces[space_id], values)
+        if fields:
+            changes["spaces"].append({"space_id": space_id, "label": spaces[space_id]["label"], "fields": fields})
+    if not changes["event"] and not changes["spaces"]:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Change at least one detail.")
+    candidate = {**row, **proposed,
+                 "spaces": [{**space, **proposed_spaces.get(space["id"], {})} for space in row.get("spaces") or []]}
+    return changes, candidate
+
+
+def _refuse_new_submission_errors(row: dict, candidate: dict) -> None:
+    """CR-R19: the changed event must pass the submission rules, but a rule the event
+    already breaks (registration that opened yesterday, say) doesn't block the request."""
+    existing = {(tuple(error["loc"]), error["msg"]) for error in _submission_errors(row)}
+    errors = [error for error in _submission_errors(candidate)
+              if (tuple(error["loc"]), error["msg"]) not in existing]
+    if not candidate.get("name"):
+        errors.append({"loc": ["body", "event", "name"], "msg": "Field required", "type": "missing"})
+    if errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
+
+
 def request_change(event_id: str, organiser_id: str, organiser_name: str,
                    body: ChangeRequestCreate) -> EventChangeRequest:
     """Story 32: record the owner's proposed changes. Nothing changes on the event
     until the coordinator approves them (story 37)."""
     row = _owned_event(event_id, organiser_id)
     _refuse_change_request(row)
-    proposed = body.event.model_dump(mode="json", exclude_unset=True)
-    changes = {"event": change_fields.diff(row, proposed), "spaces": []}
-    fields = ", ".join(change_fields.field_names(changes))
+    changes, candidate = _proposed_changes(row, body)
+    _refuse_new_submission_errors(row, candidate)
     result = repository.request_event_change(
         event_id, organiser_id, body.reason, changes, change_fields.is_significant(changes),
         lifecycle.change_requestable_from(), body.version,
-        coordinator_message=f'{organiser_name} requested changes to "{row["name"]}": {fields}. Reason: {body.reason}',
+        coordinator_message=(f'{organiser_name} requested changes to "{row["name"]}": '
+                             f'{change_fields.describe(changes)}. Reason: {body.reason}'),
         lead_message=f'Changes requested for unassigned event "{row["name"]}".',
     )
     return EventChangeRequest(**result["request"])
@@ -526,6 +564,12 @@ def cancel_event(event_id: str, coordinator_id: str, reason: str) -> EventRespon
 
 
 def _validate_submission(row: dict) -> None:
+    errors = _submission_errors(row)
+    if errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
+
+
+def _submission_errors(row: dict) -> list[dict]:
     errors = []
     has_space_requests = bool(row.get("spaces"))
     required_fields = ("purpose", "starts_at", "ends_at")
@@ -575,8 +619,7 @@ def _validate_submission(row: dict) -> None:
             if event_ends_at and registration_closes_at > event_ends_at:
                 errors.append({"loc": ["body", "registration_closes_at"], "msg": "Registration closing time cannot be after the event end time.", "type": "value_error"})
 
-    if errors:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
+    return errors
 
 
 def _parse_datetime(value: datetime | str) -> datetime:
