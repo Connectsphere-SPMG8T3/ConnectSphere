@@ -9,6 +9,7 @@ from postgrest.exceptions import APIError
 from fastapi import HTTPException, status
 
 from app.core.exceptions import (
+    ChangeRequestInvalidError,
     CoordinatorNotEligibleError,
     EventNotInLeadScopeError,
     EventServiceUnavailableError,
@@ -426,8 +427,7 @@ def _proposed_changes(row: dict, body: ChangeRequestCreate) -> tuple[dict, dict]
         for space in body.spaces
     }
     if not proposed_spaces.keys() <= spaces.keys():
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail="One of the spaces is not part of this event.")
+        raise ChangeRequestInvalidError("One of the spaces is not part of this event.")
     proposed = {field: change_fields.trimmed(value)
                 for field, value in body.event.model_dump(mode="json", exclude_unset=True).items()}
     changes = {"event": change_fields.diff(row, proposed), "spaces": []}
@@ -436,7 +436,7 @@ def _proposed_changes(row: dict, body: ChangeRequestCreate) -> tuple[dict, dict]
         if fields:
             changes["spaces"].append({"space_id": space_id, "label": spaces[space_id]["label"], "fields": fields})
     if not changes["event"] and not changes["spaces"]:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Change at least one detail.")
+        raise ChangeRequestInvalidError("Change at least one detail.")
     candidate = {**row, **proposed,
                  "spaces": [{**space, **proposed_spaces.get(space["id"], {})} for space in row.get("spaces") or []]}
     return changes, candidate
@@ -451,7 +451,7 @@ def _refuse_new_submission_errors(row: dict, candidate: dict) -> None:
     if not candidate.get("name"):
         errors.append({"loc": ["body", "event", "name"], "msg": "Field required", "type": "missing"})
     if errors:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
+        raise ChangeRequestInvalidError(errors)
 
 
 def request_change(event_id: str, organiser_id: str, organiser_name: str,
