@@ -14,6 +14,7 @@ from app.modules.events.schemas import (
     SafetyChangesRequest,
     SafetyRejectRequest,
     CancellationRequestCreate,
+    ChangeRequestCreate,
     CoordinatorDashboard,
     LeadDashboard,
     EventComment,
@@ -198,6 +199,12 @@ def resubmit_event(event_id: UUID, body: EventResubmitRequest, current_user: Eve
 def request_cancellation(event_id: UUID, body: CancellationRequestCreate,
                          current_user: EventOrganiser) -> EventChangeRequest:
     return service.request_cancellation(str(event_id), current_user.id, current_user.full_name, body.reason)
+
+
+@router.post("/{event_id}/change-request", response_model=EventChangeRequest,
+             status_code=status.HTTP_201_CREATED)
+def request_change(event_id: UUID, body: ChangeRequestCreate, current_user: EventOrganiser) -> EventChangeRequest:
+    return service.request_change(str(event_id), current_user.id, current_user.full_name, body)
 
 
 @router.post("/{event_id}/cancellation-request/approve", response_model=EventResponse)

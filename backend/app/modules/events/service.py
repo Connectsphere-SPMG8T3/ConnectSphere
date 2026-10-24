@@ -18,7 +18,7 @@ from app.core.exceptions import (
 # Module imports, not names: `venues.service` imports this module too, and a
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.equipment import service as equipment_service
-from app.modules.events import lead_scope, lifecycle, repository
+from app.modules.events import change_fields, lead_scope, lifecycle, repository
 from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
 from app.modules.events.schemas import (
@@ -47,6 +47,7 @@ from app.modules.events.schemas import (
     LeadEvent,
     EventComment,
     EventCommentsResponse,
+    ChangeRequestCreate,
     EventChangeRequest,
     EventCreateRequest,
     EventHistoryEntry,
@@ -399,6 +400,23 @@ def request_cancellation(event_id: str, organiser_id: str, organiser_name: str, 
         raise EventConflictError("A cancellation request is already open for this event.")
     if outcome != "ok":
         raise EventConflictError(STALE_EVENT_MESSAGE)
+    return EventChangeRequest(**result["request"])
+
+
+def request_change(event_id: str, organiser_id: str, organiser_name: str,
+                   body: ChangeRequestCreate) -> EventChangeRequest:
+    """Story 32: record the owner's proposed changes. Nothing changes on the event
+    until the coordinator approves them (story 37)."""
+    row = _owned_event(event_id, organiser_id)
+    proposed = body.event.model_dump(mode="json", exclude_unset=True)
+    changes = {"event": change_fields.diff(row, proposed), "spaces": []}
+    fields = ", ".join(change_fields.field_names(changes))
+    result = repository.request_event_change(
+        event_id, organiser_id, body.reason, changes, change_fields.is_significant(changes),
+        lifecycle.change_requestable_from(), body.version,
+        coordinator_message=f'{organiser_name} requested changes to "{row["name"]}": {fields}. Reason: {body.reason}',
+        lead_message=f'Changes requested for unassigned event "{row["name"]}".',
+    )
     return EventChangeRequest(**result["request"])
 
 

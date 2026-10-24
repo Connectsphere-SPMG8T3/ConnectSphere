@@ -315,6 +315,35 @@ def request_event_cancellation(
     return response.data
 
 
+def request_event_change(
+    event_id: str,
+    actor_id: str,
+    reason: str,
+    changes: dict,
+    significant: bool,
+    from_statuses: list[str],
+    expected_version: int,
+    coordinator_message: str,
+    lead_message: str,
+) -> dict:
+    """Story 32: run `public.request_event_change` under the event's lock. It records
+    the change request and notifies the assigned coordinator, or every Lead while the
+    event is unassigned. Answers `{outcome, request}`: ok / not_found / not_owner /
+    status_changed / stale / cancellation_open / already_open."""
+    response = get_supabase_admin_client().rpc("request_event_change", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_reason": reason,
+        "p_changes": changes,
+        "p_significant": significant,
+        "p_from_statuses": from_statuses,
+        "p_expected_version": expected_version,
+        "p_coordinator_message": coordinator_message,
+        "p_lead_message": lead_message,
+    }).execute()
+    return response.data
+
+
 def cancel_event(
     event_id: str,
     actor_id: str,
