@@ -475,6 +475,7 @@ class EventResponse(EventFields):
     latest_safety_decision: SafetyDecision | SafetyDecisionSummary | None = None
     # Story 84: the open cancellation request, on a single-event read only.
     open_cancellation_request: EventChangeRequest | None = None
+    open_change_request: EventChangeRequest | None = None  # story 32
     venue_bookings: list[EventSpaceVenueBooking] = []
 
 
@@ -539,7 +540,8 @@ class EventHistoryEntry(BaseModel):
     """One line of an event's history: a status change, or a reassignment (SCRUM-12), which
     is not a status change and so carries the two coordinators instead of statuses, or a
     cancellation request (story 84, `cancellation_requested`), which carries only who asked
-    and why."""
+    and why, or a change request (story 32, `change_requested`), which also carries the
+    proposed `changes`, and its closing (`change_request_closed`) when it was superseded."""
 
     id: str
     kind: str = "status"
@@ -549,7 +551,16 @@ class EventHistoryEntry(BaseModel):
     to_coordinator: HistoryActor | None = None
     actor: HistoryActor | None = None
     reason: str | None = None
+    changes: EventChanges | None = None
     at: datetime
+
+    @model_serializer(mode="wrap")
+    def _omit_changes_outside_change_requests(self, handler):
+        # Only change-request entries have proposed changes; the others keep their shape.
+        data = handler(self)
+        if not self.kind.startswith("change_request"):
+            data.pop("changes", None)
+        return data
 
 
 class EventHistoryResponse(BaseModel):
@@ -619,6 +630,7 @@ class CoordinatorActionKind(str, Enum):
     needs_alternative_venue = "needs_alternative_venue"
     arrangement_issue = "arrangement_issue"
     cancellation_request = "cancellation_request"
+    change_request = "change_request"
     resubmitted = "resubmitted"
     awaiting_review = "awaiting_review"
 

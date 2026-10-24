@@ -713,6 +713,9 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
     open_request = repository.get_open_cancellation_request(event_id)
     if open_request:
         response.open_cancellation_request = EventChangeRequest(**open_request)
+    open_change = repository.get_open_change_request(event_id)
+    if open_change:
+        response.open_change_request = EventChangeRequest(**open_change)
     if role == "event_coordinator" and row["status"] == "planning":
         response.safety_readiness = _safety_readiness_for(row)
     if role == "event_coordinator" or row["status"] == "confirmed":
@@ -759,6 +762,19 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
         EventHistoryEntry(kind="cancellation_rejected", id=f"{row['id']}:rejected", actor=row["decided_by"],
                           reason=row["decision_reason"], at=row["decided_at"])
         for row in requests if row.get("status") == "rejected"
+    ]
+    changes = repository.list_change_requests(event_id)
+    entries += [
+        EventHistoryEntry(kind="change_requested", id=row["id"], actor=row["requested_by"],
+                          reason=row["reason"], changes=row["changes"], at=row["requested_at"])
+        for row in changes
+    ]
+    # 84 AC4 / CR-R18: a superseded request says when and why it closed. Approvals and
+    # rejections are story 37's.
+    entries += [
+        EventHistoryEntry(kind="change_request_closed", id=f"{row['id']}:closed", actor=row["decided_by"],
+                          reason=row["decision_reason"], at=row["decided_at"])
+        for row in changes if row.get("status") == "superseded"
     ]
     # Stable, so entries sharing a time keep the repository's order (the creation row last).
     entries.sort(key=lambda entry: entry.at, reverse=True)
@@ -870,6 +886,7 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
 
     resubmissions = repository.list_latest_resubmissions(under_review_ids)
     cancellation_requests = repository.list_open_cancellation_requests(event_ids)
+    change_requests = repository.list_open_change_requests(event_ids)
     bookings = venues_service.booking_statuses_by_event(event_ids) if event_ids else {}
     affected = venues_service.affected_event_ids(event_ids) if event_ids else set()
     equipment = equipment_service.equipment_readiness_by_event(event_ids) if event_ids else {}
@@ -890,17 +907,19 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
                     organiser_name=(row.get("organiser") or {}).get("full_name"),
                 )
             )
-        if row["id"] in cancellation_requests:
-            action_items.append(
-                CoordinatorActionItem(
-                    event_id=row["id"],
-                    event_name=row["name"],
-                    kind=CoordinatorActionKind.cancellation_request,
-                    starts_at=row.get("starts_at"),
-                    occurred_at=cancellation_requests[row["id"]],
-                    organiser_name=(row.get("organiser") or {}).get("full_name"),
+        for open_requests, request_kind in ((cancellation_requests, CoordinatorActionKind.cancellation_request),
+                                            (change_requests, CoordinatorActionKind.change_request)):
+            if row["id"] in open_requests:
+                action_items.append(
+                    CoordinatorActionItem(
+                        event_id=row["id"],
+                        event_name=row["name"],
+                        kind=request_kind,
+                        starts_at=row.get("starts_at"),
+                        occurred_at=open_requests[row["id"]],
+                        organiser_name=(row.get("organiser") or {}).get("full_name"),
+                    )
                 )
-            )
 
         technical = technical_status(row)
         active_events.append(

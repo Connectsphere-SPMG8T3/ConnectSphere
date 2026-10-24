@@ -8,7 +8,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.modules.equipment import service as equipment_service
 from app.modules.events import repository
+from app.modules.venues import repository as venues_repository
+from app.modules.venues import service as venues_service
 from tests.conftest import make_table_mock
 
 ORGANISER_ID = "a0000000-0000-4000-8000-000000000001"
@@ -469,3 +472,131 @@ class TestOutcomesUnderTheLock:
         response = request_change(client, auth_headers, event={"description": "Updated"})
 
         assert response.status_code == 404
+
+
+CHANGES = {"event": [{"field": "expected_attendance", "before": 80, "after": 120}], "spaces": []}
+OPEN_REQUEST = {
+    "id": REQUEST_ID, "kind": "change", "status": "open", "reason": REASON, "changes": CHANGES,
+    "significant": True, "requested_by": {"id": ORGANISER_ID, "full_name": "Olivia Organiser"},
+    "requested_at": "2026-10-24T09:00:00+00:00",
+}
+
+
+@pytest.fixture()
+def open_request(monkeypatch, events):
+    """The event's open change request as the repository returns it (None: no request)."""
+    current = {"value": deepcopy(OPEN_REQUEST)}
+    monkeypatch.setattr(repository, "get_open_change_request", lambda event_id: deepcopy(current["value"]))
+    return current
+
+
+class TestEventDetailShowsTheOpenRequest:
+    def test_the_owner_sees_their_open_request(self, client, auth_headers, act_as, open_request):
+        act_as()
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["open_change_request"] == {**OPEN_REQUEST, "requested_at": "2026-10-24T09:00:00Z"}
+
+    def test_the_assigned_coordinator_sees_it_too(self, client, auth_headers, act_as, open_request, monkeypatch):
+        monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)
+        monkeypatch.setattr(venues_repository, "list_booking_statuses", lambda event_ids: [])
+        act_as("event_coordinator", user_id=COORDINATOR_ID)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["open_change_request"]["changes"] == CHANGES
+
+    def test_no_open_request_reads_as_null(self, client, auth_headers, act_as, open_request):
+        open_request["value"] = None
+        act_as()
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.json()["open_change_request"] is None
+
+
+class TestHistoryRecordsTheRequest:
+    @pytest.fixture()
+    def history(self, monkeypatch, events):
+        monkeypatch.setattr(repository, "list_status_history", lambda event_id: [
+            {"id": "h2", "from_status": "under_review", "to_status": "planning", "reason": None,
+             "at": "2026-10-20T09:00:00+00:00", "actor": {"id": COORDINATOR_ID, "full_name": "Cora Coordinator"}},
+        ])
+        monkeypatch.setattr(repository, "list_assignment_history", lambda event_id: [])
+        requests = [{"id": REQUEST_ID, "reason": REASON, "changes": CHANGES, "significant": True,
+                     "requested_at": "2026-10-24T09:00:00+00:00", "status": "open",
+                     "decision_reason": None, "decided_at": None, "decided_by": None,
+                     "requested_by": {"id": ORGANISER_ID, "full_name": "Olivia Organiser"}}]
+        monkeypatch.setattr(repository, "list_change_requests", lambda event_id: deepcopy(requests))
+        return requests
+
+    @pytest.mark.parametrize(("role", "user_id"), [("event_organiser", ORGANISER_ID),
+                                                    ("event_coordinator", COORDINATOR_ID)])
+    def test_the_request_is_an_entry_with_who_what_why_and_when(self, client, auth_headers, act_as,
+                                                                history, role, user_id):
+        """AC2: recorded and tracked with time and author."""
+        act_as(role, user_id=user_id)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers)
+
+        assert response.status_code == 200
+        first, second = response.json()["entries"]
+        assert first == {
+            "id": REQUEST_ID, "kind": "change_requested", "from_status": None, "to_status": None,
+            "from_coordinator": None, "to_coordinator": None,
+            "actor": {"id": ORGANISER_ID, "full_name": "Olivia Organiser"},
+            "reason": REASON, "changes": CHANGES, "at": "2026-10-24T09:00:00Z",
+        }
+        assert second["id"] == "h2"
+
+    def test_a_superseded_request_also_shows_when_and_why_it_closed(self, client, auth_headers, act_as, history):
+        """84 AC4 / CR-R18: a cancellation request or a closed event closes it."""
+        history[0].update(status="superseded", decided_at="2026-10-25T09:00:00+00:00",
+                          decision_reason="Superseded by a cancellation request.",
+                          decided_by={"id": ORGANISER_ID, "full_name": "Olivia Organiser"})
+        act_as()
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers)
+
+        closed = response.json()["entries"][0]
+        assert closed == {
+            "id": f"{REQUEST_ID}:closed", "kind": "change_request_closed", "from_status": None,
+            "to_status": None, "from_coordinator": None, "to_coordinator": None,
+            "actor": {"id": ORGANISER_ID, "full_name": "Olivia Organiser"},
+            "reason": "Superseded by a cancellation request.", "changes": None, "at": "2026-10-25T09:00:00Z",
+        }
+
+
+class TestCoordinatorDashboardListsTheRequest:
+    @pytest.fixture()
+    def dashboard_data(self, monkeypatch):
+        rows = [
+            {"id": EVENT_ID, "name": "Partner Summit", "status": "confirmed",
+             "starts_at": "2026-11-12T10:00:00+08:00", "submitted_at": "2026-09-20T09:00:00+08:00",
+             "technical_readiness": "not_required", "preliminary_equipment_needs": None,
+             "organiser": {"full_name": "Olivia Organiser"}},
+        ]
+        monkeypatch.setattr(repository, "list_coordinator_events", lambda coordinator_id, statuses: rows)
+        monkeypatch.setattr(repository, "list_latest_resubmissions", lambda ids: {})
+        monkeypatch.setattr(repository, "list_open_change_requests",
+                            lambda event_ids: {EVENT_ID: "2026-10-24T09:00:00+00:00"})
+        monkeypatch.setattr(venues_service, "booking_statuses_by_event", lambda ids: {})
+        monkeypatch.setattr(venues_service, "affected_event_ids", lambda ids: set())
+        monkeypatch.setattr(equipment_service, "equipment_readiness_by_event", lambda ids: {})
+
+    def test_an_open_request_is_an_action_item_dated_when_it_was_asked(self, client, auth_headers, act_as,
+                                                                        dashboard_data):
+        act_as("event_coordinator", user_id=COORDINATOR_ID)
+
+        response = client.get("/api/v1/events/dashboard/coordinator", headers=auth_headers)
+
+        assert response.status_code == 200
+        items = [item for item in response.json()["action_items"] if item["kind"] == "change_request"]
+        assert items == [{
+            "event_id": EVENT_ID, "event_name": "Partner Summit", "kind": "change_request",
+            "starts_at": "2026-11-12T10:00:00+08:00", "occurred_at": "2026-10-24T09:00:00Z",
+            "organiser_name": "Olivia Organiser",
+        }]
