@@ -1041,8 +1041,9 @@ def delete_throwaway_bookings(run_id: str) -> int:
     # restricts); its reservations cascade.
     equipment = mine_or_stale("name", f"{THROWAWAY_EQUIPMENT_PREFIX}{run_id} %", f"{THROWAWAY_EVENT_PREFIX}%")
     db_query(f"delete from public.equipment where {equipment}")
-    # CR-94's throwaway venues: their layouts, facilities and edit history cascade.
-    venues = mine_or_stale("name", f"{THROWAWAY_VENUE_PREFIX}{run_id} %", f"{THROWAWAY_EVENT_PREFIX}%")
+    # CR-94's throwaway venues, named like its events: their layouts, facilities and
+    # edit history cascade.
+    venues = mine_or_stale("name", f"{THROWAWAY_EVENT_PREFIX}{run_id} %", f"{THROWAWAY_EVENT_PREFIX}%")
     db_query(f"delete from public.venues where {venues}")
     return deleted
 

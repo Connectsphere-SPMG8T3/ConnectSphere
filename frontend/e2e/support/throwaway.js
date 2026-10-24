@@ -13,7 +13,11 @@ const PREFIX = "live-check+";
 const DOMAIN = "@connectsphere.dev";
 
 // In every throwaway name and note this run writes, so its cleanup can find only its own.
-export const RUN_ID = `e2e-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}`;
+// Playwright's global setup (which cleans up) and its workers (which create rows) are
+// separate processes: the first to load this module publishes the id in the environment,
+// which the processes it starts inherit.
+process.env.E2E_RUN_ID ||= `e2e-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}`;
+export const RUN_ID = process.env.E2E_RUN_ID;
 // Longer than any run, so a concurrent run's rows are never treated as left over.
 export const STALE_AFTER = "6 hours";
 

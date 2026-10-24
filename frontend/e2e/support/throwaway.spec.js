@@ -1,7 +1,7 @@
 // The e2e support code reads the Supabase CLI's JSON in either of its two shapes
 // (the same bug as backend/scripts/verify_live.py, D28): `{"rows": [...]}` under an
 // agent, a bare list in a plain terminal, and `[]` when a delete matched nothing.
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as throwaway from "./throwaway.js";
 import { execFileSync } from "node:child_process";
@@ -88,5 +88,35 @@ describe("run-scoped cleanup", () => {
     throwaway.createThrowawayBlock("v1", "2031-01-01 10:00+08", "2031-01-01 12:00+08");
     expect(execFileSync.mock.calls.at(-1)[1].at(-1)).toContain(`'live-check ${throwaway.RUN_ID}'`);
     expect(throwaway.liveCheckLineNote("lectern HDMI")).toContain(throwaway.RUN_ID);
+  });
+});
+
+// Playwright runs global setup (which cleans up) and each worker (which creates rows) in
+// separate processes, so they must agree on one run id or the cleanup misses the rows.
+describe("one run id across Playwright's processes", () => {
+  const saved = process.env.E2E_RUN_ID;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.E2E_RUN_ID;
+    else process.env.E2E_RUN_ID = saved;
+    vi.resetModules();
+  });
+
+  it("uses the id the first process published", async () => {
+    process.env.E2E_RUN_ID = "e2e-20260101000000";
+    vi.resetModules();
+
+    const fresh = await import("./throwaway.js");
+
+    expect(fresh.RUN_ID).toBe("e2e-20260101000000");
+    expect(fresh.throwawayEmail("x")).toContain("e2e-20260101000000");
+  });
+
+  it("publishes its id for the processes it starts", async () => {
+    delete process.env.E2E_RUN_ID;
+    vi.resetModules();
+
+    const fresh = await import("./throwaway.js");
+
+    expect(process.env.E2E_RUN_ID).toBe(fresh.RUN_ID);
   });
 });
