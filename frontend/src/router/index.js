@@ -60,6 +60,13 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: ["event_organiser"] },
   },
   {
+    // Story 32: the request form in change mode, for a submitted event.
+    path: "/events/:id/request-change",
+    name: "event-request-change",
+    component: () => import("@/views/events/EventRequestView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["event_organiser"] },
+  },
+  {
     path: "/events/:id",
     name: "event-detail",
     component: () => import("@/views/events/EventDetailView.vue"),

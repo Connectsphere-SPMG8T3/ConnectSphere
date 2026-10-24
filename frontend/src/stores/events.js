@@ -209,6 +209,14 @@ export const useEventsStore = defineStore("events", {
       return request;
     },
 
+    // Story 32: as requestCancellation, errors go to the dialog.
+    async requestChange(eventId, body) {
+      const authStore = useAuthStore();
+      const request = await authStore.withSession((token) => eventsApi.requestChange(eventId, body, token));
+      await this.get(eventId);
+      return request;
+    },
+
     async get(eventId) {
       const authStore = useAuthStore();
       this.isLoading = true;

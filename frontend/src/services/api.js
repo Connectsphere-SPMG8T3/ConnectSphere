@@ -249,6 +249,10 @@ export const eventsApi = {
   requestCancellation(eventId, reason, token) {
     return request(`/events/${encodeURIComponent(eventId)}/cancellation-request`, { method: "POST", body: { reason }, token });
   },
+  // Story 32: `body` is {reason, version, event, spaces}, only the changed fields.
+  requestChange(eventId, body, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/change-request`, { method: "POST", body, token });
+  },
   // Story 115: the assigned coordinator decides the request, or cancels directly.
   approveCancellation(eventId, token) {
     return request(`/events/${encodeURIComponent(eventId)}/cancellation-request/approve`, { method: "POST", token });
