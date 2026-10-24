@@ -1,36 +1,18 @@
 // Equipment requests against real data (SCRUM-45). Cases: docs/test-cases/equipment.md.
-// The submission writes real lines on the planning fixture; each is marked with
-// LIVE_CHECK_NOTE and deleted after the run, so the seeded data is left as it was.
-import { execFileSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
+// The submission writes real lines on the planning fixture; each carries this run's
+// note (liveCheckLineNote) and is deleted after the run, so the seeded data is left as it was.
 import { expect, seedSession, test } from "./support/fixtures.js";
+import { deleteLiveCheckLines, liveCheckLineNote } from "./support/throwaway.js";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const PROJECT_REF = "vuiryrzzyfecjqftwicj";
 // supabase/seed.sql: in planning, assigned to coordinator@connectsphere.dev.
 const PLANNING_FIXTURE_ID = "e0000000-0000-4000-8000-000000000202";
 // supabase/seed.sql: 4K Projector, 14 in total.
 const PROJECTOR_ID = "b0000000-0000-4000-8000-000000000001";
-const LIVE_CHECK_NOTE = "live-check SCRUM-45";
 
-function deleteLiveCheckLines() {
-  execFileSync(
-    "supabase",
-    [
-      "db", "query", "--linked", "--project-ref", PROJECT_REF,
-      `delete from public.equipment_requests where event_id = '${PLANNING_FIXTURE_ID}' ` +
-        `and technical_requirements like '${LIVE_CHECK_NOTE}%'`,
-    ],
-    { cwd: REPO_ROOT, stdio: "pipe" },
-  );
-}
-
-test.afterAll(() => deleteLiveCheckLines());
+test.afterAll(() => deleteLiveCheckLines(PLANNING_FIXTURE_ID));
 
 test("TC-EQR-005 TC-EQR-006 a coordinator submits above inventory and tech support see it pending", async ({ page, browser, sharedSessions }) => {
-  const note = `${LIVE_CHECK_NOTE} e2e ${Date.now()}: lectern HDMI`;
+  const note = liveCheckLineNote("lectern HDMI");
   await seedSession(page, await sharedSessions("event_coordinator"));
   await page.goto(`/coordinator/events/${PLANNING_FIXTURE_ID}`);
 

@@ -9,16 +9,19 @@ Two kinds of check, each named by the test case ID it runs (docs/test-cases/):
   through `supabase db query` (needs `supabase login`), so they change nothing.
 
 Sign-up checks create throwaway accounts named live-check+<run>-<case>@
-connectsphere.dev. Every such account, and everything it owns, is deleted
-through `supabase db query` before the checks start and after they finish, so
-the seeded data is never touched. --skip-db skips these checks too.
+connectsphere.dev. Each such account, and everything it owns, is deleted
+through `supabase db query` after the checks finish, so the seeded data is
+never touched. --skip-db skips these checks too.
 
 Venue booking checks (SCRUM-19) likewise create throwaway events named
-"live-check ..." (owned by the seeded organiser, assigned to the seeded
-coordinator, dated 2031) and throwaway venue blocks noted "live-check". Those
-events, their bookings and those blocks are deleted before and after the run.
+"live-check <run> ..." (owned by the seeded organiser, assigned to the seeded
+coordinator, dated 2031) and throwaway venue blocks noted "live-check <run>".
 Venue deactivation checks (SCRUM-64) create throwaway venues named
-"live-check venue ...", deleted the same way; seeded venues are never changed.
+"live-check venue <run> ..."; seeded venues are never changed.
+
+A run deletes only its own throwaway rows, before and after the checks, plus
+any an earlier run left more than STALE_AFTER ago. So two runs at once (two
+developers, or this and the browser suite) can't delete each other's rows.
 
 Usage, from backend/ with the virtualenv active and the backend running:
 
@@ -994,6 +997,24 @@ COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
 THROWAWAY_EVENT_PREFIX = "live-check "
 THROWAWAY_BLOCK_NOTE = "live-check"
 
+# A run deletes only its own throwaway rows, plus any an earlier run left more than
+# STALE_AFTER ago (it stopped before cleaning up). That is longer than any run, so a
+# run going at the same time (another developer's, or the browser suite, which uses
+# the same names) never loses its rows mid-run.
+STALE_AFTER = "6 hours"
+
+
+def mine_or_stale(column: str, mine: str, anyone: str) -> str:
+    """A condition matching this run's rows (`mine`) or another run's rows (`anyone`)
+    left over for longer than STALE_AFTER. Both are `like` patterns."""
+    return (f"({column} like '{mine}' or ({column} like '{anyone}' "
+            f"and created_at < now() - interval '{STALE_AFTER}'))")
+
+
+def block_note(ctx: Context) -> str:
+    """The note on this run's throwaway venue blocks, so its cleanup can tell them apart."""
+    return f"{THROWAWAY_BLOCK_NOTE} {ctx.run_id}"
+
 
 def throwaway_event(ctx: Context, case: str, starts: str, ends: str, *, status: str = "planning",
                     assigned: bool = True) -> str:
@@ -1007,18 +1028,22 @@ def throwaway_event(ctx: Context, case: str, starts: str, ends: str, *, status: 
     return rows[0]["id"]
 
 
-def delete_throwaway_bookings() -> int:
-    """Deletes the booking checks' events (their bookings first: that foreign key
-    restricts) and blocks. Their history and notifications cascade."""
-    like = f"'{THROWAWAY_EVENT_PREFIX}%'"
-    db_query(f"delete from public.venue_bookings where event_id in (select id from public.events where name like {like})")
-    db_query(f"delete from public.venue_blocks where notes = '{THROWAWAY_BLOCK_NOTE}'")
-    deleted = len(db_query(f"delete from public.events where name like {like} returning id"))
+def delete_throwaway_bookings(run_id: str) -> int:
+    """Deletes this run's booking-check events (their bookings first: that foreign key
+    restricts) and blocks, and any an earlier run left (STALE_AFTER). Their history
+    and notifications cascade."""
+    events = mine_or_stale("name", f"{THROWAWAY_EVENT_PREFIX}{run_id} %", f"{THROWAWAY_EVENT_PREFIX}%")
+    db_query(f"delete from public.venue_bookings where event_id in (select id from public.events where {events})")
+    blocks = mine_or_stale("notes", f"{THROWAWAY_BLOCK_NOTE} {run_id}", f"{THROWAWAY_BLOCK_NOTE}%")
+    db_query(f"delete from public.venue_blocks where {blocks}")
+    deleted = len(db_query(f"delete from public.events where {events} returning id"))
     # SCRUM-24's throwaway equipment, after its events' lines (that foreign key
     # restricts); its reservations cascade.
-    db_query(f"delete from public.equipment where name like {like}")
+    equipment = mine_or_stale("name", f"{THROWAWAY_EQUIPMENT_PREFIX}{run_id} %", f"{THROWAWAY_EVENT_PREFIX}%")
+    db_query(f"delete from public.equipment where {equipment}")
     # CR-94's throwaway venues: their layouts, facilities and edit history cascade.
-    db_query(f"delete from public.venues where name like {like}")
+    venues = mine_or_stale("name", f"{THROWAWAY_VENUE_PREFIX}{run_id} %", f"{THROWAWAY_EVENT_PREFIX}%")
+    db_query(f"delete from public.venues where {venues}")
     return deleted
 
 
@@ -1036,12 +1061,13 @@ def throwaway_venue(ctx: Context, case: str) -> str:
     return venue_id
 
 
-def delete_throwaway_venues() -> int:
-    """Deletes the deactivation checks' venues, their bookings first (that foreign
-    key restricts). Layouts, facilities and edit history cascade."""
-    like = f"'{THROWAWAY_VENUE_PREFIX}%'"
-    db_query(f"delete from public.venue_bookings where venue_id in (select id from public.venues where name like {like})")
-    return len(db_query(f"delete from public.venues where name like {like} returning id"))
+def delete_throwaway_venues(run_id: str) -> int:
+    """Deletes this run's deactivation-check venues, and any an earlier run left
+    (STALE_AFTER), their bookings first (that foreign key restricts). Layouts,
+    facilities and edit history cascade."""
+    venues = mine_or_stale("name", f"{THROWAWAY_VENUE_PREFIX}{run_id} %", f"{THROWAWAY_VENUE_PREFIX}%")
+    db_query(f"delete from public.venue_bookings where venue_id in (select id from public.venues where {venues})")
+    return len(db_query(f"delete from public.venues where {venues} returning id"))
 
 
 def venue_version(venue_id: str) -> int:
@@ -1231,7 +1257,7 @@ def _(ctx: Context) -> None:
     db_query(
         "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values "
         f"('{HERITAGE_HALL}', tstzrange('2031-05-22 10:00+08', '2031-05-22 12:00+08', '[)'), "
-        f"'maintenance', '{THROWAWAY_BLOCK_NOTE}')"
+        f"'maintenance', '{block_note(ctx)}')"
     )
     event_id = throwaway_event(ctx, "003", "2031-05-22 11:00+08", "2031-05-22 13:00+08")
 
@@ -1875,7 +1901,7 @@ def _(ctx: Context) -> None:
     db_query(
         "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values "
         f"('{INNOVATION_LAB}', tstzrange('2031-08-05 16:00+08', '2031-08-05 18:00+08', '[)'), "
-        f"'maintenance', '{THROWAWAY_BLOCK_NOTE}')"
+        f"'maintenance', '{block_note(ctx)}')"
     )
     blocked = approve_booking(ctx, staff, blocked_id)
     expect_status(blocked, 409)
@@ -2325,7 +2351,7 @@ def _(ctx: Context) -> None:
     db_query(
         "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values "
         f"('{HERITAGE_HALL}', tstzrange('2031-06-17 10:00+08', '2031-06-17 12:00+08', '[)'), "
-        f"'maintenance', '{THROWAWAY_BLOCK_NOTE}')"
+        f"'maintenance', '{block_note(ctx)}')"
     )
     event_id = throwaway_event(ctx, "038", "2031-06-17 09:00+08", "2031-06-17 18:00+08")
     space_id = throwaway_space(event_id, "Morning room", starts="2031-06-17 11:00+08", ends="2031-06-17 13:00+08")
@@ -2362,11 +2388,9 @@ EQUIPMENT_REQUESTS = "/equipment/requests"
 LIVE_CHECK_NOTE = "live-check SCRUM-45"  # marks the lines TC-EQR-002 writes, so only those are deleted
 
 
-def delete_live_check_lines() -> None:
-    db_query(
-        "delete from public.equipment_requests "
-        f"where event_id = '{PLANNING_FIXTURE}' and technical_requirements like '{LIVE_CHECK_NOTE}%'"
-    )
+def delete_live_check_lines(run_id: str) -> None:
+    lines = mine_or_stale("technical_requirements", f"{LIVE_CHECK_NOTE} {run_id}%", f"{LIVE_CHECK_NOTE}%")
+    db_query(f"delete from public.equipment_requests where event_id = '{PLANNING_FIXTURE}' and {lines}")
 
 
 def submit_equipment(ctx: Context, session: Session, event_id: str, items: list) -> httpx.Response:
@@ -2418,7 +2442,7 @@ def _(ctx: Context) -> None:
         stored = db_query(f"select status::text as status, quantity from public.equipment_requests where id = '{line['id']}'")
         expect(stored == [{"status": "pending", "quantity": 15}], f"stored row is {stored}")
     finally:
-        delete_live_check_lines()
+        delete_live_check_lines(ctx.run_id)
 
 
 @check("TC-EQR-004", "Quantities that aren't whole numbers of at least 1, and empty submissions, are refused")
@@ -3243,12 +3267,12 @@ def _rows(stdout: str) -> list[dict]:
     return payload.get("rows", []) if isinstance(payload, dict) else payload
 
 
-def delete_throwaway_accounts() -> int:
-    """Deletes every sign-up check account; auth.users cascades to what it owns."""
-    rows = db_query(
-        f"delete from auth.users where email like '{THROWAWAY_PREFIX}%{THROWAWAY_DOMAIN}' returning email"
-    )
-    return len(rows)
+def delete_throwaway_accounts(run_id: str) -> int:
+    """Deletes this run's sign-up check accounts, and any an earlier run left
+    (STALE_AFTER); auth.users cascades to what they own."""
+    accounts = mine_or_stale("email", f"{THROWAWAY_PREFIX}{run_id}-%{THROWAWAY_DOMAIN}",
+                             f"{THROWAWAY_PREFIX}%{THROWAWAY_DOMAIN}")
+    return len(db_query(f"delete from auth.users where {accounts} returning email"))
 
 
 def run_db_checks(keyword: str | None) -> list[Result]:
@@ -3390,22 +3414,22 @@ def main() -> int:
             print(f"API checks against {args.api}")
             try:
                 if not args.skip_db:
-                    left_over = delete_throwaway_accounts()
+                    left_over = delete_throwaway_accounts(ctx.run_id)
                     if left_over:
                         print(f"  (deleted {left_over} sign-up check account(s) left by an earlier run)")
-                    left_over = delete_throwaway_bookings()
+                    left_over = delete_throwaway_bookings(ctx.run_id)
                     if left_over:
                         print(f"  (deleted {left_over} booking check event(s) left by an earlier run)")
-                    left_over = delete_throwaway_venues()
+                    left_over = delete_throwaway_venues(ctx.run_id)
                     if left_over:
                         print(f"  (deleted {left_over} deactivation check venue(s) left by an earlier run)")
                 results += run_api_checks(ctx, args.keyword, skip_accounts=args.skip_db)
             finally:
                 ctx.logout_all()
                 if not args.skip_db:
-                    delete_throwaway_accounts()
-                    delete_throwaway_bookings()
-                    delete_throwaway_venues()
+                    delete_throwaway_accounts(ctx.run_id)
+                    delete_throwaway_bookings(ctx.run_id)
+                    delete_throwaway_venues(ctx.run_id)
 
     if not args.skip_db:
         print(f"Database checks (rolled back) on Supabase project {PROJECT_REF}")
