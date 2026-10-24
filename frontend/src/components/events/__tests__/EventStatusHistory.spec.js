@@ -121,3 +121,36 @@ describe("EventStatusHistory (QA-70)", () => {
     expect(item.textContent).toContain("The venue is already paid for");
   });
 });
+
+describe("EventStatusHistory change requests (story 32)", () => {
+  afterEach(() => {
+    mounted.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  it("titles a change request and lists what it would change, then why", async () => {
+    const el = await mountHistory([{
+      id: "r1", kind: "change_requested", actor: { full_name: "Priya Nair" }, at: "2026-10-24T01:00:00Z",
+      reason: "Sponsor wants more seats",
+      changes: {
+        event: [{ field: "expected_attendance", before: 80, after: 120 }],
+        spaces: [{ space_id: "s1", label: "Main hall", fields: [{ field: "layout_preference", before: "theatre", after: "banquet" }] }],
+      },
+    }]);
+
+    expect(el.querySelector("li p").textContent).toBe("Change requested");
+    expect(el.textContent).toContain("Expected attendance: 80 → 120");
+    expect(el.textContent).toContain("Main hall: layout: theatre → banquet");
+    expect(el.textContent).toContain("Sponsor wants more seats");
+  });
+
+  it("titles a superseded request as closed, with why", async () => {
+    const el = await mountHistory([{
+      id: "r1:closed", kind: "change_request_closed", actor: null, at: "2026-10-25T01:00:00Z",
+      reason: "Closed because the event was cancelled.", changes: null,
+    }]);
+
+    expect(el.querySelector("li p").textContent).toBe("Change request closed");
+    expect(el.textContent).toContain("Closed because the event was cancelled.");
+  });
+});

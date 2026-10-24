@@ -11,6 +11,7 @@ import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import CancellationReasonModal from "@/components/events/CancellationReasonModal.vue";
+import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
 import ResubmitEventModal from "@/components/events/ResubmitEventModal.vue";
 import { showToast } from "@/composables/useToast";
 import { FLAG_TEXT, flaggedFormKeys } from "@/features/events/amendment";
@@ -624,11 +625,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
       @confirm="sendChangeRequest"
       @cancel="isChangeModalOpen = false"
     >
-      <ul data-testid="change-summary" class="mt-4 flex flex-col gap-2 border-2 border-ink bg-bauhaus-yellow/20 p-3 text-sm font-medium">
-        <li v-for="row in changeRows" :key="row.key">
-          <span class="font-bold">{{ row.label }}:</span> {{ row.before }} → {{ row.after }}
-        </li>
-      </ul>
+      <ChangeRequestChanges :rows="changeRows" class="mt-4" data-testid="change-summary" />
     </CancellationReasonModal>
     <ResubmitEventModal
       :open="isResubmitModalOpen"
