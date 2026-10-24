@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
-// Story 84: the assigned coordinator sees the organiser's open request. Deciding it is story 115.
+// Story 84: the assigned coordinator sees the organiser's open request. Deciding it is story 115
+// (CoordinatorCancellationDecision.spec.js).
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
@@ -73,7 +74,9 @@ describe("Story 84 coordinator sees an open cancellation request", () => {
     expect(comments.previousElementSibling.textContent.trim()).toBe("Comments:");
     expect(comments.textContent).toBe(REASON);
     expect(banner.textContent).toContain("Arrangements stay held until you decide.");
-    expect(banner.querySelector("button")).toBeNull();
+    // Story 115 (Q10) puts the decision on this banner: approve and reject only.
+    expect([...banner.querySelectorAll("button")].map((b) => b.getAttribute("aria-label")))
+      .toEqual(["Approve cancellation", "Reject cancellation"]);
   });
 
   it("shows nothing when no request is open", async () => {

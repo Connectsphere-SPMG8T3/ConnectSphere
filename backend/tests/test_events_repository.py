@@ -522,6 +522,51 @@ def test_request_event_cancellation_sends_the_reason_statuses_and_both_messages(
         "p_coordinator_message": "to coordinator", "p_lead_message": "to leads"}}
 
 
+def _rpc_client(answer, sent):
+    class Rpc:
+        def execute(self):
+            return SimpleNamespace(data=answer)
+
+    class AdminClient:
+        def rpc(self, name, params):
+            sent["name"], sent["params"] = name, params
+            return Rpc()
+
+    return AdminClient()
+
+
+def test_cancel_event_sends_the_decision_and_every_message(monkeypatch):
+    """Story 115 RPC contract: one jsonb object with the outcome and the cancelled event."""
+    sent = {}
+    answer = {"outcome": "ok", "event": {"id": "event-1", "status": "cancelled"}}
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: _rpc_client(answer, sent))
+
+    result = repository.cancel_event(
+        "event-1", "user-2", 4, ["confirmed", "planning"], "No venue",
+        require_open_request=False, organiser_message="to organiser", staff_message="to staff",
+        attendee_message="to attendees", safety_message="to safety")
+
+    assert result == answer
+    assert sent == {"name": "cancel_event", "params": {
+        "p_event_id": "event-1", "p_actor_id": "user-2", "p_expected_version": 4,
+        "p_from_statuses": ["confirmed", "planning"], "p_reason": "No venue",
+        "p_require_open_request": False, "p_organiser_message": "to organiser",
+        "p_staff_message": "to staff", "p_attendee_message": "to attendees",
+        "p_safety_message": "to safety"}}
+
+
+def test_reject_cancellation_request_sends_the_reason_and_the_organisers_message(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: _rpc_client({"outcome": "ok"}, sent))
+
+    result = repository.reject_cancellation_request("event-1", "user-2", "Not now", "to organiser")
+
+    assert result == {"outcome": "ok"}
+    assert sent == {"name": "reject_cancellation_request", "params": {
+        "p_event_id": "event-1", "p_actor_id": "user-2", "p_reason": "Not now",
+        "p_organiser_message": "to organiser"}}
+
+
 def test_get_open_cancellation_request_reads_the_open_cancellation_with_its_requester(monkeypatch):
     row = {"id": "r1", "kind": "cancellation", "status": "open", "reason": "x",
            "requested_at": "2026-10-23T09:00:00+00:00", "requested_by": {"id": "u1", "full_name": "Olivia"}}
@@ -557,8 +602,9 @@ def test_list_cancellation_requests_reads_every_cancellation_on_the_event(monkey
     [query] = client.queries
     assert query.calls == [
         ("table", "event_change_requests"),
-        ("select", "id, reason, requested_at, "
-                   "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)"),
+        ("select", "id, reason, requested_at, status, decision_reason, decided_at, "
+                   "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name), "
+                   "decided_by:profiles!event_change_requests_decided_by_fkey(id, full_name)"),
         ("eq", "event_id", "event-1"),
         ("eq", "kind", "cancellation"),
         ("order", "requested_at", {"desc": True}),

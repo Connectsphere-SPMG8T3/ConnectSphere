@@ -315,6 +315,52 @@ def request_event_cancellation(
     return response.data
 
 
+def cancel_event(
+    event_id: str,
+    actor_id: str,
+    expected_version: int,
+    from_statuses: list[str],
+    reason: str,
+    require_open_request: bool,
+    organiser_message: str,
+    staff_message: str,
+    attendee_message: str,
+    safety_message: str,
+) -> dict:
+    """Story 115: run `public.cancel_event` under the event's lock. It cancels the event,
+    closes an open cancellation request as approved, releases its venue bookings,
+    equipment and registrations, and notifies everyone involved, in one transaction.
+    Answers `{outcome, event}`: ok / not_found / not_assigned / status_changed /
+    no_open_request / started."""
+    response = get_supabase_admin_client().rpc("cancel_event", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_expected_version": expected_version,
+        "p_from_statuses": from_statuses,
+        "p_reason": reason,
+        "p_require_open_request": require_open_request,
+        "p_organiser_message": organiser_message,
+        "p_staff_message": staff_message,
+        "p_attendee_message": attendee_message,
+        "p_safety_message": safety_message,
+    }).execute()
+    return response.data
+
+
+def reject_cancellation_request(event_id: str, actor_id: str, reason: str, organiser_message: str) -> dict:
+    """Story 115 AC2: run `public.reject_cancellation_request` under the event's lock. It
+    closes the open request as rejected with the reason and notifies the organiser; the
+    event keeps its status. Answers `{outcome}`: ok / not_found / not_assigned /
+    no_open_request."""
+    response = get_supabase_admin_client().rpc("reject_cancellation_request", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_reason": reason,
+        "p_organiser_message": organiser_message,
+    }).execute()
+    return response.data
+
+
 def list_status_history(event_id: str) -> list[dict]:
     """Newest first. The actor is embedded through the FK named in the migration.
     On a timestamp tie the creation row (no from_status) sorts last, since
@@ -454,12 +500,14 @@ def get_open_cancellation_request(event_id: str) -> dict | None:
 
 def list_cancellation_requests(event_id: str) -> list[dict]:
     """Story 84 AC5: every cancellation request on the event, newest first, for its
-    history. Who asked is embedded; it is null if their profile was deleted."""
+    history, with story 115's decision. Who asked and who decided are embedded; each
+    is null if their profile was deleted."""
     response = (
         get_supabase_admin_client()
         .table("event_change_requests")
-        .select("id, reason, requested_at, "
-                "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)")
+        .select("id, reason, requested_at, status, decision_reason, decided_at, "
+                "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name), "
+                "decided_by:profiles!event_change_requests_decided_by_fkey(id, full_name)")
         .eq("event_id", event_id)
         .eq("kind", "cancellation")
         .order("requested_at", desc=True)

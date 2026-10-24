@@ -540,6 +540,10 @@ class CancellationRequestCreate(BaseModel):
         return value.strip()
 
 
+class EventCancelRequest(CancellationRequestCreate):
+    """Story 115 AC3: the coordinator's reason for cancelling without a request."""
+
+
 # SCRUM-72: the Event Coordinator dashboard. The SPA's store
 # (`frontend/src/features/events/store.js`) fixed this shape first, and it does
 # the ranking itself, so action items are returned unordered.
