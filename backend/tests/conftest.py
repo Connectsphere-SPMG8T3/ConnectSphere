@@ -142,7 +142,7 @@ def safety_decisions_offline(monkeypatch, request):
 
 @pytest.fixture(autouse=True)
 def cancellation_requests_offline(monkeypatch, request):
-    """Event reads predate story 84; default to no cancellation requests.
+    """Event reads predate stories 84 and 32; default to no cancellation or change requests.
 
     Cancellation tests set their own request, and the repository's own test
     needs the real function. No other test may reach the real table through an
@@ -152,6 +152,9 @@ def cancellation_requests_offline(monkeypatch, request):
         monkeypatch.setattr("app.modules.events.repository.get_open_cancellation_request", lambda event_id: None)
         monkeypatch.setattr("app.modules.events.repository.list_cancellation_requests", lambda event_id: [])
         monkeypatch.setattr("app.modules.events.repository.list_open_cancellation_requests", lambda event_ids: {})
+        monkeypatch.setattr("app.modules.events.repository.get_open_change_request", lambda event_id: None)
+        monkeypatch.setattr("app.modules.events.repository.list_change_requests", lambda event_id: [])
+        monkeypatch.setattr("app.modules.events.repository.list_open_change_requests", lambda event_ids: {})
 
 
 @pytest.fixture(autouse=True)

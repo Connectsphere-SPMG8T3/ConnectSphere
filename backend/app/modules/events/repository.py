@@ -143,6 +143,15 @@ def list_latest_resubmissions(event_ids: Iterable[str]) -> dict[str, str]:
 def list_open_cancellation_requests(event_ids: Iterable[str]) -> dict[str, str]:
     """Story 84: `{event_id: requested_at}` of each event's open cancellation request
     (at most one per event, CR-R1), for the coordinator dashboard."""
+    return _list_open_requests(event_ids, "cancellation")
+
+
+def list_open_change_requests(event_ids: Iterable[str]) -> dict[str, str]:
+    """Story 32: the same for open change requests."""
+    return _list_open_requests(event_ids, "change")
+
+
+def _list_open_requests(event_ids: Iterable[str], kind: str) -> dict[str, str]:
     ids = list(event_ids)
     if not ids:
         return {}
@@ -151,7 +160,7 @@ def list_open_cancellation_requests(event_ids: Iterable[str]) -> dict[str, str]:
         .table("event_change_requests")
         .select("event_id, requested_at")
         .in_("event_id", ids)
-        .eq("kind", "cancellation")
+        .eq("kind", kind)
         .eq("status", "open")
         .execute()
     )
@@ -510,16 +519,29 @@ def get_open_amendment(event_id: str) -> dict | None:
     return response.data if response else None
 
 
+_REQUESTED_BY = "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)"
+_DECIDED_BY = "decided_by:profiles!event_change_requests_decided_by_fkey(id, full_name)"
+
+
 def get_open_cancellation_request(event_id: str) -> dict | None:
     """Story 84: the event's open cancellation request, with who asked. At most one
     is open per event (partial unique index, CR-R1)."""
+    return _open_request(event_id, "cancellation", f"id, kind, status, reason, requested_at, {_REQUESTED_BY}")
+
+
+def get_open_change_request(event_id: str) -> dict | None:
+    """Story 32: the event's open change request, with its proposed changes."""
+    return _open_request(event_id, "change",
+                         f"id, kind, status, reason, changes, significant, requested_at, {_REQUESTED_BY}")
+
+
+def _open_request(event_id: str, kind: str, columns: str) -> dict | None:
     response = (
         get_supabase_admin_client()
         .table("event_change_requests")
-        .select("id, kind, status, reason, requested_at, "
-                "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)")
+        .select(columns)
         .eq("event_id", event_id)
-        .eq("kind", "cancellation")
+        .eq("kind", kind)
         .eq("status", "open")
         .maybe_single()
         .execute()
@@ -531,14 +553,24 @@ def list_cancellation_requests(event_id: str) -> list[dict]:
     """Story 84 AC5: every cancellation request on the event, newest first, for its
     history, with story 115's decision. Who asked and who decided are embedded; each
     is null if their profile was deleted."""
+    return _list_requests(event_id, "cancellation",
+                          f"id, reason, requested_at, status, decision_reason, decided_at, {_REQUESTED_BY}, {_DECIDED_BY}")
+
+
+def list_change_requests(event_id: str) -> list[dict]:
+    """Story 32 AC2: every change request on the event, newest first, for its history."""
+    return _list_requests(event_id, "change",
+                          "id, reason, changes, significant, requested_at, status, decision_reason, decided_at, "
+                          f"{_REQUESTED_BY}, {_DECIDED_BY}")
+
+
+def _list_requests(event_id: str, kind: str, columns: str) -> list[dict]:
     response = (
         get_supabase_admin_client()
         .table("event_change_requests")
-        .select("id, reason, requested_at, status, decision_reason, decided_at, "
-                "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name), "
-                "decided_by:profiles!event_change_requests_decided_by_fkey(id, full_name)")
+        .select(columns)
         .eq("event_id", event_id)
-        .eq("kind", "cancellation")
+        .eq("kind", kind)
         .order("requested_at", desc=True)
         .execute()
     )
