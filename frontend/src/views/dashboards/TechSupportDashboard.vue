@@ -195,6 +195,10 @@ function validateForm() {
     validationMessage.value = "Choose equipment and enter a quantity of at least 1 for every item.";
     return false;
   }
+  if (new Set(items.value.map((item) => item.equipmentId)).size !== items.value.length) {
+    validationMessage.value = "Choose each item once; combine the quantities for the same equipment.";
+    return false;
+  }
   return true;
 }
 

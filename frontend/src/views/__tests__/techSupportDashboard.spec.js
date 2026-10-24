@@ -344,6 +344,32 @@ describe("TechSupportDashboard availability check items (D47)", () => {
     ]);
   });
 
+  it("rejects duplicate equipment demand and permits a corrected selection (D58)", async () => {
+    const { el } = await mountDashboard({ tab: "availability" });
+    await vi.waitFor(() => expect(pickers(el)[0].options).toHaveLength(3));
+    button(el, "Add item").click();
+    await settle();
+    for (const input of el.querySelectorAll('input[type="number"]')) {
+      input.value = 5;
+      input.dispatchEvent(new Event("input"));
+    }
+    await settle();
+    button(el, "Check real-time availability").click();
+    await settle();
+    expect(el.textContent).toMatch(/combine the quantities/i);
+    expect(equipmentApi.checkEquipmentAvailability).not.toHaveBeenCalled();
+    pickers(el)[1].value = "s1";
+    pickers(el)[1].dispatchEvent(new Event("change"));
+    await settle();
+    button(el, "Check real-time availability").click();
+    await vi.waitFor(() => expect(equipmentApi.checkEquipmentAvailability).toHaveBeenCalledTimes(1));
+    expect(equipmentApi.checkEquipmentAvailability.mock.calls[0][0].items).toEqual([
+      { equipment_id: "p1", quantity_needed: 5 },
+      { equipment_id: "s1", quantity_needed: 5 },
+    ]);
+    expect(el.textContent).not.toMatch(/combine the quantities/i);
+  });
+
   it("says so, and won't check, when the catalogue can't load", async () => {
     equipmentApi.catalogue.mockRejectedValue(new Error("down"));
     const { el } = await mountDashboard({ tab: "availability" });

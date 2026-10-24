@@ -2483,6 +2483,19 @@ def reserve(ctx: Context, session: Session, line_id: str) -> httpx.Response:
     return ctx.client.post(f"{ctx.api}{EQUIPMENT_REQUESTS}/{line_id}/reserve", headers=session.headers)
 
 
+@check("TC-EQR-042", "23-R/D58: duplicate availability demand is rejected, including UUID case variants")
+def check_duplicate_availability_demand(ctx: Context) -> None:
+    session = ctx.shared("tech_support")
+    for same_id in (PROJECTOR_ID, PROJECTOR_ID.upper()):
+        response = ctx.client.post(f"{ctx.api}/equipment/availability/check", headers=session.headers, json={
+            "start_at": "2034-01-01T09:00:00+08:00", "end_at": "2034-01-01T12:00:00+08:00",
+            "items": [{"equipment_id": PROJECTOR_ID, "quantity_needed": 5},
+                      {"equipment_id": same_id, "quantity_needed": 5}],
+        })
+        expect_status(response, 422)
+        expect("combine" in response.text.lower(), "duplicate demand has no combine-quantities guidance")
+
+
 def require_equipment_location_migration() -> None:
     [row] = db_query(
         "select exists (select 1 from information_schema.columns where table_schema = 'public' "
@@ -2519,6 +2532,21 @@ def check_reopened_equipment_availability(ctx: Context) -> None:
                        (needed, 5, missing), f"incorrect quantities: {result}")
                 expect(result["sufficient"] is (missing == 0), "sufficient status disagrees with shortage")
                 expect(response.json()["sufficient"] is (missing == 0), "overall status disagrees")
+        db_query(f"update public.equipment set status = 'retired' where id = '{item}'")
+        response = ctx.client.post(f"{ctx.api}/equipment/availability/check", headers=session.headers, json={
+            "start_at": "2034-01-01T09:00:00+08:00", "end_at": "2034-01-01T12:00:00+08:00",
+            "items": [{"equipment_id": item, "quantity_needed": 6}],
+        })
+        expect_status(response, 200)
+        [result] = response.json()["items"]
+        expect((result["quantity_available"], result["quantity_missing"], result["sufficient"]) ==
+               (0, 6, False), f"retired stock still usable: {result}")
+        for params in ({"start_at": "2034-01-01T09:00:00+08:00", "end_at": "2034-01-01T12:00:00+08:00"}, {}):
+            inventory = ctx.client.get(f"{ctx.api}/equipment/inventory", headers=session.headers, params=params)
+            expect_status(inventory, 200)
+            retired = next(row for row in inventory.json()["items"] if row["equipment_id"] == item)
+            expect((retired["total_quantity"], retired["net_available"]) == (7, 0),
+                   f"inventory still offers retired stock: {retired}")
         for role in ("event_organiser", "event_coordinator", "venue_staff", "attendee"):
             response = ctx.client.post(f"{ctx.api}/equipment/availability/check", headers=ctx.shared(role).headers, json={
                 "start_at": "2034-01-01T09:00:00+08:00", "end_at": "2034-01-01T12:00:00+08:00",

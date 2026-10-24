@@ -54,3 +54,21 @@ for (const width of [1280, 768, 375]) {
     }
   });
 }
+
+
+test("TC-EQR-043 duplicate selections explain combined quantities without sending an availability request", async ({ page, sharedSessions }) => {
+  await seedSession(page, await sharedSessions("tech_support"));
+  await page.goto("/dashboard/tech-support?tab=availability");
+  const picker = page.getByLabel("Equipment ID / type");
+  await expect(picker.first().locator("option")).not.toHaveCount(0);
+  await page.getByRole("button", { name: "Add item", exact: true }).click();
+  await page.getByLabel("Needed", { exact: true }).nth(0).fill("5");
+  await page.getByLabel("Needed", { exact: true }).nth(1).fill("5");
+  const requests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/equipment/availability/check")) requests.push(request.url());
+  });
+  await page.getByRole("button", { name: "Check real-time availability" }).click();
+  await expect(page.getByText("Choose each item once; combine the quantities for the same equipment.")).toBeVisible();
+  expect(requests).toEqual([]);
+});

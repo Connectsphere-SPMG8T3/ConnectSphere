@@ -116,7 +116,7 @@ def get_equipment_inventory(
                 total_quantity=row.total_quantity,
                 reserved_quantity=reserved_quantity,
                 maintenance_quantity=maintenance_quantity,
-                net_available=max(0, row.total_quantity - reserved_quantity - maintenance_quantity),
+                net_available=0 if row.status == "retired" else max(0, row.total_quantity - reserved_quantity - maintenance_quantity),
             )
         )
     return EquipmentInventoryResponse(items=items)

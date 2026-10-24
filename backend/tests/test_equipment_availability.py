@@ -406,3 +406,54 @@ class TestReopenedAvailability:
 
         assert repository.list_equipment()[0].storage_location == "Store A"
         assert "storage_location" in query.select.call_args.args[0]
+
+
+@pytest.mark.parametrize("same_id", [PROJECTOR, PROJECTOR.upper()])
+def test_duplicate_availability_items_are_rejected_by_api(repo, same_id):
+    """D58/23-R: 5+5 must not be independently compared with the same 7 units."""
+    _equipment(repo, quantity=7)
+    user = CurrentUser(id=str(uuid4()), email="tech@connectsphere.dev", full_name="Tech",
+                       role="tech_support", session_id=str(uuid4()), access_token="test-token")
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        with TestClient(app) as client:
+            response = client.post("/api/v1/equipment/availability/check", json={
+                "start_at": START.isoformat(), "end_at": END.isoformat(),
+                "items": [{"equipment_id": PROJECTOR, "quantity_needed": 5},
+                          {"equipment_id": same_id, "quantity_needed": 5}],
+            })
+        assert response.status_code == 422
+        assert "combine" in response.text.lower()
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.mark.parametrize("window", [True, False])
+@pytest.mark.parametrize("status, available", [("retired", 0), ("active", 2), ("maintenance", 2)])
+def test_inventory_retired_stock_is_not_available_but_keeps_counters(repo, window, status, available):
+    """D57: the inventory and availability tabs must agree about retired stock."""
+    from types import SimpleNamespace
+
+    repo["equipment"].append(SimpleNamespace(id=PROJECTOR, name="Projector", total_quantity=7,
+                                             storage_location=None, status=status))
+    repo["reservations"].append(_commitment(PROJECTOR, 3))
+    repo["unavailability"].append(_commitment(PROJECTOR, 2))
+    result = service.get_equipment_inventory(START, END) if window else service.get_equipment_inventory()
+    [row] = result.items
+    assert (row.total_quantity, row.reserved_quantity, row.maintenance_quantity) == (7, 3, 2)
+    assert row.net_available == available
+
+
+def test_repository_keeps_catalogue_status_for_inventory(monkeypatch):
+    query = MagicMock()
+    query.select.return_value = query
+    query.order.return_value = query
+    query.execute.return_value = MagicMock(data=[{
+        "id": PROJECTOR, "name": "Projector", "total_quantity": 7,
+        "storage_location": None, "status": "retired",
+    }])
+    client = MagicMock()
+    client.table.return_value = query
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+    [row] = repository.list_equipment()
+    assert getattr(row, "status", None) == "retired"
