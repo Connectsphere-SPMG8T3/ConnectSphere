@@ -22,6 +22,7 @@ class EquipmentRow:
     id: str
     name: str
     total_quantity: int
+    storage_location: str | None = None
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ def _overlapping(query, start_at: datetime, end_at: datetime):
 
 def list_equipment(equipment_ids: Iterable[str] | None = None) -> list[EquipmentRow]:
     """Equipment types, optionally narrowed to `equipment_ids`."""
-    query = get_supabase_admin_client().table("equipment").select("id, name, total_quantity")
+    query = get_supabase_admin_client().table("equipment").select("id, name, total_quantity, storage_location")
     ids = None if equipment_ids is None else sorted({str(i) for i in equipment_ids})
     if ids is not None:
         if not ids:
@@ -68,7 +69,8 @@ def list_equipment(equipment_ids: Iterable[str] | None = None) -> list[Equipment
         query = query.in_("id", ids)
     response = query.order("name").execute()
     return [
-        EquipmentRow(id=row["id"], name=row["name"], total_quantity=row["total_quantity"])
+        EquipmentRow(id=row["id"], name=row["name"], total_quantity=row["total_quantity"],
+                     storage_location=row.get("storage_location"))
         for row in response.data or []
     ]
 

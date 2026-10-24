@@ -353,3 +353,56 @@ def test_non_technical_support_role_is_forbidden():
         assert response.status_code == 403
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+class TestReopenedAvailability:
+    """23-R: condition uses outages; location is reference data; shortage is explicit."""
+
+    @pytest.mark.parametrize("needed, missing", [(2, 0), (5, 0), (8, 3)])
+    def test_reports_missing_units_without_negative_surplus(self, repo, needed, missing):
+        item = _equipment(repo, quantity=7)
+        repo["unavailability"].append(_commitment(item, 2))
+
+        result = _check(item, needed)
+
+        assert result.quantity_needed == needed
+        assert result.quantity_available == 5
+        assert result.quantity_missing == missing
+        assert result.sufficient is (missing == 0)
+
+    @pytest.mark.parametrize("location", ["Store A, level 2", "Different venue store", None])
+    def test_location_is_returned_without_changing_availability(self, repo, monkeypatch, location):
+        from types import SimpleNamespace
+
+        item = _equipment(repo, quantity=7)
+        repo["unavailability"].append(_commitment(item, 2))
+        monkeypatch.setattr(repository, "list_equipment", lambda ids: [
+            SimpleNamespace(id=item, name="Projector", total_quantity=7, storage_location=location),
+        ])
+
+        result = _check(item, 6)
+
+        assert result.storage_location == location
+        assert result.quantity_available == 5
+        assert result.quantity_missing == 1
+
+    def test_unknown_item_has_no_location_and_all_units_missing(self, repo):
+        result = _check(str(uuid4()), 3)
+
+        assert result.storage_location is None
+        assert result.quantity_missing == 3
+
+    def test_repository_reads_storage_location(self, monkeypatch):
+        query = MagicMock()
+        query.select.return_value = query
+        query.order.return_value = query
+        query.execute.return_value = MagicMock(data=[{
+            "id": PROJECTOR, "name": "Projector", "total_quantity": 7,
+            "storage_location": "Store A",
+        }])
+        client = MagicMock()
+        client.table.return_value = query
+        monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+        assert repository.list_equipment()[0].storage_location == "Store A"
+        assert "storage_location" in query.select.call_args.args[0]

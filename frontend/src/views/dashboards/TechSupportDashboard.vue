@@ -441,7 +441,7 @@ function formatDate(value) {
           Event time window
         </h2>
         <p class="mb-4 text-xs font-medium text-ink/60">
-          Check functional equipment against existing reservations and unavailable stock for a specific event window.
+          Check usable equipment for the event’s own start and end time, without venue setup or turnaround. Storage location is for reference only and does not affect availability.
         </p>
 
         <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -513,16 +513,20 @@ function formatDate(value) {
             <thead class="bg-ink text-canvas">
               <tr class="text-xs">
                 <th class="px-4 py-3">Equipment name</th>
-                <th class="px-4 py-3">Needed</th>
+                <th class="px-4 py-3">Storage location</th>
+                <th class="px-4 py-3">Requested</th>
                 <th class="px-4 py-3">Available</th>
+                <th class="px-4 py-3">Missing</th>
                 <th class="px-4 py-3">Status</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in results.items" :key="item.equipment_id" class="border-t-2 border-ink">
                 <td class="px-4 py-4 font-bold">{{ item.name }}</td>
+                <td class="px-4 py-4 break-words">{{ item.storage_location?.trim() || "Not recorded" }}</td>
                 <td class="px-4 py-4">{{ item.quantity_needed }}</td>
                 <td class="px-4 py-4">{{ item.quantity_available }}</td>
+                <td class="px-4 py-4">{{ item.quantity_missing }}</td>
                 <td class="px-4 py-4 font-bold" :class="item.sufficient ? 'text-bauhaus-green' : 'text-bauhaus-red'">{{ item.sufficient ? "Sufficient" : "Insufficient" }}</td>
               </tr>
             </tbody>

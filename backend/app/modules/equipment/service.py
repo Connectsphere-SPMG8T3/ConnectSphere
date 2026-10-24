@@ -61,19 +61,22 @@ def check_equipment_availability(
     `public.equipment_availability`, the calculation reserving uses (D45)."""
     equipment_ids = {str(item.equipment_id) for item in items}
 
-    names = {row.id: row.name for row in repository.list_equipment(equipment_ids)}
+    equipment = {row.id: row for row in repository.list_equipment(equipment_ids)}
     free = {row.equipment_id: row.free_quantity for row in repository.availability(equipment_ids, start_at, end_at)}
 
     results = []
     for item in items:
         key = str(item.equipment_id)
-        quantity_available = free.get(key, 0) if key in names else 0
+        row = equipment.get(key)
+        quantity_available = free.get(key, 0) if row else 0
         results.append(
             ItemAvailabilityResult(
                 equipment_id=item.equipment_id,
-                name=names.get(key, "Unknown equipment"),
+                name=row.name if row else "Unknown equipment",
+                storage_location=row.storage_location if row else None,
                 quantity_needed=item.quantity_needed,
                 quantity_available=quantity_available,
+                quantity_missing=max(0, item.quantity_needed - quantity_available),
                 sufficient=quantity_available >= item.quantity_needed,
             )
         )

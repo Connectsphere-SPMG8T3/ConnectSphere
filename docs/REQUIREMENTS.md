@@ -1028,6 +1028,8 @@ available(type, W) = total_quantity
 - Equipment **location** is catalogue information that helps tech support see where stock is kept and whether it can be delivered in time. It never reserves or blocks a venue. Availability depends on **quantity and condition** only (QA3-34). "Incompatible" means the same limited equipment is committed to overlapping events (QA-62).
 - **AV-R1:** The result shows **Sufficient** (available ≥ requested) or **Insufficient**, with a breakdown: "Requested 6 · Available 4 (20 total, 2 in maintenance, 14 reserved by 3 overlapping events)". The overlapping events are listed for tech support only.
 - **AV-R2:** Availability uses the **worst moment** within W. Using the maximum concurrent usage, rather than a simple sum, avoids undercounting when overlapping reservations don't overlap each other.
+- **AV-R3 [Team decision, 23-R, 2026-10-22]:** The availability result also states the **missing quantity**, `max(0, requested − available)`, including zero when stock is sufficient. The catalogue stores an optional `storage_location` reference; the result shows it as **Storage location**, or **Not recorded** when absent. It never changes availability. Existing stock locations are left unrecorded rather than invented. This PBI adds the field and its display; a location-editing screen is outside its scope. Condition continues to be recorded as quantities unavailable over a period in `equipment_unavailability` (maintenance or faulty units), which the shared availability calculation excludes.
+
 
 **Acceptance criteria**
 - **Given** 20 projectors, 2 in maintenance, and 14 reserved by an overlapping event, **when** I check 6, **then** the result is "Insufficient: 4 available."

@@ -91,3 +91,28 @@ Read-only checks on the assigned coordinator's planning event `/coordinator/even
 | AC11 derived technical status, on the coordinator dashboard | TC-EQR-022, TC-EQR-027 | `equipment_reservation_checks.sql`; `test_equipment_rules.py`; `test_coordinator_dashboard.py` |
 | AC12 notes are internal | TC-EQR-019, TC-EQR-020, TC-EQR-025 | `TestNotesNeverReachOrganisers`; RLS in the SQL script |
 | AC13 every status change with who and when | TC-EQR-022, TC-EQR-025 | `equipment_reservation_checks.sql` |
+
+
+## Reopened equipment availability checking (23-R)
+
+Source: Product backlog row 71 read on 2026-10-22; original story 23 AC1–AC2 remain sufficient/insufficient status. The overlap reservation AC belongs to story 24; 23-R reuses its shared calculation.
+
+**Deployment gate.** Migration `20261022133632_equipment_storage_location.sql` must reach the shared project through the normal merge workflow before the new backend runs there. The new 23-R API/browser checks report pending migration as Blocked. No storage location is invented for existing catalogue records.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|---------------|------------|------------|-----------------|----------|---------|----------|
+| TC-EQR-038 | AC1–AC3: condition reduces usable stock; event bounds and reference-only location | Integration | 23-R migration deployed | Run `supabase/verification/equipment_availability_checks.sql` (everything rolls back) | 7 units; 2 faulty during event; maintenance ending at event start or starting at event end; location changed and cleared | 5 available during event, 7 after outages end; location may be null and never changes availability; touching maintenance boundaries do not overlap | 🔴 | 2026-10-22 | 2026-10-22 · Blocked (migration pending) · [run](runs/2026-10-22-2141-api-db-c70b159.md); candidate passed only within a rolled-back transaction · [evidence](runs/2026-10-22-2148-23r-offline-c70b159.md) |
+| TC-EQR-039 | AC1–AC4: real API shows condition-adjusted quantity, location and shortage; other roles denied | Integration | 23-R migration deployed; branch backend running | Run `python scripts/verify_live.py --record -k TC-EQR-039` | Throwaway 7-unit item with 2 faulty during event and outages outside event; request 6, 5 and 3; change/clear location | Available 5, missing 1/0/0; requested echoed; insufficient/sufficient/sufficient; location round-trips without changing result; non-tech roles 403; throwaway stock deleted | 🔴 | 2026-10-22 | 2026-10-22 · Blocked (migration pending) · [run](runs/2026-10-22-2141-api-db-c70b159.md) |
+| TC-EQR-040 | AC3–AC4: availability results at desktop, tablet and phone widths | E2E | 23-R migration deployed; branch servers running | Run `npm run test:e2e:record -- equipment-availability.e2e.js` | Throwaway item at 1280, 768 and 375 px; populated and null storage location | Result shows Requested, Available, Missing, status and location/Not recorded; condition reduces available units; no page overflow or uncaught browser error; only throwaway stock changes | 🔴 | 2026-10-22 | 2026-10-22 · Blocked (migration pending, all 3 widths) · [run](runs/2026-10-22-2202-e2e-c70b159.md) |
+| TC-EQR-041 | AC2–AC4: wording and results remain readable on phone and desktop | Manual | 23-R migration deployed; Technical Support session | Open `/dashboard/tech-support?tab=availability`, check an item, inspect at desktop/tablet/375 px | Actual event times, requested quantity above/below availability; real storage location where recorded | Event-only time wording and reference-only location note are clear; Requested/Available/Missing are readable; Not recorded is understandable; results table can be scrolled within its frame on phone; no flash/jump | 🟠 | 2026-10-22 | Not run — developer pass pending |
+
+### Traceability — 23-R
+
+| AC | Interfaces and implementation | Tests and verification |
+|----|-------------------------------|------------------------|
+| AC1 usable units only | Existing `equipment_unavailability` and `equipment_availability` RPC, called by `repository.availability(ids, start_at, end_at)` | `TestReopenedAvailability.test_reports_missing_units_without_negative_surplus`; existing `TestAvailability.test_overlapping_reservation_and_unavailability_reduce_stock`; TC-EQR-038/039/040 |
+| AC2 event start/end only | Existing `EquipmentAvailabilityRequest {start_at, end_at, items}`; unchanged service/RPC time arguments | Existing `test_the_check_asks_the_database_for_the_window_and_items`, `test_a_reservation_ending_as_the_window_opens_does_not_clash`; dashboard results specs verify exact input times; TC-EQR-038/039 |
+| AC3 location shown, never used in availability | Nullable `equipment.storage_location`, `EquipmentRow.storage_location`, `ItemAvailabilityResult.storage_location`; Technical Support result table | `test_repository_reads_storage_location`, parameterised `test_location_is_returned_without_changing_availability`; dashboard results specs; TC-EQR-038/039/040/041 |
+| AC4 requested/available/missing; original 23 statuses | `ItemAvailabilityResult.quantity_missing = max(0, needed - available)`; existing fields and sufficient logic retained | Parameterised shortage tests (below/equal/above stock), unknown-item test; existing sufficient/insufficient tests; dashboard results specs; TC-EQR-039/040/041 |
+
+Unit verification: `pytest --cov` from backend; `npm run test:coverage` and `npm run build` from frontend. Full recorded live API/database checks precede the full recorded browser suite; manual wording/layout judgement remains the developer's.

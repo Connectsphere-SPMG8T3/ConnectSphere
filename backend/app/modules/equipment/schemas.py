@@ -25,8 +25,10 @@ class EquipmentAvailabilityRequest(BaseModel):
 class ItemAvailabilityResult(BaseModel):
     equipment_id: UUID
     name: str
+    storage_location: str | None = None
     quantity_needed: int
     quantity_available: int
+    quantity_missing: int
     sufficient: bool
 
 
