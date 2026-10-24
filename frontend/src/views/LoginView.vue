@@ -56,10 +56,10 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <AuthPageLayout>
+  <AuthPageLayout greeting="Welcome back! Your next event is waiting.">
     <BauhausCard background="white" accent="square" accent-color="bauhaus-red">
       <form class="flex flex-col gap-6" novalidate @submit.prevent="handleSubmit">
-        <h2 class="text-2xl font-bold">Sign in</h2>
+        <h1 class="text-2xl font-bold">Sign in</h1>
 
         <div
           v-if="signedUpEmail && !authStore.error"
