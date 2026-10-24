@@ -120,8 +120,11 @@ begin
             raise exception 'BLOCK CREATE FAIL: % returned % (want %)', v_row.label, v_got, v_row.want;
         end if;
     end loop;
-    -- created_by is new in this release, so only this script's blocks carry it.
-    if (select count(*) from public.venue_blocks where created_by = 'a0000000-0000-4000-8000-000000000003') <> 3 then
+    -- created_by is new in this release, so only this script's blocks carry it on the venues it
+    -- blocks. Counting every venue's would also count a concurrent live run's throwaway blocks.
+    if (select count(*) from public.venue_blocks
+         where created_by = 'a0000000-0000-4000-8000-000000000003'
+           and venue_id in ('b0000000-0000-4000-8000-000000000003', 'b0000000-0000-4000-8000-0000000000ff')) <> 3 then
         raise exception 'BLOCK CREATE FAIL: a refused call wrote a block, or a saved one is missing created_by';
     end if;
 

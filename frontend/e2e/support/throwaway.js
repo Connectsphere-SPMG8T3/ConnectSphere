@@ -1,7 +1,8 @@
 // Throwaway accounts for the sign-up specs, and throwaway events for the venue
-// booking spec (SCRUM-19). They share one email pattern with
-// backend/scripts/verify_live.py, and every account matching it is deleted,
-// along with everything it owns, before and after a run.
+// booking spec (SCRUM-19). They share their name patterns with
+// backend/scripts/verify_live.py. A run deletes only its own throwaway rows,
+// before and after it, plus any an earlier run left more than STALE_AFTER ago,
+// so it can't delete the rows of a run going at the same time.
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,12 +12,24 @@ const PROJECT_REF = "vuiryrzzyfecjqftwicj";
 const PREFIX = "live-check+";
 const DOMAIN = "@connectsphere.dev";
 
-const runId = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+// In every throwaway name and note this run writes, so its cleanup can find only its own.
+// Playwright's global setup (which cleans up) and its workers (which create rows) are
+// separate processes: the first to load this module publishes the id in the environment,
+// which the processes it starts inherit.
+process.env.E2E_RUN_ID ||= `e2e-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}`;
+export const RUN_ID = process.env.E2E_RUN_ID;
+// Longer than any run, so a concurrent run's rows are never treated as left over.
+export const STALE_AFTER = "6 hours";
+
+// This run's rows (`mine`), or another run's (`anyone`) left over for longer than STALE_AFTER.
+function mineOrStale(column, mine, anyone) {
+  return `(${column} like '${mine}' or (${column} like '${anyone}' and created_at < now() - interval '${STALE_AFTER}'))`;
+}
 
 export const THROWAWAY_PASSWORD = "Cs1234" + "live";
 
 export function throwawayEmail(tag) {
-  return `${PREFIX}e2e-${runId}-${tag}${DOMAIN}`;
+  return `${PREFIX}${RUN_ID}-${tag}${DOMAIN}`;
 }
 
 export function deleteThrowawayAccounts() {
@@ -28,7 +41,7 @@ export function deleteThrowawayAccounts() {
       "--linked",
       "--project-ref",
       PROJECT_REF,
-      `delete from auth.users where email like '${PREFIX}%${DOMAIN}'`,
+      `delete from auth.users where ${mineOrStale("email", `${PREFIX}${RUN_ID}-%${DOMAIN}`, `${PREFIX}%${DOMAIN}`)}`,
     ],
     { cwd: REPO_ROOT, stdio: "pipe" },
   );
@@ -57,7 +70,7 @@ export function parseRows(out) {
 }
 
 // Same "live-check " name prefix as backend/scripts/verify_live.py, so either
-// run's cleanup removes both runs' leftovers.
+// suite's cleanup removes the other's long-left-over rows.
 const EVENT_PREFIX = "live-check ";
 
 /** A planning event owned by the seeded organiser and assigned to the seeded coordinator. */
@@ -65,7 +78,7 @@ export function createThrowawayEvent(tag, startsAt, endsAt) {
   const [row] = query(
     "insert into public.events (organiser_id, coordinator_id, status, name, starts_at, ends_at, expected_attendance) values " +
       "('a0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000002', 'planning', " +
-      `'${EVENT_PREFIX}e2e-${runId} ${tag}', '${startsAt}', '${endsAt}', 20) returning id, name`,
+      `'${EVENT_PREFIX}${RUN_ID} ${tag}', '${startsAt}', '${endsAt}', 20) returning id, name`,
   );
   return row;
 }
@@ -84,7 +97,7 @@ export function createQueuedThrowawayEvent(tag, startsAt, endsAt) {
   const [row] = query(
     "insert into public.events (organiser_id, coordinator_id, status, name, starts_at, ends_at, expected_attendance, layout_preference, facilities_required, submitted_at) values " +
       "('a0000000-0000-4000-8000-000000000001', null, 'submitted', " +
-      `'${EVENT_PREFIX}e2e-${runId} ${tag}', '${startsAt}', '${endsAt}', 64, 'theatre', '{projector}', now()) returning id, name`,
+      `'${EVENT_PREFIX}${RUN_ID} ${tag}', '${startsAt}', '${endsAt}', 64, 'theatre', '{projector}', now()) returning id, name`,
   );
   return row;
 }
@@ -125,8 +138,7 @@ export function setThrowawayEventAccessibilityNeeds(event, needs) {
   query(`update public.events set accessibility_needs = '${needs}' where id = '${event.id}'`);
 }
 
-// Same note as backend/scripts/verify_live.py's THROWAWAY_BLOCK_NOTE, so either
-// run's cleanup removes both runs' leftovers.
+// Same note as backend/scripts/verify_live.py's THROWAWAY_BLOCK_NOTE, followed by the run.
 const BLOCK_NOTE = "live-check";
 
 /**
@@ -136,14 +148,14 @@ const BLOCK_NOTE = "live-check";
 export function createThrowawayBlock(venueId, startsAt, endsAt, reason = "maintenance") {
   const [row] = query(
     "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values " +
-      `('${venueId}', tstzrange('${startsAt}', '${endsAt}', '[)'), '${reason}', '${BLOCK_NOTE}') returning id`,
+      `('${venueId}', tstzrange('${startsAt}', '${endsAt}', '[)'), '${reason}', '${BLOCK_NOTE} ${RUN_ID}') returning id`,
   );
   return row;
 }
 
-/** Removes the throwaway blocks, which is how a venue becomes free again for a restore (CR-95 AC9). */
+/** Removes this run's throwaway blocks, which is how a venue becomes free again for a restore (CR-95 AC9). */
 export function deleteThrowawayBlocks() {
-  query(`delete from public.venue_blocks where notes = '${BLOCK_NOTE}'`);
+  query(`delete from public.venue_blocks where ${mineOrStale("notes", `${BLOCK_NOTE} ${RUN_ID}`, `${BLOCK_NOTE}%`)}`);
 }
 
 /** The booking's flag and status, read straight from the database. */
@@ -190,11 +202,12 @@ export function setThrowawayBookingBuffers(bookingId, setupMinutes, turnaroundMi
 
 /** Deletes the throwaway events and their bookings (that foreign key restricts). */
 export function deleteThrowawayEvents() {
-  query(`delete from public.venue_bookings where event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);
-  query(`delete from public.events where name like '${EVENT_PREFIX}%'`);
+  const events = mineOrStale("name", `${EVENT_PREFIX}${RUN_ID} %`, `${EVENT_PREFIX}%`);
+  query(`delete from public.venue_bookings where event_id in (select id from public.events where ${events})`);
+  query(`delete from public.events where ${events}`);
   // SCRUM-24's throwaway equipment, after its events' lines (that foreign key
   // restricts); its reservations cascade.
-  query(`delete from public.equipment where name like '${EVENT_PREFIX}%'`);
+  query(`delete from public.equipment where ${mineOrStale("name", `${EVENT_PREFIX}equipment ${RUN_ID} %`, `${EVENT_PREFIX}%`)}`);
 }
 
 /** A throwaway catalogue item (SCRUM-24), so seeded stock is never reserved.
@@ -202,7 +215,7 @@ export function deleteThrowawayEvents() {
 export function createThrowawayEquipment(tag, quantity) {
   const [row] = query(
     "insert into public.equipment (name, equipment_type, total_quantity, status) values " +
-      `('${EVENT_PREFIX}equipment e2e-${runId} ${tag}', 'live-check', ${quantity}, 'active') returning id, name`,
+      `('${EVENT_PREFIX}equipment ${RUN_ID} ${tag}', 'live-check', ${quantity}, 'active') returning id, name`,
   );
   return row;
 }
@@ -223,7 +236,7 @@ const VENUE_PREFIX = "live-check venue ";
 export function createThrowawayVenue(tag) {
   const [row] = query(
     "insert into public.venues (name, location, capacity, opens_at, closes_at, is_active) values " +
-      `('${VENUE_PREFIX}e2e-${runId} ${tag}', 'Live check', 50, '08:00', '22:00', true) returning id, name`,
+      `('${VENUE_PREFIX}${RUN_ID} ${tag}', 'Live check', 50, '08:00', '22:00', true) returning id, name`,
   );
   query(`insert into public.venue_layouts (venue_id, layout) values ('${row.id}', 'theatre')`);
   return row;
@@ -231,8 +244,9 @@ export function createThrowawayVenue(tag) {
 
 /** Deletes the throwaway venues, their bookings first (that foreign key restricts). */
 export function deleteThrowawayVenues() {
-  query(`delete from public.venue_bookings where venue_id in (select id from public.venues where name like '${VENUE_PREFIX}%')`);
-  query(`delete from public.venues where name like '${VENUE_PREFIX}%'`);
+  const venues = mineOrStale("name", `${VENUE_PREFIX}${RUN_ID} %`, `${VENUE_PREFIX}%`);
+  query(`delete from public.venue_bookings where venue_id in (select id from public.venues where ${venues})`);
+  query(`delete from public.venues where ${venues}`);
 }
 
 /** CR-100's schema is a deployment prerequisite for its live browser cases. */
@@ -245,4 +259,17 @@ export function venueBufferMigrationPresent() {
 export function setThrowawayBookingSafetyRejected(bookingId) {
   query(`update public.venue_bookings set flag = 'safety_rejected', flag_reason = 'live check exits', flagged_at = now() ` +
     `where id = '${bookingId}' and event_id in (select id from public.events where name like '${EVENT_PREFIX}%')`);
+}
+
+// SCRUM-45: the lines the equipment spec adds to a seeded planning event carry this note,
+// so only those lines, and only this run's, are deleted.
+const LIVE_CHECK_LINE_NOTE = "live-check SCRUM-45";
+
+export function liveCheckLineNote(text) {
+  return `${LIVE_CHECK_LINE_NOTE} ${RUN_ID}: ${text}`;
+}
+
+export function deleteLiveCheckLines(eventId) {
+  query(`delete from public.equipment_requests where event_id = '${eventId}' and ` +
+    mineOrStale("technical_requirements", `${LIVE_CHECK_LINE_NOTE} ${RUN_ID}%`, `${LIVE_CHECK_LINE_NOTE}%`));
 }
