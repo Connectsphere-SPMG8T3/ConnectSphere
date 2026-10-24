@@ -3,17 +3,21 @@ the repository mocked. The RPC's own guards are checked against the real databas
 supabase/verification/event_change_request_checks.sql."""
 
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 
 import pytest
 
 from app.modules.events import repository
+from tests.conftest import make_table_mock
 
 ORGANISER_ID = "a0000000-0000-4000-8000-000000000001"
 COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
 EVENT_ID = "e0000000-0000-4000-8000-000000000321"
 SPACE_ID = "f0000000-0000-4000-8000-000000000321"
 REQUEST_ID = "c0000000-0000-4000-8000-000000000321"
+MISSING_EVENT_ID = "e0000000-0000-4000-8000-0000000003ff"
+OTHER_ORGANISER_ID = "a0000000-0000-4000-8000-000000000003"
 REASON = "Our sponsor wants a longer programme"
 
 
@@ -110,3 +114,138 @@ class TestRequestChange:
         assert call["event_id"] == EVENT_ID
         assert call["actor_id"] == ORGANISER_ID
         assert call["expected_version"] == 3
+
+    @pytest.mark.parametrize("status", ["submitted", "under_review", "planning", "safety_review",
+                                        "confirmed", "preparation"])
+    def test_every_status_after_submission_but_returned_accepts_a_request(
+            self, client, auth_headers, act_as, events, status):
+        events["store"][EVENT_ID]["status"] = status
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 201
+
+    def test_the_rpc_rechecks_only_the_accepted_statuses(self, client, auth_headers, act_as, events):
+        act_as()
+
+        request_change(client, auth_headers, event={"description": "Updated"})
+
+        [call] = events["calls"]
+        assert set(call["from_statuses"]) == {"submitted", "under_review", "planning", "safety_review",
+                                              "confirmed", "preparation"}
+
+    def test_the_reason_is_trimmed(self, client, auth_headers, act_as, events):
+        act_as()
+
+        request_change(client, auth_headers, event={"description": "Updated"}, reason=f"  {REASON}  ")
+
+        assert events["calls"][0]["reason"] == REASON
+
+
+class TestRefusedRequests:
+    @pytest.mark.parametrize("status", ["rejected", "cancelled", "completed"])
+    def test_a_closed_event_records_no_request(self, client, auth_headers, act_as, events, status):
+        """AC4 [LC-R1]: refused, and nothing is recorded or changed."""
+        events["store"][EVENT_ID]["status"] = status
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == f"Changes can't be requested for an event that is {status}."
+        assert events["calls"] == []
+        assert events["store"][EVENT_ID]["description"] is None
+
+    def test_a_draft_is_edited_directly(self, client, auth_headers, act_as, events):
+        events["store"][EVENT_ID]["status"] = "draft"
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "A draft can be edited directly."
+        assert events["calls"] == []
+
+    def test_a_returned_request_is_amended_and_resubmitted(self, client, auth_headers, act_as, events):
+        events["store"][EVENT_ID]["status"] = "returned"
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Edit and resubmit the returned request instead."
+        assert events["calls"] == []
+
+    def test_an_event_that_has_started_is_refused(self, client, auth_headers, act_as, events):
+        """CR-R15: like a cancellation (CR-R10), it runs to completed once started."""
+        started = datetime.now(timezone.utc) - timedelta(minutes=5)
+        events["store"][EVENT_ID].update(status="preparation", starts_at=started.isoformat(),
+                                         ends_at=(started + timedelta(hours=2)).isoformat())
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "This event has already started, so changes can't be requested."
+        assert events["calls"] == []
+
+    def test_another_organisers_event_is_not_found(self, client, auth_headers, act_as, events):
+        act_as(user_id=OTHER_ORGANISER_ID)
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 404
+        assert events["calls"] == []
+
+    def test_a_missing_event_is_not_found(self, client, auth_headers, act_as, events):
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"},
+                                  event_id=MISSING_EVENT_ID)
+
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize("role", ["event_coordinator", "event_coordinator_lead", "venue_staff",
+                                      "tech_support", "safety_officer", "attendee"])
+    def test_other_roles_are_forbidden(self, client, auth_headers, act_as, events, role):
+        act_as(role, user_id=COORDINATOR_ID)
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 403
+        assert events["calls"] == []
+
+    def test_the_owner_acting_as_another_role_is_forbidden(self, client, auth_headers, monkeypatch, events):
+        """SCRUM-76: the owner's account also holds coordinator and is acting as it."""
+        profile = {"id": ORGANISER_ID, "email": "multi@connectsphere.dev", "full_name": "Multi Role",
+                   "role": "event_organiser", "organisation_name": None, "department": None,
+                   "phone_number": None}
+        anon = MagicMock()
+        anon.auth.get_claims.return_value = {"claims": {
+            "sub": ORGANISER_ID, "aud": "authenticated", "email": profile["email"],
+            "session_id": "22222222-2222-2222-2222-222222222222"}}
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client",
+                            lambda: make_table_mock(profile, session_active_role={"role": "event_coordinator"}))
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 403
+        assert events["calls"] == []
+
+    @pytest.mark.parametrize("reason", ["", "   ", "x" * 1001, None])
+    def test_a_missing_blank_or_overlong_reason_is_rejected(self, client, auth_headers, act_as, events, reason):
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"}, reason=reason)
+
+        assert response.status_code == 422
+        assert events["calls"] == []
+
+    def test_a_blank_reason_says_a_reason_for_the_change_is_needed(self, client, auth_headers, act_as, events):
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"}, reason="  ")
+
+        assert "A reason for the change is required." in response.text

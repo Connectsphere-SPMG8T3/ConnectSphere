@@ -597,6 +597,13 @@ class ChangeRequestCreate(CancellationRequestCreate):
     event: EventUpdateRequest = EventUpdateRequest()
     spaces: list[SpaceChangeProposal] = []
 
+    @field_validator("reason", mode="before")
+    @classmethod
+    def reason_is_not_blank(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("A reason for the change is required.")
+        return value.strip()
+
 
 # SCRUM-72: the Event Coordinator dashboard. The SPA's store
 # (`frontend/src/features/events/store.js`) fixed this shape first, and it does

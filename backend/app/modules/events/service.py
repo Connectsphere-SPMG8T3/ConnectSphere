@@ -403,11 +403,25 @@ def request_cancellation(event_id: str, organiser_id: str, organiser_name: str, 
     return EventChangeRequest(**result["request"])
 
 
+def _refuse_change_request(row: dict) -> None:
+    """AC4 and CR-R15: a draft or returned request is edited directly, a closed event
+    takes no requests, and nor does one that has started (as CR-R10)."""
+    if row["status"] == EventStatus.draft:
+        raise EventConflictError("A draft can be edited directly.")
+    if row["status"] == EventStatus.returned:
+        raise EventConflictError("Edit and resubmit the returned request instead.")
+    if row["status"] not in lifecycle.change_requestable_from():
+        raise EventConflictError(f"Changes can't be requested for an event that is {row['status']}.")
+    if row.get("starts_at") and _parse_datetime(row["starts_at"]) <= datetime.now(timezone.utc):
+        raise EventConflictError("This event has already started, so changes can't be requested.")
+
+
 def request_change(event_id: str, organiser_id: str, organiser_name: str,
                    body: ChangeRequestCreate) -> EventChangeRequest:
     """Story 32: record the owner's proposed changes. Nothing changes on the event
     until the coordinator approves them (story 37)."""
     row = _owned_event(event_id, organiser_id)
+    _refuse_change_request(row)
     proposed = body.event.model_dump(mode="json", exclude_unset=True)
     changes = {"event": change_fields.diff(row, proposed), "spaces": []}
     fields = ", ".join(change_fields.field_names(changes))
