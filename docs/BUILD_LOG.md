@@ -3222,3 +3222,69 @@ On `feature/scrum-115-cancel-event`, 2026-10-23, branched from story 84's PR #10
 
 **Not verified.**
 - No story moves events into `preparation` yet (story 68), so a direct cancel from Preparation is unit-tested only.
+
+### 4.89. Story 32 — Request changes to event arrangements
+
+On `feature/scrum-32-request-event-changes`, 2026-10-24, stacked on PR #106 (story 115), which is stacked on PR #104 (story 84). PBI 32 (Event change request). The coordinator's side, deciding and applying a change, is story 37.
+
+**What was built.**
+- **Database** (migration `20261025100000_event_change_requests.sql`):
+  - `event_change_requests` gains `changes` (jsonb) and `significant`, required exactly on `change` rows.
+  - One open request per event, of either kind, replaces story 84's one per kind (CR-R14). Story 84's supersede still works, because it closes the change row before inserting the cancellation.
+  - `request_event_change` (ADR-0007) locks the event, re-checks the owner, status and version, refuses while a cancellation or change request is open, inserts the request and notifies the coordinator, or every Lead while unassigned. It changes nothing on the event.
+  - A trigger supersedes an open change request when its event becomes rejected, cancelled or completed (CR-R18).
+  - A new notification type, `event_change_requested`.
+- **API:**
+  - `POST /events/{id}/change-request` for the owning organiser in the organiser role. Proposed values come for event fields and existing spaces; the API reads `before` from the database and keeps only real changes.
+  - `events/change_fields.py` holds the significant/ordinary split (CR-R17) for story 37 and story 112 to reuse.
+  - `GET /events/{id}` gains `open_change_request`; the history gains `change_requested` and `change_request_closed` entries; the coordinator dashboard gains `change_request` items, which the SPA already listed.
+  - Story 84's cancellation readers now share one query per shape with the new change readers; their selects are unchanged.
+- **SPA:**
+  - `EventRequestView` has a change mode at `/events/:id/request-change`, prefilled, without draft, submit or add/copy/remove space controls. Send change request is disabled until something differs, then lists each change as before → after with a reason (`CancellationReasonModal` gains a slot for the list).
+  - The organiser's event page offers Request changes, or says why not while a cancellation is open, and shows a Change requested banner. The coordinator's page shows the same request read-only, marked significant or ordinary.
+  - `features/events/changeRequest.js` builds the proposal from payload snapshots with the API's comparison rules; `ChangeRequestChanges` renders the rows in the dialog, both banners and the history.
+
+**Decisions** (developer, 24/10; recorded in REQUIREMENTS §6.19 CR-R14–CR-R21 and §9 items 93–97):
+- Structured requests, covering event fields and existing spaces. Adding or removing a space is out.
+- The organiser fills them in through the request form itself.
+- One open request per event (from the sheet's Notes, 23/10), enforced in the RPC and by the index.
+- Accepted from submission until the start, except on a returned request.
+- Registration settings are ordinary and the timezone is significant.
+- Only errors a change introduces are reported.
+- No withdrawal or edit.
+- Only the decider is told of a request; everyone else hears on approval (37).
+
+**Tests.** Written test-first in vertical slices, one commit each:
+- **Backend:** `test_event_change_request_api.py` covers:
+  - the request with its before and after
+  - the refusals, including AC4 storing nothing
+  - the access matrix, including the SCRUM-76 owner-acting-as-coordinator denial
+  - the diff and its no-op rules
+  - validation
+  - the RPC outcomes
+  - the detail field, history and dashboard
+
+  `test_events_repository.py` holds the RPC and query contracts. As in story 84, the RPC wrapper went in during the first slice to unblock the API test, so its contract test was written after it rather than red first.
+- **Frontend:** `changeRequest.spec.js`, `EventChangeRequest.spec.js` (change mode), `EventChangeRequestBanners.spec.js`, two cases in `EventStatusHistory.spec.js` and one in `api.spec.js`.
+- **Changed existing checks:**
+  - `tests/conftest.py::cancellation_requests_offline` now also defaults the three change readers to empty. No existing test's assertion was changed.
+  - `event_cancellation_request_checks.sql`'s bare change row gained an empty change set, because change rows now must carry their changes (CR-R16). Its supersede check is unchanged.
+- **Results:** backend 2116 passed, frontend 1603 passed, `npm run build` clean. Every new and changed line is covered: the remaining uncovered lines in the touched files predate this branch.
+
+**Live checks added.**
+- TC-CHANGE-001–006 in `verify_live.py`, on throwaway events and spaces. TC-CHANGE-002 checks story 84's AC4 through the API, which story 84 could only check in the database.
+- `event_change_request_checks.sql` (TC-CHANGE-007), added to the database run.
+- TC-CHANGE-008 in `e2e/change-request.e2e.js`. `createThrowawaySpace` takes an optional layout.
+- Manual cases TC-CHANGE-009–012 in `docs/test-cases/events.md`.
+
+**Verified (2026-10-24).**
+- Run before the migration, `event_change_request_checks.sql` failed because the function didn't exist. Migration `20261025100000` was then applied with `supabase db push`, on the developer's go-ahead, and the linked ledger matches the branch.
+- `event_change_request_checks.sql`, `event_cancellation_request_checks.sql` and `event_cancellation_decision_checks.sql` pass against the live schema.
+- The advisors show nothing new: the same 10 WARN findings on Auth password protection and equipment RLS initplans.
+- API and database run [198/201](test-cases/runs/2026-10-24-1646-api-db-68cfce6.md), with TC-CHANGE-001–007 passing. TC-VENUE-066, TC-VENUE-067 and TC-BOOK-002 failed with a 404 for an event or venue the check had just created, and passed when re-run unchanged and unrecorded straight afterwards. Story 32 doesn't touch those paths; the cause isn't established.
+- Browser run [91/93](test-cases/runs/2026-10-24-1718-e2e-68cfce6.md), with TC-CHANGE-008 passing. TC-RBAC-005 and TC-TSD-017 failed as in story 115's run. A first recorded browser run was deleted as a setup failure: the machine lost DNS for the Supabase host, so logins returned 500.
+
+**Not verified.**
+- The manual pass TC-CHANGE-009–012 (layout at 375px, wording, notifications, history) is the developer's and hasn't been done yet.
+- In change mode, a value typed before the event finishes loading is overwritten by the loaded value. The draft and amend modes behave the same way; it is reported, not fixed.
+- Deciding and applying a change, and the notices to venue staff, tech support and attendees, are story 37.
