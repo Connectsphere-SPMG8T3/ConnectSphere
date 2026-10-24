@@ -5,7 +5,8 @@ import BauhausButton from "@/components/common/BauhausButton.vue";
 import { CANCELLATION_REASON_MAX_LENGTH } from "@/features/events/cancellation";
 
 // Story 115: the coordinator's reason for rejecting a cancellation request or for
-// cancelling directly. Same shape as RejectEventModal; the wording comes from the caller.
+// cancelling directly, and story 32's change request (its summary goes in the default
+// slot). Same shape as RejectEventModal; the wording comes from the caller.
 const props = defineProps({
   open: { type: Boolean, default: false },
   title: { type: String, required: true },
@@ -50,6 +51,7 @@ function confirm() {
       >
         <h2 id="cancellation-reason-title" class="text-2xl font-bold leading-tight">{{ props.title }}</h2>
         <p class="mt-4 text-base font-medium">{{ props.message }}</p>
+        <slot />
         <label for="cancellation-reason" class="mt-6 block text-xs font-bold text-ink/70">Reason (required)</label>
         <textarea
           id="cancellation-reason"

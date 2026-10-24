@@ -123,6 +123,7 @@ DB_SCRIPTS = [
     ("equipment_reservation_checks.sql", "TC-EQR-016–020, 022–025 (SCRUM-24 database half)"),
     ("event_cancellation_request_checks.sql", "TC-CANCEL-007, 008 (story 84 database half: superseding, index, RLS)"),
     ("event_cancellation_decision_checks.sql", "TC-CANCEL-018 (story 115 database half: releases, notices, refusals)"),
+    ("event_change_request_checks.sql", "TC-CHANGE-007 (story 32 database half: one open per event, closing, RLS)"),
 ]
 
 
@@ -3367,6 +3368,166 @@ def _(ctx: Context) -> None:
     expect(rows == [{"status": "open"}], f"rows: {rows}")
     [event] = db_query(f"select status from public.events where id = '{event_id}'")
     expect(event["status"] == "preparation", f"requesting moved the event to {event['status']}")
+
+
+# --- Story 32: the organiser requests changes -------------------------------------
+# Throwaway events again, with a throwaway space where a check needs one.
+
+CHANGE_REASON = "live-check: sponsor wants more seats"
+
+
+def change_fixture(ctx: Context, case: str, day: str, status: str = "planning", assigned: bool = True) -> tuple[str, str]:
+    """A throwaway event for 80 with one 80-pax theatre space. Returns (event, space)."""
+    event_id = throwaway_event(ctx, case, f"{day} 10:00+08", f"{day} 12:00+08", status=status, assigned=assigned)
+    db_query(f"update public.events set purpose = 'live-check', expected_attendance = 80 where id = '{event_id}'")
+    [space] = db_query(
+        "insert into public.event_space_requests (event_id, label, expected_pax, layout_preference) "
+        f"values ('{event_id}', 'Main hall', 80, 'theatre') returning id"
+    )
+    return event_id, space["id"]
+
+
+def event_version(event_id: str) -> int:
+    [row] = db_query(f"select version from public.events where id = '{event_id}'")
+    return int(row["version"])
+
+
+def request_change(ctx: Context, event_id: str, *, event: dict | None = None, spaces: list | None = None,
+                   reason: str = CHANGE_REASON, version: int | None = None,
+                   session: Session | None = None) -> httpx.Response:
+    session = session or ctx.shared("event_organiser")
+    body = {"reason": reason, "version": event_version(event_id) if version is None else version,
+            "event": event or {}, "spaces": spaces or []}
+    return ctx.client.post(f"{ctx.api}/events/{event_id}/change-request", headers=session.headers, json=body)
+
+
+def stored_requests(event_id: str, kind: str = "change") -> list[dict]:
+    return db_query(f"select status, significant, changes, decision_reason from public.event_change_requests "
+                    f"where event_id = '{event_id}' and kind = '{kind}'")
+
+
+@check("TC-CHANGE-001", "The owner proposes event and space changes: recorded with before and after, coordinator told, event unchanged",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, space_id = change_fixture(ctx, "32-001", "2031-11-03")
+    before = event_version(event_id)
+    response = request_change(ctx, event_id, event={"expected_attendance": 120, "description": "live-check"},
+                              spaces=[{"id": space_id, "layout_preference": "banquet"}])
+    expect_status(response, 201)
+    body = response.json()
+    expect(body["kind"] == "change" and body["status"] == "open" and body["significant"] is True, f"request: {body}")
+    [row] = stored_requests(event_id)
+    changes = row["changes"] if isinstance(row["changes"], dict) else json.loads(row["changes"])
+    expect({"field": "expected_attendance", "before": 80, "after": 120} in changes["event"], f"changes: {changes}")
+    expect(changes["spaces"] == [{"space_id": space_id, "label": "Main hall",
+                                  "fields": [{"field": "layout_preference", "before": "theatre", "after": "banquet"}]}],
+           f"space changes: {changes['spaces']}")
+    notices = db_query("select recipient_id, recipient_role::text as role, message from public.notifications "
+                       f"where event_id = '{event_id}' and type = 'event_change_requested'")
+    expect(len(notices) == 1 and notices[0]["recipient_id"] == COORDINATOR_ID and notices[0]["role"] == "event_coordinator"
+           and "expected attendance" in notices[0]["message"] and CHANGE_REASON in notices[0]["message"], f"notices: {notices}")
+    [event] = db_query(f"select status, expected_attendance, version from public.events where id = '{event_id}'")
+    expect(event["status"] == "planning" and event["expected_attendance"] == 80 and int(event["version"]) == before,
+           f"requesting changed the event: {event}")
+
+
+@check("TC-CHANGE-002", "An open cancellation blocks a change request; a cancellation request supersedes an open one (84 AC4)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    blocked, _ = change_fixture(ctx, "32-002a", "2031-11-04")
+    expect_status(request_cancellation(ctx, blocked), 201)
+    response = request_change(ctx, blocked, event={"expected_attendance": 120})
+    expect_status(response, 409)
+    expect_detail(response, "A cancellation request is open for this event; ask your coordinator to reject it "
+                            "before requesting changes.")
+    expect(stored_requests(blocked) == [], "a blocked change request was stored")
+
+    superseded, _ = change_fixture(ctx, "32-002b", "2031-11-05")
+    expect_status(request_change(ctx, superseded, event={"expected_attendance": 120}), 201)
+    expect_status(request_cancellation(ctx, superseded), 201)
+    [row] = stored_requests(superseded)
+    expect(row["status"] == "superseded", f"the change request is {row['status']}")
+    history = ctx.client.get(f"{ctx.api}/events/{superseded}/history",
+                             headers=ctx.shared("event_organiser").headers).json()["entries"]
+    expect(any(e["kind"] == "change_request_closed" for e in history), f"history: {history}")
+
+
+@check("TC-CHANGE-003", "Closed events refuse a change request and store nothing (AC4); draft and returned are pointed elsewhere",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    expected = {
+        "rejected": "Changes can't be requested for an event that is rejected.",
+        "cancelled": "Changes can't be requested for an event that is cancelled.",
+        "completed": "Changes can't be requested for an event that is completed.",
+        "draft": "A draft can be edited directly.",
+        "returned": "Edit and resubmit the returned request instead.",
+    }
+    for status, detail in expected.items():
+        event_id, _ = change_fixture(ctx, f"32-003-{status}", "2031-11-06", status=status)
+        response = request_change(ctx, event_id, event={"expected_attendance": 120})
+        expect_status(response, 409)
+        expect_detail(response, detail)
+        expect(stored_requests(event_id) == [], f"a request was stored on a {status} event")
+        [event] = db_query(f"select expected_attendance from public.events where id = '{event_id}'")
+        expect(event["expected_attendance"] == 80, f"the {status} event changed")
+
+
+@check("TC-CHANGE-004", "Only the owner acting as organiser can ask; stale, empty and duplicate requests are refused",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, space_id = change_fixture(ctx, "32-004", "2031-11-07")
+    for role in ("event_coordinator", "event_coordinator_lead", "venue_staff", "tech_support", "safety_officer",
+                 "attendee"):
+        expect_status(request_change(ctx, event_id, event={"expected_attendance": 120}, session=ctx.shared(role)), 403)
+    stale = request_change(ctx, event_id, event={"expected_attendance": 120}, version=event_version(event_id) + 5)
+    expect_status(stale, 409)
+    expect_detail(stale, "This event was updated by someone else. Reload.")
+    empty = request_change(ctx, event_id, event={"expected_attendance": 80}, spaces=[{"id": space_id, "expected_pax": 80}])
+    expect_status(empty, 422)
+    expect_detail(empty, "Change at least one detail.")
+    expect_status(request_change(ctx, event_id, event={"expected_attendance": 120}, reason="   "), 422)
+    expect(stored_requests(event_id) == [], "a refused request was stored")
+    expect_status(request_change(ctx, event_id, event={"expected_attendance": 120}), 201)
+    again = request_change(ctx, event_id, event={"expected_attendance": 150})
+    expect_status(again, 409)
+    expect_detail(again, "A change request is already open for this event.")
+
+
+@check("TC-CHANGE-005", "The event page, history and coordinator dashboard show the open change request", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, _ = change_fixture(ctx, "32-005", "2031-11-08")
+    expect_status(request_change(ctx, event_id, event={"expected_attendance": 120}), 201)
+    for role in ("event_organiser", "event_coordinator"):
+        session = ctx.shared(role)
+        detail = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=session.headers)
+        expect_status(detail, 200)
+        request = detail.json()["open_change_request"]
+        expect(request and request["reason"] == CHANGE_REASON and request["changes"]["event"], f"{role} sees {request}")
+        history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=session.headers).json()["entries"]
+        entry = next((e for e in history if e["kind"] == "change_requested"), None)
+        expect(entry and entry["actor"] and entry["changes"], f"{role} history: {history}")
+    items = coordinator_dashboard(ctx)["action_items"]
+    expect(any(i["event_id"] == event_id and i["kind"] == "change_request" for i in items),
+           "no change_request item on the coordinator dashboard")
+
+
+@check("TC-CHANGE-006", "On an unassigned event every Lead is told; cancelling the event closes its open change request",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    unassigned, _ = change_fixture(ctx, "32-006a", "2031-11-09", status="submitted", assigned=False)
+    expect_status(request_change(ctx, unassigned, event={"expected_attendance": 120}), 201)
+    notices = db_query("select recipient_id, recipient_role::text as role from public.notifications "
+                       f"where event_id = '{unassigned}' and type = 'event_change_requested'")
+    leads = db_query("select profile_id from public.user_roles where role = 'event_coordinator_lead'")
+    expect(notices and sorted(n["recipient_id"] for n in notices) == sorted(l["profile_id"] for l in leads)
+           and all(n["role"] == "event_coordinator_lead" for n in notices), f"notices: {notices}, leads: {leads}")
+
+    closing, _ = change_fixture(ctx, "32-006b", "2031-11-10")
+    expect_status(request_change(ctx, closing, event={"expected_attendance": 120}), 201)
+    expect_status(decide(ctx, closing, "cancel", "live-check: venue withdrawn"), 200)
+    [row] = stored_requests(closing)
+    expect(row["status"] == "superseded" and row["decision_reason"] == "Closed because the event was cancelled.",
+           f"after the cancel the change request is {row}")
 
 
 # --- Story 115: the coordinator decides, or cancels directly -----------------------

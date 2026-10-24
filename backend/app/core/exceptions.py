@@ -149,6 +149,14 @@ class VenueBlockInvalidError(HTTPException):
         super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
 
+class ChangeRequestInvalidError(HTTPException):
+    """Story 32: a change request that changes nothing, names a space outside the
+    event, or breaks a submission rule the event didn't already break (CR-R16, CR-R19)."""
+
+    def __init__(self, detail: str | list[dict]) -> None:
+        super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+
+
 class VenueAlreadyActiveError(HTTPException):
     """SCRUM-64: reactivating a venue that is already active."""
 

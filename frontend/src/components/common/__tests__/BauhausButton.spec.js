@@ -1,4 +1,5 @@
 import { createApp, h, nextTick } from "vue";
+import { createMemoryHistory, createRouter } from "vue-router";
 import { afterEach, describe, expect, it } from "vitest";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
@@ -49,5 +50,31 @@ describe("BauhausButton hover", () => {
   it("has no hover fill while disabled", async () => {
     const button = await mountButton({ disabled: true });
     expect(button.classList.contains("hover:bg-muted")).toBe(false);
+  });
+});
+
+describe("BauhausButton as a link", () => {
+  afterEach(() => {
+    mounted.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  it("renders a router link with the button's look when given a destination", async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/:any(.*)", component: { render: () => null } }] });
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const app = createApp({ render: () => h(BauhausButton, { to: "/login", variant: "outline", size: "sm" }, () => "Sign in") }).use(router);
+    app.mount(el);
+    mounted.push(app);
+    await router.isReady();
+    await nextTick();
+
+    expect(el.querySelector("button")).toBeNull();
+    const link = el.querySelector("a");
+    expect(link.getAttribute("href")).toBe("/login");
+    expect(link.getAttribute("type")).toBeNull();
+    for (const name of ["border-2", "border-ink", "shadow-hard", "bg-canvas", "px-4", "hover:bg-muted", "active-press"]) {
+      expect(link.classList.contains(name)).toBe(true);
+    }
   });
 });

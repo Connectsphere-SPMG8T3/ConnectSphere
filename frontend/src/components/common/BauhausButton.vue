@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from "vue";
+import { RouterLink } from "vue-router";
 
 const props = defineProps({
   variant: {
@@ -21,6 +22,12 @@ const props = defineProps({
   },
   // "sm" for secondary placements such as a page header's actions, where the
   // standard size would outweigh the title.
+  // A route location. When set the button renders as a link, for actions that
+  // navigate rather than submit; `type` and `disabled` then don't apply.
+  to: {
+    type: [String, Object],
+    default: null,
+  },
   size: {
     type: String,
     default: "md",
@@ -41,6 +48,7 @@ const sizeClasses = {
 };
 
 const classes = computed(() => [
+  "inline-flex items-center justify-center gap-2 border-2 border-ink font-bold shadow-hard transition-transform",
   variantClasses[props.variant],
   sizeClasses[props.size],
   props.fullWidth ? "w-full" : "",
@@ -49,12 +57,10 @@ const classes = computed(() => [
 </script>
 
 <template>
-  <button
-    :type="type"
-    :disabled="disabled"
-    class="inline-flex items-center justify-center gap-2 border-2 border-ink font-bold shadow-hard transition-transform"
-    :class="classes"
-  >
+  <RouterLink v-if="to" :to="to" :class="classes">
+    <slot />
+  </RouterLink>
+  <button v-else :type="type" :disabled="disabled" :class="classes">
     <slot />
   </button>
 </template>
