@@ -95,4 +95,16 @@ describe("EventStatusHistory (QA-70)", () => {
     expect(el.textContent).toContain("Assigned to Priya Nair");
     expect(el.textContent).not.toContain("from ");
   });
+
+  it("story 84 heads a cancellation request with who asked and why", async () => {
+    const el = await mountHistory([
+      { id: "r1", kind: "cancellation_requested", from_status: null, to_status: null, reason: "Speaker withdrew",
+        at: "2026-10-23T01:00:00Z", actor: { id: "o1", full_name: "Priya Nair" } },
+    ]);
+
+    const [item] = el.querySelectorAll("li");
+    expect(item.querySelector("p").textContent).toBe("Cancellation requested");
+    expect(item.textContent).toContain("by Priya Nair");
+    expect(item.textContent).toContain("Speaker withdrew");
+  });
 });

@@ -140,6 +140,24 @@ def list_latest_resubmissions(event_ids: Iterable[str]) -> dict[str, str]:
     return latest
 
 
+def list_open_cancellation_requests(event_ids: Iterable[str]) -> dict[str, str]:
+    """Story 84: `{event_id: requested_at}` of each event's open cancellation request
+    (at most one per event, CR-R1), for the coordinator dashboard."""
+    ids = list(event_ids)
+    if not ids:
+        return {}
+    response = (
+        get_supabase_admin_client()
+        .table("event_change_requests")
+        .select("event_id, requested_at")
+        .in_("event_id", ids)
+        .eq("kind", "cancellation")
+        .eq("status", "open")
+        .execute()
+    )
+    return {row["event_id"]: row["requested_at"] for row in response.data or []}
+
+
 def list_event_names(event_ids: Iterable[str]) -> dict[str, str]:
     """`{event_id: name}` for the ids given, skipping any that no longer exist.
 
@@ -274,6 +292,29 @@ def transition_event(
     return rows[0] if rows else None
 
 
+def request_event_cancellation(
+    event_id: str,
+    actor_id: str,
+    reason: str,
+    from_statuses: list[str],
+    coordinator_message: str,
+    lead_message: str,
+) -> dict:
+    """Story 84: run `public.request_event_cancellation` under the event's lock. It
+    records the request, supersedes an open change request (CR-R1) and notifies the
+    assigned coordinator, or every Lead while the event is unassigned. Answers
+    `{outcome, request}`: ok / not_found / not_owner / status_changed / already_open."""
+    response = get_supabase_admin_client().rpc("request_event_cancellation", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_reason": reason,
+        "p_from_statuses": from_statuses,
+        "p_coordinator_message": coordinator_message,
+        "p_lead_message": lead_message,
+    }).execute()
+    return response.data
+
+
 def list_status_history(event_id: str) -> list[dict]:
     """Newest first. The actor is embedded through the FK named in the migration.
     On a timestamp tie the creation row (no from_status) sorts last, since
@@ -392,6 +433,39 @@ def get_open_amendment(event_id: str) -> dict | None:
         .execute()
     )
     return response.data if response else None
+
+
+def get_open_cancellation_request(event_id: str) -> dict | None:
+    """Story 84: the event's open cancellation request, with who asked. At most one
+    is open per event (partial unique index, CR-R1)."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_change_requests")
+        .select("id, kind, status, reason, requested_at, "
+                "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)")
+        .eq("event_id", event_id)
+        .eq("kind", "cancellation")
+        .eq("status", "open")
+        .maybe_single()
+        .execute()
+    )
+    return response.data if response else None
+
+
+def list_cancellation_requests(event_id: str) -> list[dict]:
+    """Story 84 AC5: every cancellation request on the event, newest first, for its
+    history. Who asked is embedded; it is null if their profile was deleted."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_change_requests")
+        .select("id, reason, requested_at, "
+                "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)")
+        .eq("event_id", event_id)
+        .eq("kind", "cancellation")
+        .order("requested_at", desc=True)
+        .execute()
+    )
+    return response.data or []
 
 
 def list_comments(event_id: str) -> list[dict]:

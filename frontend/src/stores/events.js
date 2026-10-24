@@ -201,6 +201,14 @@ export const useEventsStore = defineStore("events", {
       }
     },
 
+    // Story 84: errors go to the caller (the dialog shows them), not the page alert.
+    async requestCancellation(eventId, reason) {
+      const authStore = useAuthStore();
+      const request = await authStore.withSession((token) => eventsApi.requestCancellation(eventId, reason, token));
+      await this.get(eventId);
+      return request;
+    },
+
     async get(eventId) {
       const authStore = useAuthStore();
       this.isLoading = true;

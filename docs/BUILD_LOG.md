@@ -3122,4 +3122,53 @@ Implemented on `feature/scrum-43-attendee-event-registration`. Confirmed estimat
 
 **UI follow-up (2026-10-22).** After registration, the event detail is fetched again so the places-registered count comes from the API. The attendee gets the shared success toast and a disabled **Registered** button; TC-REG-004 covers new and already-registered responses. The public pages now follow the shared typography and page-padding rules; the focused registration, route, view and style checks pass (174/174), and `npm run build` passes. The latest full frontend run reports 1,517 passed and 2 failed: coordinator navigation assertions that both pass when their test files run in isolation. The shared-browser interaction was not verified because the mocked auth session was rejected; no real registration was submitted through that browser interaction.
 
+### 4.87. Story 84 — Request cancellation of my event
 
+On `feature/scrum-84-request-cancellation`, 2026-10-23. PBI 84 (Event status management), split on 20/10 from the coordinator's side, which is now 115. Numbered after story 43's §4.86 (PR #100); the branch was rebased onto it.
+
+**What was built.**
+- **Database** (migration `20261023100000_event_cancellation_requests.sql`):
+  - `event_change_requests`, one table for change and cancellation requests (§6.19, CR-R9), so SCRUM-32/37 and 115 build on it. A partial unique index allows one open request per kind per event (CR-R1). RLS lets the owner and the assigned coordinator read the rows in their active role; nobody can write them directly.
+  - `request_event_cancellation` (ADR-0007) locks the event, re-checks owner and status, supersedes an open change request (AC4), inserts the request, and notifies the coordinator, or every Lead while the event is unassigned (CR-R7). It returns an outcome code and releases nothing (QA-12).
+  - A new notification type, `event_cancellation_requested`.
+- **API:**
+  - `POST /events/{id}/cancellation-request` for the owning organiser in the organiser role. The allowed statuses are every status except draft, rejected, cancelled and completed (`lifecycle.CANCELLATION_REQUEST_REFUSED`), so Safety review is allowed (CR-R6) and Preparation will be once story 68 uses it.
+  - `GET /events/{id}` gains `open_cancellation_request`.
+  - The history gains `cancellation_requested` entries.
+  - The coordinator dashboard gains `cancellation_request` action items, which the SPA already ranked third.
+- **SPA:**
+  - The organiser's event page has a Request cancellation button and `RequestCancellationModal` (reason required, n / 1000), then a Cancellation requested banner with the reason.
+  - The coordinator's event page shows a read-only banner.
+  - `EventStatusHistory` heads the new entries "Cancellation requested".
+
+**Decisions** (recorded in REQUIREMENTS §6.19 CR-R6–CR-R9 and §9 items 87–90):
+- Safety review accepts a request, though AC1 doesn't list it.
+- An unassigned event notifies the Leads, without the reason.
+- The organiser can't withdraw a request.
+- One shared table.
+- The reason is capped at 1000 characters.
+
+**Tests.** Written test-first in vertical slices, one commit each:
+- **Backend:** `test_event_cancellation_request_api.py` (the request, the refusals, the access matrix including the SCRUM-76 owner-acting-as-coordinator denial, the detail field, history, dashboard) and RPC/query contracts in `test_events_repository.py`. The RPC wrapper went in during the first slice to unblock the API test, so its contract test was written after it rather than red first.
+- **Frontend:** `EventCancellationRequest.spec.js`, `CoordinatorCancellationRequest.spec.js`, plus one case in `EventStatusHistory.spec.js`. That heading changed before its test was written.
+- **`tests/conftest.py::cancellation_requests_offline`** keeps the older event-read tests offline. No existing test was changed.
+- **Results:** backend 1912 passed, with every new line covered; frontend 1518 passed, with every new line covered; `npm run build` is clean.
+
+**Live checks added.**
+- TC-CANCEL-001–006 in `verify_live.py`, on throwaway events.
+- `event_cancellation_request_checks.sql` (TC-CANCEL-007, 008), added to the database run.
+- TC-CANCEL-013 in `verify_live.py`: a `preparation` event accepts a request, added after the rebase onto PR #100.
+- TC-CANCEL-009 in `e2e/cancellation-request.e2e.js`.
+- Manual cases TC-CANCEL-010–012 in `docs/test-cases/events.md`.
+
+**Verified (2026-10-23).**
+- Migration `20261023100000` applied with `supabase db push`; the linked ledger matches the branch.
+- API and database run [188/188](test-cases/runs/2026-10-23-1609-api-db-1b7cad7.md), after the seeded review fixtures 201/202 were reset with `event_review_fixture_reset.sql` (rejected on 21–22 Oct, before this branch; a first run failed only on that and was deleted as a setup failure).
+- Browser run [89/90](test-cases/runs/2026-10-23-1627-e2e-1b7cad7.md); TC-CANCEL-009 passed. The failure is TC-TSD-017 (tech-support summary row, 1 card found where 4 are expected), which has failed the same way in every recorded browser run since 2026-10-20 (earlier BUILD_LOG entries report it; it isn't in DEFECTS.md); this story doesn't touch that dashboard.
+- Manual pass [TC-CANCEL-010–012](test-cases/runs/2026-10-23-1610-manual-cb76541.md) passed. At the developer's request the coordinator's banner now heads the organiser's reason with "Comments:".
+- After the rebase onto PR #100: backend 1956 and frontend 1539 passed; TC-CANCEL-001–008 and 013 and TC-CANCEL-009 passed again, unrecorded.
+
+**Not verified.**
+- No story moves events into `preparation` yet (story 68), so TC-CANCEL-013 sets the status directly on a throwaway event.
+- AC4 is proven only at the database: story 32 has no API that creates a change request.
+- AC6 (the organiser hears the decision) is delivered by 115.

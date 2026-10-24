@@ -47,6 +47,7 @@ from app.modules.events.schemas import (
     LeadEvent,
     EventComment,
     EventCommentsResponse,
+    EventChangeRequest,
     EventCreateRequest,
     EventHistoryEntry,
     EventHistoryResponse,
@@ -378,6 +379,29 @@ def resubmit(event_id: str, organiser_id: str, body: EventResubmitRequest) -> Ev
     return _to_response(updated)
 
 
+def request_cancellation(event_id: str, organiser_id: str, organiser_name: str, reason: str) -> EventChangeRequest:
+    """Story 84: record the owner's cancellation request. Nothing is released until the
+    coordinator decides (story 115)."""
+    row = _owned_event(event_id, organiser_id)
+    if row["status"] == EventStatus.draft:
+        raise EventConflictError("A draft can't be cancelled. Discard the draft instead.")
+    if row["status"] not in lifecycle.cancellation_requestable_from():
+        raise EventConflictError(f"Cancellation can't be requested for an event that is {row['status']}.")
+    result = repository.request_event_cancellation(
+        event_id, organiser_id, reason, lifecycle.cancellation_requestable_from(),
+        coordinator_message=f'{organiser_name} requested to cancel "{row["name"]}". Reason: {reason}',
+        lead_message=f'Cancellation requested for unassigned event "{row["name"]}".',
+    )
+    outcome = result["outcome"]
+    if outcome in ("not_found", "not_owner"):
+        raise EventNotFoundError()
+    if outcome == "already_open":
+        raise EventConflictError("A cancellation request is already open for this event.")
+    if outcome != "ok":
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return EventChangeRequest(**result["request"])
+
+
 def _validate_submission(row: dict) -> None:
     errors = []
     has_space_requests = bool(row.get("spaces"))
@@ -510,6 +534,9 @@ def _for_role(booking: dict, role: str) -> dict:
 def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
     row = _visible_event(event_id, user_id, role)
     response = _with_amendment(row)
+    open_request = repository.get_open_cancellation_request(event_id)
+    if open_request:
+        response.open_cancellation_request = EventChangeRequest(**open_request)
     if role == "event_coordinator" and row["status"] == "planning":
         response.safety_readiness = _safety_readiness_for(row)
     if role == "event_coordinator" or row["status"] == "confirmed":
@@ -544,6 +571,11 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
     _visible_event(event_id, user_id, role)
     entries = [EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
     entries += [EventHistoryEntry(kind="reassignment", **row) for row in repository.list_assignment_history(event_id)]
+    entries += [
+        EventHistoryEntry(kind="cancellation_requested", id=row["id"], actor=row["requested_by"],
+                          reason=row["reason"], at=row["requested_at"])
+        for row in repository.list_cancellation_requests(event_id)
+    ]
     # Stable, so entries sharing a time keep the repository's order (the creation row last).
     entries.sort(key=lambda entry: entry.at, reverse=True)
     return EventHistoryResponse(entries=entries)
@@ -633,10 +665,11 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
     """Everything the Event Coordinator dashboard shows, in one round trip (SCRUM-72).
 
     Only events assigned to the caller, never drafts (DR-R2). Action kinds whose
-    data doesn't exist yet (change and cancellation requests, booking and
-    equipment decisions, re-review outcomes) are not produced, so their widgets
-    stay empty rather than invent anything (REQUIREMENTS §6.21). The SPA ranks
-    the items, so they are returned unordered.
+    data doesn't exist yet (change requests, booking and equipment decisions,
+    re-review outcomes) are not produced, so their widgets stay empty rather
+    than invent anything (REQUIREMENTS §6.21). An open cancellation request
+    (story 84) is an item of its own, beside the event's other one. The SPA
+    ranks the items, so they are returned unordered.
 
     The caller's rejected events come back in the same query, listed apart:
     they are closed, so no arrangement or action is looked up for them.
@@ -652,6 +685,7 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
     under_review_ids = [row["id"] for row in rows if row["status"] == "under_review"]
 
     resubmissions = repository.list_latest_resubmissions(under_review_ids)
+    cancellation_requests = repository.list_open_cancellation_requests(event_ids)
     bookings = venues_service.booking_statuses_by_event(event_ids) if event_ids else {}
     affected = venues_service.affected_event_ids(event_ids) if event_ids else set()
     equipment = equipment_service.equipment_readiness_by_event(event_ids) if event_ids else {}
@@ -669,6 +703,17 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
                     kind=kind,
                     starts_at=row.get("starts_at"),
                     occurred_at=resubmitted_at or row.get("submitted_at"),
+                    organiser_name=(row.get("organiser") or {}).get("full_name"),
+                )
+            )
+        if row["id"] in cancellation_requests:
+            action_items.append(
+                CoordinatorActionItem(
+                    event_id=row["id"],
+                    event_name=row["name"],
+                    kind=CoordinatorActionKind.cancellation_request,
+                    starts_at=row.get("starts_at"),
+                    occurred_at=cancellation_requests[row["id"]],
                     organiser_name=(row.get("organiser") or {}).get("full_name"),
                 )
             )

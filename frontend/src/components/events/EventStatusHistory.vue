@@ -16,7 +16,9 @@ function label(status) {
 }
 
 // A reassignment is not a status change (SCRUM-12): it names the coordinators instead.
+// Neither is a cancellation request (story 84): it carries who asked and why.
 function heading(entry) {
+  if (entry.kind === "cancellation_requested") return "Cancellation requested";
   if (entry.kind !== "reassignment") return label(entry.to_status);
   const to = entry.to_coordinator?.full_name ?? "a coordinator";
   return entry.from_coordinator ? `Reassigned to ${to}` : `Assigned to ${to}`;

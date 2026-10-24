@@ -493,3 +493,112 @@ def test_planning_context_reads_what_venue_staff_judge_a_booking_by(monkeypatch)
     for column in ("status", "accessibility_needs", "expected_attendance", "layout_preference", "facilities_required"):
         assert column in selects[0]
     assert repository.list_planning_context([]) == []
+
+
+def test_request_event_cancellation_sends_the_reason_statuses_and_both_messages(monkeypatch):
+    """Story 84 RPC contract: the function answers one jsonb object, not rows."""
+    sent = {}
+    answer = {"outcome": "ok", "request": {"id": "r1", "kind": "cancellation", "status": "open"}}
+
+    class Rpc:
+        def execute(self):
+            return SimpleNamespace(data=answer)
+
+    class AdminClient:
+        def rpc(self, name, params):
+            sent["name"], sent["params"] = name, params
+            return Rpc()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    result = repository.request_event_cancellation(
+        "event-1", "user-1", "Speaker withdrew", ["planning", "submitted"],
+        coordinator_message="to coordinator", lead_message="to leads")
+
+    assert result == answer
+    assert sent == {"name": "request_event_cancellation", "params": {
+        "p_event_id": "event-1", "p_actor_id": "user-1", "p_reason": "Speaker withdrew",
+        "p_from_statuses": ["planning", "submitted"],
+        "p_coordinator_message": "to coordinator", "p_lead_message": "to leads"}}
+
+
+def test_get_open_cancellation_request_reads_the_open_cancellation_with_its_requester(monkeypatch):
+    row = {"id": "r1", "kind": "cancellation", "status": "open", "reason": "x",
+           "requested_at": "2026-10-23T09:00:00+00:00", "requested_by": {"id": "u1", "full_name": "Olivia"}}
+    client = TableClient(SimpleNamespace(data=row))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.get_open_cancellation_request("event-1") == row
+    [query] = client.queries
+    assert query.calls == [
+        ("table", "event_change_requests"),
+        ("select", "id, kind, status, reason, requested_at, "
+                   "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)"),
+        ("eq", "event_id", "event-1"),
+        ("eq", "kind", "cancellation"),
+        ("eq", "status", "open"),
+        ("maybe_single",),
+    ]
+
+
+def test_get_open_cancellation_request_is_none_when_nothing_is_open(monkeypatch):
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: TableClient(None))
+
+    assert repository.get_open_cancellation_request("event-1") is None
+
+
+def test_list_cancellation_requests_reads_every_cancellation_on_the_event(monkeypatch):
+    rows = [{"id": "r1", "reason": "x", "requested_at": "2026-10-23T09:00:00+00:00",
+             "requested_by": {"id": "u1", "full_name": "Olivia"}}]
+    client = TableClient(SimpleNamespace(data=rows))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.list_cancellation_requests("event-1") == rows
+    [query] = client.queries
+    assert query.calls == [
+        ("table", "event_change_requests"),
+        ("select", "id, reason, requested_at, "
+                   "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)"),
+        ("eq", "event_id", "event-1"),
+        ("eq", "kind", "cancellation"),
+        ("order", "requested_at", {"desc": True}),
+    ]
+
+
+def test_list_open_cancellation_requests_maps_each_event_to_when_it_was_asked(monkeypatch):
+    calls = []
+
+    class Query:
+        def __getattr__(self, name):
+            def record(*args, **kwargs):
+                calls.append((name, *args))
+                return self
+            return record
+
+        def execute(self):
+            return SimpleNamespace(data=[{"event_id": "e1", "requested_at": "2026-10-23T09:00:00+00:00"}])
+
+    class AdminClient:
+        def table(self, name):
+            calls.append(("table", name))
+            return Query()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    assert repository.list_open_cancellation_requests(["e1", "e2"]) == {"e1": "2026-10-23T09:00:00+00:00"}
+    assert calls == [
+        ("table", "event_change_requests"),
+        ("select", "event_id, requested_at"),
+        ("in_", "event_id", ["e1", "e2"]),
+        ("eq", "kind", "cancellation"),
+        ("eq", "status", "open"),
+    ]
+
+
+def test_list_open_cancellation_requests_skips_the_query_for_no_events(monkeypatch):
+    def no_client():
+        raise AssertionError("queried the database for no events")
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", no_client)
+
+    assert repository.list_open_cancellation_requests([]) == {}

@@ -249,6 +249,19 @@ watch(
         audience="coordinator"
         class="mb-8"
       />
+      <!-- Story 84: read-only here; approving or rejecting the request is story 115. -->
+      <section
+        v-if="event.open_cancellation_request"
+        data-testid="cancellation-request-banner"
+        class="mb-8 border-4 border-ink bg-bauhaus-red p-6 text-canvas shadow-hard sm:p-8"
+      >
+        <h2 class="text-2xl font-bold">
+          Cancellation requested by {{ event.open_cancellation_request.requested_by?.full_name ?? "the organiser" }}
+        </h2>
+        <p class="mt-4 text-sm font-bold">Comments:</p>
+        <p class="mt-1 whitespace-pre-wrap font-medium" data-testid="cancellation-request-comments">{{ event.open_cancellation_request.reason }}</p>
+        <p class="mt-4 text-sm font-bold">Arrangements stay held until you decide.</p>
+      </section>
 
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         <BauhausCard background="white" accent="none" data-testid="request-details-card">

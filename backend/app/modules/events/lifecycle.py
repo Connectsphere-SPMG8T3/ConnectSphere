@@ -36,6 +36,18 @@ TRANSITIONS: dict[str, tuple[frozenset[EventStatus], EventStatus]] = {
 }
 
 
+# Story 84 AC2, CR-R4: a cancellation can be requested at any status after submission
+# except these (QA-12). It changes no status, so it isn't a TRANSITIONS row, and it is
+# defined by exclusion so Preparation (story 68) is covered as soon as it exists.
+CANCELLATION_REQUEST_REFUSED = frozenset({
+    EventStatus.draft, EventStatus.rejected, EventStatus.cancelled, EventStatus.completed,
+})
+
+
+def cancellation_requestable_from() -> list[str]:
+    return sorted(status.value for status in EventStatus if status not in CANCELLATION_REQUEST_REFUSED)
+
+
 def allowed_from(action: str) -> list[str]:
     sources, _ = TRANSITIONS[action]
     return sorted(status.value for status in sources)

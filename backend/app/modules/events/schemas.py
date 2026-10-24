@@ -389,6 +389,23 @@ class EventSpaceVenueBooking(EventVenueBooking):
     pass
 
 
+class HistoryActor(BaseModel):
+    id: str
+    full_name: str
+
+
+class EventChangeRequest(BaseModel):
+    """A change or cancellation request on an event (REQUIREMENTS §6.19). Story 84
+    builds the cancellation kind; SCRUM-32/37 add change requests to the same table."""
+
+    id: str
+    kind: str
+    status: str
+    reason: str
+    requested_by: HistoryActor | None = None
+    requested_at: datetime
+
+
 class EventResponse(EventFields):
     id: str
     organiser_id: str
@@ -424,6 +441,8 @@ class EventResponse(EventFields):
     rejected_bookings: list[EventRejectedBooking] = []
     safety_readiness: SafetyReadiness | None = None
     latest_safety_decision: SafetyDecision | SafetyDecisionSummary | None = None
+    # Story 84: the open cancellation request, on a single-event read only.
+    open_cancellation_request: EventChangeRequest | None = None
     venue_bookings: list[EventSpaceVenueBooking] = []
 
 
@@ -484,14 +503,11 @@ class EventResubmitRequest(EventUpdateRequest):
         return _required_text(value, "A resubmission note is required.")
 
 
-class HistoryActor(BaseModel):
-    id: str
-    full_name: str
-
-
 class EventHistoryEntry(BaseModel):
     """One line of an event's history: a status change, or a reassignment (SCRUM-12), which
-    is not a status change and so carries the two coordinators instead of statuses."""
+    is not a status change and so carries the two coordinators instead of statuses, or a
+    cancellation request (story 84, `cancellation_requested`), which carries only who asked
+    and why."""
 
     id: str
     kind: str = "status"
@@ -508,6 +524,22 @@ class EventHistoryResponse(BaseModel):
     entries: list[EventHistoryEntry]
 
 
+CANCELLATION_REASON_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as a rejection reason
+
+
+class CancellationRequestCreate(BaseModel):
+    """Story 84 AC1: the organiser's reason for asking to cancel."""
+
+    reason: str = Field(max_length=CANCELLATION_REASON_MAX_LENGTH)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def reason_is_not_blank(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("A cancellation reason is required.")
+        return value.strip()
+
+
 # SCRUM-72: the Event Coordinator dashboard. The SPA's store
 # (`frontend/src/features/events/store.js`) fixed this shape first, and it does
 # the ranking itself, so action items are returned unordered.
@@ -515,12 +547,13 @@ class EventHistoryResponse(BaseModel):
 
 class CoordinatorActionKind(str, Enum):
     """The action kinds the server can produce today. The SPA's `ACTION_KINDS`
-    lists more (change and cancellation requests, booking and equipment
-    decisions, re-review outcomes); those arrive with the stories that build
-    their data, and until then their widgets stay empty (REQUIREMENTS §6.21)."""
+    lists more (change requests, booking and equipment decisions, re-review
+    outcomes); those arrive with the stories that build their data, and until
+    then their widgets stay empty (REQUIREMENTS §6.21)."""
 
     needs_alternative_venue = "needs_alternative_venue"
     arrangement_issue = "arrangement_issue"
+    cancellation_request = "cancellation_request"
     resubmitted = "resubmitted"
     awaiting_review = "awaiting_review"
 
