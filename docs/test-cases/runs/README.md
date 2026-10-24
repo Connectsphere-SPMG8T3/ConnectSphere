@@ -16,7 +16,7 @@ One file per run, named `<date>-<time>-<method>-<commit>.md` (Singapore time), s
 
 To see whether a case is automated, search for its ID: `grep -rn "TC-AUTH-006" backend/scripts frontend/e2e`. Every automated check's name starts with the ID of the case it runs. A case with no match is manual.
 
-Automated checks sign in as the seeded accounts, never change seeded or shared data, and log out every session they open. The SQL scripts roll back. Sign-up checks create throwaway accounts named `live-check+…@connectsphere.dev`, and every such account is deleted, with everything it owns, before and after each run. That keeps the live project usable as the demo database (`docs/CI.md` §4 item 3, [Team decision]). A check that would have to approve, reject or change a shared record stays manual until it can clean up after itself the same way.
+Automated checks sign in as the seeded accounts, never change seeded or shared data, and log out every session they open. The SQL scripts roll back. Checks that must create records make throwaway ones named after their run (`live-check+<run>-…@connectsphere.dev` accounts, `live-check <run> …` events, venues and equipment, venue blocks noted `live-check <run>`). Each run deletes its own, with everything they own, before and after it runs, plus any an earlier run left more than 6 hours ago. It never touches another run's, so two runs can go at once: two developers, or the API and browser suites side by side. That keeps the live project usable as the demo database (`docs/CI.md` §4 item 3, [Team decision]). A check that would have to approve, reject or change a shared record stays manual until it can clean up after itself the same way.
 
 ## When to record a run
 
