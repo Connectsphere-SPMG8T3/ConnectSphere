@@ -7,7 +7,7 @@ This file describes the **current state** of the codebase, so a developer (or AI
 - For the *history* of how each story was built, see `docs/BUILD_LOG.md` §4 (append-only).
 - For *what the system should do*, see `docs/REQUIREMENTS.md`.
 
-**Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current").
+**Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current"). 
 
 _Last updated: 2026-10-24 — live-check cleanup is run-scoped: `verify_live.py` and `e2e/support/throwaway.js` delete only their own run's throwaway rows plus leftovers older than 6 hours, so concurrent runs no longer delete each other's rows (`chore/live-check-run-scoped-cleanup`)._
 
