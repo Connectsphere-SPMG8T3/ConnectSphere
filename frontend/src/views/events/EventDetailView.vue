@@ -7,8 +7,10 @@ import BauhausCard from "@/components/common/BauhausCard.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import EventDiscussion from "@/components/events/EventDiscussion.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
+import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
 import RequestCancellationModal from "@/components/events/RequestCancellationModal.vue";
 import { canRequestCancellation } from "@/features/events/cancellation";
+import { canRequestChange, describeChanges } from "@/features/events/changeRequest";
 import { hasThread } from "@/features/events/comments";
 import { BOOKING_STATUS_LABELS } from "@/features/venues/bookingRequest";
 import { STATUS_LABELS } from "@/features/events/dashboard";
@@ -28,12 +30,13 @@ const rejection = computed(() =>
 const cancellationOpen = ref(false);
 const cancellationBusy = ref(false);
 const cancellationError = ref(null);
-const requestedAt = computed(() => {
-  const at = event.value?.open_cancellation_request?.requested_at;
+function formatRequestedAt(at) {
   return at
     ? new Intl.DateTimeFormat("en-SG", { dateStyle: "medium", timeStyle: "short", timeZone: event.value.eventTimezone }).format(new Date(at))
     : "";
-});
+}
+const requestedAt = computed(() => formatRequestedAt(event.value?.open_cancellation_request?.requested_at));
+const changeRequestedAt = computed(() => formatRequestedAt(event.value?.open_change_request?.requested_at));
 
 function openCancellation() {
   cancellationError.value = null;
@@ -165,6 +168,18 @@ onMounted(async () => {
         <p class="mt-3 text-sm font-bold">Your arrangements stay in place until your coordinator decides.</p>
       </section>
 
+      <section
+        v-if="event.open_change_request"
+        data-testid="change-request-banner"
+        class="mb-8 border-4 border-ink bg-bauhaus-yellow p-6 shadow-hard sm:p-8"
+      >
+        <h2 class="text-2xl font-bold">Change requested</h2>
+        <p class="mt-1 text-xs font-bold text-ink/70">{{ changeRequestedAt }}</p>
+        <ChangeRequestChanges :rows="describeChanges(event.open_change_request.changes)" class="mt-4 bg-canvas" />
+        <p class="mt-4 whitespace-pre-wrap font-medium">{{ event.open_change_request.reason }}</p>
+        <p class="mt-3 text-sm font-bold">Nothing changes until your coordinator approves the request.</p>
+      </section>
+
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         <BauhausCard background="white" accent="none">
           <h2 class="text-2xl font-bold">Request details</h2>
@@ -202,6 +217,17 @@ onMounted(async () => {
             <h2 class="text-2xl font-bold">Planning status</h2>
             <p class="mt-3 text-sm font-medium">Your request is currently <strong class="">{{ statusLabel }}</strong>.</p>
             <p class="mt-3 text-sm font-medium">Coordinator: {{ event.coordinator?.full_name || (event.coordinatorId ? "Assigned" : "Unassigned") }}</p>
+            <BauhausButton
+              v-if="canRequestChange(event)"
+              variant="yellow"
+              class="mt-6"
+              @click="router.push({ name: 'event-request-change', params: { id: event.id } })"
+            >
+              Request changes
+            </BauhausButton>
+            <p v-else-if="event.open_cancellation_request" data-testid="change-request-blocked" class="mt-6 text-sm font-medium">
+              A cancellation request is open, so changes can't be requested. Ask your coordinator to reject it first.
+            </p>
             <BauhausButton v-if="canRequestCancellation(event)" variant="outline" class="mt-6" @click="openCancellation">
               Request cancellation
             </BauhausButton>

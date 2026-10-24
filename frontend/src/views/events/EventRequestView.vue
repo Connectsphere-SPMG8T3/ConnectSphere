@@ -10,12 +10,15 @@ import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
+import CancellationReasonModal from "@/components/events/CancellationReasonModal.vue";
+import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
 import ResubmitEventModal from "@/components/events/ResubmitEventModal.vue";
 import { showToast } from "@/composables/useToast";
 import { FLAG_TEXT, flaggedFormKeys } from "@/features/events/amendment";
+import { canRequestChange, describeChanges, diffProposal, hasChanges } from "@/features/events/changeRequest";
 import { getEarliestEventDate, getRegistrationClosingError, getRegistrationOpeningError, getSingaporeDateString, isEventDateAfterToday } from "@/features/events/dateValidation";
 import { EVENT_TIMEZONES, toZonedIso } from "@/features/events/timezones";
-import { FACILITIES, LAYOUTS, emptyEvent, emptySpace, spaceToPayload, useEventsStore } from "@/stores/events";
+import { FACILITIES, LAYOUTS, emptyEvent, emptySpace, eventToPayload, spaceToPayload, useEventsStore } from "@/stores/events";
 
 const SPACE_PURPOSES = [
   { value: "main_venue", label: "Main venue" },
@@ -39,6 +42,29 @@ const isNew = computed(() => !form.id);
 const isReturned = computed(() => form.status === "returned");
 const flaggedKeys = computed(() => flaggedFormKeys(form.amendment?.flagged_fields));
 const isResubmitModalOpen = ref(false);
+// Story 32: a submitted event's details are proposed as a change request instead.
+const isChange = computed(() => route.name === "event-request-change");
+const originalSnapshot = ref(null);
+const isChangeModalOpen = ref(false);
+const isSendingChange = ref(false);
+const changeError = ref(null);
+const proposal = computed(() => (originalSnapshot.value
+  ? diffProposal(originalSnapshot.value, proposalSnapshot())
+  : { event: {}, spaces: [] }));
+const canSendChange = computed(() => hasChanges(proposal.value));
+const changeRows = computed(() => {
+  if (!originalSnapshot.value) return [];
+  const original = originalSnapshot.value;
+  const spacesBefore = new Map(original.spaces.map((space) => [space.id, space]));
+  return describeChanges({
+    event: Object.entries(proposal.value.event).map(([field, after]) => ({ field, before: original.event[field], after })),
+    spaces: proposal.value.spaces.map(({ id, ...values }) => ({
+      space_id: id,
+      label: spacesBefore.get(id)?.label,
+      fields: Object.entries(values).map(([field, after]) => ({ field, before: spacesBefore.get(id)?.[field], after })),
+    })),
+  });
+});
 const isSavingSpace = ref(false);
 
 function flagFor(key) {
@@ -255,15 +281,56 @@ async function removeSpace(space) {
   }
 }
 
+function spacePayload(space) {
+  const spaceWithEventDate = {
+    ...space,
+    startsAt: space.startTime ? `${form.date}T${space.startTime}` : "",
+    endsAt: space.endTime ? `${form.date}T${space.endTime}` : "",
+  };
+  return spaceToPayload(spaceWithEventDate, form.eventTimezone);
+}
+
+// Story 32: the form as the payloads a save would send, for diffing.
+function proposalSnapshot() {
+  return {
+    event: eventToPayload(form, { clearing: true }),
+    spaces: form.spaces.filter((space) => space.id).map((space) => ({ id: space.id, ...spacePayload(space) })),
+  };
+}
+
+function openChangeRequest() {
+  intent.value = "change";
+  if (!validateSubmission()) return;
+  const spaceErrors = form.spaces.map((space) => validateSpace(space, form));
+  if (spaceErrors.some((spaceError) => Object.keys(spaceError).length)) {
+    fieldErrors.value = { ...fieldErrors.value, spaces: spaceErrors };
+    return;
+  }
+  changeError.value = null;
+  isChangeModalOpen.value = true;
+}
+
+async function sendChangeRequest(reason) {
+  isSendingChange.value = true;
+  changeError.value = null;
+  try {
+    await eventsStore.requestChange(form.id, { reason, version: form.version, ...proposal.value });
+  } catch (error) {
+    changeError.value = error.message; // Q7: the form keeps the organiser's inputs.
+    return;
+  } finally {
+    isSendingChange.value = false;
+  }
+  isChangeModalOpen.value = false;
+  pristineSnapshot.value = serializeForm(form);
+  showToast("Change request sent");
+  await router.push({ name: "event-detail", params: { id: form.id } });
+}
+
 async function persistSpaces(eventId, spaces) {
   for (const space of spaces) {
     if (Object.keys(validateSpace(space, form)).length) continue;
-    const spaceWithEventDate = {
-      ...space,
-      startsAt: space.startTime ? `${form.date}T${space.startTime}` : "",
-      endsAt: space.endTime ? `${form.date}T${space.endTime}` : "",
-    };
-    const payload = spaceToPayload(spaceWithEventDate, form.eventTimezone);
+    const payload = spacePayload(space);
     if (space.id) await eventsStore.updateSpace(eventId, space.id, { ...payload, version: space.version });
     else await eventsStore.createSpace(eventId, payload);
   }
@@ -322,6 +389,23 @@ onBeforeRouteLeave((to) => {
 });
 
 onMounted(async () => {
+  if (isChange.value) {
+    let event;
+    try {
+      event = await eventsStore.get(route.params.id);
+    } catch {
+      return; // eventsStore.error is shown in the page alert.
+    }
+    if (!canRequestChange(event)) {
+      allowNavigation.value = true;
+      await router.replace({ name: "event-detail", params: { id: event.id } });
+      return;
+    }
+    setFormEvent(event);
+    originalSnapshot.value = proposalSnapshot();
+    pristineSnapshot.value = serializeForm(form);
+    return;
+  }
   if (route.query.id) {
     // Always read the event itself: a cached list can hold a stale status (and
     // omits the amendment), and trusting it left a blank form whose Save draft
@@ -352,9 +436,12 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
     <BauhausCard background="yellow" accent="square" accent-color="bauhaus-red" class="mb-10">
       <p class="text-xs font-bold opacity-80">Event request</p>
       <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">
-        {{ isNew ? "Start an event" : isReturned ? "Amend your request" : "Edit your draft" }}
+        {{ isChange ? "Request changes" : isNew ? "Start an event" : isReturned ? "Amend your request" : "Edit your draft" }}
       </h1>
-      <p class="mt-3 max-w-xl text-sm font-medium">
+      <p v-if="isChange" class="mt-3 max-w-xl text-sm font-medium">
+        Change any detail below. Your coordinator reviews the request before anything on the event changes.
+      </p>
+      <p v-else class="mt-3 max-w-xl text-sm font-medium">
         Save the request as a draft while details are taking shape, or submit it once the required planning information is ready.
       </p>
     </BauhausCard>
@@ -369,7 +456,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
       {{ eventsStore.error }}
     </p>
 
-    <form novalidate class="grid gap-8 lg:grid-cols-[1.35fr_0.65fr]" @submit.prevent="chooseIntent('submit')">
+    <form novalidate class="grid gap-8 lg:grid-cols-[1.35fr_0.65fr]" @submit.prevent="isChange ? openChangeRequest() : chooseIntent('submit')">
       <BauhausCard background="white" accent="none">
         <div class="grid gap-6 sm:grid-cols-2">
           <div class="sm:col-span-2">
@@ -455,14 +542,14 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
                     </div>
                   </div>
                 </div>
-                <div class="mt-4 flex flex-wrap gap-3">
+                <div v-if="!isChange" class="mt-4 flex flex-wrap gap-3">
                   <BauhausButton type="button" variant="yellow" :disabled="isSavingSpace" @click="copySpace(space)">Copy space</BauhausButton>
                   <BauhausButton v-if="form.spaces.length > 1" type="button" variant="yellow" :disabled="isSavingSpace" @click="removeSpace(space)">Remove space</BauhausButton>
                 </div>
               </div>
             </div>
 
-            <BauhausButton type="button" class="mt-4" variant="yellow" :disabled="isSavingSpace" @click="addSpace">Add space request</BauhausButton>
+            <BauhausButton v-if="!isChange" type="button" class="mt-4" variant="yellow" :disabled="isSavingSpace" @click="addSpace">Add space request</BauhausButton>
           </div>
           <div class="sm:col-span-2">
             <BauhausInput v-model="form.accessibilityNeeds" label="Accessibility needs" :flag="flagFor('accessibilityNeeds')" placeholder="Step-free access, hearing loop, etc." />
@@ -496,7 +583,15 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
           </div>
         </BauhausCard>
 
-        <BauhausCard background="white" accent="none">
+        <BauhausCard v-if="isChange" background="white" accent="none">
+          <p class="text-xs font-bold text-ink/70">Change request</p>
+          <p class="mt-2 text-sm font-medium">Only the details you change are sent. Nothing changes on the event until your coordinator approves the request.</p>
+          <div class="mt-6 flex flex-col gap-3">
+            <BauhausButton type="submit" variant="primary" :disabled="!canSendChange">Send change request</BauhausButton>
+            <BauhausButton type="button" variant="outline" @click="requestLeave({ name: 'event-detail', params: { id: form.id } })">Cancel</BauhausButton>
+          </div>
+        </BauhausCard>
+        <BauhausCard v-else background="white" accent="none">
           <p class="text-xs font-bold text-ink/70">Workflow</p>
           <p class="mt-2 text-sm font-medium">Drafts stay private to you. Submission sends a complete request for coordinator review.</p>
           <div class="mt-6 flex flex-col gap-3">
@@ -519,6 +614,19 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
       @confirm="confirmSubmit"
       @stay="isSubmitModalOpen = false"
     />
+    <CancellationReasonModal
+      :open="isChangeModalOpen"
+      title="Send change request?"
+      message="Your coordinator reviews these changes before anything on the event changes."
+      confirm-label="Send change request"
+      confirm-aria-label="Send change request"
+      :busy="isSendingChange"
+      :error="changeError"
+      @confirm="sendChangeRequest"
+      @cancel="isChangeModalOpen = false"
+    >
+      <ChangeRequestChanges :rows="changeRows" class="mt-4" data-testid="change-summary" />
+    </CancellationReasonModal>
     <ResubmitEventModal
       :open="isResubmitModalOpen"
       :event-name="form.name"

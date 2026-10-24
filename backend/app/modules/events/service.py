@@ -9,6 +9,7 @@ from postgrest.exceptions import APIError
 from fastapi import HTTPException, status
 
 from app.core.exceptions import (
+    ChangeRequestInvalidError,
     CoordinatorNotEligibleError,
     EventNotInLeadScopeError,
     EventServiceUnavailableError,
@@ -18,7 +19,7 @@ from app.core.exceptions import (
 # Module imports, not names: `venues.service` imports this module too, and a
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.equipment import service as equipment_service
-from app.modules.events import lead_scope, lifecycle, repository
+from app.modules.events import change_fields, lead_scope, lifecycle, repository
 from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
 from app.modules.events.schemas import (
@@ -47,6 +48,7 @@ from app.modules.events.schemas import (
     LeadEvent,
     EventComment,
     EventCommentsResponse,
+    ChangeRequestCreate,
     EventChangeRequest,
     EventCreateRequest,
     EventHistoryEntry,
@@ -402,6 +404,84 @@ def request_cancellation(event_id: str, organiser_id: str, organiser_name: str, 
     return EventChangeRequest(**result["request"])
 
 
+def _refuse_change_request(row: dict) -> None:
+    """AC4 and CR-R15: a draft or returned request is edited directly, a closed event
+    takes no requests, and nor does one that has started (as CR-R10)."""
+    if row["status"] == EventStatus.draft:
+        raise EventConflictError("A draft can be edited directly.")
+    if row["status"] == EventStatus.returned:
+        raise EventConflictError("Edit and resubmit the returned request instead.")
+    if row["status"] not in lifecycle.change_requestable_from():
+        raise EventConflictError(f"Changes can't be requested for an event that is {row['status']}.")
+    if row.get("starts_at") and _parse_datetime(row["starts_at"]) <= datetime.now(timezone.utc):
+        raise EventConflictError("This event has already started, so changes can't be requested.")
+
+
+def _proposed_changes(row: dict, body: ChangeRequestCreate) -> tuple[dict, dict]:
+    """CR-R16: the proposal diffed against the stored event and its spaces, and the
+    event as it would be with the changes applied."""
+    spaces = {space["id"]: space for space in row.get("spaces") or []}
+    proposed_spaces = {
+        str(space.id): {field: change_fields.trimmed(value)
+                        for field, value in space.model_dump(mode="json", exclude_unset=True, exclude={"id"}).items()}
+        for space in body.spaces
+    }
+    if not proposed_spaces.keys() <= spaces.keys():
+        raise ChangeRequestInvalidError("One of the spaces is not part of this event.")
+    proposed = {field: change_fields.trimmed(value)
+                for field, value in body.event.model_dump(mode="json", exclude_unset=True).items()}
+    changes = {"event": change_fields.diff(row, proposed), "spaces": []}
+    for space_id, values in proposed_spaces.items():
+        fields = change_fields.diff(spaces[space_id], values)
+        if fields:
+            changes["spaces"].append({"space_id": space_id, "label": spaces[space_id]["label"], "fields": fields})
+    if not changes["event"] and not changes["spaces"]:
+        raise ChangeRequestInvalidError("Change at least one detail.")
+    candidate = {**row, **proposed,
+                 "spaces": [{**space, **proposed_spaces.get(space["id"], {})} for space in row.get("spaces") or []]}
+    return changes, candidate
+
+
+def _refuse_new_submission_errors(row: dict, candidate: dict) -> None:
+    """CR-R19: the changed event must pass the submission rules, but a rule the event
+    already breaks (registration that opened yesterday, say) doesn't block the request."""
+    existing = {(tuple(error["loc"]), error["msg"]) for error in _submission_errors(row)}
+    errors = [error for error in _submission_errors(candidate)
+              if (tuple(error["loc"]), error["msg"]) not in existing]
+    if not candidate.get("name"):
+        errors.append({"loc": ["body", "event", "name"], "msg": "Field required", "type": "missing"})
+    if errors:
+        raise ChangeRequestInvalidError(errors)
+
+
+def request_change(event_id: str, organiser_id: str, organiser_name: str,
+                   body: ChangeRequestCreate) -> EventChangeRequest:
+    """Story 32: record the owner's proposed changes. Nothing changes on the event
+    until the coordinator approves them (story 37)."""
+    row = _owned_event(event_id, organiser_id)
+    _refuse_change_request(row)
+    changes, candidate = _proposed_changes(row, body)
+    _refuse_new_submission_errors(row, candidate)
+    result = repository.request_event_change(
+        event_id, organiser_id, body.reason, changes, change_fields.is_significant(changes),
+        lifecycle.change_requestable_from(), body.version,
+        coordinator_message=(f'{organiser_name} requested changes to "{row["name"]}": '
+                             f'{change_fields.describe(changes)}. Reason: {body.reason}'),
+        lead_message=f'Changes requested for unassigned event "{row["name"]}".',
+    )
+    outcome = result["outcome"]
+    if outcome in ("not_found", "not_owner"):
+        raise EventNotFoundError()
+    if outcome == "cancellation_open":
+        raise EventConflictError("A cancellation request is open for this event; ask your coordinator "
+                                 "to reject it before requesting changes.")
+    if outcome == "already_open":
+        raise EventConflictError("A change request is already open for this event.")
+    if outcome != "ok":
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return EventChangeRequest(**result["request"])
+
+
 NO_OPEN_CANCELLATION_MESSAGE = "There is no open cancellation request for this event."
 EVENT_STARTED_MESSAGE = "This event has already started, so it can't be cancelled."
 
@@ -494,6 +574,12 @@ def cancel_event(event_id: str, coordinator_id: str, reason: str) -> EventRespon
 
 
 def _validate_submission(row: dict) -> None:
+    errors = _submission_errors(row)
+    if errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
+
+
+def _submission_errors(row: dict) -> list[dict]:
     errors = []
     has_space_requests = bool(row.get("spaces"))
     required_fields = ("purpose", "starts_at", "ends_at")
@@ -543,8 +629,7 @@ def _validate_submission(row: dict) -> None:
             if event_ends_at and registration_closes_at > event_ends_at:
                 errors.append({"loc": ["body", "registration_closes_at"], "msg": "Registration closing time cannot be after the event end time.", "type": "value_error"})
 
-    if errors:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
+    return errors
 
 
 def _parse_datetime(value: datetime | str) -> datetime:
@@ -628,6 +713,9 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
     open_request = repository.get_open_cancellation_request(event_id)
     if open_request:
         response.open_cancellation_request = EventChangeRequest(**open_request)
+    open_change = repository.get_open_change_request(event_id)
+    if open_change:
+        response.open_change_request = EventChangeRequest(**open_change)
     if role == "event_coordinator" and row["status"] == "planning":
         response.safety_readiness = _safety_readiness_for(row)
     if role == "event_coordinator" or row["status"] == "confirmed":
@@ -674,6 +762,19 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
         EventHistoryEntry(kind="cancellation_rejected", id=f"{row['id']}:rejected", actor=row["decided_by"],
                           reason=row["decision_reason"], at=row["decided_at"])
         for row in requests if row.get("status") == "rejected"
+    ]
+    changes = repository.list_change_requests(event_id)
+    entries += [
+        EventHistoryEntry(kind="change_requested", id=row["id"], actor=row["requested_by"],
+                          reason=row["reason"], changes=row["changes"], at=row["requested_at"])
+        for row in changes
+    ]
+    # 84 AC4 / CR-R18: a superseded request says when and why it closed. Approvals and
+    # rejections are story 37's.
+    entries += [
+        EventHistoryEntry(kind="change_request_closed", id=f"{row['id']}:closed", actor=row["decided_by"],
+                          reason=row["decision_reason"], at=row["decided_at"])
+        for row in changes if row.get("status") == "superseded"
     ]
     # Stable, so entries sharing a time keep the repository's order (the creation row last).
     entries.sort(key=lambda entry: entry.at, reverse=True)
@@ -785,6 +886,7 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
 
     resubmissions = repository.list_latest_resubmissions(under_review_ids)
     cancellation_requests = repository.list_open_cancellation_requests(event_ids)
+    change_requests = repository.list_open_change_requests(event_ids)
     bookings = venues_service.booking_statuses_by_event(event_ids) if event_ids else {}
     affected = venues_service.affected_event_ids(event_ids) if event_ids else set()
     equipment = equipment_service.equipment_readiness_by_event(event_ids) if event_ids else {}
@@ -805,17 +907,19 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
                     organiser_name=(row.get("organiser") or {}).get("full_name"),
                 )
             )
-        if row["id"] in cancellation_requests:
-            action_items.append(
-                CoordinatorActionItem(
-                    event_id=row["id"],
-                    event_name=row["name"],
-                    kind=CoordinatorActionKind.cancellation_request,
-                    starts_at=row.get("starts_at"),
-                    occurred_at=cancellation_requests[row["id"]],
-                    organiser_name=(row.get("organiser") or {}).get("full_name"),
+        for open_requests, request_kind in ((cancellation_requests, CoordinatorActionKind.cancellation_request),
+                                            (change_requests, CoordinatorActionKind.change_request)):
+            if row["id"] in open_requests:
+                action_items.append(
+                    CoordinatorActionItem(
+                        event_id=row["id"],
+                        event_name=row["name"],
+                        kind=request_kind,
+                        starts_at=row.get("starts_at"),
+                        occurred_at=open_requests[row["id"]],
+                        organiser_name=(row.get("organiser") or {}).get("full_name"),
+                    )
                 )
-            )
 
         technical = technical_status(row)
         active_events.append(

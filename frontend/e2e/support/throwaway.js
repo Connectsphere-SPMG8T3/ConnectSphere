@@ -174,10 +174,10 @@ export function readThrowawayBooking(bookingId) {
 }
 
 /** A space on a throwaway event (CR-97); it goes when the event is deleted (cascade). */
-export function createThrowawaySpace(event, label, expectedPax) {
+export function createThrowawaySpace(event, label, expectedPax, layout = null) {
   const [row] = query(
-    "insert into public.event_space_requests (event_id, label, expected_pax) values " +
-      `('${event.id}', '${label}', ${expectedPax}) returning id`,
+    "insert into public.event_space_requests (event_id, label, expected_pax, layout_preference) values " +
+      `('${event.id}', '${label}', ${expectedPax}, ${layout ? `'${layout}'` : "null"}) returning id`,
   );
   return row;
 }

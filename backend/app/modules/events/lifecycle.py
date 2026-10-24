@@ -52,6 +52,15 @@ def cancellation_requestable_from() -> list[str]:
     return sorted(status.value for status in EventStatus if status not in CANCELLATION_REQUEST_REFUSED)
 
 
+# Story 32, CR-R15 [Assumption]: a change request has the same window, except that a
+# returned request is edited and resubmitted directly (REQUIREMENTS §6.7).
+CHANGE_REQUEST_REFUSED = CANCELLATION_REQUEST_REFUSED | {EventStatus.returned}
+
+
+def change_requestable_from() -> list[str]:
+    return sorted(status.value for status in EventStatus if status not in CHANGE_REQUEST_REFUSED)
+
+
 def allowed_from(action: str) -> list[str]:
     sources, _ = TRANSITIONS[action]
     return sorted(status.value for status in sources)

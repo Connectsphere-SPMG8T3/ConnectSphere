@@ -8,6 +8,7 @@ import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import EquipmentRequestPanel from "@/components/equipment/EquipmentRequestPanel.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import CancellationReasonModal from "@/components/events/CancellationReasonModal.vue";
+import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
 import EventDiscussion from "@/components/events/EventDiscussion.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
 import EventStatusProgress from "@/components/events/EventStatusProgress.vue";
@@ -17,6 +18,7 @@ import RejectEventModal from "@/components/events/RejectEventModal.vue";
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import { showToast } from "@/composables/useToast";
 import { canCancelEvent } from "@/features/events/cancellation";
+import { describeChanges } from "@/features/events/changeRequest";
 import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { formatDecisionTime } from "@/features/venues/bookingDecision";
 import SafetyRejectedNotice from "@/components/venues/SafetyRejectedNotice.vue";
@@ -315,6 +317,23 @@ watch(
           <BauhausButton size="sm" variant="outline" aria-label="Reject cancellation" :disabled="review.isActing"
             @click="review.error = null; isRejectCancellationOpen = true">Reject cancellation</BauhausButton>
         </div>
+      </section>
+
+      <!-- Story 32 shows the request; story 37 decides it. -->
+      <section
+        v-if="event.open_change_request"
+        data-testid="change-request-banner"
+        class="mb-8 border-4 border-ink bg-bauhaus-yellow p-6 shadow-hard sm:p-8"
+      >
+        <h2 class="text-2xl font-bold">
+          Changes requested by {{ event.open_change_request.requested_by?.full_name ?? "the organiser" }}
+        </h2>
+        <p class="mt-2 inline-block border-2 border-ink bg-canvas px-2 py-1 text-xs font-bold">
+          {{ event.open_change_request.significant ? "Significant change" : "Ordinary change" }}
+        </p>
+        <ChangeRequestChanges :rows="describeChanges(event.open_change_request.changes)" class="mt-4 bg-canvas" />
+        <p class="mt-4 text-sm font-bold">Comments:</p>
+        <p class="mt-1 whitespace-pre-wrap font-medium" data-testid="change-request-comments">{{ event.open_change_request.reason }}</p>
       </section>
 
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">

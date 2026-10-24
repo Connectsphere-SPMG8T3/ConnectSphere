@@ -83,8 +83,8 @@ begin
     end if;
 
     -- AC4: an open change request is superseded, with when and by whom.
-    insert into public.event_change_requests (event_id, kind, reason, requested_by)
-    values (v_with_change, 'change', 'Move to the afternoon', v_organiser);
+    insert into public.event_change_requests (event_id, kind, reason, requested_by, changes, significant)
+    values (v_with_change, 'change', 'Move to the afternoon', v_organiser, '{"event": [], "spaces": []}', true);
     v_result := public.request_event_cancellation(v_with_change, v_organiser, 'Venue too far', v_statuses, 'x', 'y');
     if v_result->>'outcome' is distinct from 'ok' then
         raise exception 'CANCEL FAIL: an event with an open change request refused cancellation: %', v_result;

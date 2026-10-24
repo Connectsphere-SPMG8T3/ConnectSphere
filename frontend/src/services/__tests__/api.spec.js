@@ -386,3 +386,20 @@ describe("Story 115 cancellation decisions", () => {
     expect(fetchMock.mock.calls.every(([, options]) => options.headers.Authorization === "Bearer token")).toBe(true);
   });
 });
+
+describe("Story 32 change requests", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("posts the proposal with the organiser's session", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 201, ok: true, json: async () => ({ id: "r1" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const body = { reason: "More seats", version: 3, event: { expected_attendance: 120 }, spaces: [] };
+
+    await eventsApi.requestChange("event/one", body, "token");
+
+    const [[url, options]] = fetchMock.mock.calls;
+    expect([url, options.method, options.body, options.headers.Authorization]).toEqual([
+      "http://localhost:8000/api/v1/events/event%2Fone/change-request", "POST", JSON.stringify(body), "Bearer token",
+    ]);
+  });
+});
