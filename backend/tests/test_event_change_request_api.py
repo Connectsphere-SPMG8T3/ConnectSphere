@@ -423,3 +423,49 @@ class TestProposedChanges:
 
         assert response.status_code == 422
         assert events["calls"] == []
+
+
+class TestOutcomesUnderTheLock:
+    def test_an_open_cancellation_request_blocks_a_change_request(self, client, auth_headers, act_as, events):
+        """CR-R14: one open request per event; the coordinator rejects the cancellation first."""
+        events["outcome"]["value"] = "cancellation_open"
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == (
+            "A cancellation request is open for this event; ask your coordinator to reject it "
+            "before requesting changes.")
+
+    def test_a_second_open_change_request_is_refused(self, client, auth_headers, act_as, events):
+        events["outcome"]["value"] = "already_open"
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "A change request is already open for this event."
+
+    @pytest.mark.parametrize("outcome", ["stale", "status_changed"])
+    def test_an_event_changed_since_the_form_loaded_is_a_conflict(self, client, auth_headers, act_as, events,
+                                                                  outcome):
+        """Q7: the form was filled in against an older version."""
+        events["outcome"]["value"] = outcome
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"}, version=2)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "This event was updated by someone else. Reload."
+        assert events["calls"][0]["expected_version"] == 2
+
+    @pytest.mark.parametrize("outcome", ["not_found", "not_owner"])
+    def test_an_event_gone_or_changed_hands_under_the_lock_is_not_found(self, client, auth_headers, act_as,
+                                                                       events, outcome):
+        events["outcome"]["value"] = outcome
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Updated"})
+
+        assert response.status_code == 404

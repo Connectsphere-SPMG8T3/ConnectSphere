@@ -469,6 +469,16 @@ def request_change(event_id: str, organiser_id: str, organiser_name: str,
                              f'{change_fields.describe(changes)}. Reason: {body.reason}'),
         lead_message=f'Changes requested for unassigned event "{row["name"]}".',
     )
+    outcome = result["outcome"]
+    if outcome in ("not_found", "not_owner"):
+        raise EventNotFoundError()
+    if outcome == "cancellation_open":
+        raise EventConflictError("A cancellation request is open for this event; ask your coordinator "
+                                 "to reject it before requesting changes.")
+    if outcome == "already_open":
+        raise EventConflictError("A change request is already open for this event.")
+    if outcome != "ok":
+        raise EventConflictError(STALE_EVENT_MESSAGE)
     return EventChangeRequest(**result["request"])
 
 
