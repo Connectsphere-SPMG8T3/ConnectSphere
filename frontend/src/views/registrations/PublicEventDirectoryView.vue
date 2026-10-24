@@ -4,8 +4,10 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
+import EventPlanIllustration from "@/components/common/EventPlanIllustration.vue";
 import PublicFooter from "@/components/common/PublicFooter.vue";
 import PublicHeader from "@/components/common/PublicHeader.vue";
+import TicketIllustration from "@/components/common/TicketIllustration.vue";
 import { useRegistrationStore } from "@/features/registrations/store";
 
 const store = useRegistrationStore();
@@ -22,14 +24,6 @@ const intro = {
   join: "From talks to get-togethers, see what's on around Singapore and grab a spot before it fills up.",
   organise: "Bring your idea. We'll help sort the venue, the gear and the safety check, and keep you posted all the way.",
 };
-// The organiser illustration: a plan with the early steps ticked off.
-const planItems = [
-  { label: "Idea pitched", done: true },
-  { label: "Venue booked", done: true },
-  { label: "Gear sorted", done: true },
-  { label: "Safety check", done: false },
-  { label: "Doors open", done: false },
-];
 
 const audience = computed(() => (route.query.for === "organisers" ? "organise" : "join"));
 const signupRole = computed(() => (audience.value === "organise" ? "organiser" : "attendee"));
@@ -136,23 +130,8 @@ onMounted(() => store.loadDirectory().catch(() => {}));
           </div>
           <!-- Decorative: a ticket for joining, a plan for organising. -->
           <div data-testid="hero-illustration" class="hidden h-64 w-72 shrink-0 items-center justify-center lg:flex" aria-hidden="true">
-            <div v-if="audience === 'join'" class="flex rotate-3 border-4 border-ink bg-canvas shadow-hard-lg">
-              <div class="flex w-48 flex-col p-5">
-                <p class="text-xs font-bold">Admit one</p>
-                <p class="mt-3 text-2xl font-bold leading-tight">Your next favourite event</p>
-                <p class="mt-5 text-xs font-bold">Somewhere in Singapore</p>
-              </div>
-              <div class="flex w-20 items-center justify-center border-l-4 border-dashed border-ink bg-bauhaus-red px-2 text-center text-xs font-bold text-canvas">Spot saved</div>
-            </div>
-            <div v-else class="w-64 -rotate-2 border-4 border-ink bg-canvas shadow-hard-lg">
-              <p class="border-b-4 border-ink bg-bauhaus-blue px-4 py-3 text-sm font-bold text-canvas">Event plan</p>
-              <ul class="flex flex-col gap-3 p-4">
-                <li v-for="item in planItems" :key="item.label" class="flex items-center gap-3 text-sm font-bold">
-                  <span class="flex h-5 w-5 shrink-0 items-center justify-center border-2 border-ink text-xs" :class="item.done ? 'bg-ink text-canvas' : 'bg-canvas'">{{ item.done ? "✓" : "" }}</span>
-                  <span :class="item.done ? 'text-ink/60 line-through' : ''">{{ item.label }}</span>
-                </li>
-              </ul>
-            </div>
+            <TicketIllustration v-if="audience === 'join'" />
+            <EventPlanIllustration v-else />
           </div>
         </div>
       </section>

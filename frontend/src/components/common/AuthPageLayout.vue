@@ -1,24 +1,71 @@
 <script setup>
-// The public auth pages' frame: backdrop shapes and the ConnectSphere
-// wordmark above the page's card (LoginView, SignupView).
+// The public auth pages' frame (LoginView, SignupView): the shared public
+// header and footer around the page's card, with a decorative panel beside
+// it where a speech bubble types out `greeting` above an illustration.
+// The header carries the brand, so the card's title is the page's <h1>.
+import { onBeforeUnmount, onMounted, ref } from "vue";
+
+import EventPlanIllustration from "@/components/common/EventPlanIllustration.vue";
+import PublicFooter from "@/components/common/PublicFooter.vue";
+import PublicHeader from "@/components/common/PublicHeader.vue";
+import TicketIllustration from "@/components/common/TicketIllustration.vue";
+import { useMediaQuery } from "@/composables/useMediaQuery";
+
+const props = defineProps({
+  greeting: { type: String, required: true },
+  illustration: {
+    type: String,
+    default: "ticket",
+    validator: (value) => ["ticket", "plan"].includes(value),
+  },
+});
+
+const TYPE_MS = 45;
+
+const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)", true);
+const typed = ref(props.greeting);
+let timer = null;
+
+onMounted(() => {
+  if (reduceMotion.value) return;
+  typed.value = "";
+  timer = setInterval(() => {
+    typed.value = props.greeting.slice(0, typed.value.length + 1);
+    if (typed.value === props.greeting) clearInterval(timer);
+  }, TYPE_MS);
+});
+onBeforeUnmount(() => clearInterval(timer));
 </script>
 
 <template>
-  <main class="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4 py-8">
-    <div class="pointer-events-none absolute -left-16 -top-16 h-64 w-64 rounded-full bg-bauhaus-yellow/70 sm:h-80 sm:w-80" aria-hidden="true" />
-    <div class="pointer-events-none absolute -bottom-20 -right-20 h-72 w-72 bg-bauhaus-blue/70 sm:h-96 sm:w-96" aria-hidden="true" />
+  <div class="flex min-h-screen flex-col bg-canvas text-ink">
+    <!-- No account actions in the header: the card is the action. -->
+    <PublicHeader />
 
-    <div class="relative z-10 w-full min-w-0 max-w-md">
-      <div class="mb-8 text-center">
-        <h1 class="text-3xl font-bold leading-tight text-ink sm:text-5xl">
-          Connect<span class="text-bauhaus-red">Sphere</span>
-        </h1>
-        <p class="mt-3 text-sm font-bold text-ink/70">
-          Event &amp; Venue Services Platform
-        </p>
+    <main class="flex flex-1 items-center justify-center px-4 py-12 sm:px-10">
+      <div class="grid w-full max-w-5xl grid-cols-1 gap-8 md:grid-cols-2">
+        <!-- A one-cell grid stretches the card to the panel's height. -->
+        <div class="grid min-w-0">
+          <slot />
+        </div>
+
+        <!-- Decorative only: the form beside it carries everything a reader needs. -->
+        <div
+          data-testid="auth-illustration"
+          class="hidden flex-col items-center justify-center gap-10 overflow-hidden border-2 border-ink bg-bauhaus-yellow p-8 md:flex"
+          aria-hidden="true"
+        >
+          <div class="relative w-full max-w-sm">
+            <p data-testid="speech-bubble" class="min-h-16 border-4 border-ink bg-canvas px-5 py-4 text-lg font-bold leading-tight shadow-hard">{{ typed }}</p>
+            <!-- The bubble's tail: a square turned on its corner, tucked under the bubble. -->
+            <span class="absolute -bottom-3 left-10 h-6 w-6 rotate-45 border-b-4 border-r-4 border-ink bg-canvas"></span>
+          </div>
+          <EventPlanIllustration v-if="illustration === 'plan'" animated />
+          <TicketIllustration v-else animated />
+        </div>
       </div>
+    </main>
 
-      <slot />
-    </div>
-  </main>
+    <PublicFooter />
+  </div>
 </template>

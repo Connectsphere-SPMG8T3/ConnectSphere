@@ -289,18 +289,63 @@ describe("SignupView", () => {
   it("offers separate organiser and attendee signup pages from login", async () => {
     const { el, router } = await mountAt("/login");
 
-    expect([...el.querySelectorAll('a[href^="/signup"]')].map((link) => link.getAttribute("href"))).toEqual([
+    const form = el.querySelector("main");
+    expect([...form.querySelectorAll('a[href^="/signup"]')].map((link) => link.getAttribute("href"))).toEqual([
       "/signup/organiser",
       "/signup/attendee",
     ]);
 
-    el.querySelector('a[href="/signup/attendee"]').dispatchEvent(
+    form.querySelector('a[href="/signup/attendee"]').dispatchEvent(
       new MouseEvent("click", { bubbles: true, button: 0 }),
     );
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe("/signup/attendee"));
     expect(el.textContent).toContain("Sign up as an Attendee to use ConnectSphere.");
     expect(() => field(el, "Account Type")).toThrow();
   });
+
+  it.each([
+    ["/login", "Sign in"],
+    ["/signup/organiser", "Create an Event Organiser Account"],
+    ["/signup/attendee", "Create an Attendee Account"],
+  ])("frames %s with the public header and footer, with no account buttons in the header", async (path, title) => {
+    const { el } = await mountAt(path);
+
+    const header = el.querySelector("header");
+    const footer = el.querySelector("footer");
+    expect(header.closest("main")).toBeNull();
+    expect(header.classList.contains("sticky")).toBe(true);
+    expect([...header.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toEqual(["/"]);
+    expect(footer.closest("main")).toBeNull();
+    expect(footer.previousElementSibling?.tagName).toBe("MAIN");
+    const headings = el.querySelectorAll("h1");
+    expect(headings).toHaveLength(1);
+    expect(headings[0].textContent.trim()).toBe(title);
+    expect(headings[0].closest("main")).not.toBeNull();
+  });
+
+  it.each([
+    ["/login", "Welcome back! Your next event is waiting.", "Admit one"],
+    ["/signup/organiser", "Got an idea? Let's make it happen.", "Event plan"],
+    ["/signup/attendee", "Ready for something fun? Let's get you a spot.", "Admit one"],
+  ])("puts a greeting and illustration beside the form on %s", async (path, greeting, art) => {
+    const { el } = await mountAt(path);
+
+    const panel = el.querySelector('main [data-testid="auth-illustration"]');
+    expect(panel.querySelector('[data-testid="speech-bubble"]').textContent.trim()).toBe(greeting);
+    expect(panel.textContent).toContain(art);
+  });
+
+  it.each(["/signup/organiser", "/signup/attendee?redirect=/attendee/events/event-1"])(
+    "offers a way back to sign in below the form on %s",
+    async (path) => {
+      const { el } = await mountAt(path);
+
+      const line = [...el.querySelectorAll("main form p")].find((p) => p.textContent.includes("Have an account?"));
+      expect(line?.textContent.replace(/\s+/g, " ").trim()).toBe("Have an account? Sign in");
+      const expected = path.includes("redirect") ? "/login?redirect=/attendee/events/event-1" : "/login";
+      expect(line.querySelector("a").getAttribute("href")).toBe(expected);
+    },
+  );
 
   it("redirects the legacy signup URL to organiser signup", async () => {
     const { router } = await mountAt("/signup");
