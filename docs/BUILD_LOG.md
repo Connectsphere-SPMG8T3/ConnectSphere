@@ -3222,3 +3222,8 @@ On `feature/scrum-115-cancel-event`, 2026-10-23, branched from story 84's PR #10
 
 **Not verified.**
 - No story moves events into `preparation` yet (story 68), so a direct cancel from Preparation is unit-tested only.
+
+**Follow-up (2026-10-24): rejecting the event closes an open request.**
+- Rejecting an event left its open cancellation request open. The coordinator still saw the banner on the rejected event; Approve cancellation answered 409, and Reject cancellation told the organiser their request was turned down.
+- Migration `20261025110000_close_cancellation_request_on_ended_event.sql` adds a trigger that closes the open request as `superseded` when the event becomes `rejected` or `completed` (CR-R22), the same way story 32 closes change requests. Reject remains a decision on the event, available with or without a request.
+- Tests: a failing case added to `event_cancellation_decision_checks.sql` first, then TC-CANCEL-024 in `verify_live.py`. No API or SPA code changed: the event read and the dashboard already list open requests only.

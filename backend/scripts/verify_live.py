@@ -3491,6 +3491,25 @@ def _(ctx: Context) -> None:
            f"a refused decision changed something: request {request}, event {event}")
 
 
+@check("TC-CANCEL-024", "Rejecting the event closes its open cancellation request (CR-R22)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "115-024", "2031-11-09 10:00+08", "2031-11-09 12:00+08", status="planning")
+    expect_status(request_cancellation(ctx, event_id), 201)
+    expect_status(decide(ctx, event_id, "reject", DECISION_REASON), 200)
+    [request] = db_query(f"select status, decision_reason from public.event_change_requests where event_id = '{event_id}'")
+    expect(request == {"status": "superseded", "decision_reason": "Closed because the event was rejected."},
+           f"request: {request}")
+    event = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=ctx.shared("event_coordinator").headers).json()
+    expect(event["status"] == "rejected" and event.get("open_cancellation_request") is None,
+           f"the coordinator still sees an open request: {event.get('open_cancellation_request')}")
+    refused = decide(ctx, event_id, "cancellation-request/reject", DECISION_REASON)
+    expect_status(refused, 409)
+    expect_detail(refused, "There is no open cancellation request for this event.")
+    notices = db_query(f"select count(*) as n from public.notifications "
+                       f"where event_id = '{event_id}' and type = 'event_cancellation_rejected'")
+    expect(int(notices[0]["n"]) == 0, "the organiser was told their request was rejected")
+
+
 def db_query(sql: str) -> list[dict]:
     completed = _supabase_query(sql)
     if completed.returncode != 0:
