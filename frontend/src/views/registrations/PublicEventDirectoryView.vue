@@ -130,8 +130,8 @@ onMounted(() => store.loadDirectory().catch(() => {}));
           </div>
           <!-- Decorative: a ticket for joining, a plan for organising. -->
           <div data-testid="hero-illustration" class="hidden h-64 w-72 shrink-0 items-center justify-center lg:flex" aria-hidden="true">
-            <TicketIllustration v-if="audience === 'join'" />
-            <EventPlanIllustration v-else />
+            <TicketIllustration v-if="audience === 'join'" animated />
+            <EventPlanIllustration v-else animated />
           </div>
         </div>
       </section>

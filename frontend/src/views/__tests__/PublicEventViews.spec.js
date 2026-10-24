@@ -147,6 +147,26 @@ describe("public event pages", () => {
     expect(el.querySelectorAll('[role="tab"]')[1].getAttribute("aria-selected")).toBe("true");
   });
 
+  it("animates the hero illustration when motion is allowed", async () => {
+    window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    try {
+      registrationsApi.directory.mockResolvedValue({ events: [] });
+      const { el } = await mountAt("/");
+
+      const ticket = el.querySelector('[data-testid="hero-illustration"]').firstElementChild;
+      const before = ticket.className;
+      await vi.waitFor(() => expect(ticket.className).not.toBe(before), { timeout: 2500 });
+
+      el.querySelectorAll('[role="tab"]')[1].click();
+      await vi.waitFor(() => expect(el.textContent).toContain("Event plan"));
+      const ticks = () => el.querySelectorAll('[data-testid="hero-illustration"] [data-done="true"]').length;
+      expect(ticks()).toBe(0);
+      await vi.waitFor(() => expect(ticks()).toBe(1), { timeout: 2000 });
+    } finally {
+      delete window.matchMedia;
+    }
+  });
+
   it("moves between the options with the arrow keys", async () => {
     registrationsApi.directory.mockResolvedValue({ events: [] });
     const { el, router } = await mountAt("/");
