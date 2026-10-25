@@ -3296,7 +3296,28 @@ On `feature/scrum-32-request-event-changes`, 2026-10-24, stacked on PR #106 (sto
 - Verified (2026-10-24): migration applied to the live project with its ledger row; [TC-CANCEL-024](test-cases/runs/2026-10-24-2031-api-db-c197023.md) and [TC-CANCEL-018](test-cases/runs/2026-10-24-2032-api-db-c197023.md) pass. Only the checks this change touches were run, not the full suite. Every other rolled-back verification script also passed with the migration in place, except `event_cancellation_request_checks.sql`, which already fails on the live project because of story 32's `changes_only_on_change` constraint (story 32's branch updates it).
 
 
-### 4.90. 23-R — equipment availability: usable stock, storage location and shortage
+
+### 4.90. Bug fix D49 — the notification panel closes on a sidebar click; two bell-store minors
+
+On `fix/notification-panel-polish`, 2026-10-24. Defect: DEFECTS D49 (Low, usability), plus two Minors deferred from the PR #95 review (§4.76). Affects 113 (the bell). SPA only: no API, database or contract change.
+
+**Symptoms.** (D49) With the notification panel open on desktop, a click on the left sidebar left it open. (a) After an item was marked read, the badge could briefly go back up. (b) After signing out and in as someone else with the same role in one tab, a slow response for the previous user could still land on the bell.
+
+**Reproduction.** D49: TC-NOTIF-010's sidebar step, automated as a Playwright check that opens the bell on `/profile/me` at 1280 px and clicks the sidebar's collapse button (it doesn't navigate). Against the old `NotificationBell.vue` it failed in Chromium: `aria-expanded` stayed `"true"`. (a) and (b): unit tests holding a poll or a mark-read open with a deferred promise. The badge returned to 1 after a mark-read when a poll answered late; a poll answered while a mark was still in flight counted the mark twice (2 → 0, not 1); a late poll for user `u1` set the count to 9 after `u2` signed in with the same role; a late failed mark-read for `u1` showed `u2` its error.
+
+**Root cause.** D49: the click-away layer (`fixed inset-0 z-10`) was rendered inside the top bar's `<header>`, which is `sticky z-30` and so its own stacking context. The sidebar is `fixed z-40` in the root context, so on desktop it painted above the layer and took the click. No z-index inside the header can cover it. (a) `poll()` overwrote `count` with whatever the server said, with no idea that a mark-read had changed it locally in between. (b) Every stale-response guard compared `auth.role` only.
+
+**Why tests missed it.** D49: the component test clicked the scrim element directly, which proves the handler, not that the layer is on top; jsdom does no layout, so only a real browser shows stacking. The bell's E2E checks never clicked outside the panel. (a) and (b): the store tests covered role switches and older pages, but no test overlapped a poll with a mark, and every test used one user.
+
+**Fix.** D49: the scrim is removed. The bell adds a document `click` listener while mounted and closes the panel when the click is outside the bell's own element: the pattern `BauhausSelect` uses. A click outside now also reaches what it lands on (before, the layer swallowed it). (a) The store counts mark-read and mark-all-read requests in flight and versions them; a poll that started while one was in flight, or saw one start or end, is dropped and the next tick settles the badge. `reset()` forgets the marks, so a mark still in flight for the previous role can't hold back the new role's polls (an existing role-switch test caught this on the first attempt). (b) The guards compare `profile.id` and role (`sessionOf`).
+
+**Blast radius.** No other click-away layer sits inside the top bar: the other `fixed inset-0` layers are page-level modals at z-50 and Nav's own mobile scrim. No other store guards by role alone (`useEventCommentsStore` keys by event). Not changed: a list reload in flight across a mark-read can still briefly show that item unread in the open panel until the next poll. It is cosmetic, and the user can't mark an item before the list has loaded.
+
+**Verified.** Unit tests first, each failing for the reason above: 2 in `NotificationBell.spec.js`, 5 in `notificationsStore.spec.js`. The old scrim test was replaced by the outside-click one, since the element it clicked no longer exists. Full frontend suite 1,577/1,577 with `NotificationBell.vue` and `notificationsStore.js` at 100% lines and branches; `npm run build` passes. Live: [browser checks](test-cases/runs/2026-10-24-2224-e2e-9e4dbfa.md) 91/93 with TC-NOTIF-004, -005 and the new -010 passing; the two failures (TC-RBAC-005, TC-TSD-017) are stale checks from changes already on `main`. [API and database checks](test-cases/runs/2026-10-24-2203-api-db-9e4dbfa.md) 190/195 as regression evidence; four checks failed when another run removed their throwaway events and passed alone, and one is the known TC-CANCEL-007/008 failure.
+
+**Manual pass.** TC-NOTIF-010 passed in the developer's browser on 2026-10-25 ([run](test-cases/runs/2026-10-25-0146-manual-643579a.md)). Before-and-after screenshots are in `docs/screenshots/fix-notification-panel-polish/`.
+
+### 4.91. 23-R — equipment availability: usable stock, storage location and shortage
 
 On `feature/scrum-23-r-equipment-availability`, managed worktree `/home/jclim/.codex/worktrees/pbi-23-r/ConnectSphere`, based on current `origin/main` (`c70b159`), 2026-10-22. Product backlog row 71 was read through the connector, including the Session 3 QA3-29/34 clarifications; the developer approved the in-chat design. The sheet was not edited.
 
@@ -3319,7 +3340,7 @@ On `feature/scrum-23-r-equipment-availability`, managed worktree `/home/jclim/.c
 **Second review, 2026-10-24 — needs changes.** A fresh Claude read-only review and an independent condition-semantics inspection identified two pre-existing behaviors relevant to this PBI that the first review missed. Codex reproduced D57 in a rolled-back live SQL transaction (7 retired units with no outages → 7 free, Sufficient for 6) and D58 in the actual service with only the external repository seams replaced (two same-item requests of 5 against 7 free → overall Sufficient and missing [0, 0], instead of a 3-unit shortage). The UI permits duplicate selections. Catalogued maintenance status also leaves stock available without outage rows, but whether that should block all units requires clarification; partial quantity outages already work. Tests cover timed outages and single-item shortages, not these catalogue-state and aggregate-demand boundaries. [Full review evidence and evaluated Claude observations](test-cases/runs/2026-10-24-23r-second-review-d9bb919.md). D57/D58 are recorded Open; no product behavior changed in this review. The earlier unit passes remain valid, but do not establish that AC1/AC4 are complete.
 
 
-### 4.91. 23-R follow-up — retired stock and duplicate demand (2026-10-25)
+### 4.92. 23-R follow-up — retired stock and duplicate demand (2026-10-25)
 
 **Trigger.** Developer authorized fixing D57/D58 after the second review and requested moving the worktree beside the main project. Branch remains `feature/scrum-23-r-equipment-availability`; checkout is now `/home/jclim/projects/ConnectSphere-pbi-23-r`. Main checkout was not changed.
 
@@ -3332,7 +3353,7 @@ On `feature/scrum-23-r-equipment-availability`, managed worktree `/home/jclim/.c
 **Not verified / deployment gates.** Both migrations remain local-only; no shared schema/history/seed changes, no hosted resources, no push or PR. TC-EQR-040 remains Blocked at 1280/768/375; TC-EQR-041 developer manual results remain pending. There is no installed Docker/Podman/nerdctl runtime or native stack command in CLI 2.121.0, and the shared Supabase project has no development branch. Moving the Git worktree does not isolate the Supabase database. Full manual testing needs an isolated test database or normal merged-PR deployment. Current advisors were read (existing password/RLS/index notices); post-deployment comparison remains pending. Earlier unrelated live regression failures remain recorded. Developer still owns PR/team review/PO acceptance/merge and Sprint 4 DoD/backlog updates unless requested.
 
 
-### 4.92. 23-R post-deployment verification and tablet form overflow (2026-10-25)
+### 4.93. 23-R post-deployment verification and tablet form overflow (2026-10-25)
 
 **Deployment.** Developer applied both 23-R migrations to shared Supabase after a dry run. The feature checkout lacked six already-deployed remote versions from other branches; a temporary deployment folder filled those files from actual recorded migration statements, and `db push --skip-vault --include-all --dry-run` listed only `20261022133632` and `20261024174919`. No migration history was repaired. Both versions and the nullable column were verified after the developer reported completion.
 
@@ -3345,14 +3366,14 @@ On `feature/scrum-23-r-equipment-availability`, managed worktree `/home/jclim/.c
 **Optional review follow-up.** Claude suggested an additional viewport near the 640 px breakpoint as low-priority extra coverage; no defect was established there. Existing required desktop/tablet/phone cases pass. Developer manual review still includes layout/wording/feel.
 
 
-### 4.93. 23-R visible manual-test fixtures (2026-10-25)
+### 4.94. 23-R visible manual-test fixtures (2026-10-25)
 
 Developer requested visible throwaway stock and exact manual expectations before being asked to test, and explicitly asked to save that preference. Created three new `23-R DEMO 2026-10-25` equipment types plus four timed quantity-outage rows, leaving all existing data unchanged. [Fixture guide](test-cases/fixtures/23r-manual-2026-10-25.md) records own IDs, lifetime and guarded cleanup. They intentionally remain present for manual testing and use a prefix outside automated `live-check` cleanup.
 
 Real API verification passed: inventory counts for all three items; four main sufficient/insufficient/location scenarios; two post-outage scenarios; Speaker boundary outage; duplicate rejection (422). The API session was logged out; fixture data was retained intentionally. No product code changed, so the prior full suites/build remain applicable. Human TC-EQR-041 remains unrun. The preference was saved in the authorized memory update-notes folder; no backlog or test sheet was edited.
 
 
-### 4.94. 23-R developer acceptance report and headless PR evidence (2026-10-25)
+### 4.95. 23-R developer acceptance report and headless PR evidence (2026-10-25)
 
 Developer reported “all passed” for the prepared manual checklist; [manual run](test-cases/runs/2026-10-25-1426-manual-c2aeefc.md) records this as developer-reported, without inventing a browser version. At their request Codex independently reran headless Chromium against the real branch: [4/4 regression checks passed](test-cases/runs/2026-10-25-1427-e2e-c2aeefc.md), then 20 assertions across inventory, sufficient/insufficient quantities, missing location, outage timing, duplicates and 1280/768/375px containment passed with no console/page errors. [Screenshot check record](test-cases/runs/2026-10-25-1431-headless-screenshots-c2aeefc.md); [10-image PR gallery](test-cases/screenshots/23r-2026-10-25/README.md). Desktop/tablet/phone screenshots were inspected and contain only seeded/synthetic UI data. No product code changed in this task. The new headless/screenshot preference was saved to an explicitly authorized memory update note.
 
@@ -3361,7 +3382,7 @@ Screenshot review found the pre-existing maintenance-card UTC display mismatch D
 After the manual pass and screenshot capture, the three own DEMO equipment rows were removed by exact ID/name guard; their four outage rows cascaded. Screenshot evidence remains committed. Existing stock/events/reservations were untouched.
 
 
-### 4.95. 23-R draft PR integration with current main (2026-10-25)
+### 4.96. 23-R draft PR integration with current main (2026-10-25)
 
 Draft PR #111 created at the developer's request with screenshot evidence pinned to the evidence commit. GitHub reported conflicts only in BUILD_LOG, DEFECTS and IMPLEMENTATION_MAP. Merged current main 55faf9b into the feature branch without rewriting pushed history. Preserved upstream story43/84/115/32 and notification/workflow/live-cleanup changes, retained both sets of build entries, and assigned the appended 23-R build headings 4.90–4.94 to avoid collisions with main 4.85–4.89. Entry content and immutable run logs remain intact; the one internal section reference follows the new heading. Main's existing D56 notification fix remains canonical; the older 23-R assignment-check IndexError entry is now D62, with historical alias explained in DEFECTS.
 
