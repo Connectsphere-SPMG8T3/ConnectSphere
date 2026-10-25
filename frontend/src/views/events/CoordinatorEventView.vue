@@ -23,6 +23,7 @@ import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReview
 import { formatDecisionTime } from "@/features/venues/bookingDecision";
 import SafetyRejectedNotice from "@/components/venues/SafetyRejectedNotice.vue";
 import AffectedBookingNotice from "@/components/venues/AffectedBookingNotice.vue";
+import ReReviewNotice from "@/components/events/ReReviewNotice.vue";
 import { BOOKING_STATUS_LABELS, replacementSearchRoute, venuePanelState } from "@/features/venues/bookingRequest";
 import { formatHoldExpiry } from "@/features/venues/dashboard";
 
@@ -75,6 +76,15 @@ function findReplacement(panel, space = null) {
 }
 
 const isAffected = (panel) => panel.kind === "affected" || panel.kind === "replacing";
+
+async function sendForReReview(bookingId, note) {
+  try {
+    await review.sendBookingForReReview(bookingId, note);
+    showToast("Sent to venue staff for re-review");
+  } catch {
+    // The store exposes the API refusal in the page alert.
+  }
+}
 
 async function markRevised(bookingId, note) {
   if (review.isActing) return;
@@ -459,6 +469,13 @@ watch(
                   :can-replace="Boolean(spacePanels[space.id].canReplace)"
                   @replace="findReplacement(spacePanels[space.id], space)"
                 />
+                <ReReviewNotice
+                  v-if="spacePanels[space.id].booking?.needs_re_review_reason"
+                  :reason="spacePanels[space.id].booking.needs_re_review_reason"
+                  recipients="venue staff"
+                  :busy="review.isActing"
+                  @send="(note) => sendForReReview(spacePanels[space.id].booking.id, note)"
+                />
                 <p v-if="spacePanels[space.id].kind === 'expired'" class="mt-2 text-sm font-medium" data-testid="hold-expired">
                   The hold expired on {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} before venue staff approved it.
                   <template v-if="spacePanels[space.id].canRequest">You can request this venue again if it's still free, or find another.</template>
@@ -553,6 +570,13 @@ watch(
             >
               Hold expires {{ formatHoldExpiry(venuePanel.booking.expires_at) }} unless approved.
             </p>
+            <ReReviewNotice
+              v-if="venuePanel.booking.needs_re_review_reason"
+              :reason="venuePanel.booking.needs_re_review_reason"
+              recipients="venue staff"
+              :busy="review.isActing"
+              @send="(note) => sendForReReview(venuePanel.booking.id, note)"
+            />
           </template>
           <template v-else-if="venuePanel.kind === 'expired'">
             <p class="mt-4 text-lg font-bold">

@@ -2,10 +2,11 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.modules.auth.dependencies import CurrentUser, require_roles
 from app.modules.equipment import service
+from app.modules.events.schemas import ReReviewSendRequest
 from app.modules.equipment.schemas import (
     CatalogueResponse,
     EquipmentRequestCreate,
@@ -72,6 +73,14 @@ def reserve_line(line_id: UUID, current_user: EquipmentArranger) -> LineActionRe
 @router.post("/requests/{line_id}/not-available", response_model=LineActionResponse, status_code=status.HTTP_200_OK)
 def mark_not_available(line_id: UUID, body: NotAvailableRequest, current_user: EquipmentArranger) -> LineActionResponse:
     return service.mark_not_available(str(line_id), current_user.id, body.reason)
+
+
+@router.post("/requests/{line_id}/send-for-re-review", status_code=status.HTTP_204_NO_CONTENT)
+def send_line_for_re_review(line_id: UUID, body: ReReviewSendRequest, current_user: EquipmentRequester) -> Response:
+    """Story 37 AC6: send a line an approved time change left short to technical
+    support, with an optional note. It keeps its reservation until they decide."""
+    service.send_line_for_re_review(str(line_id), current_user.id, body.note)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.put("/requests/{line_id}/notes", response_model=LineActionResponse, status_code=status.HTTP_200_OK)

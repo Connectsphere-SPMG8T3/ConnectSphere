@@ -103,6 +103,9 @@ export const venuesApi = {
 };
 
 export const venueBookingsApi = {
+  sendForReReview(bookingId, note, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/send-for-re-review`, { method: "POST", body: { note }, token });
+  },
   markRevised(bookingId, note, token) {
     return request(`/venue-bookings/${encodeURIComponent(bookingId)}/mark-revised`, { method: "POST", body: { note }, token });
   },
@@ -304,6 +307,9 @@ export const registrationsApi = {
 };
 
 export const equipmentApi = {
+  sendLineForReReview(lineId, note, token) {
+    return request(`/equipment/requests/${encodeURIComponent(lineId)}/send-for-re-review`, { method: "POST", body: { note }, token });
+  },
   checkEquipmentAvailability(payload, token) {
     return request("/equipment/availability/check", {
       method: "POST",

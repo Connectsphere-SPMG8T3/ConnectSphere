@@ -268,6 +268,16 @@ class EventVenueBooking(BaseModel):
     flag: str | None = None
     flag_reason: str | None = None
     replaces_booking_id: str | None = None
+    # Story 37: why an approved change marked it Needs re-review. Absent once sent or never
+    # marked, so an unmarked booking keeps the shape it had before.
+    needs_re_review_reason: str | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unmarked(self, handler):
+        data = handler(self)
+        if self.needs_re_review_reason is None:
+            data.pop("needs_re_review_reason", None)
+        return data
 
 
 class EventCoordinator(BaseModel):
@@ -486,6 +496,20 @@ class EventListResponse(BaseModel):
 
 
 REJECT_REASON_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; no customer limit given
+
+
+class ReReviewSendRequest(BaseModel):
+    """Story 37 Q20: the coordinator's optional note to staff when sending an arrangement
+    for re-review. Trimmed; blank is no note."""
+
+    note: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def blank_is_none(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
 
 class ChangeApproveRequest(BaseModel):

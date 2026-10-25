@@ -130,6 +130,8 @@ class EquipmentRequestLine(BaseModel):
     # ever receive a line (AC12).
     technical_notes: str | None = None
     not_available_reason: str | None = None
+    # Story 37: why an approved time change marked it Needs re-review; null once sent.
+    needs_re_review_reason: str | None = None
     requested_by: Requester | None
     created_at: datetime
 

@@ -291,10 +291,10 @@ begin
     if (select technical_readiness from public.events where id = c_e1) <> 'pending' then
         raise exception 'EQRES FAIL: a marked line is not Pending';
     end if;
-    -- Sent to technical support, as the coordinator's send does (story 37 AC6).
-    update public.equipment_requests
-       set status = 're_review', needs_re_review_since = null, needs_re_review_reason = null
-     where id = v_l1;
+    -- Sent to technical support by the coordinator (story 37 AC6); E1 is in Planning.
+    if (public.send_equipment_line_for_re_review(v_l1, c_coord, null, 'sent'))->>'outcome' <> 'ok' then
+        raise exception 'EQRES FAIL: the coordinator could not send the marked line';
+    end if;
     -- D8: re-reserving is refused while it still doesn't fit, and the line stays flagged.
     select r.outcome, r.free_quantity into v_outcome, v_free from public.reserve_equipment_line(v_l1, c_tech) r;
     if v_outcome <> 'insufficient' or v_free <> 1 then

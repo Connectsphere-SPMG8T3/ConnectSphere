@@ -201,7 +201,7 @@ REQUESTABLE_EQUIPMENT_STATUSES = ("active", "maintenance")
 # because `equipment_requests` points at both `events` and `profiles`.
 REQUEST_LINE_SELECT = (
     "id, submission_id, event_id, equipment_id, quantity, technical_requirements, status, "
-    "technical_notes, not_available_reason, requested_by, created_at, "
+    "technical_notes, not_available_reason, needs_re_review_reason, requested_by, created_at, "
     "equipment:equipment!equipment_requests_equipment_id_fkey(name, equipment_type), "
     "requester:profiles!equipment_requests_requested_by_fkey(id, full_name), "
     "event:events!equipment_requests_event_id_fkey(name, starts_at, status)"
@@ -286,6 +286,15 @@ def get_line(line_id: str) -> dict | None:
         .execute()
     )
     return (response.data or [None])[0]
+
+
+def send_line_for_re_review(line_id: str, actor_id: str, note: str | None, staff_message: str) -> dict:
+    """Story 37 AC6: run `public.send_equipment_line_for_re_review`. Answers `{outcome}`:
+    ok / not_found / not_assigned / status_changed / not_marked."""
+    response = get_supabase_admin_client().rpc("send_equipment_line_for_re_review", {
+        "p_line_id": line_id, "p_actor_id": actor_id, "p_note": note, "p_staff_message": staff_message,
+    }).execute()
+    return response.data
 
 
 def reserve_line(line_id: str, actor_id: str) -> tuple[str, int | None, bool]:

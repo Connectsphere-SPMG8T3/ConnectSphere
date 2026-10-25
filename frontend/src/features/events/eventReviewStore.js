@@ -108,6 +108,24 @@ export const useEventReviewStore = defineStore("eventReview", {
       }
     },
 
+    // Story 37 AC6: a booking an approved change marked goes to venue staff; the page reloads.
+    async sendBookingForReReview(bookingId, note) {
+      if (this.isActing) return;
+      const auth = useAuthStore();
+      const eventId = this.event.id;
+      this.isActing = true;
+      this.error = null;
+      try {
+        await auth.withSession((token) => venueBookingsApi.sendForReReview(bookingId, note, token));
+        await this.load(eventId);
+      } catch (error) {
+        this.error = error.message;
+        throw error;
+      } finally {
+        this.isActing = false;
+      }
+    },
+
     async markBookingRevised(bookingId, note) {
       if (this.isActing) return;
       const auth = useAuthStore();

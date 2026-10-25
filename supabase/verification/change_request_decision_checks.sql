@@ -421,6 +421,75 @@ begin
         raise exception 'CHANGE FAIL: an Unsuitable flag 37 set was not cleared';
     end if;
 
+    -- AC6, Q20: the coordinator sends a marked booking to venue staff; it keeps its hold.
+    v_result := public.send_booking_for_re_review('d0000000-0000-4000-8000-000000003792', v_venue_staff, null, 's');
+    if v_result->>'outcome' is distinct from 'not_assigned' then
+        raise exception 'CHANGE FAIL: someone not assigned sent a booking: %', v_result;
+    end if;
+    v_result := public.send_booking_for_re_review('d0000000-0000-4000-8000-000000003793', v_coordinator, null, 's');
+    if v_result->>'outcome' is distinct from 'not_marked' then
+        raise exception 'CHANGE FAIL: an unmarked booking was sent: %', v_result;
+    end if;
+    v_result := public.send_booking_for_re_review('d0000000-0000-4000-8000-000000003792', v_coordinator,
+        '  Please re-check the afternoon  ', 'to venue staff');
+    if v_result->>'outcome' is distinct from 'ok' then
+        raise exception 'CHANGE FAIL: sending a marked booking was refused: %', v_result;
+    end if;
+    if (select status from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003792') <> 're_review'
+       or (select needs_re_review_since from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003792')
+         is not null then
+        raise exception 'CHANGE FAIL: a sent booking is not under re-review, or is still marked';
+    end if;
+    select count(*) into v_rows from public.venue_booking_history
+     where booking_id = 'd0000000-0000-4000-8000-000000003792' and action = 'sent_for_re_review'
+       and from_status = 'approved' and to_status = 're_review' and actor_id = v_coordinator
+       and reason = 'Please re-check the afternoon';
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: sending has no history row with the trimmed note'; end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-000000003709' and type = 'venue_booking_re_review'
+       and recipient_id = v_venue_staff and recipient_role = 'venue_staff' and message = 'to venue staff';
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: venue staff were not told once, as venue staff'; end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-000000003709' and type = 'venue_booking_re_review'
+       and recipient_id = v_coordinator;
+    if v_rows <> 0 then raise exception 'CHANGE FAIL: the coordinator was told of their own send (NT-R1)'; end if;
+    v_result := public.send_booking_for_re_review('d0000000-0000-4000-8000-000000003792', v_coordinator, null, 's');
+    if v_result->>'outcome' is distinct from 'not_marked' then
+        raise exception 'CHANGE FAIL: a booking was sent twice: %', v_result;
+    end if;
+
+    -- And a marked equipment line to technical support; it keeps its units.
+    v_result := public.send_equipment_line_for_re_review('c0000000-0000-4000-8000-000000003792', v_coordinator,
+        null, 't');
+    if v_result->>'outcome' is distinct from 'not_marked' then
+        raise exception 'CHANGE FAIL: an unmarked line was sent: %', v_result;
+    end if;
+    v_result := public.send_equipment_line_for_re_review('c0000000-0000-4000-8000-000000003791', v_venue_staff,
+        null, 't');
+    if v_result->>'outcome' is distinct from 'not_assigned' then
+        raise exception 'CHANGE FAIL: someone not assigned sent a line: %', v_result;
+    end if;
+    v_result := public.send_equipment_line_for_re_review('c0000000-0000-4000-8000-000000003791', v_coordinator,
+        '   ', 'to tech support');
+    if v_result->>'outcome' is distinct from 'ok'
+       or (select status from public.equipment_requests where id = 'c0000000-0000-4000-8000-000000003791') <> 're_review'
+       or (select needs_re_review_since from public.equipment_requests where id = 'c0000000-0000-4000-8000-000000003791')
+         is not null
+       or (select status from public.equipment_reservations
+            where request_line_id = 'c0000000-0000-4000-8000-000000003791') <> 'confirmed' then
+        raise exception 'CHANGE FAIL: a sent line is not under re-review with its units: %', v_result;
+    end if;
+    if not exists (select 1 from public.event_technical_history
+                    where request_id = 'c0000000-0000-4000-8000-000000003791' and action = 'sent_for_re_review'
+                      and from_status = 'reserved' and to_status = 're_review' and actor_id = v_coordinator) then
+        raise exception 'CHANGE FAIL: sending the line is not in the technical history';
+    end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-000000003709' and type = 'equipment_line_re_review'
+       and recipient_id = 'a0000000-0000-4000-8000-000000000004' and recipient_role = 'tech_support'
+       and message = 'to tech support';
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: technical support were not told once'; end if;
+
     -- Q16, Q17: a Conflict or Unsuitable booking can be replaced (CR-95's path), the
     -- replacement sitting beside it until it is approved.
     select * into v_replacement from public.request_venue_booking_for_space(

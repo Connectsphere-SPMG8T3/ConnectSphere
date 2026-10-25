@@ -205,6 +205,7 @@ def _line_fields(row: dict, equipment_name: str, requester: dict | None) -> dict
         "status": row["status"],
         "technical_notes": row.get("technical_notes"),
         "not_available_reason": row.get("not_available_reason"),
+        "needs_re_review_reason": row.get("needs_re_review_reason"),
         "requested_by": requester,
         "created_at": row["created_at"],
     }
@@ -409,6 +410,26 @@ def set_note(line_id: str, actor_id: str, note: str | None) -> LineActionRespons
     line = _line(line_id)
     _raise_for(repository.set_note(line_id, actor_id, note), "")
     return LineActionResponse(line_id=line_id, status=line["status"])
+
+
+def send_line_for_re_review(line_id: str, coordinator_id: str, note: str | None) -> None:
+    """Story 37 AC6, Q20: the assigned coordinator sends a line an approved time change
+    left short to technical support. It keeps its reservation until they decide."""
+    line = _line(line_id)
+    name = events_service.names_by_id([line["event_id"]]).get(line["event_id"], "an event")
+    message = f'Equipment for "{name}" needs re-review after an approved change.'
+    if note:
+        message += f" Note: {note}"
+    outcome = repository.send_line_for_re_review(line_id, coordinator_id, note, message)["outcome"]
+    if outcome == "not_found":
+        raise EquipmentLineNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "status_changed":
+        raise EquipmentArrangementConflictError(
+            "Arrangements can be sent for re-review only while the event is in Planning.")
+    if outcome != "ok":
+        raise EquipmentArrangementConflictError("This equipment line doesn't need re-review.")
 
 
 @_equipment_service_available

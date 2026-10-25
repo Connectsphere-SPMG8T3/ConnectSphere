@@ -534,6 +534,15 @@ def list_change_bookings(event_id: str) -> list[dict]:
     return response.data or []
 
 
+def send_booking_for_re_review(booking_id: str, actor_id: str, note: str | None, staff_message: str) -> dict:
+    """Story 37 AC6: run `public.send_booking_for_re_review`. Answers `{outcome}`: ok /
+    not_found / not_assigned / status_changed / not_marked."""
+    response = get_supabase_admin_client().rpc("send_booking_for_re_review", {
+        "p_booking_id": booking_id, "p_actor_id": actor_id, "p_note": note, "p_staff_message": staff_message,
+    }).execute()
+    return response.data
+
+
 def get_replaceable_booking(booking_id: str) -> dict | None:
     """`{id, event_id, event_space_request_id, status, flag}` for the booking a
     replacement names (CR-95 AC4), or None. The database function decides again
@@ -800,7 +809,7 @@ def list_active_bookings(event_id: str) -> list[dict]:
         response = (
             get_supabase_admin_client()
             .table("venue_bookings")
-            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, flag, flag_reason, replaces_booking_id, venues!venue_bookings_venue_id_fkey(name)")
+            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, flag, flag_reason, replaces_booking_id, needs_re_review_reason, venues!venue_bookings_venue_id_fkey(name)")
             .eq("event_id", event_id)
             # Expired too: a space whose hold ran out still shows it (CR-99 AC7, CR-97).
             .in_("status", [*OCCUPYING_STATUSES, "expired"])

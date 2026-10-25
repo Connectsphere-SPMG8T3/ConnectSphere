@@ -57,7 +57,10 @@ alter table public.venue_booking_history
 -- The organiser alone hears of a decision on their request.
 insert into public.notification_types (type, recipient_roles) values
     ('event_change_approved', '{event_organiser}'),
-    ('event_change_rejected', '{event_organiser}');
+    ('event_change_rejected', '{event_organiser}'),
+    -- AC6: the staff pool the coordinator sends a marked arrangement to (AUTH-R5).
+    ('venue_booking_re_review', '{venue_staff}'),
+    ('equipment_line_re_review', '{tech_support}');
 
 -- ---------------------------------------------------------------------------
 -- approve_event_change
@@ -719,4 +722,115 @@ create trigger equipment_requests_refresh_technical_status
     after insert or delete or update of equipment_id, quantity, status, needs_re_review_since
     on public.equipment_requests
     for each row execute function private.equipment_request_changed();
+
+-- ---------------------------------------------------------------------------
+-- Send for re-review (AC6, Q20): the assigned coordinator sends a marked booking
+-- or line to its staff pool, with an optional note. It goes under re-review and
+-- keeps its hold or reservation until they decide; every account in the pool is
+-- told (AUTH-R5), never the coordinator (NT-R1).
+-- ---------------------------------------------------------------------------
+
+create or replace function public.send_booking_for_re_review(
+    p_booking_id uuid,
+    p_actor_id uuid,
+    p_note text,
+    p_staff_message text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+    v_booking public.venue_bookings;
+    v_event public.events;
+begin
+    select * into v_booking from public.venue_bookings where id = p_booking_id;
+    if not found then
+        return jsonb_build_object('outcome', 'not_found');
+    end if;
+    -- Event first, then booking: the order approve_event_change locks them in.
+    select * into v_event from public.events where id = v_booking.event_id for update;
+    if v_event.coordinator_id is distinct from p_actor_id then
+        return jsonb_build_object('outcome', 'not_assigned');
+    end if;
+    if v_event.status <> 'planning' then
+        return jsonb_build_object('outcome', 'status_changed');
+    end if;
+    select * into v_booking from public.venue_bookings where id = p_booking_id for update;
+    if v_booking.needs_re_review_since is null or v_booking.status <> 'approved' then
+        return jsonb_build_object('outcome', 'not_marked');
+    end if;
+
+    update public.venue_bookings
+       set status = 're_review', needs_re_review_since = null, needs_re_review_reason = null
+     where id = p_booking_id;
+    insert into public.venue_booking_history (booking_id, actor_id, action, from_status, to_status, reason)
+    values (p_booking_id, p_actor_id, 'sent_for_re_review', 'approved', 're_review', nullif(btrim(p_note), ''));
+    insert into public.notifications (recipient_id, recipient_role, event_id, type, message)
+    select distinct ur.profile_id, 'venue_staff'::public.user_role, v_event.id, 'venue_booking_re_review', p_staff_message
+      from public.user_roles ur
+     where ur.role = 'venue_staff' and ur.profile_id is distinct from p_actor_id;
+
+    return jsonb_build_object('outcome', 'ok', 'event_id', v_event.id);
+end;
+$$;
+
+comment on function public.send_booking_for_re_review is
+    'Story 37 AC6: the assigned coordinator sends an approved booking an approved change marked Needs re-review to venue staff, with an optional note, while the event is in Planning. It becomes re_review, keeps occupying the venue, and every venue staff account is told. Answers {outcome: ok|not_found|not_assigned|status_changed|not_marked, event_id}. API-only.';
+
+revoke execute on function public.send_booking_for_re_review(uuid, uuid, text, text) from public, anon, authenticated;
+grant execute on function public.send_booking_for_re_review(uuid, uuid, text, text) to service_role;
+
+create or replace function public.send_equipment_line_for_re_review(
+    p_line_id uuid,
+    p_actor_id uuid,
+    p_note text,
+    p_staff_message text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+    v_line public.equipment_requests;
+    v_event public.events;
+begin
+    select * into v_line from public.equipment_requests where id = p_line_id;
+    if not found then
+        return jsonb_build_object('outcome', 'not_found');
+    end if;
+    select * into v_event from public.events where id = v_line.event_id for update;
+    if v_event.coordinator_id is distinct from p_actor_id then
+        return jsonb_build_object('outcome', 'not_assigned');
+    end if;
+    if v_event.status <> 'planning' then
+        return jsonb_build_object('outcome', 'status_changed');
+    end if;
+    select * into v_line from public.equipment_requests where id = p_line_id for update;
+    if v_line.needs_re_review_since is null or v_line.status <> 'reserved' then
+        return jsonb_build_object('outcome', 'not_marked');
+    end if;
+
+    perform private.set_actor(p_actor_id);
+    update public.equipment_requests
+       set status = 're_review', needs_re_review_since = null, needs_re_review_reason = null
+     where id = p_line_id;
+    perform private.log_technical(v_event.id, p_line_id, 'sent_for_re_review', 'reserved', 're_review',
+                                  nullif(btrim(p_note), ''));
+    insert into public.notifications (recipient_id, recipient_role, event_id, type, message)
+    select distinct ur.profile_id, 'tech_support'::public.user_role, v_event.id, 'equipment_line_re_review', p_staff_message
+      from public.user_roles ur
+     where ur.role = 'tech_support' and ur.profile_id is distinct from p_actor_id;
+
+    return jsonb_build_object('outcome', 'ok', 'event_id', v_event.id);
+end;
+$$;
+
+comment on function public.send_equipment_line_for_re_review is
+    'Story 37 AC6: the assigned coordinator sends a reserved line an approved time change marked Needs re-review to technical support, with an optional note, while the event is in Planning. It becomes re_review, keeps its reservation, and every technical support account is told. Answers {outcome: ok|not_found|not_assigned|status_changed|not_marked, event_id}. API-only.';
+
+revoke execute on function public.send_equipment_line_for_re_review(uuid, uuid, text, text) from public, anon, authenticated;
+grant execute on function public.send_equipment_line_for_re_review(uuid, uuid, text, text) to service_role;
 

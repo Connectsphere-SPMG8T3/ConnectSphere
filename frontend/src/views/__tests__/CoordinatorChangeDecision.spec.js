@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { eventsApi } from "@/services/api";
+import { eventsApi, venueBookingsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 // Story 37: the assigned coordinator approves or rejects the organiser's open change request.
@@ -13,6 +13,7 @@ vi.mock("@/services/api", async (importOriginal) => ({
     safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), listComments: vi.fn(),
     addComment: vi.fn(), rejectChange: vi.fn(), approveChange: vi.fn(),
   },
+  venueBookingsApi: { sendForReReview: vi.fn() },
 }));
 
 const OPEN_CHANGE = {
@@ -176,5 +177,44 @@ describe("Story 37 coordinator decides a change request", () => {
     const notice = el.querySelector('[data-testid="venue-affected"]');
     expect(notice.textContent).toContain(reason);
     expect([...notice.querySelectorAll("button")].map((b) => b.textContent.trim())).toContain("Find replacement");
+  });
+
+  function markedEvent() {
+    return eventResponse({
+      status: "planning",
+      spaces: [{ id: "space-1", label: "Main hall", expected_pax: 80, layout_preference: "theatre",
+        facilities_required: [], starts_at: null, ends_at: null, is_primary: true }],
+      venue_bookings: [{ id: "booking-1", event_space_request_id: "space-1", venue_id: "v1",
+        venue_name: "Grand Ballroom", status: "approved", expires_at: null, flag: null, flag_reason: null,
+        replaces_booking_id: null, needs_re_review_reason: "Date or time changed." }],
+    });
+  }
+
+  it("shows a booking an approved change marked, and why", async () => {
+    const el = await mountView(markedEvent());
+
+    const notice = el.querySelector('[data-testid="needs-re-review"]');
+    expect(notice.textContent).toContain("Needs re-review");
+    expect(notice.textContent).toContain("Date or time changed.");
+  });
+
+  it("sends a marked booking to venue staff with an optional note, then reloads", async () => {
+    const el = await mountView(markedEvent());
+    venueBookingsApi.sendForReReview.mockResolvedValue(null);
+    eventsApi.get.mockClear();
+    eventsApi.get.mockResolvedValue(eventResponse({ status: "planning" }));
+
+    [...el.querySelectorAll("button")].find((b) => b.textContent.trim() === "Send for re-review").click();
+    await nextTick();
+    const form = el.querySelector('[role="dialog"][aria-label="Send for re-review"]');
+    const textarea = form.querySelector("textarea");
+    textarea.value = "  Please check the afternoon  ";
+    textarea.dispatchEvent(new Event("input"));
+    await nextTick();
+    [...form.querySelectorAll("button")].find((b) => b.textContent.trim() === "Send to venue staff").click();
+
+    await vi.waitFor(() => expect(venueBookingsApi.sendForReReview)
+      .toHaveBeenCalledWith("booking-1", "Please check the afternoon", "access"));
+    await vi.waitFor(() => expect(eventsApi.get).toHaveBeenCalled());
   });
 });

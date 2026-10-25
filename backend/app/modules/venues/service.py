@@ -1063,6 +1063,8 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
             "status": row["status"],
             "expires_at": row.get("expires_at"),
             **_flag_fields(row),
+            # Story 37 Q20: why an approved change marked it, so it can be sent for re-review.
+            **({"needs_re_review_reason": row["needs_re_review_reason"]} if row.get("needs_re_review_reason") else {}),
         }
         for row in shown.values()
     ]
@@ -1090,6 +1092,31 @@ def mark_safety_revision(booking_id: str, actor_id: str, note: str) -> VenueBook
     if outcome in MARK_REVISED_REFUSALS:
         raise BookingDecisionConflictError(MARK_REVISED_REFUSALS[outcome])
     return _booking_detail(repository.get_booking(booking_id))
+
+
+NOT_PLANNING_MESSAGE = "Arrangements can be sent for re-review only while the event is in Planning."
+
+
+def send_booking_for_re_review(booking_id: str, coordinator_id: str, note: str | None) -> None:
+    """Story 37 AC6, Q20: the assigned coordinator sends a booking an approved change
+    marked Needs re-review to venue staff. The RPC checks assignment, Planning and the
+    marker under the event's lock; the booking keeps its hold."""
+    booking = repository.get_booking(booking_id)
+    if booking is None:
+        raise BookingNotFoundError()
+    name = events_service.names_by_id([booking["event_id"]]).get(booking["event_id"], "An event")
+    message = f'"{name}" changed: {booking["venue_name"]} needs re-review.'
+    if note:
+        message += f" Note: {note}"
+    outcome = repository.send_booking_for_re_review(booking_id, coordinator_id, note, message)["outcome"]
+    if outcome == "not_found":
+        raise BookingNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "status_changed":
+        raise BookingDecisionConflictError(NOT_PLANNING_MESSAGE)
+    if outcome != "ok":
+        raise BookingDecisionConflictError("This booking doesn't need re-review.")
 
 
 def booking_venue_names(booking_ids: list[str]) -> dict[str, str | None]:
