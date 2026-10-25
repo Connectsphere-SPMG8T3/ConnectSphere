@@ -159,4 +159,22 @@ describe("Story 37 coordinator decides a change request", () => {
 
     await vi.waitFor(() => expect(dialog().textContent).toContain("There is no open change request for this event."));
   });
+
+  it.each([
+    ["conflict", 'The new time clashes with "Product Launch".'],
+    ["unsuitable", "After an approved change: Main hall needs 250 people; Grand Ballroom seats 200."],
+  ])("offers a replacement for a booking an approved change flagged %s", async (flag, reason) => {
+    const el = await mountView(eventResponse({
+      status: "planning",
+      spaces: [{ id: "space-1", label: "Main hall", expected_pax: 80, layout_preference: "theatre",
+        facilities_required: [], starts_at: null, ends_at: null, is_primary: true }],
+      venue_bookings: [{ id: "booking-1", event_space_request_id: "space-1", venue_id: "v1",
+        venue_name: "Grand Ballroom", status: "approved", expires_at: null, flag, flag_reason: reason,
+        replaces_booking_id: null }],
+    }));
+
+    const notice = el.querySelector('[data-testid="venue-affected"]');
+    expect(notice.textContent).toContain(reason);
+    expect([...notice.querySelectorAll("button")].map((b) => b.textContent.trim())).toContain("Find replacement");
+  });
 });

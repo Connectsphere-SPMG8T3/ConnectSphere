@@ -730,12 +730,14 @@ BOOKING_REFUSALS = {
 
 
 # CR-95 AC4 / D52: both follow-up flags permit requesting another venue.
-REPLACEABLE_FLAGS = ("affected", "safety_rejected")
+# Story 37 Q16, Q17: a clash with an approved change's new time, or attendance over capacity.
+REPLACEABLE_FLAGS = ("affected", "safety_rejected", "conflict", "unsuitable")
 
 
 def _prepare_replacement(replaces_id: str, event: dict, space_id: str | None) -> None:
     """Refuse before changing anything unless `replaces_id` is this event's (or
-    space's) own affected or Safety-rejected booking that is still held or approved, then return a
+    space's) own flagged booking (Affected, Safety rejected, Conflict or Unsuitable) that is still
+    held or approved, then return a
     Confirmed or Safety-review event to planning, which the booking functions
     require (CR-95 AC4, AC7). The coordinator has decided to replace the venue
     by asking, so the event stays in planning even if the venue they pick is

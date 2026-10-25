@@ -137,6 +137,7 @@ declare
     v_ordinary_space uuid := 'f0000000-0000-4000-8000-000000003704';
     v_event public.events;
     v_version integer;
+    v_replacement record;
     v_organiser uuid := 'a0000000-0000-4000-8000-000000000001';
     v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
     v_venue_staff uuid := 'a0000000-0000-4000-8000-000000000003';
@@ -375,6 +376,21 @@ begin
     if (select flag from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003795') is not null
        or (select flagged_at from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003795') is not null then
         raise exception 'CHANGE FAIL: an Unsuitable flag 37 set was not cleared';
+    end if;
+
+    -- Q16, Q17: a Conflict or Unsuitable booking can be replaced (CR-95's path), the
+    -- replacement sitting beside it until it is approved.
+    select * into v_replacement from public.request_venue_booking_for_space(
+        'f0000000-0000-4000-8000-000000003791', 'b0000000-0000-4000-8000-000000000005', v_coordinator,
+        null, 'n', 'd0000000-0000-4000-8000-000000003791');
+    if v_replacement.outcome is distinct from 'ok' then
+        raise exception 'CHANGE FAIL: a Conflict booking could not be replaced: %', v_replacement.outcome;
+    end if;
+    select * into v_replacement from public.request_venue_booking_for_space(
+        'f0000000-0000-4000-8000-000000003794', 'b0000000-0000-4000-8000-000000000002', v_coordinator,
+        null, 'n', 'd0000000-0000-4000-8000-000000003794');
+    if v_replacement.outcome is distinct from 'ok' then
+        raise exception 'CHANGE FAIL: an Unsuitable booking could not be replaced: %', v_replacement.outcome;
     end if;
 
     raise notice 'CHANGE DECISION CHECKS PASSED';
