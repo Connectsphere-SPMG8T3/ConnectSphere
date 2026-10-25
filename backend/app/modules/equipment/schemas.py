@@ -19,14 +19,18 @@ class EquipmentAvailabilityRequest(BaseModel):
     def validate_period(self) -> "EquipmentAvailabilityRequest":
         if self.end_at <= self.start_at:
             raise ValueError("end_at must be later than start_at")
+        if len({item.equipment_id for item in self.items}) != len(self.items):
+            raise ValueError("Each item can appear once in a check; combine the quantities.")
         return self
 
 
 class ItemAvailabilityResult(BaseModel):
     equipment_id: UUID
     name: str
+    storage_location: str | None = None
     quantity_needed: int
     quantity_available: int
+    quantity_missing: int
     sufficient: bool
 
 

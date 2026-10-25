@@ -196,15 +196,28 @@ describe("NotificationBell (113)", () => {
     expect(notificationsApi.list).toHaveBeenLastCalledWith({ limit: 20, before: "cur" }, "access");
   });
 
-  it("closes on click-away", async () => {
+  it("closes on a click anywhere outside it, the sidebar included (D49)", async () => {
     mounted = await mountBell();
+    const sidebar = document.createElement("nav");
+    document.body.appendChild(sidebar);
     bellButton(mounted.el).click();
     await vi.waitFor(() => expect(mounted.store.isOpen).toBe(true));
 
-    mounted.el.querySelector('[data-testid="notification-scrim"]').click();
+    sidebar.click();
     await nextTick();
 
     expect(mounted.store.isOpen).toBe(false);
+  });
+
+  it("stays open on a click inside the panel", async () => {
+    mounted = await mountBell();
+    bellButton(mounted.el).click();
+    await vi.waitFor(() => expect(mounted.el.textContent).toContain("Mark all as read"));
+
+    [...mounted.el.querySelectorAll("p")].find((p) => p.textContent === "Notifications").click();
+    await nextTick();
+
+    expect(mounted.store.isOpen).toBe(true);
   });
 
   it("closes when the route changes", async () => {

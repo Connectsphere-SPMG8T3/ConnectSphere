@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 
 import { formatNotificationTime } from "@/features/notifications/format";
@@ -9,9 +9,22 @@ import { useNotificationsStore } from "@/features/notifications/notificationsSto
 // bar mounts and stops, with the store cleared, when the bar goes (logout).
 const store = useNotificationsStore();
 const route = useRoute();
+const container = ref(null);
 
-onMounted(() => store.start());
-onBeforeUnmount(() => store.stop());
+// A document listener rather than a click-away layer: a layer inside the header's
+// stacking context can't cover the sidebar, which sits above it on desktop.
+function closeOnOutsideClick(event) {
+  if (store.isOpen && container.value && !container.value.contains(event.target)) store.close();
+}
+
+onMounted(() => {
+  store.start();
+  document.addEventListener("click", closeOnOutsideClick);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener("click", closeOnOutsideClick);
+  store.stop();
+});
 
 // A page change closes the panel, as the old placeholder panel did.
 watch(
@@ -37,7 +50,7 @@ function select(item) {
 </script>
 
 <template>
-  <div class="relative">
+  <div ref="container" class="relative">
     <button
       type="button"
       class="relative flex h-10 w-10 items-center justify-center border-2 border-ink shadow-hard active-press"
@@ -68,15 +81,6 @@ function select(item) {
         {{ badge }}
       </span>
     </button>
-
-    <!-- Click-away layer: it sits in the header's stacking context, so the panel
-         above it stays clickable while the rest of the page dismisses. -->
-    <div
-      v-if="store.isOpen"
-      data-testid="notification-scrim"
-      class="fixed inset-0 z-10"
-      @click="store.close()"
-    ></div>
 
     <div
       v-if="store.isOpen"

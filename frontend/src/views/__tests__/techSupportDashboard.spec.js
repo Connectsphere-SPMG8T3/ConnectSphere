@@ -344,6 +344,32 @@ describe("TechSupportDashboard availability check items (D47)", () => {
     ]);
   });
 
+  it("rejects duplicate equipment demand and permits a corrected selection (D58)", async () => {
+    const { el } = await mountDashboard({ tab: "availability" });
+    await vi.waitFor(() => expect(pickers(el)[0].options).toHaveLength(3));
+    button(el, "Add item").click();
+    await settle();
+    for (const input of el.querySelectorAll('input[type="number"]')) {
+      input.value = 5;
+      input.dispatchEvent(new Event("input"));
+    }
+    await settle();
+    button(el, "Check real-time availability").click();
+    await settle();
+    expect(el.textContent).toMatch(/combine the quantities/i);
+    expect(equipmentApi.checkEquipmentAvailability).not.toHaveBeenCalled();
+    pickers(el)[1].value = "s1";
+    pickers(el)[1].dispatchEvent(new Event("change"));
+    await settle();
+    button(el, "Check real-time availability").click();
+    await vi.waitFor(() => expect(equipmentApi.checkEquipmentAvailability).toHaveBeenCalledTimes(1));
+    expect(equipmentApi.checkEquipmentAvailability.mock.calls[0][0].items).toEqual([
+      { equipment_id: "p1", quantity_needed: 5 },
+      { equipment_id: "s1", quantity_needed: 5 },
+    ]);
+    expect(el.textContent).not.toMatch(/combine the quantities/i);
+  });
+
   it("says so, and won't check, when the catalogue can't load", async () => {
     equipmentApi.catalogue.mockRejectedValue(new Error("down"));
     const { el } = await mountDashboard({ tab: "availability" });
@@ -358,5 +384,50 @@ describe("TechSupportDashboard availability check items (D47)", () => {
     await settle();
 
     expect(equipmentApi.catalogue).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("TechSupportDashboard availability results (23-R)", () => {
+  afterEach(() => mountedApps.splice(0).forEach((app) => app.unmount()));
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+    equipmentApi.catalogue.mockResolvedValue({ items: [
+      { equipment_id: "p1", name: "Projector", equipment_type: "projector", total_quantity: 7 },
+    ] });
+  });
+
+  it.each([
+    ["Store A", "Store A", 6, 5, 1, false, "Insufficient"],
+    [null, "Not recorded", 5, 5, 0, true, "Sufficient"],
+    ["", "Not recorded", 5, 5, 0, true, "Sufficient"],
+    ["   ", "Not recorded", 5, 5, 0, true, "Sufficient"],
+  ])("shows location %s and the requested, available and missing quantities", async (location, shownLocation, needed, available, missing, sufficient, status) => {
+    equipmentApi.checkEquipmentAvailability.mockResolvedValue({ sufficient, items: [{
+      equipment_id: "p1", name: "Projector", storage_location: location,
+      quantity_needed: needed, quantity_available: available, quantity_missing: missing, sufficient,
+    }] });
+    const { el } = await mountDashboard({ tab: "availability" });
+    await vi.waitFor(() => expect(el.querySelector("select").options).toHaveLength(1));
+    el.querySelector('input[type="number"]').value = needed;
+    el.querySelector('input[type="number"]').dispatchEvent(new Event("input"));
+    await settle();
+    [...el.querySelectorAll("button")].find((b) => b.textContent.includes("Check real-time availability")).click();
+    await vi.waitFor(() => expect(el.querySelector("tbody tr")).not.toBeNull());
+
+    expect([...el.querySelectorAll("thead th")].map((c) => c.textContent.trim())).toEqual([
+      "Equipment name", "Storage location", "Requested", "Available", "Missing", "Status",
+    ]);
+    expect([...el.querySelectorAll("tbody td")].map((c) => c.textContent.trim())).toEqual([
+      "Projector", shownLocation, String(needed), String(available), String(missing), status,
+    ]);
+    expect(el.textContent).toContain("Storage location is for reference only");
+    const [payload] = equipmentApi.checkEquipmentAvailability.mock.calls[0];
+    expect(Object.keys(payload).sort()).toEqual(["end_at", "items", "start_at"]);
+    const fields = el.querySelectorAll('input[type="datetime-local"]');
+    expect(payload.start_at).toBe(new Date(fields[0].value).toISOString());
+    expect(payload.end_at).toBe(new Date(fields[1].value).toISOString());
   });
 });

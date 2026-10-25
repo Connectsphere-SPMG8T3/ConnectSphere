@@ -79,3 +79,21 @@ def test_failed_rows_reads_the_bare_list_form():
 def test_failed_rows_reads_the_wrapped_form_and_a_script_that_only_prints_a_result():
     assert verify_live._failed_rows('{"rows": [{"check": "a", "ok": false}]}') == ["a"]
     assert verify_live._failed_rows('[{"result": "CR-101 LEAD ASSIGNMENT CHECKS PASSED"}]') == []
+
+
+@pytest.mark.parametrize("present", [False, True])
+def test_equipment_location_preflight_distinguishes_pending_migration(monkeypatch, present):
+    monkeypatch.setattr(verify_live, "db_query", lambda sql: [{"present": present}])
+    if present:
+        verify_live.require_equipment_location_migration()
+    else:
+        with pytest.raises(verify_live.CheckBlocked, match="storage_location"):
+            verify_live.require_equipment_location_migration()
+
+
+def test_equipment_location_preflight_does_not_hide_database_errors(monkeypatch):
+    def broken(sql):
+        raise verify_live.CheckFailed("database unavailable")
+    monkeypatch.setattr(verify_live, "db_query", broken)
+    with pytest.raises(verify_live.CheckFailed, match="database unavailable"):
+        verify_live.require_equipment_location_migration()
