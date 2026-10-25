@@ -525,6 +525,125 @@ class TestHistoryRecordsTheApproval:
         assert requested["kind"] == "change_requested"
 
 
+class TestImpactPreview:
+    """Q1, CR-R2: what approving would do, worked out from the event as it is now."""
+
+    TIME_CHANGE = {"event": [
+        {"field": "starts_at", "before": FUTURE_START, "after": "2026-11-12T14:00:00+08:00"},
+        {"field": "ends_at", "before": "2026-11-12T12:00:00+08:00", "after": "2026-11-12T16:00:00+08:00"},
+    ], "spaces": []}
+
+    @pytest.fixture()
+    def impact(self, monkeypatch, events, bookings):
+        from app.modules.equipment import repository as equipment_repository
+        from app.modules.registrations import repository as registrations_repository
+
+        state = {"conflict": None, "free": 5, "registered": 3, "conflict_calls": []}
+
+        def first_conflict(period, venue_id, exclude_booking_id):
+            state["conflict_calls"].append((period, venue_id, exclude_booking_id))
+            return state["conflict"]
+
+        events["request"]["value"]["changes"] = deepcopy(self.TIME_CHANGE)
+        bookings["rows"]["value"][0].update(setup_minutes=30, turnaround_minutes=0)
+        monkeypatch.setattr(venues_repository, "first_conflict", first_conflict)
+        monkeypatch.setattr(equipment_repository, "list_event_requests", lambda event_id: [
+            {"id": "l1", "equipment_id": "p1", "quantity": 8, "status": "reserved",
+             "needs_re_review_since": None, "equipment": {"name": "PA Systems"}},
+            {"id": "l2", "equipment_id": "m1", "quantity": 2, "status": "pending",
+             "needs_re_review_since": None, "equipment": {"name": "Wireless Mics"}},
+        ])
+        monkeypatch.setattr(equipment_repository, "line_free_quantity",
+                            lambda line_id, equipment_id, starts_at, ends_at: state["free"])
+        monkeypatch.setattr(registrations_repository, "registered_count", lambda event_id: state["registered"])
+        return state
+
+    def preview(self, client, auth_headers):
+        return client.get(f"/api/v1/events/{EVENT_ID}/change-request/impact", headers=auth_headers)
+
+    def test_a_clear_move_needs_re_review_and_attendees_are_counted(self, client, auth_headers, act_as, impact):
+        act_as()
+
+        response = self.preview(client, auth_headers)
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "bookings": [{"booking_id": BOOKING_ID, "venue_name": "Grand Ballroom", "space_label": "Main hall",
+                          "messages": ["Moves to the new time.",
+                                       "Needs re-review by venue staff: Date or time changed."]}],
+            "equipment": [{"line_id": "l1", "label": "8 × PA Systems", "needed": 8, "free": 5}],
+            "attendees_notified": 3,
+        }
+
+    def test_the_conflict_check_uses_the_occupied_window_and_leaves_the_booking_out(
+        self, client, auth_headers, act_as, impact
+    ):
+        act_as()
+
+        self.preview(client, auth_headers)
+
+        [(period, venue_id, excluded)] = impact["conflict_calls"]
+        assert (period.starts_at.isoformat(), period.ends_at.isoformat()) == (
+            "2026-11-12T13:30:00+08:00", "2026-11-12T16:00:00+08:00")
+        assert (venue_id, excluded) == (VENUE_ID, BOOKING_ID)
+
+    @pytest.mark.parametrize(("conflict", "message"), [
+        ({"kind": "booking", "event_name": "Product Launch", "block_reason": None},
+         'Clashes with "Product Launch": it keeps its time and is flagged Conflict.'),
+        ({"kind": "block", "event_name": None, "block_reason": "maintenance"},
+         "Clashes with a venue block (Maintenance): it keeps its time and is flagged Conflict."),
+    ])
+    def test_a_clash_is_named(self, client, auth_headers, act_as, impact, conflict, message):
+        impact["conflict"] = conflict
+        act_as()
+
+        [booking] = self.preview(client, auth_headers).json()["bookings"]
+
+        assert booking["messages"] == [message]
+
+    def test_attendance_over_capacity_says_a_replacement_is_needed(self, client, auth_headers, act_as, events,
+                                                                   impact):
+        """The §6.19 example."""
+        events["request"]["value"]["changes"] = {"event": [
+            {"field": "expected_attendance", "before": 80, "after": 250}], "spaces": []}
+        events["store"][EVENT_ID]["spaces"][0]["expected_pax"] = None
+        act_as()
+
+        body = self.preview(client, auth_headers).json()
+
+        assert body["bookings"][0]["messages"] == [
+            "After an approved change: Main hall needs 250 people; Grand Ballroom seats 200. "
+            "A replacement venue is needed."]
+        assert body["equipment"] == [] and body["attendees_notified"] == 0
+
+    def test_lines_still_in_stock_are_not_listed(self, client, auth_headers, act_as, impact):
+        impact["free"] = 8
+        act_as()
+
+        assert self.preview(client, auth_headers).json()["equipment"] == []
+
+    def test_without_an_open_request_there_is_nothing_to_preview(self, client, auth_headers, act_as, events,
+                                                                 impact):
+        events["request"]["value"] = None
+        act_as()
+
+        response = self.preview(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "There is no open change request for this event."
+
+    @pytest.mark.parametrize("role", ["event_organiser", "venue_staff", "tech_support", "event_coordinator_lead"])
+    def test_only_the_coordinator_previews(self, client, auth_headers, act_as, impact, role):
+        act_as(role, user_id=COORDINATOR_ID)
+
+        assert self.preview(client, auth_headers).status_code == 403
+
+    def test_another_coordinator_is_forbidden(self, client, auth_headers, act_as, impact):
+        act_as(user_id=OTHER_COORDINATOR_ID)
+
+        assert self.preview(client, auth_headers).status_code == 403
+
+
 DECISIONS = [
     ("reject", reject),
     ("approve", approve),

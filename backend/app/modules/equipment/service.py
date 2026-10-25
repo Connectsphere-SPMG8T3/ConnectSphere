@@ -412,6 +412,22 @@ def set_note(line_id: str, actor_id: str, note: str | None) -> LineActionRespons
     return LineActionResponse(line_id=line_id, status=line["status"])
 
 
+def shortfalls(event_id: str, starts_at: datetime, ends_at: datetime) -> list[dict]:
+    """Story 37 preview: the reserved lines a new time would leave short, as
+    `{line_id, label, needed, free}`. A line already marked or under re-review is
+    with the coordinator or technical support already, so it isn't listed."""
+    short = []
+    for line in repository.list_event_requests(event_id):
+        if line["status"] != "reserved" or line.get("needs_re_review_since"):
+            continue
+        free = repository.line_free_quantity(line["id"], line["equipment_id"], starts_at, ends_at)
+        if free < line["quantity"]:
+            name = (_one(line.get("equipment")) or {}).get("name")
+            short.append({"line_id": line["id"], "label": rules.line_label(line["quantity"], name),
+                          "needed": line["quantity"], "free": free})
+    return short
+
+
 def send_line_for_re_review(line_id: str, coordinator_id: str, note: str | None) -> None:
     """Story 37 AC6, Q20: the assigned coordinator sends a line an approved time change
     left short to technical support. It keeps its reservation until they decide."""

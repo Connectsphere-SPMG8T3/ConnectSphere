@@ -37,7 +37,11 @@ export const useEventReviewStore = defineStore("eventReview", {
   // permanently if it fails (SCRUM-52) or resolves out of order (SCRUM-34/52):
   // the previous event's history can show on the new event's page, or an
   // older, slower request can overwrite a newer one's result after the fact.
-  state: () => ({ event: null, history: [], safetyDecisions: [], historyEventId: null, isLoading: false, isActing: false, error: null }),
+  state: () => ({
+    event: null, history: [], safetyDecisions: [], historyEventId: null, isLoading: false, isActing: false, error: null,
+    // Story 37 Q1: what approving the open change would do, worked out on the server now.
+    changeImpact: null,
+  }),
 
   actions: {
     async load(eventId) {
@@ -185,6 +189,18 @@ export const useEventReviewStore = defineStore("eventReview", {
     },
 
     // Story 37: deciding the organiser's change request reloads the event the same way.
+    // The preview is advice, so a failure only leaves it out; the decision itself re-checks.
+    async loadChangeImpact() {
+      const eventId = this.event?.id;
+      if (!eventId) return;
+      try {
+        const impact = await useAuthStore().withSession((token) => eventsApi.changeImpact(eventId, token));
+        if (this.event?.id === eventId) this.changeImpact = impact;
+      } catch {
+        if (this.event?.id === eventId) this.changeImpact = null;
+      }
+    },
+
     async approveChange() {
       return this.decideCancellation((token) => eventsApi.approveChange(this.event.id, this.event.version, token));
     },

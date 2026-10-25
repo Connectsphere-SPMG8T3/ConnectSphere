@@ -12,6 +12,7 @@ vi.mock("@/services/api", async (importOriginal) => ({
   eventsApi: {
     safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), listComments: vi.fn(),
     addComment: vi.fn(), rejectChange: vi.fn(), approveChange: vi.fn(),
+    changeImpact: vi.fn().mockResolvedValue({ bookings: [], equipment: [], attendees_notified: 0 }),
   },
   venueBookingsApi: { sendForReReview: vi.fn() },
 }));
@@ -217,4 +218,31 @@ describe("Story 37 coordinator decides a change request", () => {
       .toHaveBeenCalledWith("booking-1", "Please check the afternoon", "access"));
     await vi.waitFor(() => expect(eventsApi.get).toHaveBeenCalled());
   });
+
+  it("previews what approving would do before the coordinator decides", async () => {
+    eventsApi.changeImpact.mockResolvedValueOnce({
+      bookings: [{ booking_id: "booking-1", venue_name: "Grand Ballroom", space_label: "Main hall",
+        messages: ['Clashes with "Product Launch": it keeps its time and is flagged Conflict.'] }],
+      equipment: [{ line_id: "l1", label: "8 × PA Systems", needed: 8, free: 5 }],
+      attendees_notified: 3,
+    });
+    const el = await mountView(eventResponse({ open_change_request: OPEN_CHANGE }));
+
+    await vi.waitFor(() => expect(el.querySelector('[data-testid="change-impact"]')).not.toBeNull());
+    const preview = el.querySelector('[data-testid="change-impact"]');
+    expect(eventsApi.changeImpact).toHaveBeenCalledWith("event-1", "access");
+    expect(preview.textContent).toContain("If you approve");
+    expect(preview.textContent).toContain('Main hall, Grand Ballroom: Clashes with "Product Launch"');
+    expect(preview.textContent).toContain("8 × PA Systems: 5 free at the new time.");
+    expect(preview.textContent).toContain("3 registered attendees will be told of the new time.");
+  });
+
+  it("says when approving changes no arrangement", async () => {
+    const el = await mountView(eventResponse({ open_change_request: OPEN_CHANGE }));
+
+    await vi.waitFor(() => expect(el.querySelector('[data-testid="change-impact"]')).not.toBeNull());
+    expect(el.querySelector('[data-testid="change-impact"]').textContent)
+      .toContain("No venue booking or equipment needs anything from staff.");
+  });
 });
+

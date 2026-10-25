@@ -232,6 +232,16 @@ async function confirmCancel(reason) {
   }
 }
 
+// Story 37 Q1: the preview follows the open change request shown in the banner.
+watch(
+  () => event.value?.open_change_request?.id,
+  (requestId) => {
+    review.changeImpact = null;
+    if (requestId) review.loadChangeImpact();
+  },
+  { immediate: true },
+);
+
 watch(
   () => route.params.id,
   (id) => {
@@ -375,6 +385,23 @@ watch(
         <ChangeRequestChanges :rows="describeChanges(event.open_change_request.changes)" class="mt-4 bg-canvas" />
         <p class="mt-4 text-sm font-bold">Comments:</p>
         <p class="mt-1 whitespace-pre-wrap font-medium" data-testid="change-request-comments">{{ event.open_change_request.reason }}</p>
+        <div v-if="review.changeImpact" class="mt-4 border-2 border-ink bg-canvas p-4" data-testid="change-impact">
+          <p class="text-sm font-bold">If you approve</p>
+          <ul class="mt-2 space-y-1 text-sm font-medium">
+            <li v-for="booking in review.changeImpact.bookings" :key="booking.booking_id">
+              {{ [booking.space_label, booking.venue_name].filter(Boolean).join(", ") }}: {{ booking.messages.join(" ") }}
+            </li>
+            <li v-for="line in review.changeImpact.equipment" :key="line.line_id">
+              {{ line.label }}: {{ line.free }} free at the new time.
+            </li>
+            <li v-if="!review.changeImpact.bookings.length && !review.changeImpact.equipment.length">
+              No venue booking or equipment needs anything from staff.
+            </li>
+            <li v-if="review.changeImpact.attendees_notified">
+              {{ review.changeImpact.attendees_notified }} registered attendees will be told of the new time.
+            </li>
+          </ul>
+        </div>
         <div class="mt-6 flex flex-wrap gap-3">
           <BauhausButton size="sm" variant="secondary" aria-label="Approve changes" :disabled="review.isActing"
             @click="review.error = null; isApproveChangeOpen = true">Approve changes</BauhausButton>

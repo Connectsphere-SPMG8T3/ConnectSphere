@@ -22,6 +22,10 @@ class ChangeBooking:
     flag_reason: str | None
     # The venue's capacity for a layout (venues.suitability.effective_capacity).
     capacity_for: Callable[[str | None], int]
+    # For the preview's conflict check on a move (SCRUM-21: the occupied window).
+    venue_id: str = ""
+    setup_minutes: int = 0
+    turnaround_minutes: int = 0
 
 
 @dataclass(frozen=True)

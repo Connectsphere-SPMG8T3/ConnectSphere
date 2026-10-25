@@ -525,7 +525,7 @@ def list_change_bookings(event_id: str) -> list[dict]:
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("id, event_space_request_id, status, venue_id, flag, flag_reason")
+        .select("id, event_space_request_id, status, venue_id, flag, flag_reason, setup_minutes, turnaround_minutes")
         .eq("event_id", event_id)
         .in_("status", ["held", "approved", "re_review"])
         .order("created_at")
@@ -701,6 +701,21 @@ def get_booking(booking_id: str) -> dict | None:
         "decided_by_name": _embedded_name(row, "decider", "full_name"),
         "decided_at": datetime.fromisoformat(decided_at) if decided_at else None,
     }
+
+
+def first_conflict(period: Period, venue_id: str, exclude_booking_id: str) -> dict | None:
+    """Story 37: `{kind, event_name, block_reason}` of what `public.venue_conflicts` finds
+    in `period` (an occupied window) at the venue, leaving one booking out: a block
+    first, then the earliest booking, as the request functions name a clash. None
+    when the window is free."""
+    response = get_supabase_admin_client().rpc("venue_conflicts", {
+        "p_period": _range_literal(period), "p_venue_id": venue_id, "p_exclude_booking_id": exclude_booking_id,
+    }).execute()
+    rows = sorted(response.data or [], key=lambda row: (row["kind"] != "block", row["occupied_period"]))
+    if not rows:
+        return None
+    return {"kind": rows[0]["kind"], "event_name": rows[0].get("event_name"),
+            "block_reason": rows[0].get("block_reason")}
 
 
 def get_last_move(booking_id: str) -> dict | None:

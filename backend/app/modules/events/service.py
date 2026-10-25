@@ -22,7 +22,11 @@ from app.modules.equipment import service as equipment_service
 from app.modules.events import change_fields, change_impact, lead_scope, lifecycle, repository
 from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
+from app.modules.registrations import service as registrations_service
 from app.modules.events.schemas import (
+    BookingImpact,
+    ChangeImpact,
+    EquipmentShortfall,
     SafetyDecision,
     SafetyDecisionSummary,
     SafetyHistoryItem,
@@ -643,6 +647,56 @@ def approve_change(event_id: str, coordinator_id: str, version: int) -> EventRes
     )
     _raise_for_change_outcome(result["outcome"])
     return _to_response(result["event"])
+
+
+def change_request_impact(event_id: str, coordinator_id: str) -> ChangeImpact:
+    """Story 37 Q1, CR-R2: what approving the open change would do now: per booking
+    (move, clash, re-review, capacity), the equipment a new time leaves short, and how
+    many registered attendees would be told. Worked out on each read, never stored;
+    the approval re-checks every move under its locks."""
+    row = _assigned_event(event_id, coordinator_id)
+    request = repository.get_open_change_request(event_id)
+    if not request:
+        raise EventConflictError(NO_OPEN_CHANGE_MESSAGE)
+    event_values, space_values = _requested_values(request["changes"])
+    bookings = [change_impact.ChangeBooking(**booking) for booking in venues_service.change_bookings(event_id)]
+    by_id = {booking.id: booking for booking in bookings}
+    labels = {space["id"]: space["label"] for space in row.get("spaces") or []}
+    impact = ChangeImpact()
+    for plan in change_impact.booking_plans(row, event_values, space_values, bookings):
+        booking = by_id[plan.booking_id]
+        messages = []
+        clash = plan.period and venues_service.move_clash(
+            booking.id, booking.venue_id, booking.setup_minutes, booking.turnaround_minutes, *plan.period)
+        if clash:
+            messages.append(f"Clashes with {clash}: it keeps its time and is flagged Conflict.")
+        else:
+            if plan.period:
+                messages.append("Moves to the new time.")
+            if plan.mark:
+                messages.append(f"Needs re-review by venue staff: {plan.mark}")
+        if plan.unsuitable:
+            messages.append(f"{plan.unsuitable} A replacement venue is needed.")
+        if plan.clear_unsuitable:
+            messages.append("Its Unsuitable flag is cleared: the attendance fits again.")
+        impact.bookings.append(BookingImpact(booking_id=booking.id, venue_name=booking.venue_name,
+                                             space_label=labels.get(booking.space_id), messages=messages))
+    after = {**row, **event_values}
+    moved = (after.get("starts_at"), after.get("ends_at")) != (row.get("starts_at"), row.get("ends_at"))
+    if moved and after.get("starts_at") and after.get("ends_at"):
+        impact.equipment = [EquipmentShortfall(**line) for line in equipment_service.shortfalls(
+            event_id, _parse_datetime(after["starts_at"]), _parse_datetime(after["ends_at"]))]
+    if event_values.keys() & {"starts_at", "ends_at", "event_timezone"}:
+        impact.attendees_notified = registrations_service.registered_count(event_id)
+    return impact
+
+
+def _requested_values(changes: dict) -> tuple[dict, dict]:
+    """The request's `after` values, as approval would apply them."""
+    event_values = {change["field"]: change["after"] for change in changes.get("event") or []}
+    space_values = {space["space_id"]: {change["field"]: change["after"] for change in space["fields"]}
+                    for space in changes.get("spaces") or []}
+    return event_values, space_values
 
 
 def latest_approved_change(event_id: str) -> dict | None:

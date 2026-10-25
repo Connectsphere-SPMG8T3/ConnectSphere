@@ -288,6 +288,22 @@ def get_line(line_id: str) -> dict | None:
     return (response.data or [None])[0]
 
 
+def line_free_quantity(line_id: str, equipment_id: str, starts_at: datetime, ends_at: datetime) -> int:
+    """Story 37 preview: free units of the line's item over `[starts_at, ends_at)`,
+    leaving the line's own reservation out, as `recheck_event_reservations` judges it."""
+    client = get_supabase_admin_client()
+    reservation = (
+        client.table("equipment_reservations").select("id")
+        .eq("request_line_id", line_id).eq("status", "confirmed").limit(1).execute()
+    )
+    reservation_id = (reservation.data or [{}])[0].get("id")
+    response = client.rpc("equipment_availability", {
+        "p_equipment_ids": [equipment_id], "p_start_at": starts_at.isoformat(), "p_end_at": ends_at.isoformat(),
+        "p_exclude_reservation_id": reservation_id,
+    }).execute()
+    return (response.data or [{}])[0].get("free_quantity", 0)
+
+
 def send_line_for_re_review(line_id: str, actor_id: str, note: str | None, staff_message: str) -> dict:
     """Story 37 AC6: run `public.send_equipment_line_for_re_review`. Answers `{outcome}`:
     ok / not_found / not_assigned / status_changed / not_marked."""

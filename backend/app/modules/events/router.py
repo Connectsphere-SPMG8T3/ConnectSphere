@@ -15,6 +15,7 @@ from app.modules.events.schemas import (
     SafetyRejectRequest,
     CancellationRequestCreate,
     ChangeApproveRequest,
+    ChangeImpact,
     ChangeRequestCreate,
     CoordinatorDashboard,
     LeadDashboard,
@@ -216,6 +217,11 @@ def approve_cancellation(event_id: UUID, current_user: EventCoordinator) -> Even
 @router.post("/{event_id}/cancellation-request/reject", response_model=EventResponse)
 def reject_cancellation(event_id: UUID, body: EventRejectRequest, current_user: EventCoordinator) -> EventResponse:
     return service.reject_cancellation(str(event_id), current_user.id, body.reason)
+
+
+@router.get("/{event_id}/change-request/impact", response_model=ChangeImpact)
+def change_impact(event_id: UUID, current_user: EventCoordinator) -> ChangeImpact:
+    return service.change_request_impact(str(event_id), current_user.id)
 
 
 @router.post("/{event_id}/change-request/approve", response_model=EventResponse)

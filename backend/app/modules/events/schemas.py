@@ -498,6 +498,30 @@ class EventListResponse(BaseModel):
 REJECT_REASON_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; no customer limit given
 
 
+class BookingImpact(BaseModel):
+    """Story 37 Q1: what approving the open change would do to one venue booking."""
+
+    booking_id: str
+    venue_name: str
+    space_label: str | None = None
+    messages: list[str]
+
+
+class EquipmentShortfall(BaseModel):
+    line_id: str
+    label: str | None = None
+    needed: int
+    free: int
+
+
+class ChangeImpact(BaseModel):
+    """Story 37 Q1, CR-R2: worked out from the event as it is now, never stored."""
+
+    bookings: list[BookingImpact] = []
+    equipment: list[EquipmentShortfall] = []
+    attendees_notified: int = 0
+
+
 class ReReviewSendRequest(BaseModel):
     """Story 37 Q20: the coordinator's optional note to staff when sending an arrangement
     for re-review. Trimmed; blank is no note."""

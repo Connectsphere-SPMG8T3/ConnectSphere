@@ -3,7 +3,7 @@
 import logging
 import sys
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 
@@ -679,12 +679,29 @@ def change_bookings(event_id: str) -> list[dict]:
         venue = venues.get(row["venue_id"])
         bookings.append({
             "id": row["id"], "space_id": row.get("event_space_request_id"), "status": row["status"],
-            "flag": row.get("flag"), "flag_reason": row.get("flag_reason"),
+            "flag": row.get("flag"), "flag_reason": row.get("flag_reason"), "venue_id": row["venue_id"],
+            "setup_minutes": row.get("setup_minutes") or 0, "turnaround_minutes": row.get("turnaround_minutes") or 0,
             "venue_name": venue.name if venue else "",
             "capacity_for": ((lambda layout, venue=venue: suitability.effective_capacity(venue, layout)) if venue
                              else (lambda layout: sys.maxsize)),
         })
     return bookings
+
+
+def move_clash(booking_id: str, venue_id: str, setup_minutes: int, turnaround_minutes: int,
+               starts_at: datetime, ends_at: datetime) -> str | None:
+    """Story 37 preview: what a booking moved to `[starts_at, ends_at)` would clash with,
+    in words, judged on its occupied window (setup and turnaround) at its venue and
+    leaving the booking itself out (SCRUM-21 AC4). None when the window is free."""
+    occupied = Period(starts_at=starts_at - timedelta(minutes=setup_minutes),
+                      ends_at=ends_at + timedelta(minutes=turnaround_minutes))
+    clash = repository.first_conflict(occupied, venue_id, booking_id)
+    if clash is None:
+        return None
+    if clash["kind"] == "block":
+        label = BLOCK_REASON_LABELS.get(clash.get("block_reason"), str(clash.get("block_reason")))
+        return f"a venue block ({label})"
+    return f'"{clash.get("event_name") or "another event"}"'
 
 
 def booking_readiness_by_space(event_id: str) -> dict[str, list[BookingReadiness]]:
