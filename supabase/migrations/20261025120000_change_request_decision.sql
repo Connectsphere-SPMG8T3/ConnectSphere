@@ -2,13 +2,26 @@
 -- ConnectSphere - Story 37 review and process event change requests
 --
 -- The assigned coordinator decides the organiser's open change request (story
--- 32). public.approve_event_change applies the requested values to the event
--- and its spaces in one transaction (ADR-0007), provided the event is still at
--- the version whose `before` values the API checked (Q8), closes the request as
--- approved and tells the organiser. public.reject_event_change closes it as rejected with the coordinator's
--- reason and tells the organiser; the event keeps its details, status and
--- arrangements (AC2, AC4, CR-R3). Decisions are refused once the event has
--- started or left the decidable statuses (AC8, Q5). API-only (ADR-0006).
+-- 32). Every write is a function of its own, API-only (ADR-0006, ADR-0007):
+--   * approve_event_change applies the requested values to the event and its
+--     spaces, provided the event is still at the version whose `before` values
+--     the API checked (Q8); moves, marks or flags each booking the API planned,
+--     re-checking each move against its occupied window under its lock (AC3, AC5);
+--     re-checks equipment after a new time (Q14); returns a Confirmed, Preparation
+--     or Safety review event to Planning on a significant change (AC7, Q6); closes
+--     the request as approved; and tells the organiser, registered attendees after
+--     a new time, the Safety Officers and, for a booking already under re-review,
+--     venue staff (Q22).
+--   * reject_event_change closes it as rejected with the coordinator's reason and
+--     tells the organiser; the event keeps everything (AC2, AC4, CR-R3).
+--   * send_booking_for_re_review / send_equipment_line_for_re_review put a marked
+--     arrangement under re-review for its staff pool, keeping its hold (AC6).
+--   * approve_venue_booking / reject_venue_booking also decide a booking under
+--     re-review (Q12); recheck_event_reservations marks short lines (Q14); both
+--     booking request functions accept Conflict and Unsuitable bookings for
+--     replacement (Q16, Q17).
+-- Decisions are refused once the event has started or left the decidable
+-- statuses (AC8, Q5). REQUIREMENTS §6.19 CR-R23 to CR-R32.
 -- =============================================================================
 
 -- Q13: an approved change marks the bookings it touches Needs re-review, separately

@@ -244,5 +244,31 @@ describe("Story 37 coordinator decides a change request", () => {
     expect(el.querySelector('[data-testid="change-impact"]').textContent)
       .toContain("No venue booking or equipment needs anything from staff.");
   });
+
+  it("shows why an approval was refused in the page alert", async () => {
+    const el = await mountView(eventResponse({ open_change_request: OPEN_CHANGE }));
+    eventsApi.approveChange.mockRejectedValue(
+      new Error("This event has changed since the request was made; reject it and ask for a new one."));
+
+    button(el, "Approve changes").click();
+    await nextTick();
+    [...dialog().querySelectorAll("button")].find((b) => b.textContent.trim() === "Approve changes").click();
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent)
+      .toContain("This event has changed since the request was made"));
+  });
+
+  it("shows why sending was refused in the page alert", async () => {
+    const el = await mountView(markedEvent());
+    venueBookingsApi.sendForReReview.mockRejectedValue(new Error("This booking doesn't need re-review."));
+
+    [...el.querySelectorAll("button")].find((b) => b.textContent.trim() === "Send for re-review").click();
+    await nextTick();
+    const form = el.querySelector('[role="dialog"][aria-label="Send for re-review"]');
+    [...form.querySelectorAll("button")].find((b) => b.textContent.trim() === "Send to venue staff").click();
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent)
+      .toContain("This booking doesn't need re-review."));
+  });
 });
 

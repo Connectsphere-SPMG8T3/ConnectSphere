@@ -642,6 +642,19 @@ class TestImpactPreview:
             "A replacement venue is needed."]
         assert body["equipment"] == [] and body["attendees_notified"] == 0
 
+    def test_a_flag_this_story_set_is_cleared_once_attendance_fits(self, client, auth_headers, act_as, events,
+                                                                   bookings, impact):
+        bookings["rows"]["value"][0].update(
+            flag="unsuitable", flag_reason="After an approved change: Main hall needs 300 people; Grand Ballroom seats 200.")
+        events["request"]["value"]["changes"] = {"event": [], "spaces": [{
+            "space_id": SPACE_ID, "label": "Main hall",
+            "fields": [{"field": "expected_pax", "before": 80, "after": 150}]}]}
+        act_as()
+
+        [booking] = self.preview(client, auth_headers).json()["bookings"]
+
+        assert booking["messages"] == ["Its Unsuitable flag is cleared: the attendance fits again."]
+
     def test_lines_still_in_stock_are_not_listed(self, client, auth_headers, act_as, impact):
         impact["free"] = 8
         act_as()

@@ -118,6 +118,15 @@ class TestSendLine:
             "staff_message": f'Equipment for "Partner Summit" needs re-review after an approved change. Note: {NOTE}',
         }]
 
+    def test_no_note_is_no_note(self, client, auth_headers, authenticate_as, sends):
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+
+        send_line(client, auth_headers, body={"note": None})
+
+        assert sends["calls"][0]["note"] is None
+        assert sends["calls"][0]["staff_message"] == (
+            'Equipment for "Partner Summit" needs re-review after an approved change.')
+
     def test_an_unknown_line_is_not_found(self, client, auth_headers, authenticate_as, sends):
         authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
 
@@ -127,6 +136,7 @@ class TestSendLine:
         assert sends["calls"] == []
 
     @pytest.mark.parametrize(("outcome", "status_code", "detail"), [
+        ("not_found", 404, "Equipment line not found."),
         ("not_assigned", 403, None),
         ("status_changed", 409, "Arrangements can be sent for re-review only while the event is in Planning."),
         ("not_marked", 409, "This equipment line doesn't need re-review."),
@@ -255,6 +265,19 @@ class TestVenueStaffDecideTheReReview:
             "moved_from": {"starts_at": "2026-11-12T02:00:00Z", "ends_at": "2026-11-12T04:00:00Z"},
             "moved_to": {"starts_at": "2026-11-12T06:00:00Z", "ends_at": "2026-11-12T08:00:00Z"},
         }
+
+    def test_without_an_approved_change_there_is_nothing_to_compare(self, client, auth_headers, authenticate_as,
+                                                                    booking, monkeypatch):
+        from app.modules.events import repository as events_repository
+
+        monkeypatch.setattr(events_repository, "list_change_requests", lambda event_id: [
+            {"id": "r1", "status": "rejected", "changes": booking["changes"]}])
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venue-bookings/{BOOKING_ID}", headers=auth_headers).json()
+
+        assert body["re_review"]["changes"] is None
+        assert body["re_review"]["note"] == NOTE
 
     def test_a_booking_not_under_re_review_has_no_context(self, client, auth_headers, authenticate_as, booking):
         booking["row"]["status"] = "approved"

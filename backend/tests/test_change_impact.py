@@ -162,3 +162,10 @@ class TestWhichBookings:
         plans = booking_plans(event(), {"layout_preference": "banquet"}, {}, [booking(space_id=None)])
 
         assert plans == [BookingPlan(booking_id="b1", mark="Layout changed.")]
+
+
+def test_times_already_parsed_are_compared_as_they_are():
+    plans = booking_plans(event(spaces=[space()], ends_at=at(END)), {"ends_at": at("2031-05-10T13:00:00+08:00")},
+                          {}, [booking()])
+
+    assert plans[0].period == (at(START), at("2031-05-10T13:00:00+08:00"))

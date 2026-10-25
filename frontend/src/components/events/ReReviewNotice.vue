@@ -7,7 +7,7 @@
 import { ref } from "vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 
-const props = defineProps({
+defineProps({
   reason: { type: String, default: "" },
   // Who it goes to, for the button: "venue staff" or "technical support".
   recipients: { type: String, required: true },
@@ -18,7 +18,6 @@ const sending = ref(false);
 const note = ref("");
 
 function send() {
-  if (props.busy || note.value.trim().length > 1000) return;
   emit("send", note.value.trim() || null);
   sending.value = false;
 }

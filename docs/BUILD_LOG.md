@@ -3294,3 +3294,34 @@ On `feature/scrum-32-request-event-changes`, 2026-10-24, stacked on PR #106 (sto
 - Migration `20261025110000_close_cancellation_request_on_ended_event.sql` adds a trigger that closes the open request as `superseded` when the event becomes `rejected` or `completed` (CR-R22), the same way story 32 closes change requests. Reject remains a decision on the event, available with or without a request.
 - Tests: a failing case added to `event_cancellation_decision_checks.sql` first, then TC-CANCEL-024 in `verify_live.py`. No API or SPA code changed: the event read and the dashboard already list open requests only.
 - Verified (2026-10-24): migration applied to the live project with its ledger row; [TC-CANCEL-024](test-cases/runs/2026-10-24-2031-api-db-c197023.md) and [TC-CANCEL-018](test-cases/runs/2026-10-24-2032-api-db-c197023.md) pass. Only the checks this change touches were run, not the full suite. Every other rolled-back verification script also passed with the migration in place, except `event_cancellation_request_checks.sql`, which already fails on the live project because of story 32's `changes_only_on_change` constraint (story 32's branch updates it).
+
+### 4.90. Story 37 — Review and process event change requests
+
+On `feature/scrum-37-review-change-requests`, 2026-10-25, from `main` after PR #107 (story 32). PBI 37 (Event change request). The design was grilled with the developer before any code (Q1–Q24 and two follow-ups, recorded in REQUIREMENTS §6.19 CR-R23–CR-R32 and §9 items 98–101).
+
+**What was built.**
+- **Database** (migration `20261025120000_change_request_decision.sql`, one function per write, ADR-0007):
+  - `approve_event_change` applies the request's values to the event and its spaces under the event lock, at the version whose `before` values the API checked. It works through the API's booking plans under each booking's lock: a move re-checks the occupied window with `venue_conflicts` and either moves the booking (history `moved_by_change` with `old_period`/`new_period`) or flags it Conflict; an approved booking a new time or layout touched is marked Needs re-review; attendance over capacity flags Unsuitable, and a later fitting change clears that flag. A new time runs `recheck_event_reservations`, now marking short lines instead of setting `re_review`. A significant change returns Confirmed, Preparation and Safety review events to Planning (a `withdrawn` safety decision and the officers told for Safety review). The request closes `approved`; the organiser is told, registered attendees after a new time, venue staff again for a booking already under re-review.
+  - `reject_event_change` closes the request `rejected` with the reason and tells the organiser.
+  - `send_booking_for_re_review`, `send_equipment_line_for_re_review`: the assigned coordinator, in Planning, puts a marked arrangement under re-review; the whole staff pool is told.
+  - `approve_venue_booking` and `reject_venue_booking` also decide a `re_review` booking; a hold is decided exactly as before.
+  - Both booking request functions and `venue_bookings_one_active_per_space` accept Conflict and Unsuitable bookings for replacement (CR-95's path).
+  - Marker columns on `venue_bookings` and `equipment_requests`; `derive_technical_status` and its trigger treat a marked line as not ready; four notification types.
+- **API:** `GET /events/{id}/change-request/impact` (the preview), `POST …/change-request/approve` and `/reject`, `POST /venue-bookings/{id}/send-for-re-review`, `POST /equipment/requests/{line}/send-for-re-review`. `events/change_impact.py` plans what a change does to each booking. Readiness, the coordinator dashboard's equipment column, the event's booking summaries and equipment lines carry the marker; the venue staff booking read carries `re_review` context; the technical view carries the approved change.
+- **SPA:** the coordinator's change banner shows the preview with Approve and Reject; `ReReviewNotice` offers Send for re-review on space cards, the venue panel and equipment lines; the booking page shows venue staff what changed and lets them decide a re-review; the technical page shows tech support what changed; history headings for approved and rejected changes; Find replacement for Conflict and Unsuitable bookings.
+
+**Tests.** Test-first in vertical slices, one commit each, at the four seams agreed with the developer (HTTP API, SQL functions, `change_impact`, frontend views). Existing tests changed because a decided behaviour replaced theirs, each named in its commit:
+- `test_venue_booking_request_api.py`: Unsuitable no longer refused as a replacement (Q16, Q17);
+- `EventChangeRequestBanners.spec.js`: the coordinator's banner was read-only in story 32 (AC2);
+- `equipment_reservation_checks.sql` TC-EQR-023: a short line is marked, then sent (Q14);
+- `venue_booking_approve_checks.sql`, `venue_booking_reject_checks.sql`, `BookingRequestView.spec.js`, `bookingDecision.spec.js`: `re_review` is decidable (Q12).
+
+Results: backend 2,283 passed and frontend 1,675 passed, with every added line covered; `npm run build` clean.
+
+**An incident while testing (2026-10-25).** To dry-run the migration against every verification script, Claude wrapped each in one `begin; … rollback;` on the linked project, choosing them by keyword without reading them. One of them, `event_review_fixture_reset.sql`, is a fixture reset that ends with `commit;`. It committed the then-current migration to the live project, unrecorded, and reset the SCRUM-34/52 review fixtures (events `…0201`/`…0202`: their amendment requests, comments, equipment lines, notifications and non-creation history were deleted, and their statuses reset). On the developer's instruction the schema was reverted the same day, from definitions captured live beforehand, and checked object by object; the fixture rows deleted can't be restored without a backup. From then on only `begin…rollback` check scripts that had been screened were run, through a helper that refuses any script containing `commit`.
+
+**Verified.**
+- `change_request_decision_checks.sql` (TC-CHANGE-024) passes with the migration in a rolled-back transaction, as do every venue, equipment, replacement, hold-expiry, safety, cancellation and change-request check script it touches (run slice by slice while building).
+- Not yet: a final run of every check script together (the developer's tool permissions stopped it), the migration on the live project, the advisors, the live API/browser checks and the manual pass.
+
+**Not verified.** Everything above that needs the migration live: TC-CHANGE-013–023 and 025 as live checks, and the manual cases TC-CHANGE-026–028.
