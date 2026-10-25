@@ -3407,3 +3407,13 @@ Implemented on `feature/scrum-56-view-registered-events`. The estimate was confi
 **Fix:** When the signed-in user's active role is Attendee, the public detail view loads `GET /registrations/me` and compares the current event ID. A matching `registered` entry shows a disabled **Registered** action. Register stays disabled while the lookup is pending; lookup errors are shown, and non-Attendee/public sessions do not call the private endpoint. The backend remains authoritative for duplicate prevention.
 
 **Verification:** A focused view test reproduced the missing state before the fix. Focused frontend registration tests passed (20/20); the production build passed. The E2E check now verifies the disabled action when the seeded Attendee is already registered, but a live E2E rerun remains pending.
+
+### 4.92. Bug fix D59 — align Attendee My events with Organiser Events
+
+**Reported:** 2026-10-25 during the SCRUM-56 UI review. Upcoming and Past registrations were stacked vertically, and each section used a denser multi-column card grid than the Organiser Events page.
+
+**Root cause:** My events grouped events correctly but stacked the groups, used plain smaller section headings, and used compact status-board link cards instead of the larger card style in Organiser Events → Requests.
+
+**Fix:** Upcoming and Past now render side by side at wide breakpoints and stack on small screens; filtering to only one period uses the full width. Reused `SectionHeading` for the section labels and `BauhausCard` for the Requests-style card frame and typography. Registered retains a green stripe; Waitlisted uses the dimmed grey treatment. A first manual review confirmed the column layout but still found the headings and cards smaller than Requests; those styles were then aligned, and a final manual check is pending.
+
+**Verification:** Regression assertions first failed because the registration columns and Requests-style heading/card treatment were absent. The full frontend coverage run passed 1,700 tests across 113 files (97.86% overall line coverage; 100% line coverage for all changed frontend components); focused BauhausCard, Attendee and Organiser dashboard tests pass (47/47), and `npm run build` passes. The first manual review found the remaining typography mismatch; after aligning it, the developer's TC-REG-016 desktop/375px visual recheck passed ([run](test-cases/runs/2026-10-25-1611-manual-6a5b9ea.md)).

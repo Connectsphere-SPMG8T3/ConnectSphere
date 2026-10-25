@@ -8,10 +8,11 @@ import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
+import SectionHeading from "@/components/common/SectionHeading.vue";
 import PublicEventCard from "@/components/registrations/PublicEventCard.vue";
 import calendarArrowDown from "@/assets/icons/calendar-arrow-down.svg";
 import calendarArrowUp from "@/assets/icons/calendar-arrow-up.svg";
-import { BOARD_CARD_CLASSES, BOARD_CARD_TONE_CLASSES } from "@/features/events/dashboard";
+import { sectionTone } from "@/components/common/sectionTone";
 import { filterAndSortPublicEvents } from "@/features/registrations/publicEvents";
 import {
   filterAndSortRegistrations,
@@ -160,6 +161,10 @@ function registrationCardTone(status) {
   return status === "registered" ? "done" : "waiting";
 }
 
+function registrationCardBackground(status) {
+  return status === "registered" ? "green" : "white";
+}
+
 onMounted(() => {
   registrationStore.loadMyRegistrations().catch(() => {});
   registrationStore.loadDirectory().catch(() => {});
@@ -296,7 +301,12 @@ onMounted(() => {
         :title="registrationSearch || registrationStatuses.length ? 'No matching registrations' : 'No events in this time period'"
         detail="Change the filters or clear them to see your events."
       />
-      <div v-else class="space-y-8">
+      <div
+        v-else
+        data-testid="registration-columns"
+        class="grid grid-cols-1 items-start gap-10"
+        :class="{ 'lg:grid-cols-2 lg:gap-6': eventGroups.length === 2 }"
+      >
         <section
           v-for="group in eventGroups"
           :key="group.key"
@@ -304,37 +314,55 @@ onMounted(() => {
           :aria-labelledby="`${group.key}-registrations-title`"
         >
           <div class="mb-4 flex items-center justify-between gap-4">
-            <h2 :id="`${group.key}-registrations-title`" class="text-xl font-bold leading-tight">
+            <SectionHeading
+              :id="`${group.key}-registrations-title`"
+              :tone="sectionTone(group.key === 'upcoming' ? 0 : 1)"
+            >
               {{ group.title }}
-            </h2>
-            <span class="text-sm font-medium text-ink/70">{{ group.registrations.length }} total</span>
+            </SectionHeading>
+            <span class="text-sm font-bold">{{ group.registrations.length }} total</span>
           </div>
           <BauhausEmptyState
             v-if="group.registrations.length === 0"
             :title="`No ${group.key} events`"
           />
-          <div v-else class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            <RouterLink
+          <ul v-else class="grid gap-4">
+            <li
               v-for="registration in group.registrations"
               :key="registration.id"
-              :to="{ name: 'attendee-registered-event', params: { id: registration.event.id } }"
-              :data-event-row="registration.event.id"
-              :data-tone="registrationCardTone(registration.status)"
-              :class="[
-                BOARD_CARD_CLASSES,
-                BOARD_CARD_TONE_CLASSES[registrationCardTone(registration.status)],
-                'block min-w-0',
-              ]"
-              :aria-label="`Open ${registration.event.name}`"
             >
-              <p class="text-sm font-bold">{{ registration.event.name }}</p>
-              <p class="text-xs font-bold">{{ registrationStatusLabel(registration.status) }}</p>
-              <p class="text-xs text-ink/75">{{ formatRegistrationPeriod(registration.event) }}</p>
-              <p v-if="registration.event.venues.length" class="mt-1 text-xs text-ink/75">
-                {{ registration.event.venues.map((venue) => venue.name).join(", ") }}
-              </p>
-            </RouterLink>
-          </div>
+              <RouterLink
+                :to="{ name: 'attendee-registered-event', params: { id: registration.event.id } }"
+                :data-event-row="registration.event.id"
+                :data-tone="registrationCardTone(registration.status)"
+                class="block min-w-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                :aria-label="`Open ${registration.event.name}`"
+              >
+                <BauhausCard
+                  :background="registrationCardBackground(registration.status)"
+                  :dimmed="registration.status === 'waitlisted'"
+                  accent="none"
+                  compact
+                  allow-overflow
+                  class="border-4 shadow-none transition duration-150 hover:-translate-y-0.5 hover:bg-muted focus-within:-translate-y-0.5 focus-within:bg-muted motion-reduce:transition-none"
+                >
+                  <div class="flex min-w-0 items-center justify-between gap-4">
+                    <div class="min-w-0" data-event-name>
+                      <h3 data-event-name class="text-xl font-bold">{{ registration.event.name }}</h3>
+                      <p class="mt-1 text-xs font-bold text-ink/70">
+                        {{ registrationStatusLabel(registration.status) }}
+                      </p>
+                      <p class="mt-2 text-sm font-medium">
+                        {{ formatRegistrationPeriod(registration.event) }}<span v-if="registration.event.venues.length">
+                          · {{ registration.event.venues.map((venue) => venue.name).join(" · ") }}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                </BauhausCard>
+              </RouterLink>
+            </li>
+          </ul>
         </section>
       </div>
     </section>

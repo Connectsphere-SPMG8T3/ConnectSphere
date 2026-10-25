@@ -99,6 +99,13 @@ describe("AttendeeDashboard registered events", () => {
     expect(el.textContent).toContain("Workshop Room");
     const upcoming = el.querySelector('[data-testid="upcoming-registrations"]');
     const past = el.querySelector('[data-testid="past-registrations"]');
+    const columns = el.querySelector('[data-testid="registration-columns"]');
+    expect(columns).toBeTruthy();
+    expect(columns.classList).toContain("lg:grid-cols-2");
+    expect(columns.children[0]).toBe(upcoming);
+    expect(columns.children[1]).toBe(past);
+    expect(upcoming.querySelector("h2").dataset.tone).toBe("red");
+    expect(past.querySelector("h2").dataset.tone).toBe("blue");
     expect(upcoming.textContent).toContain("Upcoming City Forum");
     expect(upcoming.textContent).not.toContain("Past Design Forum");
     expect(past.textContent).toContain("Past Design Forum");
@@ -230,6 +237,10 @@ describe("AttendeeDashboard registered events", () => {
     await nextTick();
     expect(el.textContent).toContain("Past Event");
     expect(el.textContent).not.toContain("Upcoming Event");
+    const columns = el.querySelector('[data-testid="registration-columns"]');
+    expect(columns.children).toHaveLength(1);
+    expect(columns.classList).not.toContain("lg:grid-cols-2");
+    expect(columns.querySelector("h2").dataset.tone).toBe("blue");
 
     const pastLink = el.querySelector('a[href="/dashboard/attendee/events/past-event"]');
     await pastLink.click();
@@ -277,6 +288,14 @@ describe("AttendeeDashboard registered events", () => {
     expect(el.querySelector('[data-event-row="event-city"]')).toBeTruthy();
     expect(el.querySelector('[data-event-row="event-garden"]').getAttribute("data-tone")).toBe("done");
     expect(el.querySelector('[data-event-row="event-city"]').getAttribute("data-tone")).toBe("waiting");
+    const upcomingHeading = el.querySelector('[data-testid="upcoming-registrations"] h2');
+    expect(upcomingHeading.classList).toContain("text-2xl");
+    expect(upcomingHeading.classList).toContain("shadow-hard");
+    const registrationCard = el.querySelector('[data-event-row="event-garden"]');
+    expect(registrationCard.querySelector("h3").classList).toContain("text-xl");
+    expect(registrationCard.querySelector(".border-4")).toBeTruthy();
+    expect(registrationCard.querySelector('[aria-hidden="true"]').classList).toContain("bg-bauhaus-green");
+    expect(el.querySelector('[data-event-row="event-city"] [aria-hidden="true"]').classList).toContain("bg-ink/30");
 
     const search = el.querySelector('input[aria-label="Search my events"]');
     search.value = "City";
@@ -297,14 +316,14 @@ describe("AttendeeDashboard registered events", () => {
       .click();
     await nextTick();
     expect([...el.querySelectorAll('[data-testid="upcoming-registrations"] [data-event-row]')]
-      .map((card) => card.querySelector("p").textContent))
+      .map((card) => card.querySelector("h3").textContent))
       .toEqual(["City Forum", "Garden Supper"]);
 
     const direction = el.querySelector('button[aria-label^="Toggle sort direction"]');
     direction.click();
     await nextTick();
     expect([...el.querySelectorAll('[data-testid="upcoming-registrations"] [data-event-row]')]
-      .map((card) => card.querySelector("p").textContent))
+      .map((card) => card.querySelector("h3").textContent))
       .toEqual(["Garden Supper", "City Forum"]);
 
     const statusButton = el.querySelector('button[aria-label="Filter registrations by status"]');
