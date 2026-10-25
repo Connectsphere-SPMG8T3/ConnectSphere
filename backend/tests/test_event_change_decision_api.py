@@ -233,12 +233,13 @@ def approvals(monkeypatch, events, bookings):
 
     def approve_event_change(event_id, actor_id, expected_version, from_statuses, event_values,
                              space_values, organiser_message, history_reason, officer_message,
-                             attendee_message, booking_plans):
+                             attendee_message, booking_plans, staff_again_message):
         calls.append({"event_id": event_id, "actor_id": actor_id, "expected_version": expected_version,
                       "from_statuses": from_statuses, "event_values": event_values,
                       "space_values": space_values, "organiser_message": organiser_message,
                       "history_reason": history_reason, "officer_message": officer_message,
-                      "attendee_message": attendee_message, "booking_plans": booking_plans})
+                      "attendee_message": attendee_message, "booking_plans": booking_plans,
+                      "staff_again_message": staff_again_message})
         if outcome["value"] != "ok":
             return {"outcome": outcome["value"], "event": None}
         changed = {**events["store"][event_id], **event_values, "version": expected_version + 1}
@@ -523,6 +524,31 @@ class TestHistoryRecordsTheApproval:
         assert approved["changes"] == ORDINARY_REQUEST["changes"]
         assert approved["at"] == "2026-10-25T10:00:00Z"
         assert requested["kind"] == "change_requested"
+
+
+class TestASecondChangeUnderReReview:
+    """Q22: a booking already with venue staff stays with them, against the latest details."""
+
+    def test_venue_staff_are_told_the_details_changed_again(self, client, auth_headers, act_as, events, approvals):
+        act_as()
+
+        approve(client, auth_headers)
+
+        assert approvals["calls"][0]["staff_again_message"] == (
+            '"Partner Summit" changed again while under re-review. Check its booking against the new details.')
+
+    def test_the_preview_says_venue_staff_will_be_told_again(self, client, auth_headers, act_as, events, bookings,
+                                                             monkeypatch):
+        bookings["rows"]["value"][0]["status"] = "re_review"
+        events["request"]["value"]["changes"] = {"event": [], "spaces": [{
+            "space_id": SPACE_ID, "label": "Main hall",
+            "fields": [{"field": "layout_preference", "before": "theatre", "after": "boardroom"}]}]}
+        act_as()
+
+        body = client.get(f"/api/v1/events/{EVENT_ID}/change-request/impact", headers=auth_headers).json()
+
+        assert body["bookings"][0]["messages"] == [
+            "Already with venue staff: they are told the details changed again (Layout changed.)"]
 
 
 class TestImpactPreview:

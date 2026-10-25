@@ -136,6 +136,20 @@ insert into public.venue_bookings (id, event_id, venue_id, booked_period, status
      'b0000000-0000-4000-8000-000000000003', tstzrange('2031-04-22 10:00+08', '2031-04-22 12:00+08', '[)'),
      'approved', now(), 'Layout changed.');
 
+-- Q22: a second change while a booking is already under re-review.
+insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at) values
+    ('e0000000-0000-4000-8000-000000003712', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'planning', 'Second change check (rolled back)',
+     '2031-04-23 10:00+08', '2031-04-23 12:00+08');
+insert into public.venue_bookings (id, event_id, venue_id, booked_period, status) values
+    ('d0000000-0000-4000-8000-000000003712', 'e0000000-0000-4000-8000-000000003712',
+     'b0000000-0000-4000-8000-000000000003', tstzrange('2031-04-23 10:00+08', '2031-04-23 12:00+08', '[)'),
+     're_review');
+insert into public.event_change_requests (event_id, kind, reason, requested_by, changes, significant) values
+    ('e0000000-0000-4000-8000-000000003712', 'change', 'Later again', 'a0000000-0000-4000-8000-000000000001',
+     '{"event": [{"field": "ends_at", "before": "2031-04-23T04:00:00Z", "after": "2031-04-23T05:00:00Z"}], "spaces": []}',
+     true);
+
 insert into public.event_space_requests (id, event_id, label, expected_pax) values
     ('f0000000-0000-4000-8000-000000003704', 'e0000000-0000-4000-8000-000000003704', 'Main hall', 80);
 
@@ -537,6 +551,27 @@ begin
        and recipient_id = 'a0000000-0000-4000-8000-000000000004' and recipient_role = 'tech_support'
        and message = 'to tech support';
     if v_rows <> 1 then raise exception 'CHANGE FAIL: technical support were not told once'; end if;
+
+    -- Q22: it stays under re-review, takes the new time, and venue staff hear the details changed again.
+    select version into v_version from public.events where id = 'e0000000-0000-4000-8000-000000003712';
+    v_result := public.approve_event_change('e0000000-0000-4000-8000-000000003712', v_coordinator, v_version,
+        v_decidable, '{"ends_at": "2031-04-23T05:00:00Z"}', '{}', 'o', 'r', 'f', null,
+        jsonb_build_array(jsonb_build_object('booking_id', 'd0000000-0000-4000-8000-000000003712',
+            'period', jsonb_build_array('2031-04-23T02:00:00Z', '2031-04-23T05:00:00Z'),
+            'mark', 'Date or time changed.')),
+        'details changed again');
+    if v_result->>'outcome' is distinct from 'ok'
+       or (select status from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003712') <> 're_review'
+       or (select booked_period from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003712')
+         <> tstzrange('2031-04-23 10:00+08', '2031-04-23 13:00+08', '[)')
+       or (select needs_re_review_since from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003712')
+         is not null then
+        raise exception 'CHANGE FAIL: a booking under re-review did not keep its status and take the new time: %', v_result;
+    end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-000000003712' and type = 'venue_booking_re_review'
+       and recipient_id = v_venue_staff and recipient_role = 'venue_staff' and message = 'details changed again';
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: venue staff were not told the details changed again'; end if;
 
     -- Q16, Q17: a Conflict or Unsuitable booking can be replaced (CR-95's path), the
     -- replacement sitting beside it until it is approved.

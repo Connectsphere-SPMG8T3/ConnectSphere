@@ -77,7 +77,8 @@ create or replace function public.approve_event_change(
     p_history_reason text default null,
     p_officer_message text default null,
     p_attendee_message text default null,
-    p_bookings jsonb default '[]'
+    p_bookings jsonb default '[]',
+    p_staff_again_message text default null
 )
 returns jsonb
 language plpgsql
@@ -193,6 +194,14 @@ begin
                set needs_re_review_since = now(), needs_re_review_reason = v_plan->>'mark'
              where id = v_booking.id;
         end if;
+        -- Q22: one already with venue staff stays with them, against the latest details.
+        if v_plan->>'mark' is not null and v_booking.status = 're_review' and p_staff_again_message is not null then
+            insert into public.notifications (recipient_id, recipient_role, event_id, type, message)
+            select distinct ur.profile_id, 'venue_staff'::public.user_role, p_event_id, 'venue_booking_re_review',
+                   p_staff_again_message
+              from public.user_roles ur
+             where ur.role = 'venue_staff' and ur.profile_id is distinct from p_actor_id;
+        end if;
         if v_plan->>'unsuitable' is not null and v_booking.flag is null then
             update public.venue_bookings
                set flag = 'unsuitable', flag_reason = v_plan->>'unsuitable', flagged_at = now()
@@ -245,9 +254,9 @@ $$;
 comment on function public.approve_event_change is
     'Story 37 AC2: approves the open change request on an event the actor coordinates, in one of p_from_statuses, not yet started and still at p_expected_version. Applies p_event_values (only the changed event fields) and p_space_values ({space_id: changed fields}) in one transaction, bumps the versions, closes the request as approved and notifies the organiser. Answers {outcome: ok|not_found|not_assigned|status_changed|started|stale|no_open_request, event}. API-only.';
 
-revoke execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text, text, text, text, jsonb)
+revoke execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text, text, text, text, jsonb, text)
     from public, anon, authenticated;
-grant execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text, text, text, text, jsonb)
+grant execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text, text, text, text, jsonb, text)
     to service_role;
 
 -- ---------------------------------------------------------------------------

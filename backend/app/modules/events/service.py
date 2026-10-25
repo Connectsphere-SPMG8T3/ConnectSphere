@@ -644,6 +644,8 @@ def approve_change(event_id: str, coordinator_id: str, version: int) -> EventRes
         attendee_message=(f'The date or time of "{name}" has changed. Check the event page for the new time.'
                           if moved else None),
         booking_plans=[_plan_payload(plan) for plan in plans],
+        staff_again_message=(f'"{name}" changed again while under re-review. '
+                             "Check its booking against the new details."),
     )
     _raise_for_change_outcome(result["outcome"])
     return _to_response(result["event"])
@@ -670,6 +672,9 @@ def change_request_impact(event_id: str, coordinator_id: str) -> ChangeImpact:
             booking.id, booking.venue_id, booking.setup_minutes, booking.turnaround_minutes, *plan.period)
         if clash:
             messages.append(f"Clashes with {clash}: it keeps its time and is flagged Conflict.")
+        elif booking.status == "re_review" and plan.mark:
+            # Q22: it is with venue staff already, and stays with them.
+            messages.append(f"Already with venue staff: they are told the details changed again ({plan.mark})")
         else:
             if plan.period:
                 messages.append("Moves to the new time.")
