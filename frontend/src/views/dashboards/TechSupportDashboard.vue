@@ -473,18 +473,18 @@ function formatDate(value) {
 
         <ul class="flex flex-col gap-3">
           <li v-for="(item, index) in items" :key="index" class="grid grid-cols-1 gap-4 border-2 border-ink bg-canvas p-4 shadow-hard sm:grid-cols-[1fr_1fr_7rem_auto] sm:items-end sm:border-4">
-            <label class="flex flex-col gap-2 text-xs font-bold">
+            <label class="flex min-w-0 flex-col gap-2 text-xs font-bold">
               Equipment ID / type
-              <select v-model="item.equipmentId" :disabled="!catalogue.length" class="border-2 border-ink bg-canvas px-3 py-3 text-sm font-medium outline-none focus:bg-bauhaus-yellow/20 disabled:opacity-60">
+              <select v-model="item.equipmentId" :disabled="!catalogue.length" class="min-w-0 w-full border-2 border-ink bg-canvas px-3 py-3 text-sm font-medium outline-none focus:bg-bauhaus-yellow/20 disabled:opacity-60">
                 <option v-if="!catalogue.length" :value="null">{{ catalogueLoading ? "Loading equipment…" : "No equipment available" }}</option>
                 <option v-for="equipment in catalogue" :key="equipment.equipment_id" :value="equipment.equipment_id">
                   {{ equipment.name }} · {{ equipment.equipment_type }}
                 </option>
               </select>
             </label>
-            <label class="flex flex-col gap-2 text-xs font-bold">
+            <label class="flex min-w-0 flex-col gap-2 text-xs font-bold">
               Needed
-              <input v-model.number="item.quantityNeeded" type="number" min="1" class="border-2 border-ink bg-canvas px-3 py-3 text-sm font-medium outline-none focus:bg-bauhaus-yellow/20" />
+              <input v-model.number="item.quantityNeeded" type="number" min="1" class="min-w-0 w-full border-2 border-ink bg-canvas px-3 py-3 text-sm font-medium outline-none focus:bg-bauhaus-yellow/20" />
             </label>
             <button type="button" class="border-2 border-ink px-3 py-3 text-xs font-bold active-press enabled:hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" :disabled="items.length === 1" @click="removeItem(index)">
               Remove

@@ -26,7 +26,15 @@ for (const width of [1280, 768, 375]) {
         `('${item.id}', 2, '2034-01-01 09:00+08', '2034-01-01 12:00+08', 'Faulty units')`);
       await page.setViewportSize({ width, height: 900 });
       await seedSession(page, await sharedSessions("tech_support"));
+      const catalogueResponse = page.waitForResponse((response) => response.url().endsWith("/equipment/catalogue"));
       await page.goto("/dashboard/tech-support?tab=availability");
+      const catalogue = await catalogueResponse;
+      expect(catalogue.status()).toBe(200);
+      const listed = (await catalogue.json()).items.map((row) => row.equipment_id);
+      if (!listed.includes(item.id)) {
+        const stored = query(`select id, status from public.equipment where id = '${item.id}'`);
+        throw new Error(`Test equipment missing from catalogue; current database row: ${JSON.stringify(stored)}`);
+      }
       await page.getByLabel("Equipment ID / type").first().selectOption(item.id);
       // Browser-local input is converted to UTC by the actual form.
       const local = await page.evaluate(() => {
