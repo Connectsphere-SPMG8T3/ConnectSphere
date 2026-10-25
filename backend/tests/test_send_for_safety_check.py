@@ -133,3 +133,15 @@ def test_an_event_space_without_an_approved_booking_blocks_and_is_named(client, 
     assert response.status_code == 409
     assert response.json()["detail"] == "Not ready for safety check: Breakout room: no approved venue booking."
     assert not state["calls"]
+
+
+def test_a_booking_that_needs_re_review_blocks_sending(client, auth_headers, authenticate_as, state, monkeypatch):
+    # Story 37 Q13: an approved change marked it; it counts as not ready until sent and decided.
+    authenticate_as("event_coordinator", COORDINATOR_ID)
+    monkeypatch.setattr(venues_repository, "list_booking_statuses",
+                        lambda ids: [{"event_id": EVENT_ID, "status": "approved",
+                                      "needs_re_review_since": "2026-10-25T02:00:00+00:00"}])
+    response = client.post(URL, headers=auth_headers)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Not ready for safety check: A venue booking needs re-review."
+    assert not state["calls"]

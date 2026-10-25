@@ -19,7 +19,7 @@ from app.core.exceptions import (
 # Module imports, not names: `venues.service` imports this module too, and a
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.equipment import service as equipment_service
-from app.modules.events import change_fields, lead_scope, lifecycle, repository
+from app.modules.events import change_fields, change_impact, lead_scope, lifecycle, repository
 from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
 from app.modules.events.schemas import (
@@ -607,6 +607,12 @@ def _approved_values(row: dict, changes: dict) -> tuple[dict, dict]:
     return event_values, space_values
 
 
+def _plan_payload(plan: change_impact.BookingPlan) -> dict:
+    period = [moment.isoformat() for moment in plan.period] if plan.period else None
+    return {"booking_id": plan.booking_id, "period": period, "mark": plan.mark,
+            "unsuitable": plan.unsuitable, "clear_unsuitable": plan.clear_unsuitable}
+
+
 def approve_change(event_id: str, coordinator_id: str, version: int) -> EventResponse:
     """Story 37 AC2, AC4: the assigned coordinator approves the open change request.
     The values are applied as one transaction by the database."""
@@ -621,6 +627,8 @@ def approve_change(event_id: str, coordinator_id: str, version: int) -> EventRes
     candidate = {**row, **event_values,
                  "spaces": [{**space, **space_values.get(space["id"], {})} for space in row.get("spaces") or []]}
     _refuse_new_submission_errors(row, candidate)
+    plans = change_impact.booking_plans(row, event_values, space_values, [
+        change_impact.ChangeBooking(**booking) for booking in venues_service.change_bookings(event_id)])
     name = row["name"]
     moved = bool(event_values.keys() & {"starts_at", "ends_at", "event_timezone"})
     result = repository.approve_event_change(
@@ -631,6 +639,7 @@ def approve_change(event_id: str, coordinator_id: str, version: int) -> EventRes
         # RG-R4, Q9: attendees act on a new date or time, not on attendance or layout.
         attendee_message=(f'The date or time of "{name}" has changed. Check the event page for the new time.'
                           if moved else None),
+        booking_plans=[_plan_payload(plan) for plan in plans],
     )
     _raise_for_change_outcome(result["outcome"])
     return _to_response(result["event"])

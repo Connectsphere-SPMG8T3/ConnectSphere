@@ -278,6 +278,8 @@ class EventCoordinator(BaseModel):
 class BookingReadiness(BaseModel):
     status: str
     flags: list[str] = []
+    # Story 37: an approved change touched it, and the coordinator hasn't sent it yet.
+    needs_re_review: bool = False
 
 
 class SpaceReadiness(BaseModel):

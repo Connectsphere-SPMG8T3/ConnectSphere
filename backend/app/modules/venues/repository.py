@@ -504,15 +504,31 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
 
 
 def list_booking_statuses(event_ids: Iterable[str]) -> list[dict]:
-    """`{event_id, event_space_request_id, status, flag}` for every booking of these events, whatever its status."""
+    """`{event_id, event_space_request_id, status, flag, needs_re_review_since}` for every
+    booking of these events, whatever its status."""
     ids = list(event_ids)
     if not ids:
         return []
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("event_id, event_space_request_id, status, flag")
+        .select("event_id, event_space_request_id, status, flag, needs_re_review_since")
         .in_("event_id", ids)
+        .execute()
+    )
+    return response.data or []
+
+
+def list_change_bookings(event_id: str) -> list[dict]:
+    """Story 37: `{id, event_space_request_id, status, venue_id, flag, flag_reason}` for
+    the event's bookings that occupy their venue, which an approved change may touch."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_bookings")
+        .select("id, event_space_request_id, status, venue_id, flag, flag_reason")
+        .eq("event_id", event_id)
+        .in_("status", ["held", "approved", "re_review"])
+        .order("created_at")
         .execute()
     )
     return response.data or []

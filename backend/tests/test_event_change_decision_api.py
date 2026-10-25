@@ -4,12 +4,14 @@ and markers are checked against the real database by
 supabase/verification/change_request_decision_checks.sql."""
 
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
 
 from app.modules.events import repository
+from app.modules.venues import repository as venues_repository
+from app.modules.venues.schemas import LayoutOption, VenueLayout, VenueSummary
 from tests.conftest import make_table_mock
 
 ORGANISER_ID = "a0000000-0000-4000-8000-000000000001"
@@ -18,6 +20,8 @@ OTHER_COORDINATOR_ID = "a0000000-0000-4000-8000-000000000009"
 EVENT_ID = "e0000000-0000-4000-8000-000000000371"
 REQUEST_ID = "c0000000-0000-4000-8000-000000000371"
 SPACE_ID = "f0000000-0000-4000-8000-000000000371"
+BOOKING_ID = "d0000000-0000-4000-8000-000000000371"
+VENUE_ID = "b0000000-0000-4000-8000-000000000001"
 REQUEST_REASON = "More guests confirmed"
 REJECTION_REASON = "The venue can't take more people"
 FUTURE_START = "2026-11-12T10:00:00+08:00"
@@ -199,8 +203,29 @@ ORDINARY_REQUEST = {
 }
 
 
+def venue(capacity=200, banquet=None):
+    layouts = [LayoutOption(layout=VenueLayout.theatre, capacity_for_layout=None)]
+    if banquet:
+        layouts.append(LayoutOption(layout=VenueLayout.banquet, capacity_for_layout=banquet))
+    return VenueSummary(id=VENUE_ID, name="Grand Ballroom", location="Marina", capacity=capacity, layouts=layouts,
+                        facilities=[], accessibility_features=[], opens_at=time(8), closes_at=time(22),
+                        is_active=True, description=None)
+
+
 @pytest.fixture()
-def approvals(monkeypatch, events):
+def bookings(monkeypatch):
+    """The event's occupying bookings and the venues they are at, as the venues
+    repository reads them."""
+    rows = {"value": [{"id": BOOKING_ID, "event_space_request_id": SPACE_ID, "status": "approved",
+                       "venue_id": VENUE_ID, "flag": None, "flag_reason": None}]}
+    venues = {"value": [venue()]}
+    monkeypatch.setattr(venues_repository, "list_change_bookings", lambda event_id: deepcopy(rows["value"]))
+    monkeypatch.setattr(venues_repository, "list_venues", lambda: venues["value"])
+    return {"rows": rows, "venues": venues}
+
+
+@pytest.fixture()
+def approvals(monkeypatch, events, bookings):
     """A fake `approve_event_change` that answers like the RPC: ok with the changed
     event, or an outcome code."""
     calls = []
@@ -208,12 +233,12 @@ def approvals(monkeypatch, events):
 
     def approve_event_change(event_id, actor_id, expected_version, from_statuses, event_values,
                              space_values, organiser_message, history_reason, officer_message,
-                             attendee_message):
+                             attendee_message, booking_plans):
         calls.append({"event_id": event_id, "actor_id": actor_id, "expected_version": expected_version,
                       "from_statuses": from_statuses, "event_values": event_values,
                       "space_values": space_values, "organiser_message": organiser_message,
                       "history_reason": history_reason, "officer_message": officer_message,
-                      "attendee_message": attendee_message})
+                      "attendee_message": attendee_message, "booking_plans": booking_plans})
         if outcome["value"] != "ok":
             return {"outcome": outcome["value"], "event": None}
         changed = {**events["store"][event_id], **event_values, "version": expected_version + 1}
@@ -383,6 +408,60 @@ class TestApproveSignificantChange:
 
         assert approvals["calls"][0]["attendee_message"] == (
             'The date or time of "Partner Summit" has changed. Check the event page for the new time.')
+
+
+class TestApprovalPlansTheBookings:
+    """AC3, AC5: the API tells the database what the change does to each booking."""
+
+    def test_an_ordinary_change_touches_no_booking(self, client, auth_headers, act_as, events, approvals):
+        act_as()
+
+        approve(client, auth_headers)
+
+        assert approvals["calls"][0]["booking_plans"] == []
+
+    def test_a_new_time_moves_and_marks_the_booking(self, client, auth_headers, act_as, events, approvals):
+        events["request"]["value"]["changes"] = {"event": [
+            {"field": "starts_at", "before": FUTURE_START, "after": "2026-11-12T14:00:00+08:00"},
+            {"field": "ends_at", "before": "2026-11-12T12:00:00+08:00", "after": "2026-11-12T16:00:00+08:00"},
+        ], "spaces": []}
+        act_as()
+
+        approve(client, auth_headers)
+
+        assert approvals["calls"][0]["booking_plans"] == [{
+            "booking_id": BOOKING_ID, "period": ["2026-11-12T14:00:00+08:00", "2026-11-12T16:00:00+08:00"],
+            "mark": "Date or time changed.", "unsuitable": None, "clear_unsuitable": False,
+        }]
+
+    def test_attendance_above_the_layouts_capacity_flags_the_booking(self, client, auth_headers, act_as, events,
+                                                                     bookings, approvals):
+        """Q17, via the shared capacity rule: banquet seats fewer than the hall."""
+        bookings["venues"]["value"] = [venue(capacity=200, banquet=100)]
+        events["request"]["value"]["changes"] = {"event": [], "spaces": [{
+            "space_id": SPACE_ID, "label": "Main hall",
+            "fields": [{"field": "layout_preference", "before": "theatre", "after": "banquet"}]}]}
+        events["store"][EVENT_ID]["spaces"][0]["expected_pax"] = 150
+        act_as()
+
+        approve(client, auth_headers)
+
+        [plan] = approvals["calls"][0]["booking_plans"]
+        assert plan["mark"] == "Layout changed."
+        assert plan["unsuitable"] == "After an approved change: Main hall needs 150 people; Grand Ballroom seats 100."
+
+    def test_a_booking_at_an_unknown_venue_is_left_to_the_database(self, client, auth_headers, act_as, events,
+                                                                    bookings, approvals):
+        """A venue missing from the catalogue read can't be judged on capacity here."""
+        bookings["venues"]["value"] = []
+        events["request"]["value"]["changes"] = {"event": [
+            {"field": "expected_attendance", "before": 80, "after": 900}], "spaces": []}
+        events["store"][EVENT_ID]["spaces"][0]["expected_pax"] = None
+        act_as()
+
+        approve(client, auth_headers)
+
+        assert approvals["calls"][0]["booking_plans"] == []
 
 
 class TestHistoryRecordsTheDecision:

@@ -11,6 +11,27 @@
 -- started or left the decidable statuses (AC8, Q5). API-only (ADR-0006).
 -- =============================================================================
 
+-- Q13: an approved change marks the bookings it touches Needs re-review, separately
+-- from flags (so a booking can be marked and flagged at once); readiness counts a
+-- marked booking as not ready. The coordinator then sends it to venue staff.
+alter table public.venue_bookings
+    add column needs_re_review_since timestamptz null,
+    add column needs_re_review_reason text null,
+    add constraint venue_bookings_needs_re_review_together
+        check ((needs_re_review_since is null) = (needs_re_review_reason is null)),
+    add constraint venue_bookings_needs_re_review_reason_length
+        check (needs_re_review_reason is null or length(btrim(needs_re_review_reason)) between 1 and 1000);
+
+comment on column public.venue_bookings.needs_re_review_since is
+    'Story 37: when an approved change touched what venue staff approved (time or layout, CR-R5). Cleared when the coordinator sends it for re-review. Not ready while set.';
+comment on column public.venue_bookings.needs_re_review_reason is
+    'Story 37: what the change touched, such as "Date or time changed."';
+
+-- Q19: a booking moved by an approved change records both windows.
+alter table public.venue_booking_history
+    add column old_period tstzrange null,
+    add column new_period tstzrange null;
+
 -- The organiser alone hears of a decision on their request.
 insert into public.notification_types (type, recipient_roles) values
     ('event_change_approved', '{event_organiser}'),
@@ -30,7 +51,8 @@ create or replace function public.approve_event_change(
     p_organiser_message text,
     p_history_reason text default null,
     p_officer_message text default null,
-    p_attendee_message text default null
+    p_attendee_message text default null,
+    p_bookings jsonb default '[]'
 )
 returns jsonb
 language plpgsql
@@ -43,6 +65,10 @@ declare
     v_space_id text;
     v_values jsonb;
     v_significant boolean;
+    v_plan jsonb;
+    v_booking public.venue_bookings;
+    v_new tstzrange;
+    v_clash record;
 begin
     select * into v_event from public.events where id = p_event_id for update;
     if not found or v_event.status = 'draft' then
@@ -95,6 +121,67 @@ begin
          where s.id = v_space_id::uuid and s.event_id = p_event_id and current_space.id = s.id;
     end loop;
 
+    -- AC3, AC5: what the change does to each booking, as the API planned it. Every move
+    -- is re-checked here under the booking's lock, against the occupied window with the
+    -- booking's own setup and turnaround (SCRUM-21, VC-R9).
+    perform public.expire_venue_holds(now());
+    for v_plan in select value from jsonb_array_elements(p_bookings) loop
+        select * into v_booking from public.venue_bookings
+         where id = (v_plan->>'booking_id')::uuid and event_id = p_event_id
+           for update;
+        if not found or v_booking.status not in ('held', 'approved', 're_review') then
+            continue;
+        end if;
+
+        if jsonb_typeof(v_plan->'period') = 'array' then
+            v_new := tstzrange((v_plan->'period'->>0)::timestamptz, (v_plan->'period'->>1)::timestamptz, '[)');
+            select c.kind, c.event_name, c.block_reason into v_clash
+              from public.venue_conflicts(
+                       tstzrange(lower(v_new) - make_interval(mins => v_booking.setup_minutes),
+                                 upper(v_new) + make_interval(mins => v_booking.turnaround_minutes), '[)'),
+                       v_booking.venue_id, v_booking.id) c
+             order by c.kind = 'block' desc, lower(c.occupied_period)
+             limit 1;
+            if found then
+                -- Q11, Q16: it keeps the old window and can't go to venue staff; the first flag wins.
+                if v_booking.flag is null then
+                    update public.venue_bookings
+                       set flag = 'conflict', flagged_at = now(),
+                           flag_reason = case when v_clash.kind = 'block'
+                               then format('The new time clashes with a venue block (%s).',
+                                           private.venue_block_reason_label(v_clash.block_reason::public.venue_block_reason))
+                               else format('The new time clashes with "%s".', v_clash.event_name) end
+                     where id = v_booking.id;
+                end if;
+                continue;
+            end if;
+            update public.venue_bookings set booked_period = v_new where id = v_booking.id;
+            insert into public.venue_booking_history (booking_id, actor_id, action, from_status, to_status,
+                                                      old_period, new_period)
+            values (v_booking.id, p_actor_id, 'moved_by_change', v_booking.status, v_booking.status,
+                    v_booking.booked_period, v_new);
+        end if;
+
+        -- Only what venue staff approved needs them again; a hold is still theirs to decide (Q15).
+        if v_plan->>'mark' is not null and v_booking.status = 'approved' then
+            update public.venue_bookings
+               set needs_re_review_since = now(), needs_re_review_reason = v_plan->>'mark'
+             where id = v_booking.id;
+        end if;
+        if v_plan->>'unsuitable' is not null and v_booking.flag is null then
+            update public.venue_bookings
+               set flag = 'unsuitable', flag_reason = v_plan->>'unsuitable', flagged_at = now()
+             where id = v_booking.id;
+        end if;
+        -- Q17: only an Unsuitable flag an approved change set is cleared by one.
+        if (v_plan->>'clear_unsuitable')::boolean is true and v_booking.flag = 'unsuitable'
+           and v_booking.flag_reason like 'After an approved change: %' then
+            update public.venue_bookings
+               set flag = null, flag_reason = null, flagged_at = null
+             where id = v_booking.id;
+        end if;
+    end loop;
+
     -- AC7, QA3-16: a significant change must pass the safety check again, so a Confirmed
     -- or Preparation event goes back to Planning, and so does one in Safety review,
     -- which is being checked against details that no longer hold (Q6).
@@ -127,9 +214,9 @@ $$;
 comment on function public.approve_event_change is
     'Story 37 AC2: approves the open change request on an event the actor coordinates, in one of p_from_statuses, not yet started and still at p_expected_version. Applies p_event_values (only the changed event fields) and p_space_values ({space_id: changed fields}) in one transaction, bumps the versions, closes the request as approved and notifies the organiser. Answers {outcome: ok|not_found|not_assigned|status_changed|started|stale|no_open_request, event}. API-only.';
 
-revoke execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text, text, text, text)
+revoke execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text, text, text, text, jsonb)
     from public, anon, authenticated;
-grant execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text, text, text, text)
+grant execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text, text, text, text, jsonb)
     to service_role;
 
 -- ---------------------------------------------------------------------------

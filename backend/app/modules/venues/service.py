@@ -1,6 +1,7 @@
 """Venue module use cases: search the catalogue, read one venue, edit one, request a booking."""
 
 import logging
+import sys
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
@@ -666,6 +667,25 @@ def affected_event_ids(event_ids: Iterable[str]) -> set[str]:
     }
 
 
+def change_bookings(event_id: str) -> list[dict]:
+    """Story 37: the event's occupying bookings, each with its venue's name and a
+    `capacity_for(layout)` through the shared capacity rule, for the events module to
+    plan an approved change with. A venue the catalogue doesn't return has no
+    capacity to judge here, so nothing is flagged for it."""
+    venues = {venue.id: venue for venue in repository.list_venues()}
+    bookings = []
+    for row in repository.list_change_bookings(event_id):
+        venue = venues.get(row["venue_id"])
+        bookings.append({
+            "id": row["id"], "space_id": row.get("event_space_request_id"), "status": row["status"],
+            "flag": row.get("flag"), "flag_reason": row.get("flag_reason"),
+            "venue_name": venue.name if venue else "",
+            "capacity_for": ((lambda layout, venue=venue: suitability.effective_capacity(venue, layout)) if venue
+                             else (lambda layout: sys.maxsize)),
+        })
+    return bookings
+
+
 def booking_readiness_by_space(event_id: str) -> dict[str, list[BookingReadiness]]:
     """`{event_space_request_id: [BookingReadiness, ...]}` for one event (CR-97
     AC10): each of its event spaces' bookings, with status and open flag, so a
@@ -675,7 +695,8 @@ def booking_readiness_by_space(event_id: str) -> dict[str, list[BookingReadiness
         if row.get("event_space_request_id"):
             flags = [row["flag"]] if row.get("flag") else []
             readiness.setdefault(row["event_space_request_id"], []).append(
-                BookingReadiness(status=row["status"], flags=flags)
+                BookingReadiness(status=row["status"], flags=flags,
+                                 needs_re_review=bool(row.get("needs_re_review_since")))
             )
     return readiness
 
@@ -688,7 +709,8 @@ def booking_readiness_by_event(event_ids: Iterable[str]) -> dict[str, list[Booki
     readiness: dict[str, list[BookingReadiness]] = {}
     for row in repository.list_booking_statuses(event_ids):
         flags = [row["flag"]] if row.get("flag") else []
-        readiness.setdefault(row["event_id"], []).append(BookingReadiness(status=row["status"], flags=flags))
+        readiness.setdefault(row["event_id"], []).append(BookingReadiness(
+            status=row["status"], flags=flags, needs_re_review=bool(row.get("needs_re_review_since"))))
     return readiness
 
 

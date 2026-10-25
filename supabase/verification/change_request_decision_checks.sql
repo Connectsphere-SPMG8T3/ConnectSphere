@@ -53,6 +53,60 @@ select id, 'change', 'More guests', 'a0000000-0000-4000-8000-000000000001',
 insert into public.event_registrations (event_id, attendee_id) values
     ('e0000000-0000-4000-8000-000000003705', 'a0000000-0000-4000-8000-000000000005');
 
+-- Bookings an approved change touches (AC3, AC5, Q11, Q15, Q17): a time change on
+-- 2031-04-21 to 14:00-16:00, with another event's hold at 13:00-14:00 on Auditorium A.
+insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at) values
+    ('e0000000-0000-4000-8000-000000003709', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'planning', 'Booking moves check (rolled back)',
+     '2031-04-21 10:00+08', '2031-04-21 12:00+08'),
+    ('e0000000-0000-4000-8000-000000003710', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'planning', 'Blocking hold (rolled back)',
+     '2031-04-21 13:00+08', '2031-04-21 14:00+08');
+
+insert into public.event_space_requests (id, event_id, label, expected_pax) values
+    ('f0000000-0000-4000-8000-000000003791', 'e0000000-0000-4000-8000-000000003709', 'Clash', 50),
+    ('f0000000-0000-4000-8000-000000003792', 'e0000000-0000-4000-8000-000000003709', 'Mover', 50),
+    ('f0000000-0000-4000-8000-000000003793', 'e0000000-0000-4000-8000-000000003709', 'Held', 50),
+    ('f0000000-0000-4000-8000-000000003794', 'e0000000-0000-4000-8000-000000003709', 'Crowded', 50),
+    ('f0000000-0000-4000-8000-000000003795', 'e0000000-0000-4000-8000-000000003709', 'Fits again', 50),
+    ('f0000000-0000-4000-8000-000000003796', 'e0000000-0000-4000-8000-000000003710', 'Blocker', 50),
+    ('f0000000-0000-4000-8000-000000003797', 'e0000000-0000-4000-8000-000000003709', 'Blocked', 50);
+
+insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values
+    ('b0000000-0000-4000-8000-000000000001',
+     tstzrange('2031-04-21 15:00+08', '2031-04-21 17:00+08', '[)'), 'maintenance', 'Change check (rolled back)');
+
+-- An hour's setup takes the moved Clash booking into the blocker's hold.
+insert into public.venue_bookings (id, event_id, event_space_request_id, venue_id, booked_period, setup_minutes,
+                                   status, flag, flag_reason, flagged_at) values
+    ('d0000000-0000-4000-8000-000000003791', 'e0000000-0000-4000-8000-000000003709',
+     'f0000000-0000-4000-8000-000000003791', 'b0000000-0000-4000-8000-000000000002',
+     tstzrange('2031-04-21 10:00+08', '2031-04-21 12:00+08', '[)'), 60, 'approved', null, null, null),
+    ('d0000000-0000-4000-8000-000000003792', 'e0000000-0000-4000-8000-000000003709',
+     'f0000000-0000-4000-8000-000000003792', 'b0000000-0000-4000-8000-000000000003',
+     tstzrange('2031-04-21 10:00+08', '2031-04-21 12:00+08', '[)'), 0, 'approved', null, null, null),
+    ('d0000000-0000-4000-8000-000000003793', 'e0000000-0000-4000-8000-000000003709',
+     'f0000000-0000-4000-8000-000000003793', 'b0000000-0000-4000-8000-000000000004',
+     tstzrange('2031-04-21 10:00+08', '2031-04-21 12:00+08', '[)'), 0, 'held', null, null, null),
+    ('d0000000-0000-4000-8000-000000003794', 'e0000000-0000-4000-8000-000000003709',
+     'f0000000-0000-4000-8000-000000003794', 'b0000000-0000-4000-8000-000000000005',
+     tstzrange('2031-04-21 10:00+08', '2031-04-21 12:00+08', '[)'), 0, 'approved', null, null, null),
+    ('d0000000-0000-4000-8000-000000003795', 'e0000000-0000-4000-8000-000000003709',
+     'f0000000-0000-4000-8000-000000003795', 'b0000000-0000-4000-8000-000000000006',
+     tstzrange('2031-04-21 10:00+08', '2031-04-21 12:00+08', '[)'), 0, 'approved', 'unsuitable',
+     'After an approved change: Fits again needs 90 people; Innovation Lab seats 80.', now()),
+    ('d0000000-0000-4000-8000-000000003797', 'e0000000-0000-4000-8000-000000003709',
+     'f0000000-0000-4000-8000-000000003797', 'b0000000-0000-4000-8000-000000000001',
+     tstzrange('2031-04-21 10:00+08', '2031-04-21 12:00+08', '[)'), 0, 'approved', null, null, null),
+    ('d0000000-0000-4000-8000-000000003796', 'e0000000-0000-4000-8000-000000003710',
+     'f0000000-0000-4000-8000-000000003796', 'b0000000-0000-4000-8000-000000000002',
+     tstzrange('2031-04-21 13:00+08', '2031-04-21 14:00+08', '[)'), 0, 'held', null, null, null);
+
+insert into public.event_change_requests (event_id, kind, reason, requested_by, changes, significant) values
+    ('e0000000-0000-4000-8000-000000003709', 'change', 'Afternoon instead', 'a0000000-0000-4000-8000-000000000001',
+     '{"event": [{"field": "starts_at", "before": "2031-04-21T02:00:00Z", "after": "2031-04-21T06:00:00Z"}], "spaces": []}',
+     true);
+
 insert into public.event_space_requests (id, event_id, label, expected_pax) values
     ('f0000000-0000-4000-8000-000000003704', 'e0000000-0000-4000-8000-000000003704', 'Main hall', 80);
 
@@ -247,6 +301,80 @@ begin
        or exists (select 1 from public.event_status_history
                    where event_id = 'e0000000-0000-4000-8000-000000003708' and from_status is not null) then
         raise exception 'CHANGE FAIL: a Planning event moved or got a status row: %', v_result;
+    end if;
+
+    -- AC3, AC5: each planned booking is moved, marked or flagged under the lock.
+    select version into v_version from public.events where id = 'e0000000-0000-4000-8000-000000003709';
+    v_result := public.approve_event_change('e0000000-0000-4000-8000-000000003709', v_coordinator, v_version,
+        v_decidable, '{"starts_at": "2031-04-21T06:00:00Z", "ends_at": "2031-04-21T08:00:00Z"}', '{}', 'o', 'r',
+        'f', null, jsonb_build_array(
+            jsonb_build_object('booking_id', 'd0000000-0000-4000-8000-000000003791',
+                'period', jsonb_build_array('2031-04-21T06:00:00Z', '2031-04-21T08:00:00Z'),
+                'mark', 'Date or time changed.'),
+            jsonb_build_object('booking_id', 'd0000000-0000-4000-8000-000000003792',
+                'period', jsonb_build_array('2031-04-21T06:00:00Z', '2031-04-21T08:00:00Z'),
+                'mark', 'Date or time changed.'),
+            jsonb_build_object('booking_id', 'd0000000-0000-4000-8000-000000003793',
+                'period', jsonb_build_array('2031-04-21T06:00:00Z', '2031-04-21T08:00:00Z')),
+            jsonb_build_object('booking_id', 'd0000000-0000-4000-8000-000000003794',
+                'unsuitable', 'After an approved change: Crowded needs 150 people; Rooftop Terrace seats 120.'),
+            jsonb_build_object('booking_id', 'd0000000-0000-4000-8000-000000003795', 'clear_unsuitable', true),
+            jsonb_build_object('booking_id', 'd0000000-0000-4000-8000-000000003797',
+                'period', jsonb_build_array('2031-04-21T06:00:00Z', '2031-04-21T08:00:00Z'),
+                'mark', 'Date or time changed.')));
+    if v_result->>'outcome' is distinct from 'ok' then
+        raise exception 'CHANGE FAIL: the approval with booking plans was refused: %', v_result;
+    end if;
+
+    -- A clash (setup included) keeps the old window and is flagged Conflict, not marked (Q11, Q16).
+    if (select booked_period from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003791')
+         <> tstzrange('2031-04-21 10:00+08', '2031-04-21 12:00+08', '[)')
+       or (select flag from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003791')
+         is distinct from 'conflict'
+       or (select flag_reason from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003791')
+         <> 'The new time clashes with "Blocking hold (rolled back)".'
+       or (select needs_re_review_since from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003791')
+         is not null then
+        raise exception 'CHANGE FAIL: a clashing booking moved, was marked, or was not flagged Conflict';
+    end if;
+    if (select flag_reason from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003797')
+         is distinct from 'The new time clashes with a venue block (Maintenance).' then
+        raise exception 'CHANGE FAIL: a clash with a block was not named: %',
+            (select flag_reason from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003797');
+    end if;
+    -- A clear approved booking moves and is marked; it keeps its approval and its hold.
+    if (select booked_period from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003792')
+         <> tstzrange('2031-04-21 14:00+08', '2031-04-21 16:00+08', '[)')
+       or (select status from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003792') <> 'approved'
+       or (select needs_re_review_reason from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003792')
+         is distinct from 'Date or time changed.'
+       or (select needs_re_review_since from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003792')
+         is null then
+        raise exception 'CHANGE FAIL: a clear approved booking was not moved and marked';
+    end if;
+    select count(*) into v_rows from public.venue_booking_history
+     where booking_id = 'd0000000-0000-4000-8000-000000003792' and action = 'moved_by_change'
+       and old_period = tstzrange('2031-04-21 10:00+08', '2031-04-21 12:00+08', '[)')
+       and new_period = tstzrange('2031-04-21 14:00+08', '2031-04-21 16:00+08', '[)')
+       and actor_id = v_coordinator;
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: the move has no history row with both periods (Q19)'; end if;
+    -- A held booking moves without a marker (Q15).
+    if (select booked_period from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003793')
+         <> tstzrange('2031-04-21 14:00+08', '2031-04-21 16:00+08', '[)')
+       or (select needs_re_review_since from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003793')
+         is not null then
+        raise exception 'CHANGE FAIL: a held booking was not moved, or was marked';
+    end if;
+    -- Over capacity: flagged Unsuitable; a flag 37 set clears once it fits (Q17).
+    if (select flag from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003794')
+         is distinct from 'unsuitable'
+       or (select flag_reason from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003794')
+         <> 'After an approved change: Crowded needs 150 people; Rooftop Terrace seats 120.' then
+        raise exception 'CHANGE FAIL: an over-capacity booking was not flagged Unsuitable';
+    end if;
+    if (select flag from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003795') is not null
+       or (select flagged_at from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003795') is not null then
+        raise exception 'CHANGE FAIL: an Unsuitable flag 37 set was not cleared';
     end if;
 
     raise notice 'CHANGE DECISION CHECKS PASSED';
