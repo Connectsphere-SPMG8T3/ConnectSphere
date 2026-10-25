@@ -120,6 +120,7 @@ DB_SCRIPTS = [
     ("venue_release_checks.sql", "TC-BOOK-046 (CR-95: release the original when its replacement is approved)"),
     ("venue_restore_checks.sql", "TC-BOOK-047 (CR-95: restore an affected booking)"),
     ("venue_block_create_checks.sql", "TC-BLOCK-008–013 (SCRUM-51 database half: refusals, history, flags, links, notices, RLS)"),
+    ("equipment_availability_checks.sql", "TC-EQR-038 (23-R: condition, event window, reference location)"),
     ("equipment_reservation_checks.sql", "TC-EQR-016–020, 022–025 (SCRUM-24 database half)"),
     ("event_cancellation_request_checks.sql", "TC-CANCEL-007, 008 (story 84 database half: superseding, index, RLS)"),
     ("event_cancellation_decision_checks.sql", "TC-CANCEL-018 (story 115 database half: releases, notices, refusals)"),
@@ -2510,6 +2511,80 @@ def reserve(ctx: Context, session: Session, line_id: str) -> httpx.Response:
     return ctx.client.post(f"{ctx.api}{EQUIPMENT_REQUESTS}/{line_id}/reserve", headers=session.headers)
 
 
+@check("TC-EQR-042", "23-R/D58: duplicate availability demand is rejected, including UUID case variants")
+def check_duplicate_availability_demand(ctx: Context) -> None:
+    session = ctx.shared("tech_support")
+    for same_id in (PROJECTOR_ID, PROJECTOR_ID.upper()):
+        response = ctx.client.post(f"{ctx.api}/equipment/availability/check", headers=session.headers, json={
+            "start_at": "2034-01-01T09:00:00+08:00", "end_at": "2034-01-01T12:00:00+08:00",
+            "items": [{"equipment_id": PROJECTOR_ID, "quantity_needed": 5},
+                      {"equipment_id": same_id, "quantity_needed": 5}],
+        })
+        expect_status(response, 422)
+        expect("combine" in response.text.lower(), "duplicate demand has no combine-quantities guidance")
+
+
+def require_equipment_location_migration() -> None:
+    [row] = db_query(
+        "select exists (select 1 from information_schema.columns where table_schema = 'public' "
+        "and table_name = 'equipment' and column_name = 'storage_location') as present"
+    )
+    if not row["present"]:
+        raise CheckBlocked("23-R migration is pending: equipment.storage_location is missing.")
+
+
+@check("TC-EQR-039", "23-R: usable quantity, shortage, event times and reference-only location", needs_db=True)
+def check_reopened_equipment_availability(ctx: Context) -> None:
+    require_equipment_location_migration()
+    item = throwaway_equipment(ctx, "039", 7)
+    try:
+        db_query(
+            "insert into public.equipment_unavailability (equipment_id, quantity, start_at, end_at, reason) values "
+            f"('{item}', 2, '2034-01-01 09:00+08', '2034-01-01 12:00+08', 'Faulty units'), "
+            f"('{item}', 5, '2034-01-01 07:00+08', '2034-01-01 09:00+08', 'Maintenance before event'), "
+            f"('{item}', 5, '2034-01-01 12:00+08', '2034-01-01 14:00+08', 'Maintenance after event')"
+        )
+        session = ctx.shared("tech_support")
+        for location in ("Store A", "Different venue store", None):
+            value = "null" if location is None else f"'{location}'"
+            db_query(f"update public.equipment set storage_location = {value} where id = '{item}'")
+            for needed, missing in ((6, 1), (5, 0), (3, 0)):
+                response = ctx.client.post(f"{ctx.api}/equipment/availability/check", headers=session.headers, json={
+                    "start_at": "2034-01-01T09:00:00+08:00", "end_at": "2034-01-01T12:00:00+08:00",
+                    "items": [{"equipment_id": item, "quantity_needed": needed}],
+                })
+                expect_status(response, 200)
+                [result] = response.json()["items"]
+                expect(result["storage_location"] == location, "storage location did not round-trip")
+                expect((result["quantity_needed"], result["quantity_available"], result["quantity_missing"]) ==
+                       (needed, 5, missing), f"incorrect quantities: {result}")
+                expect(result["sufficient"] is (missing == 0), "sufficient status disagrees with shortage")
+                expect(response.json()["sufficient"] is (missing == 0), "overall status disagrees")
+        db_query(f"update public.equipment set status = 'retired' where id = '{item}'")
+        response = ctx.client.post(f"{ctx.api}/equipment/availability/check", headers=session.headers, json={
+            "start_at": "2034-01-01T09:00:00+08:00", "end_at": "2034-01-01T12:00:00+08:00",
+            "items": [{"equipment_id": item, "quantity_needed": 6}],
+        })
+        expect_status(response, 200)
+        [result] = response.json()["items"]
+        expect((result["quantity_available"], result["quantity_missing"], result["sufficient"]) ==
+               (0, 6, False), f"retired stock still usable: {result}")
+        for params in ({"start_at": "2034-01-01T09:00:00+08:00", "end_at": "2034-01-01T12:00:00+08:00"}, {}):
+            inventory = ctx.client.get(f"{ctx.api}/equipment/inventory", headers=session.headers, params=params)
+            expect_status(inventory, 200)
+            retired = next(row for row in inventory.json()["items"] if row["equipment_id"] == item)
+            expect((retired["total_quantity"], retired["net_available"]) == (7, 0),
+                   f"inventory still offers retired stock: {retired}")
+        for role in ("event_organiser", "event_coordinator", "venue_staff", "attendee"):
+            response = ctx.client.post(f"{ctx.api}/equipment/availability/check", headers=ctx.shared(role).headers, json={
+                "start_at": "2034-01-01T09:00:00+08:00", "end_at": "2034-01-01T12:00:00+08:00",
+                "items": [{"equipment_id": item, "quantity_needed": 1}],
+            })
+            expect_status(response, 403)
+    finally:
+        db_query(f"delete from public.equipment where id = '{item}'")
+
+
 @check("TC-EQR-017", "Tech support reserve a pending line; it is linked, Reserved, and the coordinator is told", needs_db=True)
 def _(ctx: Context) -> None:
     event_id = throwaway_event(ctx, "EQR017", "2031-08-01 09:00+08", "2031-08-01 12:00+08")
@@ -3725,6 +3800,17 @@ def run_db_checks(keyword: str | None) -> list[Result]:
                     "Safety-decision migration table/RPC interfaces are missing; "
                     "SQL verification not run. Apply the migration through the authorised workflow first.",
                 ))
+                print_result(results[-1])
+                continue
+        if script == "equipment_availability_checks.sql":
+            try:
+                require_equipment_location_migration()
+            except CheckBlocked as error:
+                results.append(Result(script, title, "blocked", str(error)))
+                print_result(results[-1])
+                continue
+            except Exception as error:
+                results.append(Result(script, title, "fail", str(error)))
                 print_result(results[-1])
                 continue
         if script == "venue_buffer_checks.sql":
