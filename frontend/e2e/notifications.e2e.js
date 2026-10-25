@@ -44,3 +44,23 @@ test("TC-NOTIF-005 every role has the bell", async ({ page, sharedSessions }) =>
     await expect(page.getByRole("button", { name: /^Notifications/ })).toBeVisible();
   }
 });
+
+// D49: the sidebar sits above the top bar on desktop, so only a real browser shows
+// whether a click there reaches the bell's outside-click handling.
+test("TC-NOTIF-010 a click in the sidebar closes the open panel", async ({ page, sharedSessions }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await seedSession(page, await sharedSessions("event_coordinator"));
+  await page.goto("/profile/me");
+  const bell = page.getByRole("button", { name: /^Notifications/ });
+  await bell.click();
+  await expect(bell).toHaveAttribute("aria-expanded", "true");
+
+  // A sidebar control that does not navigate, so a page change can't be what closes it.
+  // Clicked twice to leave the sidebar as it was, whichever state that is.
+  const toggle = page.getByRole("button", { name: /^(Collapse|Expand) navigation$/ });
+  await toggle.click();
+
+  await expect(bell).toHaveAttribute("aria-expanded", "false");
+  await expect(page).toHaveURL(/\/profile\/me$/);
+  await toggle.click();
+});

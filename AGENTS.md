@@ -76,6 +76,7 @@ Plan any change that spans more than one file or layer before writing code.
 - Commit only what the task changed, staging files by name — never `.env`, keys, or tokens. `.claude/` and `docs/prompts/` are gitignored local workflow aids.
 - Commit message: an imperative summary line (`fix(auth): …`, `feat(events): …`), then a body explaining *why*, with the PBI ID or defect ID.
 - Don't push, open PRs, or edit the team's Google Sheets (backlog, sprint tabs, test cases) without the user asking. When the user does ask for a backlog update, record any requirement change in the PBI's **Customer clarification** column, citing the `QA-<row>` and its session.
+- A PR that changes anything a person can see carries screenshots of what it refers to: each page or state it changes, and for a fix the defect before and after. Commit them under `docs/screenshots/<branch-name>/` and embed them in the PR description with full `https://github.com/<owner>/<repo>/blob/<sha>/<path>?raw=true` URLs, because the repository is private and the GitHub API can't upload attachments. Show seeded or throwaway data only, never secrets.
 
 ## Security baseline (applies to every layer)
 

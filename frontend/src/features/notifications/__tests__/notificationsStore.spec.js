@@ -278,6 +278,49 @@ describe("useNotificationsStore (113)", () => {
       expect(store.count).toBe(0);
     });
 
+    it("a poll already in flight when an item is marked read does not bring the badge back", async () => {
+      notificationsApi.markRead.mockResolvedValue({ id: "n1", read: true });
+      const store = await openWith([ITEM_1, ITEM_2], 1);
+      const slow = deferred();
+      notificationsApi.unreadCount.mockReturnValueOnce(slow.promise);
+      const polling = store.poll();
+
+      await store.markRead("n1");
+      slow.resolve({ count: 1, latest_at: "t1" });
+      await polling;
+
+      expect(store.count).toBe(0);
+    });
+
+    it("a poll answered while a mark is still in flight is not counted twice", async () => {
+      const marking = deferred();
+      notificationsApi.markRead.mockReturnValueOnce(marking.promise);
+      const store = await openWith([ITEM_1, { ...ITEM_2, read: false }], 2);
+      const pending = store.markRead("n1");
+
+      // The server has already applied the mark when the poll reads the count.
+      notificationsApi.unreadCount.mockResolvedValueOnce({ count: 1, latest_at: "t1" });
+      await store.poll();
+      marking.resolve({ id: "n1", read: true });
+      await pending;
+
+      expect(store.count).toBe(1);
+    });
+
+    it("a poll already in flight when everything is marked read does not bring the badge back", async () => {
+      notificationsApi.markAllRead.mockResolvedValue({ updated: 3 });
+      const store = await openWith([ITEM_1], 3);
+      const slow = deferred();
+      notificationsApi.unreadCount.mockReturnValueOnce(slow.promise);
+      const polling = store.poll();
+
+      await store.markAllRead();
+      slow.resolve({ count: 3, latest_at: "t1" });
+      await polling;
+
+      expect(store.count).toBe(0);
+    });
+
     it("a failed markAllRead leaves everything as it was", async () => {
       notificationsApi.markAllRead.mockRejectedValue(new ApiError("Server error", 503));
       const store = await openWith([ITEM_1], 1);
@@ -380,6 +423,45 @@ describe("useNotificationsStore (113)", () => {
       await polling;
 
       expect(store.count).not.toBe(9);
+      store.stop();
+    });
+  });
+
+  describe("signing in as someone else in the same tab", () => {
+    // Sign-out unmounts the bell (stop), and the next sign-in mounts it again (start).
+    function signInAs(store, profile) {
+      store.stop();
+      auth.profile = profile;
+      store.start();
+    }
+
+    it("a slow poll for the previous user never lands, even in the same role", async () => {
+      const slow = deferred();
+      notificationsApi.unreadCount.mockReturnValueOnce(slow.promise);
+      const store = useNotificationsStore();
+      store.start();
+      const polling = store.poll();
+
+      signInAs(store, { id: "u2", role: "event_coordinator", full_name: "Ana Lim" });
+      slow.resolve({ count: 9, latest_at: "old" });
+      await polling;
+
+      expect(store.count).toBe(0);
+      store.stop();
+    });
+
+    it("a failed markRead for the previous user shows the next one no error", async () => {
+      const slow = deferred();
+      notificationsApi.markRead.mockReturnValueOnce(slow.promise);
+      const store = useNotificationsStore();
+      store.start();
+      const marking = store.markRead("n1");
+
+      signInAs(store, { id: "u2", role: "event_coordinator", full_name: "Ana Lim" });
+      slow.reject(new ApiError("Not found", 404));
+      await marking;
+
+      expect(store.error).toBeNull();
       store.stop();
     });
   });
