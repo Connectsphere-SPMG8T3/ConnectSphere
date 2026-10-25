@@ -3322,6 +3322,9 @@ Results: backend 2,283 passed and frontend 1,675 passed, with every added line c
 
 **Verified.**
 - `change_request_decision_checks.sql` (TC-CHANGE-024) passes with the migration in a rolled-back transaction, as do every venue, equipment, replacement, hold-expiry, safety, cancellation and change-request check script it touches (run slice by slice while building).
-- Not yet: a final run of every check script together (the developer's tool permissions stopped it), the migration on the live project, the advisors, the live API/browser checks and the manual pass.
+- Migration `20261025120000` applied with `supabase db push` by the developer on 2026-10-25, before merge as stories 32, 84 and 115 were (against DEFINITION_OF_DONE's "through the merged PR"; to raise with the team). The live history held PR #111's two unmerged migrations, so their files were copied in uncommitted for the push and removed afterwards.
+- Advisors: nothing new, the same 10 WARN findings (leaked-password protection, equipment RLS initplans).
+- API and database run [214/214](test-cases/runs/2026-10-25-2023-api-db-ef74df0.md): TC-CHANGE-013–023, and every rolled-back check script with the migration live, TC-CHANGE-024 among them. While writing TC-CHANGE-017 an unrecorded run failed on the check itself, which counted the organiser's request notice as one from the approval; it was narrowed, not the code.
+- Browser run [89/94](test-cases/runs/2026-10-25-2052-e2e-ef74df0.md), with TC-CHANGE-025 passing. TC-RBAC-005 and TC-TSD-017 failed as in PR #110's run (stale on `main`). TC-AUTH-037 and TC-AUTH-046 failed because "Create organiser account" now matches the landing page's footer link too, a locator gone stale on `main`. TC-BLOCK-014 failed on the runner's own login request (`ECONNRESET`) before any venue step, and passed when re-run unchanged and unrecorded.
 
-**Not verified.** Everything above that needs the migration live: TC-CHANGE-013–023 and 025 as live checks, and the manual cases TC-CHANGE-026–028.
+**Not verified.** The manual cases TC-CHANGE-026–028, pending the developer's pass.
