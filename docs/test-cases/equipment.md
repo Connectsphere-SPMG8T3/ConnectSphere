@@ -109,6 +109,8 @@ Source: Product backlog row 71 read on 2026-10-22; original story 23 AC1–AC2 r
 | TC-EQR-042 | AC4 / D58: duplicate availability demand rejected | Integration | Branch backend running; no migration required | Run `python scripts/verify_live.py --record --skip-db -k TC-EQR-042` | Same ID twice, 5+5, including uppercase UUID spelling | 422 and combine-quantities guidance before a stock lookup; shared data unchanged | 🔴 | 2026-10-25 | 2026-10-25 · Pass · [post-deployment run](runs/2026-10-25-1357-api-db-15d9243.md) |
 | TC-EQR-043 | AC4 / D58: duplicate form selections do not send an invalid check | E2E | Branch servers; no migration required | Add the same equipment twice with quantity 5 in both rows, then Check real-time availability | Technical Support session | Visible combine-quantities guidance; no availability request sent. Vue regression also checks correcting the selection permits submission | 🔴 | 2026-10-25 | 2026-10-25 · Pass · [post-deployment run](runs/2026-10-25-1408-e2e-15d9243.md) |
 
+Prepared developer manual pass: [visible demo fixtures, exact steps, expected results and cleanup](fixtures/23r-manual-2026-10-25.md). These user-requested fixtures remain in the shared database until the manual pass is complete; TC-EQR-041 is not marked passed.
+
 ### Traceability — 23-R
 
 | AC | Interfaces and implementation | Tests and verification |

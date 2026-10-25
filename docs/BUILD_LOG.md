@@ -3130,3 +3130,10 @@ On `feature/scrum-23-r-equipment-availability`, managed worktree `/home/jclim/.c
 **Advisors and remaining gates.** Post-deployment advisor counts match the immediately preceding baseline: security 2 informational RLS/no-policy and 1 existing leaked-password warning; performance 1 unindexed-FK informational, 9 RLS-initplan warnings and 3 unused-index informational notices. No new notices. Automated scripts use only their own throwaway records or rollback transactions. TC-EQR-041 developer manual judgement, teammate review, PO acceptance, PR/merge and Sprint 4 DoD/backlog updates remain pending. No sheet, push, or PR action was taken.
 
 **Optional review follow-up.** Claude suggested an additional viewport near the 640 px breakpoint as low-priority extra coverage; no defect was established there. Existing required desktop/tablet/phone cases pass. Developer manual review still includes layout/wording/feel.
+
+
+### 4.88 23-R visible manual-test fixtures (2026-10-25)
+
+Developer requested visible throwaway stock and exact manual expectations before being asked to test, and explicitly asked to save that preference. Created three new `23-R DEMO 2026-10-25` equipment types plus four timed quantity-outage rows, leaving all existing data unchanged. [Fixture guide](test-cases/fixtures/23r-manual-2026-10-25.md) records own IDs, lifetime and guarded cleanup. They intentionally remain present for manual testing and use a prefix outside automated `live-check` cleanup.
+
+Real API verification passed: inventory counts for all three items; four main sufficient/insufficient/location scenarios; two post-outage scenarios; Speaker boundary outage; duplicate rejection (422). The API session was logged out; fixture data was retained intentionally. No product code changed, so the prior full suites/build remain applicable. Human TC-EQR-041 remains unrun. The preference was saved in the authorized memory update-notes folder; no backlog or test sheet was edited.
