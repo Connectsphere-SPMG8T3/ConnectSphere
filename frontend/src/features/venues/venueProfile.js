@@ -269,6 +269,12 @@ export function bookingStatusLabel(status) {
   return BOOKING_GROUPS.find((group) => group.statuses.includes(status))?.label ?? status;
 }
 
+// "1 booking", "2 bookings": the count the block and deactivate dialogs open
+// their affected-bookings notices with.
+export function countBookings(n) {
+  return `${n} ${n === 1 ? "booking" : "bookings"}`;
+}
+
 // SCRUM-64 AC1: why a venue is inactive. Mirrors `public.venue_inactive_reason`.
 export const INACTIVE_REASONS = [
   { value: "permanently_closed", label: "Permanently closed" },
