@@ -39,13 +39,15 @@ const isReturnOpen = ref(false);
 const isApproveCancellationOpen = ref(false);
 const isRejectCancellationOpen = ref(false);
 const isCancelOpen = ref(false);
+// Story 37: deciding the organiser's change request.
+const isRejectChangeOpen = ref(false);
 
 const event = computed(() => review.event);
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
 const showCancel = computed(() => canCancelEvent(event.value));
-const isReasonOpen = computed(() => isRejectCancellationOpen.value || isCancelOpen.value);
+const isReasonOpen = computed(() => isRejectCancellationOpen.value || isCancelOpen.value || isRejectChangeOpen.value);
 // CR-97: with spaces, each space card shows its own booking; the panel keeps
 // rejections and the reason no venue can be requested yet.
 const venuePanel = computed(() => {
@@ -176,6 +178,16 @@ async function confirmRejectCancellation(reason) {
     await review.rejectCancellation(reason);
     isRejectCancellationOpen.value = false;
     showToast("Cancellation request rejected");
+  } catch {
+    // Kept open so the coordinator sees the error beside their reason.
+  }
+}
+
+async function confirmRejectChange(reason) {
+  try {
+    await review.rejectChange(reason);
+    isRejectChangeOpen.value = false;
+    showToast("Change request rejected");
   } catch {
     // Kept open so the coordinator sees the error beside their reason.
   }
@@ -334,6 +346,10 @@ watch(
         <ChangeRequestChanges :rows="describeChanges(event.open_change_request.changes)" class="mt-4 bg-canvas" />
         <p class="mt-4 text-sm font-bold">Comments:</p>
         <p class="mt-1 whitespace-pre-wrap font-medium" data-testid="change-request-comments">{{ event.open_change_request.reason }}</p>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <BauhausButton size="sm" variant="outline" aria-label="Reject changes" :disabled="review.isActing"
+            @click="review.error = null; isRejectChangeOpen = true">Reject changes</BauhausButton>
+        </div>
       </section>
 
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
@@ -615,6 +631,17 @@ watch(
       :error="isRejectCancellationOpen ? review.error : null"
       @confirm="confirmRejectCancellation"
       @cancel="isRejectCancellationOpen = false"
+    />
+    <CancellationReasonModal
+      :open="isRejectChangeOpen"
+      title="Reject the requested changes?"
+      message="The event stays as it is. The organiser will see your reason."
+      confirm-label="Reject request"
+      confirm-aria-label="Reject change request"
+      :busy="review.isActing"
+      :error="isRejectChangeOpen ? review.error : null"
+      @confirm="confirmRejectChange"
+      @cancel="isRejectChangeOpen = false"
     />
     <CancellationReasonModal
       :open="isCancelOpen"

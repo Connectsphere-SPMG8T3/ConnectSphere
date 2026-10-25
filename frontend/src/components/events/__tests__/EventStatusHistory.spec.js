@@ -154,3 +154,18 @@ describe("EventStatusHistory change requests (story 32)", () => {
     expect(el.textContent).toContain("Closed because the event was cancelled.");
   });
 });
+
+describe("EventStatusHistory change decisions (story 37)", () => {
+  it("heads a rejected change with who rejected it and why", async () => {
+    const el = await mountHistory([
+      { id: "r1:rejected", kind: "change_rejected", from_status: null, to_status: null,
+        reason: "The venue can't take more people", at: "2026-10-25T02:00:00Z",
+        actor: { id: "c1", full_name: "Marcus Lim" } },
+    ]);
+
+    const [item] = el.querySelectorAll("li");
+    expect(item.querySelector("p").textContent).toBe("Change request rejected");
+    expect(item.textContent).toContain("by Marcus Lim");
+    expect(item.textContent).toContain("The venue can't take more people");
+  });
+});

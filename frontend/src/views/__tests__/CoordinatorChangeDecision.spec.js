@@ -1,0 +1,126 @@
+import { createPinia, setActivePinia } from "pinia";
+import { createApp, nextTick } from "vue";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { eventsApi } from "@/services/api";
+import { useAuthStore } from "@/stores/auth";
+
+// Story 37: the assigned coordinator approves or rejects the organiser's open change request.
+vi.mock("@/services/api", async (importOriginal) => ({
+  ...(await importOriginal()),
+  authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
+  eventsApi: {
+    safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), listComments: vi.fn(),
+    addComment: vi.fn(), rejectChange: vi.fn(),
+  },
+}));
+
+const OPEN_CHANGE = {
+  id: "request-1", kind: "change", status: "open", reason: "More guests confirmed",
+  changes: { event: [{ field: "expected_attendance", before: 80, after: 120 }], spaces: [] },
+  significant: true,
+  requested_by: { id: "o1", full_name: "Priya Nair" }, requested_at: "2026-10-24T01:00:00Z",
+};
+
+function eventResponse(overrides = {}) {
+  return {
+    id: "event-1", name: "Partner Summit", status: "confirmed", version: 3,
+    event_timezone: "Asia/Singapore", purpose: "Quarterly partner meeting", description: null,
+    starts_at: "2099-11-12T02:00:00Z", ends_at: "2099-11-12T04:00:00Z", expected_attendance: 80,
+    layout_preference: "theatre", facilities_required: [], accessibility_needs: null,
+    preliminary_equipment_needs: null, coordinator_id: "c1", organiser_id: "o1",
+    open_cancellation_request: null, open_change_request: null, ...overrides,
+  };
+}
+
+const mountedApps = [];
+
+async function mountView(response) {
+  eventsApi.get.mockResolvedValue(response);
+  eventsApi.history.mockResolvedValue({ entries: [] });
+  eventsApi.listComments.mockResolvedValue({ comments: [] });
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const auth = useAuthStore();
+  auth.token = "access";
+  auth.refreshToken = "refresh";
+  auth.profile = { id: "c1", full_name: "Marcus Lim", role: "event_coordinator" };
+  auth.sessionVerified = true;
+
+  const { default: router } = await import("@/router");
+  await router.push({ name: "coordinator-event", params: { id: response.id } });
+  const { default: View } = await import("@/views/events/CoordinatorEventView.vue");
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const app = createApp(View).use(pinia).use(router);
+  app.mount(el);
+  mountedApps.push(app);
+  await vi.waitFor(() => expect(el.textContent).toContain(response.name));
+  await nextTick();
+  return el;
+}
+
+function button(root, label) {
+  return root.querySelector(`button[aria-label="${label}"]`);
+}
+
+function dialog() {
+  return document.body.querySelector('[role="dialog"]');
+}
+
+async function typeReason(text) {
+  const textarea = dialog().querySelector("textarea");
+  textarea.value = text;
+  textarea.dispatchEvent(new Event("input"));
+  await nextTick();
+}
+
+describe("Story 37 coordinator decides a change request", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  it("offers reject on the open change request's banner", async () => {
+    const el = await mountView(eventResponse({ open_change_request: OPEN_CHANGE }));
+
+    const banner = el.querySelector('[data-testid="change-request-banner"]');
+    expect(button(banner, "Reject changes")).not.toBeNull();
+  });
+
+  it("rejecting needs a reason, sends it trimmed and removes the banner", async () => {
+    const el = await mountView(eventResponse({ open_change_request: OPEN_CHANGE }));
+    const kept = eventResponse();
+    eventsApi.rejectChange.mockResolvedValue(kept);
+    eventsApi.get.mockResolvedValue(kept);
+
+    button(el, "Reject changes").click();
+    await nextTick();
+    expect(dialog().textContent).toContain("Reject the requested changes?");
+    const confirm = button(dialog(), "Reject change request");
+    expect(confirm.disabled).toBe(true);
+
+    await typeReason("  The venue can't take more people  ");
+    expect(confirm.disabled).toBe(false);
+    confirm.click();
+
+    await vi.waitFor(() => expect(eventsApi.rejectChange)
+      .toHaveBeenCalledWith("event-1", "The venue can't take more people", "access"));
+    await vi.waitFor(() => expect(el.querySelector('[data-testid="change-request-banner"]')).toBeNull());
+    expect(dialog()).toBeNull();
+  });
+
+  it("keeps the dialog open with the error when the rejection is refused", async () => {
+    const el = await mountView(eventResponse({ open_change_request: OPEN_CHANGE }));
+    eventsApi.rejectChange.mockRejectedValue(new Error("There is no open change request for this event."));
+
+    button(el, "Reject changes").click();
+    await nextTick();
+    await typeReason("No room");
+    button(dialog(), "Reject change request").click();
+
+    await vi.waitFor(() => expect(dialog().textContent).toContain("There is no open change request for this event."));
+  });
+});

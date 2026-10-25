@@ -260,6 +260,9 @@ export const eventsApi = {
   rejectCancellation(eventId, reason, token) {
     return request(`/events/${encodeURIComponent(eventId)}/cancellation-request/reject`, { method: "POST", body: { reason }, token });
   },
+  rejectChange(eventId, reason, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/change-request/reject`, { method: "POST", body: { reason }, token });
+  },
   cancelEvent(eventId, reason, token) {
     return request(`/events/${encodeURIComponent(eventId)}/cancel`, { method: "POST", body: { reason }, token });
   },

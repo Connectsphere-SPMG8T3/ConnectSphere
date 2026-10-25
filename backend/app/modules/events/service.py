@@ -560,6 +560,47 @@ def reject_cancellation(event_id: str, coordinator_id: str, reason: str) -> Even
     return _to_response(row)
 
 
+NO_OPEN_CHANGE_MESSAGE = "There is no open change request for this event."
+CHANGE_STARTED_MESSAGE = "This event has already started, so its change request can't be decided."
+
+
+def _refuse_deciding_change(row: dict) -> None:
+    """Story 37 AC8 and Q5: a change is decided only where it could be requested
+    (CR-R15), and not once the event has started. A missing start fails closed."""
+    if row["status"] not in lifecycle.change_requestable_from():
+        raise EventConflictError(f"A change request can't be decided on an event that is {row['status']}.")
+    if row.get("starts_at") is None or _parse_datetime(row["starts_at"]) <= datetime.now(timezone.utc):
+        raise EventConflictError(CHANGE_STARTED_MESSAGE)
+
+
+def _raise_for_change_outcome(outcome: str) -> None:
+    if outcome == "not_found":
+        raise EventNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "no_open_request":
+        raise EventConflictError(NO_OPEN_CHANGE_MESSAGE)
+    if outcome == "started":
+        raise EventConflictError(CHANGE_STARTED_MESSAGE)
+    if outcome != "ok":
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+
+
+def reject_change(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
+    """Story 37 AC2, AC4: the assigned coordinator rejects the open change request with
+    a reason (CR-R3). The event keeps its details, status and arrangements."""
+    row = _assigned_event(event_id, coordinator_id)
+    _refuse_deciding_change(row)
+    if not repository.get_open_change_request(event_id):
+        raise EventConflictError(NO_OPEN_CHANGE_MESSAGE)
+    result = repository.reject_event_change(
+        event_id, coordinator_id, reason, lifecycle.change_requestable_from(),
+        organiser_message=f'Your requested changes to "{row["name"]}" were rejected: {reason}',
+    )
+    _raise_for_change_outcome(result["outcome"])
+    return _to_response(row)
+
+
 def cancel_event(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
     """Story 115 AC3: the assigned coordinator cancels without an organiser request. An
     open request is closed as approved by the same call (Q9)."""
@@ -769,12 +810,17 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
                           reason=row["reason"], changes=row["changes"], at=row["requested_at"])
         for row in changes
     ]
-    # 84 AC4 / CR-R18: a superseded request says when and why it closed. Approvals and
-    # rejections are story 37's.
+    # 84 AC4 / CR-R18: a superseded request says when and why it closed.
     entries += [
         EventHistoryEntry(kind="change_request_closed", id=f"{row['id']}:closed", actor=row["decided_by"],
                           reason=row["decision_reason"], at=row["decided_at"])
         for row in changes if row.get("status") == "superseded"
+    ]
+    # Story 37 Q18: a rejection is its own entry, with who rejected it and why.
+    entries += [
+        EventHistoryEntry(kind="change_rejected", id=f"{row['id']}:rejected", actor=row["decided_by"],
+                          reason=row["decision_reason"], at=row["decided_at"])
+        for row in changes if row.get("status") == "rejected"
     ]
     # Stable, so entries sharing a time keep the repository's order (the creation row last).
     entries.sort(key=lambda entry: entry.at, reverse=True)

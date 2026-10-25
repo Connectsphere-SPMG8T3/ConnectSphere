@@ -399,6 +399,22 @@ def reject_cancellation_request(event_id: str, actor_id: str, reason: str, organ
     return response.data
 
 
+def reject_event_change(event_id: str, actor_id: str, reason: str, from_statuses: list[str],
+                        organiser_message: str) -> dict:
+    """Story 37 AC2: run `public.reject_event_change` under the event's lock. It closes
+    the open change request as rejected with the reason and notifies the organiser; the
+    event keeps its details and status. Answers `{outcome}`: ok / not_found /
+    not_assigned / status_changed / started / no_open_request."""
+    response = get_supabase_admin_client().rpc("reject_event_change", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_reason": reason,
+        "p_from_statuses": from_statuses,
+        "p_organiser_message": organiser_message,
+    }).execute()
+    return response.data
+
+
 def list_status_history(event_id: str) -> list[dict]:
     """Newest first. The actor is embedded through the FK named in the migration.
     On a timestamp tie the creation row (no from_status) sorts last, since
