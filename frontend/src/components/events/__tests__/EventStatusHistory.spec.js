@@ -95,4 +95,62 @@ describe("EventStatusHistory (QA-70)", () => {
     expect(el.textContent).toContain("Assigned to Priya Nair");
     expect(el.textContent).not.toContain("from ");
   });
+
+  it("story 84 heads a cancellation request with who asked and why", async () => {
+    const el = await mountHistory([
+      { id: "r1", kind: "cancellation_requested", from_status: null, to_status: null, reason: "Speaker withdrew",
+        at: "2026-10-23T01:00:00Z", actor: { id: "o1", full_name: "Priya Nair" } },
+    ]);
+
+    const [item] = el.querySelectorAll("li");
+    expect(item.querySelector("p").textContent).toBe("Cancellation requested");
+    expect(item.textContent).toContain("by Priya Nair");
+    expect(item.textContent).toContain("Speaker withdrew");
+  });
+
+  it("story 115 heads a rejected cancellation request with who rejected it and why", async () => {
+    const el = await mountHistory([
+      { id: "r1:rejected", kind: "cancellation_rejected", from_status: null, to_status: null,
+        reason: "The venue is already paid for", at: "2026-10-24T02:00:00Z",
+        actor: { id: "c1", full_name: "Marcus Lim" } },
+    ]);
+
+    const [item] = el.querySelectorAll("li");
+    expect(item.querySelector("p").textContent).toBe("Cancellation request rejected");
+    expect(item.textContent).toContain("by Marcus Lim");
+    expect(item.textContent).toContain("The venue is already paid for");
+  });
+});
+
+describe("EventStatusHistory change requests (story 32)", () => {
+  afterEach(() => {
+    mounted.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  it("titles a change request and lists what it would change, then why", async () => {
+    const el = await mountHistory([{
+      id: "r1", kind: "change_requested", actor: { full_name: "Priya Nair" }, at: "2026-10-24T01:00:00Z",
+      reason: "Sponsor wants more seats",
+      changes: {
+        event: [{ field: "expected_attendance", before: 80, after: 120 }],
+        spaces: [{ space_id: "s1", label: "Main hall", fields: [{ field: "layout_preference", before: "theatre", after: "banquet" }] }],
+      },
+    }]);
+
+    expect(el.querySelector("li p").textContent).toBe("Change requested");
+    expect(el.textContent).toContain("Expected attendance: 80 → 120");
+    expect(el.textContent).toContain("Main hall: layout: theatre → banquet");
+    expect(el.textContent).toContain("Sponsor wants more seats");
+  });
+
+  it("titles a superseded request as closed, with why", async () => {
+    const el = await mountHistory([{
+      id: "r1:closed", kind: "change_request_closed", actor: null, at: "2026-10-25T01:00:00Z",
+      reason: "Closed because the event was cancelled.", changes: null,
+    }]);
+
+    expect(el.querySelector("li p").textContent).toBe("Change request closed");
+    expect(el.textContent).toContain("Closed because the event was cancelled.");
+  });
 });

@@ -7,6 +7,8 @@ import BauhausCard from "@/components/common/BauhausCard.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import EquipmentRequestPanel from "@/components/equipment/EquipmentRequestPanel.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
+import CancellationReasonModal from "@/components/events/CancellationReasonModal.vue";
+import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
 import EventDiscussion from "@/components/events/EventDiscussion.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
 import EventStatusProgress from "@/components/events/EventStatusProgress.vue";
@@ -15,6 +17,8 @@ import { useAuthStore } from "@/stores/auth";
 import RejectEventModal from "@/components/events/RejectEventModal.vue";
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import { showToast } from "@/composables/useToast";
+import { canCancelEvent } from "@/features/events/cancellation";
+import { describeChanges } from "@/features/events/changeRequest";
 import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { formatDecisionTime } from "@/features/venues/bookingDecision";
 import SafetyRejectedNotice from "@/components/venues/SafetyRejectedNotice.vue";
@@ -31,11 +35,17 @@ const isSafetyOpen = ref(false);
 const isApproveOpen = ref(false);
 const isRejectOpen = ref(false);
 const isReturnOpen = ref(false);
+// Story 115: deciding the organiser's cancellation request, or cancelling directly.
+const isApproveCancellationOpen = ref(false);
+const isRejectCancellationOpen = ref(false);
+const isCancelOpen = ref(false);
 
 const event = computed(() => review.event);
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
+const showCancel = computed(() => canCancelEvent(event.value));
+const isReasonOpen = computed(() => isRejectCancellationOpen.value || isCancelOpen.value);
 // CR-97: with spaces, each space card shows its own booking; the panel keeps
 // rejections and the reason no venue can be requested yet.
 const venuePanel = computed(() => {
@@ -151,6 +161,36 @@ async function confirmReturn({ message, flaggedFields }) {
   }
 }
 
+async function confirmApproveCancellation() {
+  isApproveCancellationOpen.value = false;
+  try {
+    await review.approveCancellation();
+    showToast("Event cancelled");
+  } catch {
+    // review.error is shown in the page's alert.
+  }
+}
+
+async function confirmRejectCancellation(reason) {
+  try {
+    await review.rejectCancellation(reason);
+    isRejectCancellationOpen.value = false;
+    showToast("Cancellation request rejected");
+  } catch {
+    // Kept open so the coordinator sees the error beside their reason.
+  }
+}
+
+async function confirmCancel(reason) {
+  try {
+    await review.cancelEvent(reason);
+    isCancelOpen.value = false;
+    showToast("Event cancelled");
+  } catch {
+    // Kept open so the coordinator sees the error beside their reason.
+  }
+}
+
 watch(
   () => route.params.id,
   (id) => {
@@ -167,7 +207,7 @@ watch(
     </div>
 
     <p
-      v-if="review.error && !isRejectOpen && !isReturnOpen"
+      v-if="review.error && !isRejectOpen && !isReturnOpen && !isReasonOpen"
       role="alert"
       class="mb-6 border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
     >
@@ -182,7 +222,7 @@ watch(
             <h1 class="mt-2 break-words text-4xl font-bold leading-tight sm:text-5xl">{{ event.name }}</h1>
           </div>
           <div
-            v-if="showApprove || showReject || showReturn || event.status === 'planning'"
+            v-if="showApprove || showReject || showReturn || showCancel || event.status === 'planning'"
             class="flex flex-wrap gap-3 lg:justify-end"
             data-testid="review-actions"
           >
@@ -220,6 +260,16 @@ watch(
             >
               Reject
             </BauhausButton>
+            <BauhausButton
+              v-if="showCancel"
+              size="sm"
+              variant="outline"
+              aria-label="Cancel event"
+              :disabled="review.isActing"
+              @click="review.error = null; isCancelOpen = true"
+            >
+              Cancel event
+            </BauhausButton>
           </div>
         </div>
         <EventStatusProgress :status="event.status" class="mt-6" />
@@ -249,6 +299,42 @@ watch(
         audience="coordinator"
         class="mb-8"
       />
+      <!-- Story 84 shows the request; story 115 decides it. -->
+      <section
+        v-if="event.open_cancellation_request"
+        data-testid="cancellation-request-banner"
+        class="mb-8 border-4 border-ink bg-bauhaus-red p-6 text-canvas shadow-hard sm:p-8"
+      >
+        <h2 class="text-2xl font-bold">
+          Cancellation requested by {{ event.open_cancellation_request.requested_by?.full_name ?? "the organiser" }}
+        </h2>
+        <p class="mt-4 text-sm font-bold">Comments:</p>
+        <p class="mt-1 whitespace-pre-wrap font-medium" data-testid="cancellation-request-comments">{{ event.open_cancellation_request.reason }}</p>
+        <p class="mt-4 text-sm font-bold">Arrangements stay held until you decide.</p>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <BauhausButton size="sm" variant="yellow" aria-label="Approve cancellation" :disabled="review.isActing"
+            @click="review.error = null; isApproveCancellationOpen = true">Approve cancellation</BauhausButton>
+          <BauhausButton size="sm" variant="outline" aria-label="Reject cancellation" :disabled="review.isActing"
+            @click="review.error = null; isRejectCancellationOpen = true">Reject cancellation</BauhausButton>
+        </div>
+      </section>
+
+      <!-- Story 32 shows the request; story 37 decides it. -->
+      <section
+        v-if="event.open_change_request"
+        data-testid="change-request-banner"
+        class="mb-8 border-4 border-ink bg-bauhaus-yellow p-6 shadow-hard sm:p-8"
+      >
+        <h2 class="text-2xl font-bold">
+          Changes requested by {{ event.open_change_request.requested_by?.full_name ?? "the organiser" }}
+        </h2>
+        <p class="mt-2 inline-block border-2 border-ink bg-canvas px-2 py-1 text-xs font-bold">
+          {{ event.open_change_request.significant ? "Significant change" : "Ordinary change" }}
+        </p>
+        <ChangeRequestChanges :rows="describeChanges(event.open_change_request.changes)" class="mt-4 bg-canvas" />
+        <p class="mt-4 text-sm font-bold">Comments:</p>
+        <p class="mt-1 whitespace-pre-wrap font-medium" data-testid="change-request-comments">{{ event.open_change_request.reason }}</p>
+      </section>
 
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         <BauhausCard background="white" accent="none" data-testid="request-details-card">
@@ -509,6 +595,37 @@ watch(
       :error="isRejectOpen ? review.error : null"
       @confirm="confirmReject"
       @cancel="isRejectOpen = false"
+    />
+    <ConfirmModal
+      :open="isApproveCancellationOpen"
+      title="Approve the cancellation?"
+      message="The event is cancelled. Its venue bookings, equipment and registrations are released, and everyone involved is told. This can't be undone."
+      confirm-label="Cancel the event"
+      cancel-label="Go back"
+      @confirm="confirmApproveCancellation"
+      @stay="isApproveCancellationOpen = false"
+    />
+    <CancellationReasonModal
+      :open="isRejectCancellationOpen"
+      title="Reject the cancellation request?"
+      message="The event stays as it is. The organiser will see your reason."
+      confirm-label="Reject request"
+      confirm-aria-label="Reject cancellation request"
+      :busy="review.isActing"
+      :error="isRejectCancellationOpen ? review.error : null"
+      @confirm="confirmRejectCancellation"
+      @cancel="isRejectCancellationOpen = false"
+    />
+    <CancellationReasonModal
+      :open="isCancelOpen"
+      title="Cancel this event?"
+      message="Its venue bookings, equipment and registrations are released, and everyone involved is told. The organiser will see your reason. This can't be undone."
+      confirm-label="Cancel event"
+      confirm-aria-label="Confirm cancel event"
+      :busy="review.isActing"
+      :error="isCancelOpen ? review.error : null"
+      @confirm="confirmCancel"
+      @cancel="isCancelOpen = false"
     />
     <ReturnEventModal
       v-if="event"

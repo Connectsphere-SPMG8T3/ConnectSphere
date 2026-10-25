@@ -62,6 +62,8 @@ def mock_event_repository(monkeypatch, request):
             "registration_capacity": None,
             "registration_opens_at": None,
             "registration_closes_at": None,
+            "re_registration_allowed": True,
+            "waitlist_enabled": True,
             "technical_readiness": "not_required",
             "submitted_at": now if submitted else None,
             "version": 1,
@@ -226,6 +228,8 @@ class TestEventDrafts:
         assert body["name"] == "Regional Planning Workshop"
         assert body["purpose"] == "Coordinate the regional planning workshop."
         assert body["expected_attendance"] == 150
+        assert body["re_registration_allowed"] is True
+        assert body["waitlist_enabled"] is True
         assert body["starts_at"] is None
         assert body["ends_at"] is None
         assert body["coordinator_id"] is None

@@ -1,5 +1,4 @@
 # ConnectSphere — Build Log
-
 **What each story, fix and enabler actually built, in the order it landed.** Append-only.
 
 This is the requirement → code → test trail the course rubric rewards. Each entry quotes its backlog record verbatim (the Jira issue until Sprint 2, the Product backlog sheet row from Sprint 3) and records how the ticket was interpreted, what was built, and how it was verified.
@@ -3044,7 +3043,6 @@ On `chore/coordinator-status-kanban`, on top of §4.81, 2026-10-21. A layout rew
 **Verified.** Tests were written first and failed for the expected reasons. Frontend 1,355 passed, backend 1,774 passed; build clean. Live API checks against a backend on port 8010: 59 of 60 passed ([run](test-cases/runs/2026-10-21-1731-api-db-b360f14.md)), including new TC-DASH-030 and TC-DASH-013–018. An earlier run ([run](test-cases/runs/2026-10-21-1726-api-db-b360f14.md)) failed TC-DASH-015 because the check did not yet allow `rejected_events`; the check was updated. The remaining failure, TC-SDEC-023 (500 instead of 404 on "Mark as revised" for a missing booking), is in untouched venue-booking code and passed on 2026-10-18; logged as DEFECTS D55. The Overview at 1440px and 390px and the Events view were screenshotted in Chrome: all five board columns fit at 1440px after narrowing them, and there is no horizontal page scroll.
 
 **Not verified.** The database live checks and the browser e2e suite (both need the Supabase CLI, which was not installed); the manual pass over TC-DASH-026–029 and phone width; the PO's acceptance of the AC1 change. Four frontend helpers are now used only by their tests (`readinessGaps`, `summariseActionItems`, the store's `prioritisedActions` and `readinessGaps`); removing them is a follow-up.
-
 ### 4.83. Enabler — one gray hover for everything clickable
 
 On `chore/styling-consistency`, branched from `main` at `6c0b5bf`, 2026-10-22. No PBI: the developer asked for hovers to be gray instead of yellow "for standardisation", then for "all clickable buttons" to turn gray on hover.
@@ -3082,8 +3080,223 @@ On `chore/styling-consistency`, on top of §4.83, 2026-10-22. No PBI: the develo
 
 **Not verified.** The manual pass over TC-ORG-011–014 and TC-DASH-026's colours, including phone width and how the board and sections look next to the coordinator's.
 
+### 4.85. Bug fix D56 — attendee notifications read SCRUM-43's registrations table
 
-### 4.85. 23-R — equipment availability: usable stock, storage location and shortage
+On `fix/notifications-event-registrations`, 2026-10-22. Defect: DEFECTS D56 (High). Affects SCRUM-53 AC4 and every future caller of `notify_registered_attendees`.
+
+**Symptom.** After SCRUM-43's migration `20261022100000` was applied to the shared project, the day-before attendee reminder sent nothing, and the attendee helper failed whenever it was called.
+
+**Reproduction (live, 2026-10-22).** `to_regclass('public.registrations')` is null and `public.event_registrations` exists. `select public.send_attendee_event_reminders()` returned 0 (its guard found no `registrations` table, so the 15-minute cron job did nothing). `select public.notify_registered_attendees(...)` raised `42P01: relation "public.registrations" does not exist`. Both run in rolled-back transactions.
+
+**Root cause.** PR #95 (§4.76) was written before SCRUM-43 existed and assumed its table would be `public.registrations(event_id, attendee_id, status)`. SCRUM-43 named it `public.event_registrations`. The columns and the `'registered'` value matched; only the name did not. Both functions are plpgsql, so creating them against a missing table raised no error.
+
+**Why the checks missed it.** `notification_attendee_checks.sql` and `notification_reminder_checks.sql` created their own stand-in `public.registrations` inside the transaction, so they tested the assumed name, not SCRUM-43's table. The reminder's guard then turned the mismatch into a quiet 0 rather than an error.
+
+**Fix.** Migration `20261022120000_notifications_read_event_registrations.sql` redefines both functions to read `public.event_registrations`; signatures, grants, filter (`status = 'registered'`, so withdrawn and cancelled are never notified) and messages are unchanged. The reminder keeps its guard, now on `event_registrations`, because `main` does not have SCRUM-43's migration yet. The three verification scripts now insert into the real table with its real statuses (`cancelled` replaces `waitlisted`, which the table does not allow; a withdrawn row carries `withdrawn_at`), so they can no longer pass against a stand-in.
+
+**Blast radius.** No backend or frontend code names the table. The only references were the two functions, the three verification scripts, and docs (IMPLEMENTATION_MAP, test cases; the SCRUM-113 spec and plan are left as the history of the assumption). Data: the one live registration is for an event on 26 Nov, so no reminder was missed and nothing needs repairing.
+
+**Verified.** RED: the updated attendee checks failed live with `42P01`, and the reminder checks with "expected exactly one attendee reminder, got 0". GREEN: run after the migration in the same rolled-back transaction, NOTIFICATION ATTENDEE CHECKS, NOTIFICATION REMINDER CHECKS and NOTIFICATION REMINDER GUARD CHECKS all passed. Afterwards the live function was confirmed unchanged and no rows were left behind.
+
+After the developer pushed `20261022120000`, all three checks passed against the live functions, the `attendee-event-reminders` cron runs succeeded, and the security advisors showed nothing new.
+
+**Not verified.** Nothing outstanding for the database. The callers of `notify_registered_attendees` (37, 115, 43, 55, 86, the replacement venue) are other stories and are not wired yet.
+
+### 4.86. Story 43 — Register for a Confirmed Event
+
+Implemented on `feature/scrum-43-attendee-event-registration`. Confirmed estimate: 2 story points. The user story supplied for this work: “As an Attendee, I want to browse events, and register through the event page, so I can secure a place or understand why I cannot register.” Public discovery is available without signing in; registration returns an unauthenticated visitor to the event after login or Attendee signup.
+
+**Scope decisions.** Waitlist enrollment, ordering, invitations and all later waitlist behavior remain Story 86. Story 43 exposes the waitlist-enabled setting and shows a Join waitlist CTA when a full event has waitlisting enabled; the CTA does not enroll anyone. The `preparation` enum value is added for public discovery and registration, but its lifecycle transition and completion job remain Story 68. No backlog sheet changes were made.
+
+**Changed.**
+1. Backend `modules/registrations` adds public event directory/detail reads with dedicated response schemas and an active-role Attendee registration endpoint. Registration status uses instant-based opening/closing boundaries and the effective capacity: the lower of organiser capacity and the primary venue capacity, or the smallest confirmed venue capacity when there is no primary venue.
+2. Migration `20261022100000_registration.sql` adds the registration table, active-registration uniqueness, Attendee-own-row RLS, event settings and `register_for_event`. The RPC locks the event row before checking capacity, so concurrent requests cannot create registrations past the final place. It returns Full rather than writing a waitlisted record.
+3. Frontend adds the public directory `/` and attendee event page `/attendee/events/:id`, registration state/API calls, organiser settings for re-registration and waitlisting, and login/signup return-path handling.
+4. Updated REQUIREMENTS §6.18, IMPLEMENTATION_MAP, and TC-REG-001–007 in `docs/test-cases/events.md`. The cases include anonymous discovery, event-timezone boundaries, venue capacity, registration, active-role denial, final-place concurrency and CTA-only waitlist behavior.
+
+**Automated verification.** Backend registrations slice: 30 passed with 100% line coverage for the module. Frontend: 1,184 tests across 83 files passed; 96.85% overall line coverage, with the registration store and both public event views at 100%; production build passed. Direct Story 43 API contract spec: 24 passed. Follow-up full-suite verification is recorded below.
+
+**Live database verification (2026-10-22).** The dry run listed only `20261022100000_registration.sql`; `supabase db push` applied it, and the linked migration ledger now matches. `GET /api/v1/public/events` returned HTTP 200 with a public event. The advisor report has 10 WARN findings for existing Auth password protection and equipment RLS-initplan issues; none names the new registration table or event fields.
+
+**Follow-up verification (2026-10-22).** The full backend suite passed (1,911 tests). The full frontend suite passed 1,517/1,519; two coordinator route assertions failed only in the full run and passed when their files ran in isolation. AC8 re-registration after withdrawal remains unverified, and the full browser E2E suite is pending. Manual cases TC-REG-001–007 passed; the consolidated manual record is [here](test-cases/runs/2026-10-22-1501-manual-deb2c66.md). The notification migrations currently reference `public.registrations`, while Story 43 creates `public.event_registrations`; reconcile this separate cross-story contract before attendee notification jobs are expected to work.
+
+**UI follow-up (2026-10-22).** After registration, the event detail is fetched again so the places-registered count comes from the API. The attendee gets the shared success toast and a disabled **Registered** button; TC-REG-004 covers new and already-registered responses. The public pages now follow the shared typography and page-padding rules; the focused registration, route, view and style checks pass (174/174), and `npm run build` passes. The latest full frontend run reports 1,517 passed and 2 failed: coordinator navigation assertions that both pass when their test files run in isolation. The shared-browser interaction was not verified because the mocked auth session was rejected; no real registration was submitted through that browser interaction.
+
+### 4.87. Story 84 — Request cancellation of my event
+
+On `feature/scrum-84-request-cancellation`, 2026-10-23. PBI 84 (Event status management), split on 20/10 from the coordinator's side, which is now 115. Numbered after story 43's §4.86 (PR #100); the branch was rebased onto it.
+
+**What was built.**
+- **Database** (migration `20261023100000_event_cancellation_requests.sql`):
+  - `event_change_requests`, one table for change and cancellation requests (§6.19, CR-R9), so SCRUM-32/37 and 115 build on it. A partial unique index allows one open request per kind per event (CR-R1). RLS lets the owner and the assigned coordinator read the rows in their active role; nobody can write them directly.
+  - `request_event_cancellation` (ADR-0007) locks the event, re-checks owner and status, supersedes an open change request (AC4), inserts the request, and notifies the coordinator, or every Lead while the event is unassigned (CR-R7). It returns an outcome code and releases nothing (QA-12).
+  - A new notification type, `event_cancellation_requested`.
+- **API:**
+  - `POST /events/{id}/cancellation-request` for the owning organiser in the organiser role. The allowed statuses are every status except draft, rejected, cancelled and completed (`lifecycle.CANCELLATION_REQUEST_REFUSED`), so Safety review is allowed (CR-R6) and Preparation will be once story 68 uses it.
+  - `GET /events/{id}` gains `open_cancellation_request`.
+  - The history gains `cancellation_requested` entries.
+  - The coordinator dashboard gains `cancellation_request` action items, which the SPA already ranked third.
+- **SPA:**
+  - The organiser's event page has a Request cancellation button and `RequestCancellationModal` (reason required, n / 1000), then a Cancellation requested banner with the reason.
+  - The coordinator's event page shows a read-only banner.
+  - `EventStatusHistory` heads the new entries "Cancellation requested".
+
+**Decisions** (recorded in REQUIREMENTS §6.19 CR-R6–CR-R9 and §9 items 87–90):
+- Safety review accepts a request, though AC1 doesn't list it.
+- An unassigned event notifies the Leads, without the reason.
+- The organiser can't withdraw a request.
+- One shared table.
+- The reason is capped at 1000 characters.
+
+**Tests.** Written test-first in vertical slices, one commit each:
+- **Backend:** `test_event_cancellation_request_api.py` (the request, the refusals, the access matrix including the SCRUM-76 owner-acting-as-coordinator denial, the detail field, history, dashboard) and RPC/query contracts in `test_events_repository.py`. The RPC wrapper went in during the first slice to unblock the API test, so its contract test was written after it rather than red first.
+- **Frontend:** `EventCancellationRequest.spec.js`, `CoordinatorCancellationRequest.spec.js`, plus one case in `EventStatusHistory.spec.js`. That heading changed before its test was written.
+- **`tests/conftest.py::cancellation_requests_offline`** keeps the older event-read tests offline. No existing test was changed.
+- **Results:** backend 1912 passed, with every new line covered; frontend 1518 passed, with every new line covered; `npm run build` is clean.
+
+**Live checks added.**
+- TC-CANCEL-001–006 in `verify_live.py`, on throwaway events.
+- `event_cancellation_request_checks.sql` (TC-CANCEL-007, 008), added to the database run.
+- TC-CANCEL-013 in `verify_live.py`: a `preparation` event accepts a request, added after the rebase onto PR #100.
+- TC-CANCEL-009 in `e2e/cancellation-request.e2e.js`.
+- Manual cases TC-CANCEL-010–012 in `docs/test-cases/events.md`.
+
+**Verified (2026-10-23).**
+- Migration `20261023100000` applied with `supabase db push`; the linked ledger matches the branch.
+- API and database run [188/188](test-cases/runs/2026-10-23-1609-api-db-1b7cad7.md), after the seeded review fixtures 201/202 were reset with `event_review_fixture_reset.sql` (rejected on 21–22 Oct, before this branch; a first run failed only on that and was deleted as a setup failure).
+- Browser run [89/90](test-cases/runs/2026-10-23-1627-e2e-1b7cad7.md); TC-CANCEL-009 passed. The failure is TC-TSD-017 (tech-support summary row, 1 card found where 4 are expected), which has failed the same way in every recorded browser run since 2026-10-20 (earlier BUILD_LOG entries report it; it isn't in DEFECTS.md); this story doesn't touch that dashboard.
+- Manual pass [TC-CANCEL-010–012](test-cases/runs/2026-10-23-1610-manual-cb76541.md) passed. At the developer's request the coordinator's banner now heads the organiser's reason with "Comments:".
+- After the rebase onto PR #100: backend 1956 and frontend 1539 passed; TC-CANCEL-001–008 and 013 and TC-CANCEL-009 passed again, unrecorded.
+
+**Not verified.**
+- No story moves events into `preparation` yet (story 68), so TC-CANCEL-013 sets the status directly on a throwaway event.
+- AC4 is proven only at the database: story 32 has no API that creates a change request.
+- AC6 (the organiser hears the decision) is delivered by 115.
+
+### 4.88. Story 115 — Cancel an event
+
+On `feature/scrum-115-cancel-event`, 2026-10-23, branched from story 84's PR #104. PBI 115 (Event status management): the coordinator's side of the 84 split.
+
+**What was built.**
+- **Database** (migration `20261024100000_cancel_event.sql`):
+  - `transition_event` now releases venue bookings for a cancelled event, as it already did for a rejected one (BR-R4, QA3-27). Equipment was already released.
+  - `cancel_event` (ADR-0007) is the one path for approval and direct cancel. It locks the event, re-checks the coordinator, the start time and (for approval) the open request, then calls `transition_event`. It closes an open request as `approved`, notifies the registered attendees and cancels their registrations, and notifies every venue staff and tech support account, plus the Safety Officers from safety review. It returns an outcome code.
+  - `reject_cancellation_request` closes the open request as `rejected` with the reason and notifies the organiser.
+  - Two notification types: `event_cancelled` and `event_cancellation_rejected`.
+- **API:**
+  - `POST /events/{id}/cancellation-request/approve`, `/cancellation-request/reject` and `/cancel`, for the assigned coordinator in the coordinator role.
+  - `lifecycle` gains a `cancel` row (planning, confirmed, preparation).
+  - The history gains `cancellation_rejected` entries; `list_cancellation_requests` reads each decision.
+- **SPA:**
+  - The coordinator's request banner offers Approve cancellation (confirmed in a dialog) and Reject cancellation (reason required).
+  - A Cancel event action for a planning, confirmed or preparation event that hasn't started, with a reason.
+  - `CancellationReasonModal` holds both reasons. After a decision the event is read again so the page keeps its venue details.
+  - `EventStatusHistory` heads rejections "Cancellation request rejected".
+
+**Decisions** (from the planning session; recorded in REQUIREMENTS §6.19 CR-R10–CR-R13 and §9 items 91–92):
+- Approval and direct cancel both stop at the event's start time; a missing start time is refused.
+- Direct cancel only from Planning, Confirmed and Preparation; it closes an open request as approved.
+- Staff are notified as pools, the Safety Officers only from safety review.
+- An approval's history entry carries the organiser's reason.
+- A new request is allowed after a rejection; the rejection shows in the notice and history only.
+- Another coordinator gets 403, not 404, following `_assigned_event` (SCRUM-34/52).
+
+**Tests.** Written test-first in vertical slices, one commit each:
+- **Backend:** `test_event_cancellation_decision_api.py` (approval, its refusals and the RPC's outcome codes; direct cancel; rejection; the access matrix for all three routes including the SCRUM-76 denial; the rejection history entry) and both RPC contracts in `test_events_repository.py`.
+- **Frontend:** `CoordinatorCancellationDecision.spec.js`, a case in `EventStatusHistory.spec.js`, the store's failed re-read in `eventReviewStore.spec.js`, and the three calls in `api.spec.js`.
+- **Existing tests changed:** `test_list_cancellation_requests_reads_every_cancellation_on_the_event` now expects the wider select (AC6 reads the decision); `CoordinatorCancellationRequest.spec.js` expected a banner with no buttons and now expects exactly approve and reject (Q10). Both are named in their commits.
+- **Results:** backend 2042 passed, frontend 1562 passed, with every new line covered; `npm run build` is clean.
+
+**Live checks added.**
+- TC-CANCEL-014–017 in `verify_live.py`, on throwaway events, venues and equipment.
+- `event_cancellation_decision_checks.sql` (TC-CANCEL-018), added to the database run.
+- TC-CANCEL-019, 020 in `e2e/cancellation-decision.e2e.js`.
+- Manual cases TC-CANCEL-021–023 in `docs/test-cases/events.md`.
+
+**Verified (2026-10-23).**
+- Migration `20261024100000` applied with `supabase db push` by the developer; the ledger lists it, and both functions and both notification types exist on the live project.
+- API and database run [194/194](test-cases/runs/2026-10-23-1749-api-db-14105cf.md), including TC-CANCEL-014–018.
+- Browser run [90/92](test-cases/runs/2026-10-23-1840-e2e-14105cf.md); TC-CANCEL-019 and 020 passed. The two failures are outside this story. TC-RBAC-005 still expects unknown paths to go to `/login`, but story 43 (PR #100) sends them to the public directory at `/`. TC-TSD-017 fails as in every browser run since 2026-10-20.
+
+- Manual pass [TC-CANCEL-021–023](test-cases/runs/2026-10-23-2135-manual-e90024d.md) passed.
+
+**Not verified.**
+- No story moves events into `preparation` yet (story 68), so a direct cancel from Preparation is unit-tested only.
+
+### 4.89. Story 32 — Request changes to event arrangements
+
+On `feature/scrum-32-request-event-changes`, 2026-10-24, stacked on PR #106 (story 115), which is stacked on PR #104 (story 84). PBI 32 (Event change request). The coordinator's side, deciding and applying a change, is story 37.
+
+**What was built.**
+- **Database** (migration `20261025100000_event_change_requests.sql`):
+  - `event_change_requests` gains `changes` (jsonb) and `significant`, required exactly on `change` rows.
+  - One open request per event, of either kind, replaces story 84's one per kind (CR-R14). Story 84's supersede still works, because it closes the change row before inserting the cancellation.
+  - `request_event_change` (ADR-0007) locks the event, re-checks the owner, status and version, refuses while a cancellation or change request is open, inserts the request and notifies the coordinator, or every Lead while unassigned. It changes nothing on the event.
+  - A trigger supersedes an open change request when its event becomes rejected, cancelled or completed (CR-R18).
+  - A new notification type, `event_change_requested`.
+- **API:**
+  - `POST /events/{id}/change-request` for the owning organiser in the organiser role. Proposed values come for event fields and existing spaces; the API reads `before` from the database and keeps only real changes.
+  - `events/change_fields.py` holds the significant/ordinary split (CR-R17) for story 37 and story 112 to reuse.
+  - `GET /events/{id}` gains `open_change_request`; the history gains `change_requested` and `change_request_closed` entries; the coordinator dashboard gains `change_request` items, which the SPA already listed.
+  - Story 84's cancellation readers now share one query per shape with the new change readers; their selects are unchanged.
+- **SPA:**
+  - `EventRequestView` has a change mode at `/events/:id/request-change`, prefilled, without draft, submit or add/copy/remove space controls. Send change request is disabled until something differs, then lists each change as before → after with a reason (`CancellationReasonModal` gains a slot for the list).
+  - The organiser's event page offers Request changes, or says why not while a cancellation is open, and shows a Change requested banner. The coordinator's page shows the same request read-only, marked significant or ordinary.
+  - `features/events/changeRequest.js` builds the proposal from payload snapshots with the API's comparison rules; `ChangeRequestChanges` renders the rows in the dialog, both banners and the history.
+
+**Decisions** (developer, 24/10; recorded in REQUIREMENTS §6.19 CR-R14–CR-R21 and §9 items 93–97):
+- Structured requests, covering event fields and existing spaces. Adding or removing a space is out.
+- The organiser fills them in through the request form itself.
+- One open request per event (from the sheet's Notes, 23/10), enforced in the RPC and by the index.
+- Accepted from submission until the start, except on a returned request.
+- Registration settings are ordinary and the timezone is significant.
+- Only errors a change introduces are reported.
+- No withdrawal or edit.
+- Only the decider is told of a request; everyone else hears on approval (37).
+
+**Tests.** Written test-first in vertical slices, one commit each:
+- **Backend:** `test_event_change_request_api.py` covers:
+  - the request with its before and after
+  - the refusals, including AC4 storing nothing
+  - the access matrix, including the SCRUM-76 owner-acting-as-coordinator denial
+  - the diff and its no-op rules
+  - validation
+  - the RPC outcomes
+  - the detail field, history and dashboard
+
+  `test_events_repository.py` holds the RPC and query contracts. As in story 84, the RPC wrapper went in during the first slice to unblock the API test, so its contract test was written after it rather than red first.
+- **Frontend:** `changeRequest.spec.js`, `EventChangeRequest.spec.js` (change mode), `EventChangeRequestBanners.spec.js`, two cases in `EventStatusHistory.spec.js` and one in `api.spec.js`.
+- **Changed existing checks:**
+  - `tests/conftest.py::cancellation_requests_offline` now also defaults the three change readers to empty. No existing test's assertion was changed.
+  - `event_cancellation_request_checks.sql`'s bare change row gained an empty change set, because change rows now must carry their changes (CR-R16). Its supersede check is unchanged.
+- **Results:** backend 2116 passed, frontend 1603 passed, `npm run build` clean. Every new and changed line is covered: the remaining uncovered lines in the touched files predate this branch.
+
+**Live checks added.**
+- TC-CHANGE-001–006 in `verify_live.py`, on throwaway events and spaces. TC-CHANGE-002 checks story 84's AC4 through the API, which story 84 could only check in the database.
+- `event_change_request_checks.sql` (TC-CHANGE-007), added to the database run.
+- TC-CHANGE-008 in `e2e/change-request.e2e.js`. `createThrowawaySpace` takes an optional layout.
+- Manual cases TC-CHANGE-009–012 in `docs/test-cases/events.md`.
+
+**Verified (2026-10-24).**
+- Run before the migration, `event_change_request_checks.sql` failed because the function didn't exist. Migration `20261025100000` was then applied with `supabase db push`, on the developer's go-ahead, and the linked ledger matches the branch.
+- `event_change_request_checks.sql`, `event_cancellation_request_checks.sql` and `event_cancellation_decision_checks.sql` pass against the live schema.
+- The advisors show nothing new: the same 10 WARN findings on Auth password protection and equipment RLS initplans.
+- API and database run [198/201](test-cases/runs/2026-10-24-1646-api-db-68cfce6.md), with TC-CHANGE-001–007 passing. TC-VENUE-066, TC-VENUE-067 and TC-BOOK-002 failed with a 404 for an event or venue the check had just created, and passed when re-run unchanged and unrecorded straight afterwards. Story 32 doesn't touch those paths; the cause isn't established.
+- Browser run [91/93](test-cases/runs/2026-10-24-1718-e2e-68cfce6.md), with TC-CHANGE-008 passing. TC-RBAC-005 and TC-TSD-017 failed as in story 115's run. A first recorded browser run was deleted as a setup failure: the machine lost DNS for the Supabase host, so logins returned 500.
+
+- Manual pass [TC-CHANGE-009–012](test-cases/runs/2026-10-24-1732-manual-a310ea8.md) passed, on throwaway events Claude created for it.
+
+**Not verified.**
+- In change mode, a value typed before the event finishes loading is overwritten by the loaded value. The draft and amend modes behave the same way; it is reported, not fixed.
+- Deciding and applying a change, and the notices to venue staff, tech support and attendees, are story 37.
+**Follow-up (2026-10-24): rejecting the event closes an open request.**
+- Rejecting an event left its open cancellation request open. The coordinator still saw the banner on the rejected event; Approve cancellation answered 409, and Reject cancellation told the organiser their request was turned down.
+- Migration `20261025110000_close_cancellation_request_on_ended_event.sql` adds a trigger that closes the open request as `superseded` when the event becomes `rejected` or `completed` (CR-R22), the same way story 32 closes change requests. Reject remains a decision on the event, available with or without a request.
+- Tests: a failing case added to `event_cancellation_decision_checks.sql` first, then TC-CANCEL-024 in `verify_live.py`. No API or SPA code changed: the event read and the dashboard already list open requests only.
+- Verified (2026-10-24): migration applied to the live project with its ledger row; [TC-CANCEL-024](test-cases/runs/2026-10-24-2031-api-db-c197023.md) and [TC-CANCEL-018](test-cases/runs/2026-10-24-2032-api-db-c197023.md) pass. Only the checks this change touches were run, not the full suite. Every other rolled-back verification script also passed with the migration in place, except `event_cancellation_request_checks.sql`, which already fails on the live project because of story 32's `changes_only_on_change` constraint (story 32's branch updates it).
+
+
+### 4.90. 23-R — equipment availability: usable stock, storage location and shortage
 
 On `feature/scrum-23-r-equipment-availability`, managed worktree `/home/jclim/.codex/worktrees/pbi-23-r/ConnectSphere`, based on current `origin/main` (`c70b159`), 2026-10-22. Product backlog row 71 was read through the connector, including the Session 3 QA3-29/34 clarifications; the developer approved the in-chat design. The sheet was not edited.
 
@@ -3106,7 +3319,7 @@ On `feature/scrum-23-r-equipment-availability`, managed worktree `/home/jclim/.c
 **Second review, 2026-10-24 — needs changes.** A fresh Claude read-only review and an independent condition-semantics inspection identified two pre-existing behaviors relevant to this PBI that the first review missed. Codex reproduced D57 in a rolled-back live SQL transaction (7 retired units with no outages → 7 free, Sufficient for 6) and D58 in the actual service with only the external repository seams replaced (two same-item requests of 5 against 7 free → overall Sufficient and missing [0, 0], instead of a 3-unit shortage). The UI permits duplicate selections. Catalogued maintenance status also leaves stock available without outage rows, but whether that should block all units requires clarification; partial quantity outages already work. Tests cover timed outages and single-item shortages, not these catalogue-state and aggregate-demand boundaries. [Full review evidence and evaluated Claude observations](test-cases/runs/2026-10-24-23r-second-review-d9bb919.md). D57/D58 are recorded Open; no product behavior changed in this review. The earlier unit passes remain valid, but do not establish that AC1/AC4 are complete.
 
 
-### 4.86 23-R follow-up — retired stock and duplicate demand (2026-10-25)
+### 4.91. 23-R follow-up — retired stock and duplicate demand (2026-10-25)
 
 **Trigger.** Developer authorized fixing D57/D58 after the second review and requested moving the worktree beside the main project. Branch remains `feature/scrum-23-r-equipment-availability`; checkout is now `/home/jclim/projects/ConnectSphere-pbi-23-r`. Main checkout was not changed.
 
@@ -3119,30 +3332,37 @@ On `feature/scrum-23-r-equipment-availability`, managed worktree `/home/jclim/.c
 **Not verified / deployment gates.** Both migrations remain local-only; no shared schema/history/seed changes, no hosted resources, no push or PR. TC-EQR-040 remains Blocked at 1280/768/375; TC-EQR-041 developer manual results remain pending. There is no installed Docker/Podman/nerdctl runtime or native stack command in CLI 2.121.0, and the shared Supabase project has no development branch. Moving the Git worktree does not isolate the Supabase database. Full manual testing needs an isolated test database or normal merged-PR deployment. Current advisors were read (existing password/RLS/index notices); post-deployment comparison remains pending. Earlier unrelated live regression failures remain recorded. Developer still owns PR/team review/PO acceptance/merge and Sprint 4 DoD/backlog updates unless requested.
 
 
-### 4.87 23-R post-deployment verification and tablet form overflow (2026-10-25)
+### 4.92. 23-R post-deployment verification and tablet form overflow (2026-10-25)
 
 **Deployment.** Developer applied both 23-R migrations to shared Supabase after a dry run. The feature checkout lacked six already-deployed remote versions from other branches; a temporary deployment folder filled those files from actual recorded migration statements, and `db push --skip-vault --include-all --dry-run` listed only `20261022133632` and `20261024174919`. No migration history was repaired. Both versions and the nullable column were verified after the developer reported completion.
 
 **Live acceptance.** Post-deployment TC-EQR-038/039/042 passed (3/3), including actual availability quantities/location/retirement, both inventory modes, role denials, duplicate UUID input, real reserve/recheck behavior and preserved reservations: [record](test-cases/runs/2026-10-25-1357-api-db-15d9243.md). The first browser run passed at 1280 and 375 px and passed duplicate validation, but failed tablet overflow at 768 px (document width956): [failure retained](test-cases/runs/2026-10-25-1359-e2e-15d9243.md). D59 records this product finding.
 
-**D59 root cause and TDD.** A real-browser geometry inspection found the requested-equipment selector and number input forcing automatic grid-item minimum widths. This was form overflow, not the results table. A browser-only style experiment reduced the document to 768 px. The production fix adds `min-w-0` to the two labels and `min-w-0 w-full` to their controls; no application-wide or table layout changed. The existing failing tablet E2E regression passed after the fix. Full frontend coverage passed: 1,503 tests, 97.44%; production build passed. Claude read-only review found no actionable issues (session f463745f-de77-4fda-8335-bccb4c254f9b). A later browser run passed the tablet correction but its desktop fixture was absent from the 200 catalogue response before selection; this is retained as D60 (cause not established). An isolated desktop diagnostic with explicit API/DB fixture visibility passed. Final isolated browser verification passed 4/4, including actual results at 1280/768/375 and duplicate handling: [record](test-cases/runs/2026-10-25-1408-e2e-15d9243.md). All changed Vue lines are covered. Backend application code is unchanged in this CSS follow-up; its full 1,887-test/97.44% run is retained in §4.86. D60 remains open as a verification finding because the earlier fixture omission was not explained by the passing isolated run. User-supplied data, event timing and all API/DB behavior are unchanged by this CSS correction.
+**D59 root cause and TDD.** A real-browser geometry inspection found the requested-equipment selector and number input forcing automatic grid-item minimum widths. This was form overflow, not the results table. A browser-only style experiment reduced the document to 768 px. The production fix adds `min-w-0` to the two labels and `min-w-0 w-full` to their controls; no application-wide or table layout changed. The existing failing tablet E2E regression passed after the fix. Full frontend coverage passed: 1,503 tests, 97.44%; production build passed. Claude read-only review found no actionable issues (session f463745f-de77-4fda-8335-bccb4c254f9b). A later browser run passed the tablet correction but its desktop fixture was absent from the 200 catalogue response before selection; this is retained as D60 (cause not established). An isolated desktop diagnostic with explicit API/DB fixture visibility passed. Final isolated browser verification passed 4/4, including actual results at 1280/768/375 and duplicate handling: [record](test-cases/runs/2026-10-25-1408-e2e-15d9243.md). All changed Vue lines are covered. Backend application code is unchanged in this CSS follow-up; its full 1,887-test/97.44% run is retained in §4.91. D60 remains open as a verification finding because the earlier fixture omission was not explained by the passing isolated run. User-supplied data, event timing and all API/DB behavior are unchanged by this CSS correction.
 
 **Advisors and remaining gates.** Post-deployment advisor counts match the immediately preceding baseline: security 2 informational RLS/no-policy and 1 existing leaked-password warning; performance 1 unindexed-FK informational, 9 RLS-initplan warnings and 3 unused-index informational notices. No new notices. Automated scripts use only their own throwaway records or rollback transactions. TC-EQR-041 developer manual judgement, teammate review, PO acceptance, PR/merge and Sprint 4 DoD/backlog updates remain pending. No sheet, push, or PR action was taken.
 
 **Optional review follow-up.** Claude suggested an additional viewport near the 640 px breakpoint as low-priority extra coverage; no defect was established there. Existing required desktop/tablet/phone cases pass. Developer manual review still includes layout/wording/feel.
 
 
-### 4.88 23-R visible manual-test fixtures (2026-10-25)
+### 4.93. 23-R visible manual-test fixtures (2026-10-25)
 
 Developer requested visible throwaway stock and exact manual expectations before being asked to test, and explicitly asked to save that preference. Created three new `23-R DEMO 2026-10-25` equipment types plus four timed quantity-outage rows, leaving all existing data unchanged. [Fixture guide](test-cases/fixtures/23r-manual-2026-10-25.md) records own IDs, lifetime and guarded cleanup. They intentionally remain present for manual testing and use a prefix outside automated `live-check` cleanup.
 
 Real API verification passed: inventory counts for all three items; four main sufficient/insufficient/location scenarios; two post-outage scenarios; Speaker boundary outage; duplicate rejection (422). The API session was logged out; fixture data was retained intentionally. No product code changed, so the prior full suites/build remain applicable. Human TC-EQR-041 remains unrun. The preference was saved in the authorized memory update-notes folder; no backlog or test sheet was edited.
 
 
-### 4.89 23-R developer acceptance report and headless PR evidence (2026-10-25)
+### 4.94. 23-R developer acceptance report and headless PR evidence (2026-10-25)
 
 Developer reported “all passed” for the prepared manual checklist; [manual run](test-cases/runs/2026-10-25-1426-manual-c2aeefc.md) records this as developer-reported, without inventing a browser version. At their request Codex independently reran headless Chromium against the real branch: [4/4 regression checks passed](test-cases/runs/2026-10-25-1427-e2e-c2aeefc.md), then 20 assertions across inventory, sufficient/insufficient quantities, missing location, outage timing, duplicates and 1280/768/375px containment passed with no console/page errors. [Screenshot check record](test-cases/runs/2026-10-25-1431-headless-screenshots-c2aeefc.md); [10-image PR gallery](test-cases/screenshots/23r-2026-10-25/README.md). Desktop/tablet/phone screenshots were inspected and contain only seeded/synthetic UI data. No product code changed in this task. The new headless/screenshot preference was saved to an explicitly authorized memory update note.
 
 Screenshot review found the pre-existing maintenance-card UTC display mismatch D61; it is recorded for a separate follow-up, not silently changed. Extra 640–700px coverage remains optional as previously noted. No PR existed for this branch at the start of this task; screenshots and evidence are prepared locally for attachment once a PR exists/is authorized. Team/PO acceptance, Sprint 4 DoD ticks, PR/merge and backlog status are not inferred from the developer manual report.
 
 After the manual pass and screenshot capture, the three own DEMO equipment rows were removed by exact ID/name guard; their four outage rows cascaded. Screenshot evidence remains committed. Existing stock/events/reservations were untouched.
+
+
+### 4.95. 23-R draft PR integration with current main (2026-10-25)
+
+Draft PR #111 created at the developer's request with screenshot evidence pinned to the evidence commit. GitHub reported conflicts only in BUILD_LOG, DEFECTS and IMPLEMENTATION_MAP. Merged current main 55faf9b into the feature branch without rewriting pushed history. Preserved upstream story43/84/115/32 and notification/workflow/live-cleanup changes, retained both sets of build entries, and assigned the appended 23-R build headings 4.90–4.94 to avoid collisions with main 4.85–4.89. Entry content and immutable run logs remain intact; the one internal section reference follows the new heading. Main's existing D56 notification fix remains canonical; the older 23-R assignment-check IndexError entry is now D62, with historical alias explained in DEFECTS.
+
+No existing test was edited to make the integration green. Fresh full backend coverage passed 2,146 tests (97.75%); frontend passed 1,645 tests in 106 files (97.59%); production build passed. [API/rollback SQL](test-cases/runs/2026-10-25-1440-api-db-3d61d17.md) passed 3/3, then [headless browser](test-cases/runs/2026-10-25-1442-e2e-3d61d17.md) passed 4/4. Migration dry run reported upToDate:true with no pending migrations; no DB writes were applied. Screenshot files describe the unchanged equipment UI component and stay pinned in the draft PR description. Sprint 4's sheet is now called AC ticks; no sheet was edited.

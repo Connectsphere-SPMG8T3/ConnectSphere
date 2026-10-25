@@ -29,11 +29,36 @@ TRANSITIONS: dict[str, tuple[frozenset[EventStatus], EventStatus]] = {
     # Safety rejected. Both return the event to planning (CR-104 AC2/AC3).
     "safety_request_changes": (frozenset({EventStatus.safety_review}), EventStatus.planning),
     "safety_reject": (frozenset({EventStatus.safety_review}), EventStatus.planning),
-    # TODO(68 AC8): add EventStatus.preparation once it exists (CR-104 AC6, QA3-16).
+    # Story 68 owns the transition into Preparation (CR-104 AC6, QA3-16).
     "approved_change": (frozenset({EventStatus.confirmed}), EventStatus.planning),
     # An arrangement stopped being ready during review (CR-104 AC10).
     "safety_withdraw": (frozenset({EventStatus.safety_review}), EventStatus.planning),
+    # The coordinator cancels without an organiser request (story 115 AC3, QA2-5, QA2-6).
+    # An approved request cancels from any status a request is accepted in instead.
+    "cancel": (frozenset({EventStatus.planning, EventStatus.confirmed, EventStatus.preparation}),
+               EventStatus.cancelled),
 }
+
+
+# Story 84 AC2, CR-R4: a cancellation can be requested at any status after submission
+# except these (QA-12). It changes no status, so it isn't a TRANSITIONS row, and it is
+# defined by exclusion so Preparation (story 68) is covered as soon as it exists.
+CANCELLATION_REQUEST_REFUSED = frozenset({
+    EventStatus.draft, EventStatus.rejected, EventStatus.cancelled, EventStatus.completed,
+})
+
+
+def cancellation_requestable_from() -> list[str]:
+    return sorted(status.value for status in EventStatus if status not in CANCELLATION_REQUEST_REFUSED)
+
+
+# Story 32, CR-R15 [Assumption]: a change request has the same window, except that a
+# returned request is edited and resubmitted directly (REQUIREMENTS §6.7).
+CHANGE_REQUEST_REFUSED = CANCELLATION_REQUEST_REFUSED | {EventStatus.returned}
+
+
+def change_requestable_from() -> list[str]:
+    return sorted(status.value for status in EventStatus if status not in CHANGE_REQUEST_REFUSED)
 
 
 def allowed_from(action: str) -> list[str]:

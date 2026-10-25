@@ -1,6 +1,6 @@
 <script setup>
-import { ref, toRef } from "vue";
-import { useRouter } from "vue-router";
+import { computed, ref, toRef } from "vue";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import AuthPageLayout from "@/components/common/AuthPageLayout.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
@@ -72,6 +72,12 @@ function serverFieldErrors(detail) {
 }
 
 const router = useRouter();
+const route = useRoute();
+// Sign-in keeps the return path, so a visitor sent here from an event gets back to it.
+const loginLocation = computed(() => ({
+  name: "login",
+  query: route.query.redirect ? { redirect: route.query.redirect } : {},
+}));
 
 async function handleSubmit() {
   if (!validate()) return;
@@ -92,7 +98,7 @@ async function handleSubmit() {
     }
     await authApi.signup(details);
     // History state, not the query string, so the email stays out of the URL.
-    router.push({ name: "login", state: { signedUpEmail: form.value.email } });
+    router.push({ ...loginLocation.value, state: { signedUpEmail: form.value.email } });
   } catch (error) {
     if (error.status === 409) fieldErrors.value = { email: error.message };
     else if (error.status === 422 && Array.isArray(error.detail)) fieldErrors.value = serverFieldErrors(error.detail);
@@ -105,13 +111,16 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <AuthPageLayout>
+  <AuthPageLayout
+    :greeting="role === 'attendee' ? 'Ready for something fun? Let\'s get you a spot.' : 'Got an idea? Let\'s make it happen.'"
+    :illustration="role === 'attendee' ? 'ticket' : 'plan'"
+  >
     <BauhausCard background="white" accent="square" accent-color="bauhaus-blue">
       <form class="flex flex-col gap-6" novalidate @submit.prevent="handleSubmit">
         <div>
-          <h2 class="text-2xl font-bold">
+          <h1 class="text-2xl font-bold">
             {{ role === "attendee" ? "Create an Attendee Account" : "Create an Event Organiser Account" }}
-          </h2>
+          </h1>
           <p class="mt-1 text-sm font-medium text-ink/70">
             {{ role === "attendee" ? "Sign up as an Attendee to use ConnectSphere." : "Sign up as an Event Organiser to request events." }}
           </p>
@@ -170,6 +179,13 @@ async function handleSubmit() {
         <BauhausButton type="submit" variant="primary" full-width :disabled="isSubmitting">
           {{ isSubmitting ? "Creating Account…" : "Create Account" }}
         </BauhausButton>
+
+        <div class="border-t-2 border-ink pt-4 text-center text-sm font-medium text-ink/70">
+          <p>
+            Have an account?
+            <RouterLink :to="loginLocation" class="font-bold text-bauhaus-blue underline">Sign in</RouterLink>
+          </p>
+        </div>
       </form>
     </BauhausCard>
   </AuthPageLayout>

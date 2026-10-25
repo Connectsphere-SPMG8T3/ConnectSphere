@@ -17,7 +17,7 @@ Every item is tagged with who owns it:
 
 Agents never push, open PRs, or edit the team's Google Sheets unless the developer asks (root `AGENTS.md`, "Git workflow"). An agent's work ends after §3. The PBI is not Done until a person finishes §4 and §5.
 
-_Last updated: 2026-10-16 — §2 and End of sprint: when to run mutation testing (`chore/mutation-testing`). 2026-10-13 — the DoD (Sprint N) tabs are tracked in the sheet and checked before the PR (§4) and before the merge (§5); "Editing the backlog sheet" lists the Notes column (T) and explains the DoD tabs (`chore/backlog-notes-column`)._
+_Last updated: 2026-10-21 — AC ticks and notes for Sprint 3 onwards move to the **AC ticks** tab, matched by story ID and AC number (`chore/dod-ticks-tab`). 2026-10-16 — §2 and End of sprint: when to run mutation testing (`chore/mutation-testing`). 2026-10-13 — the DoD (Sprint N) tabs are tracked in the sheet and checked before the PR (§4) and before the merge (§5); "Editing the backlog sheet" lists the Notes column (T) and explains the DoD tabs (`chore/backlog-notes-column`)._
 
 ---
 
@@ -27,7 +27,7 @@ _Last updated: 2026-10-16 — §2 and End of sprint: when to run mutation testin
 |---|---|
 | PBIs: user story, acceptance criteria, priority, estimate, status, customer clarifications | The **Product backlog** tab of the [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit). PBI status is To Do / In Progress / In Review / Done (exact values under "Editing the backlog sheet" below). |
 | The sprint goal, tasks and remaining effort, and the burndown chart | The sprint's tab (Sprint 1–4) in the same sheet. Task status is To Do / In Progress / In Review / Done. Remaining effort is updated after every daily scrum. |
-| Whether each PBI meets the DoD: its acceptance criteria ticked one by one, the story checklist and the PO's sign-off | The sprint's **DoD (Sprint 1–4)** tab in the same sheet. Stories and ACs fill in from the Product backlog; the ticks are manual, so they are only as current as the last person who updated them (see §4 and §5). |
+| Whether each PBI meets the DoD: its acceptance criteria ticked one by one, the story checklist and the PO's sign-off | The sprint's **DoD (Sprint 1–4)** tab in the same sheet, with the AC ticks for Sprint 3 onwards in the **AC ticks** tab. Stories and ACs fill in from the Product backlog; the ticks are manual, so they are only as current as the last person who updated them (see §4 and §5). |
 | Code, tests, test cases and run logs | This repository. The team copies the test cases into the Test cases sheet before submission. |
 | Sprint 1 and 2 history | The Jira exports in the shared drive's `#4. Evidence` folder. |
 
@@ -43,7 +43,12 @@ An agent with the Google Sheets connector can read and write the sheet directly.
 - **Status** must match the dropdown exactly, emoji included: `TO DO 😖`, `IN PROGRESS 🥸`, `IN REVIEW 🥹`, `DONE 🥳`.
 - **Dates** are text in `DD/MM/YYYY` form. A status change also sets **Updated date**. Setting a PBI to Done also sets **Resolved date** and fills **Met DoD?**.
 - **Reading:** the whole tab is too large for one connector call. Find the row with a narrow range such as `'Product backlog'!B1:C120`, then read just that row.
-- **DoD tabs.** Each **DoD (Sprint N)** tab lists the sprint's stories in a story checklist (row 23 onwards) and their acceptance criteria in an AC table (row 56 onwards), both built by formula from the Product backlog. Tick **AC met?** for each AC, and the checklist boxes for the story. **DoD met?** turns to ✅ Done only when every AC and every box is ticked. Ticks stay in their row, not with their story, so if a story leaves the sprint or gains an AC, re-check the ticks below it. Read the row's ID and AC number before ticking.
+- **DoD tabs.** Each **DoD (Sprint N)** tab lists the sprint's stories in a story checklist (row 23 onwards) and their acceptance criteria in an AC table (row 56 onwards), both built by formula from the Product backlog. **DoD met?** turns to ✅ Done only when every AC and every checklist box is ticked.
+  - **Ticking ACs (Sprint 3 onwards):** ticks go in the **AC ticks** tab, not the DoD tab. It has one row per AC: A Story ID, B AC #, C the AC's current text (formula), D **AC met?**, E Notes, F Check (formula), G AC text when checked. The DoD tab's **AC met?** and **Notes** look each AC up by story ID and AC number, so a tick stays with its AC when ACs are added or removed. Those two columns are formulas: typing in them breaks the table, and the sheet warns before you do.
+  - **A new AC** shows "➕ Not in the AC ticks tab yet" on the DoD tab. Add a row for it in **AC ticks** with the story ID and AC number.
+  - **Removing or changing an AC:** reword it to "(Removed DD/MM: …)" and keep its number, and give a new AC the next number at the end. Don't renumber: ticks match by number. If an AC's text no longer matches column G (it was reworded or renumbered), **Check** shows "⚠ AC text changed since it was checked", in **AC ticks** and in the DoD tab's Notes. Re-check the tick, then paste the new text from C into G as values only (Ctrl+Shift+V). After ticking a new row, paste its text into G the same way.
+  - Use the **AC ticks** filter to find a story; don't sort the tab, because columns C and F are single formulas.
+  - **Story checklist boxes** are still ticked on the DoD tab and stay in their row, so if a story leaves the sprint, re-check the rows below it. Sprint 1–2 tabs keep their AC ticks on the DoD tab in the same way.
 - **Writing:** re-read the target row right before writing, because teammates edit the sheet at the same time. Read it back afterwards to confirm the change.
 
 ## 1. Before starting: Ready → In Progress
@@ -103,7 +108,7 @@ An agent with the Google Sheets connector can read and write the sheet directly.
 
 This section and §5 are human-owned. An agent does these steps only when the developer explicitly asks.
 
-- [ ] **[D]** **Before opening the PR, the PBI's rows in the sprint's DoD tab are brought up to date:** **AC met?** is ticked for each acceptance criterion that now works and has its test cases passing, and the story checklist's boxes that are already true are ticked (usually **Unit / integration tests**, **No open critical bugs** and **Docs updated**). An AC that depends on unbuilt work stays unticked, with the reason in its **Notes**. The PBI's **Status** in the Product backlog moves to In Review.
+- [ ] **[D]** **Before opening the PR, the PBI's rows in the sprint's DoD tab are brought up to date:** **AC met?** is ticked in the **AC ticks** tab for each acceptance criterion that now works and has its test cases passing, and the story checklist's boxes that are already true are ticked (usually **Unit / integration tests**, **No open critical bugs** and **Docs updated**). An AC that depends on unbuilt work stays unticked, with the reason in its **Notes**. The PBI's **Status** in the Product backlog moves to In Review.
 - [ ] **[D]** A pull request is opened against `main`. It names the PBI ID, and describes any security issue by *class*, never as step-by-step exploits.
 - [ ] **[D]** **CI passes on the PR.** The `CI` workflow (`.github/workflows/ci.yml`) runs the backend suite, the frontend suite and the frontend build on every pull request into `main`. Don't merge on the strength of a local run alone.
 - [ ] **[D]** At least one other Developer is requested as a reviewer. The PBI's tasks move to In Review in the sprint tab.

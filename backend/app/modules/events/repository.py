@@ -140,6 +140,33 @@ def list_latest_resubmissions(event_ids: Iterable[str]) -> dict[str, str]:
     return latest
 
 
+def list_open_cancellation_requests(event_ids: Iterable[str]) -> dict[str, str]:
+    """Story 84: `{event_id: requested_at}` of each event's open cancellation request
+    (at most one per event, CR-R1), for the coordinator dashboard."""
+    return _list_open_requests(event_ids, "cancellation")
+
+
+def list_open_change_requests(event_ids: Iterable[str]) -> dict[str, str]:
+    """Story 32: the same for open change requests."""
+    return _list_open_requests(event_ids, "change")
+
+
+def _list_open_requests(event_ids: Iterable[str], kind: str) -> dict[str, str]:
+    ids = list(event_ids)
+    if not ids:
+        return {}
+    response = (
+        get_supabase_admin_client()
+        .table("event_change_requests")
+        .select("event_id, requested_at")
+        .in_("event_id", ids)
+        .eq("kind", kind)
+        .eq("status", "open")
+        .execute()
+    )
+    return {row["event_id"]: row["requested_at"] for row in response.data or []}
+
+
 def list_event_names(event_ids: Iterable[str]) -> dict[str, str]:
     """`{event_id: name}` for the ids given, skipping any that no longer exist.
 
@@ -274,6 +301,104 @@ def transition_event(
     return rows[0] if rows else None
 
 
+def request_event_cancellation(
+    event_id: str,
+    actor_id: str,
+    reason: str,
+    from_statuses: list[str],
+    coordinator_message: str,
+    lead_message: str,
+) -> dict:
+    """Story 84: run `public.request_event_cancellation` under the event's lock. It
+    records the request, supersedes an open change request (CR-R1) and notifies the
+    assigned coordinator, or every Lead while the event is unassigned. Answers
+    `{outcome, request}`: ok / not_found / not_owner / status_changed / already_open."""
+    response = get_supabase_admin_client().rpc("request_event_cancellation", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_reason": reason,
+        "p_from_statuses": from_statuses,
+        "p_coordinator_message": coordinator_message,
+        "p_lead_message": lead_message,
+    }).execute()
+    return response.data
+
+
+def request_event_change(
+    event_id: str,
+    actor_id: str,
+    reason: str,
+    changes: dict,
+    significant: bool,
+    from_statuses: list[str],
+    expected_version: int,
+    coordinator_message: str,
+    lead_message: str,
+) -> dict:
+    """Story 32: run `public.request_event_change` under the event's lock. It records
+    the change request and notifies the assigned coordinator, or every Lead while the
+    event is unassigned. Answers `{outcome, request}`: ok / not_found / not_owner /
+    status_changed / stale / cancellation_open / already_open."""
+    response = get_supabase_admin_client().rpc("request_event_change", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_reason": reason,
+        "p_changes": changes,
+        "p_significant": significant,
+        "p_from_statuses": from_statuses,
+        "p_expected_version": expected_version,
+        "p_coordinator_message": coordinator_message,
+        "p_lead_message": lead_message,
+    }).execute()
+    return response.data
+
+
+def cancel_event(
+    event_id: str,
+    actor_id: str,
+    expected_version: int,
+    from_statuses: list[str],
+    reason: str,
+    require_open_request: bool,
+    organiser_message: str,
+    staff_message: str,
+    attendee_message: str,
+    safety_message: str,
+) -> dict:
+    """Story 115: run `public.cancel_event` under the event's lock. It cancels the event,
+    closes an open cancellation request as approved, releases its venue bookings,
+    equipment and registrations, and notifies everyone involved, in one transaction.
+    Answers `{outcome, event}`: ok / not_found / not_assigned / status_changed /
+    no_open_request / started."""
+    response = get_supabase_admin_client().rpc("cancel_event", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_expected_version": expected_version,
+        "p_from_statuses": from_statuses,
+        "p_reason": reason,
+        "p_require_open_request": require_open_request,
+        "p_organiser_message": organiser_message,
+        "p_staff_message": staff_message,
+        "p_attendee_message": attendee_message,
+        "p_safety_message": safety_message,
+    }).execute()
+    return response.data
+
+
+def reject_cancellation_request(event_id: str, actor_id: str, reason: str, organiser_message: str) -> dict:
+    """Story 115 AC2: run `public.reject_cancellation_request` under the event's lock. It
+    closes the open request as rejected with the reason and notifies the organiser; the
+    event keeps its status. Answers `{outcome}`: ok / not_found / not_assigned /
+    no_open_request."""
+    response = get_supabase_admin_client().rpc("reject_cancellation_request", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_reason": reason,
+        "p_organiser_message": organiser_message,
+    }).execute()
+    return response.data
+
+
 def list_status_history(event_id: str) -> list[dict]:
     """Newest first. The actor is embedded through the FK named in the migration.
     On a timestamp tie the creation row (no from_status) sorts last, since
@@ -392,6 +517,64 @@ def get_open_amendment(event_id: str) -> dict | None:
         .execute()
     )
     return response.data if response else None
+
+
+_REQUESTED_BY = "requested_by:profiles!event_change_requests_requested_by_fkey(id, full_name)"
+_DECIDED_BY = "decided_by:profiles!event_change_requests_decided_by_fkey(id, full_name)"
+
+
+def get_open_cancellation_request(event_id: str) -> dict | None:
+    """Story 84: the event's open cancellation request, with who asked. At most one
+    is open per event (partial unique index, CR-R1)."""
+    return _open_request(event_id, "cancellation", f"id, kind, status, reason, requested_at, {_REQUESTED_BY}")
+
+
+def get_open_change_request(event_id: str) -> dict | None:
+    """Story 32: the event's open change request, with its proposed changes."""
+    return _open_request(event_id, "change",
+                         f"id, kind, status, reason, changes, significant, requested_at, {_REQUESTED_BY}")
+
+
+def _open_request(event_id: str, kind: str, columns: str) -> dict | None:
+    response = (
+        get_supabase_admin_client()
+        .table("event_change_requests")
+        .select(columns)
+        .eq("event_id", event_id)
+        .eq("kind", kind)
+        .eq("status", "open")
+        .maybe_single()
+        .execute()
+    )
+    return response.data if response else None
+
+
+def list_cancellation_requests(event_id: str) -> list[dict]:
+    """Story 84 AC5: every cancellation request on the event, newest first, for its
+    history, with story 115's decision. Who asked and who decided are embedded; each
+    is null if their profile was deleted."""
+    return _list_requests(event_id, "cancellation",
+                          f"id, reason, requested_at, status, decision_reason, decided_at, {_REQUESTED_BY}, {_DECIDED_BY}")
+
+
+def list_change_requests(event_id: str) -> list[dict]:
+    """Story 32 AC2: every change request on the event, newest first, for its history."""
+    return _list_requests(event_id, "change",
+                          "id, reason, changes, significant, requested_at, status, decision_reason, decided_at, "
+                          f"{_REQUESTED_BY}, {_DECIDED_BY}")
+
+
+def _list_requests(event_id: str, kind: str, columns: str) -> list[dict]:
+    response = (
+        get_supabase_admin_client()
+        .table("event_change_requests")
+        .select(columns)
+        .eq("event_id", event_id)
+        .eq("kind", kind)
+        .order("requested_at", desc=True)
+        .execute()
+    )
+    return response.data or []
 
 
 def list_comments(event_id: str) -> list[dict]:

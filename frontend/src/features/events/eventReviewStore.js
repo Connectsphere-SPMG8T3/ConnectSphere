@@ -156,6 +156,31 @@ export const useEventReviewStore = defineStore("eventReview", {
       return this.act((token) => eventsApi.reject(this.event.id, reason.trim(), token));
     },
 
+    // Story 115: the decision answers the bare event, so read it again for the
+    // coordinator's view (venues, open request). The decision stands if that fails.
+    async approveCancellation() {
+      return this.decideCancellation((token) => eventsApi.approveCancellation(this.event.id, token));
+    },
+
+    async rejectCancellation(reason) {
+      return this.decideCancellation((token) => eventsApi.rejectCancellation(this.event.id, reason.trim(), token));
+    },
+
+    async cancelEvent(reason) {
+      return this.decideCancellation((token) => eventsApi.cancelEvent(this.event.id, reason.trim(), token));
+    },
+
+    async decideCancellation(call) {
+      const eventId = (await this.act(call)).id;
+      try {
+        const event = await useAuthStore().withSession((token) => eventsApi.get(eventId, token));
+        if (this.historyEventId === eventId) this.event = event;
+      } catch {
+        // The decision's own response stays shown until the next load.
+      }
+      return this.event;
+    },
+
     async returnForAmendment(message, flaggedFields) {
       return this.act((token) =>
         eventsApi.returnForAmendment(this.event.id, { message: message.trim(), flagged_fields: flaggedFields }, token),

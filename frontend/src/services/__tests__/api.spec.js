@@ -1,6 +1,28 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { eventsApi, notificationsApi, venueBookingsApi } from "@/services/api";
+import { eventsApi, notificationsApi, registrationsApi, venueBookingsApi } from "@/services/api";
+
+describe("Story 43 public registration API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads public events and registers with the attendee session", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ status: 200, ok: true, json: async () => ({ events: [] }) })
+      .mockResolvedValueOnce({ status: 200, ok: true, json: async () => ({ id: "event/one" }) })
+      .mockResolvedValueOnce({ status: 201, ok: true, json: async () => ({ status: "registered" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(registrationsApi.directory()).resolves.toEqual({ events: [] });
+    await expect(registrationsApi.event("event/one")).resolves.toEqual({ id: "event/one" });
+    await expect(registrationsApi.register("event/one", "attendee-token")).resolves.toEqual({ status: "registered" });
+
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.method, options.headers.Authorization])).toEqual([
+      ["http://localhost:8000/api/v1/public/events", "GET", undefined],
+      ["http://localhost:8000/api/v1/public/events/event%2Fone", "GET", undefined],
+      ["http://localhost:8000/api/v1/public/events/event%2Fone/registrations", "POST", "Bearer attendee-token"],
+    ]);
+  });
+});
 
 describe("eventsApi.clone", () => {
   afterEach(() => {
@@ -341,5 +363,43 @@ describe("notificationsApi (SCRUM-113)", () => {
       "http://localhost:8000/api/v1/notifications/read-all",
       expect.objectContaining({ method: "POST", headers: authed }),
     );
+  });
+});
+
+describe("Story 115 cancellation decisions", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("posts approve, reject and direct cancel with the coordinator's session", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ id: "event/one" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await eventsApi.approveCancellation("event/one", "token");
+    await eventsApi.rejectCancellation("event/one", "Venue already paid", "token");
+    await eventsApi.cancelEvent("event/one", "No replacement venue", "token");
+
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.method, options.body])).toEqual([
+      ["http://localhost:8000/api/v1/events/event%2Fone/cancellation-request/approve", "POST", undefined],
+      ["http://localhost:8000/api/v1/events/event%2Fone/cancellation-request/reject", "POST",
+        JSON.stringify({ reason: "Venue already paid" })],
+      ["http://localhost:8000/api/v1/events/event%2Fone/cancel", "POST", JSON.stringify({ reason: "No replacement venue" })],
+    ]);
+    expect(fetchMock.mock.calls.every(([, options]) => options.headers.Authorization === "Bearer token")).toBe(true);
+  });
+});
+
+describe("Story 32 change requests", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("posts the proposal with the organiser's session", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ status: 201, ok: true, json: async () => ({ id: "r1" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const body = { reason: "More seats", version: 3, event: { expected_attendance: 120 }, spaces: [] };
+
+    await eventsApi.requestChange("event/one", body, "token");
+
+    const [[url, options]] = fetchMock.mock.calls;
+    expect([url, options.method, options.body, options.headers.Authorization]).toEqual([
+      "http://localhost:8000/api/v1/events/event%2Fone/change-request", "POST", JSON.stringify(body), "Bearer token",
+    ]);
   });
 });

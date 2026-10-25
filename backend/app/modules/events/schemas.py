@@ -3,7 +3,7 @@ from enum import Enum
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 from app.modules.equipment.schemas import ExitConfirmation
 from app.modules.venues.schemas import Facility, VenueLayout
@@ -17,6 +17,7 @@ class EventStatus(str, Enum):
     planning = "planning"
     safety_review = "safety_review"
     confirmed = "confirmed"
+    preparation = "preparation"
     rejected = "rejected"
     cancelled = "cancelled"
     completed = "completed"
@@ -160,6 +161,8 @@ class EventFields(BaseModel):
     registration_capacity: int | None = Field(default=None, ge=1)
     registration_opens_at: datetime | None = None
     registration_closes_at: datetime | None = None
+    re_registration_allowed: bool = True
+    waitlist_enabled: bool = True
 
     @field_validator("event_timezone")
     @classmethod
@@ -191,6 +194,8 @@ class EventUpdateRequest(BaseModel):
     registration_capacity: int | None = Field(default=None, ge=1)
     registration_opens_at: datetime | None = None
     registration_closes_at: datetime | None = None
+    re_registration_allowed: bool | None = None
+    waitlist_enabled: bool | None = None
 
     @field_validator("event_timezone")
     @classmethod
@@ -223,6 +228,8 @@ class EventField(str, Enum):
     registration_capacity = "registration_capacity"
     registration_opens_at = "registration_opens_at"
     registration_closes_at = "registration_closes_at"
+    re_registration_allowed = "re_registration_allowed"
+    waitlist_enabled = "waitlist_enabled"
 
 
 class AmendmentRequest(BaseModel):
@@ -382,6 +389,55 @@ class EventSpaceVenueBooking(EventVenueBooking):
     pass
 
 
+class HistoryActor(BaseModel):
+    id: str
+    full_name: str
+
+
+class FieldChange(BaseModel):
+    """One proposed field change (story 32, CR-R16). `before` is read from the database,
+    never from the client."""
+
+    field: str
+    before: object = None
+    after: object = None
+
+
+class SpaceChange(BaseModel):
+    space_id: str
+    label: str | None = None
+    fields: list[FieldChange]
+
+
+class EventChanges(BaseModel):
+    event: list[FieldChange] = []
+    spaces: list[SpaceChange] = []
+
+
+class EventChangeRequest(BaseModel):
+    """A change or cancellation request on an event (REQUIREMENTS §6.19). Story 84
+    builds the cancellation kind; story 32 adds the change kind, with its proposed
+    `changes` and whether any of them is `significant` (§6.7)."""
+
+    id: str
+    kind: str
+    status: str
+    reason: str
+    changes: EventChanges | None = None
+    significant: bool | None = None
+    requested_by: HistoryActor | None = None
+    requested_at: datetime
+
+    @model_serializer(mode="wrap")
+    def _omit_change_fields_on_cancellations(self, handler):
+        # A cancellation request has no proposed changes; keep its shape as story 84 built it.
+        data = handler(self)
+        if self.kind != "change":
+            data.pop("changes", None)
+            data.pop("significant", None)
+        return data
+
+
 class EventResponse(EventFields):
     id: str
     organiser_id: str
@@ -417,6 +473,9 @@ class EventResponse(EventFields):
     rejected_bookings: list[EventRejectedBooking] = []
     safety_readiness: SafetyReadiness | None = None
     latest_safety_decision: SafetyDecision | SafetyDecisionSummary | None = None
+    # Story 84: the open cancellation request, on a single-event read only.
+    open_cancellation_request: EventChangeRequest | None = None
+    open_change_request: EventChangeRequest | None = None  # story 32
     venue_bookings: list[EventSpaceVenueBooking] = []
 
 
@@ -477,14 +536,12 @@ class EventResubmitRequest(EventUpdateRequest):
         return _required_text(value, "A resubmission note is required.")
 
 
-class HistoryActor(BaseModel):
-    id: str
-    full_name: str
-
-
 class EventHistoryEntry(BaseModel):
     """One line of an event's history: a status change, or a reassignment (SCRUM-12), which
-    is not a status change and so carries the two coordinators instead of statuses."""
+    is not a status change and so carries the two coordinators instead of statuses, or a
+    cancellation request (story 84, `cancellation_requested`), which carries only who asked
+    and why, or a change request (story 32, `change_requested`), which also carries the
+    proposed `changes`, and its closing (`change_request_closed`) when it was superseded."""
 
     id: str
     kind: str = "status"
@@ -494,11 +551,69 @@ class EventHistoryEntry(BaseModel):
     to_coordinator: HistoryActor | None = None
     actor: HistoryActor | None = None
     reason: str | None = None
+    changes: EventChanges | None = None
     at: datetime
+
+    @model_serializer(mode="wrap")
+    def _omit_changes_outside_change_requests(self, handler):
+        # Only change-request entries have proposed changes; the others keep their shape.
+        data = handler(self)
+        if not self.kind.startswith("change_request"):
+            data.pop("changes", None)
+        return data
 
 
 class EventHistoryResponse(BaseModel):
     entries: list[EventHistoryEntry]
+
+
+CANCELLATION_REASON_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; same cap as a rejection reason
+
+
+class CancellationRequestCreate(BaseModel):
+    """Story 84 AC1: the organiser's reason for asking to cancel."""
+
+    reason: str = Field(max_length=CANCELLATION_REASON_MAX_LENGTH)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def reason_is_not_blank(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("A cancellation reason is required.")
+        return value.strip()
+
+
+class EventCancelRequest(CancellationRequestCreate):
+    """Story 115 AC3: the coordinator's reason for cancelling without a request."""
+
+
+class SpaceChangeProposal(BaseModel):
+    """Story 32: proposed values for one of the event's existing spaces. Adding or
+    removing a space is out of scope (CR-R16)."""
+
+    id: UUID
+    label: str | None = Field(default=None, min_length=1, max_length=150)
+    expected_pax: int | None = Field(default=None, ge=1)
+    layout_preference: VenueLayout | None = None
+    facilities_required: list[Facility] | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+
+
+class ChangeRequestCreate(CancellationRequestCreate):
+    """Story 32 AC1: the organiser's proposed values and why. Only the fields sent are
+    proposed; `version` is the event version the form was filled in against."""
+
+    version: int
+    event: EventUpdateRequest = EventUpdateRequest()
+    spaces: list[SpaceChangeProposal] = []
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def reason_is_not_blank(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("A reason for the change is required.")
+        return value.strip()
 
 
 # SCRUM-72: the Event Coordinator dashboard. The SPA's store
@@ -508,12 +623,14 @@ class EventHistoryResponse(BaseModel):
 
 class CoordinatorActionKind(str, Enum):
     """The action kinds the server can produce today. The SPA's `ACTION_KINDS`
-    lists more (change and cancellation requests, booking and equipment
-    decisions, re-review outcomes); those arrive with the stories that build
-    their data, and until then their widgets stay empty (REQUIREMENTS §6.21)."""
+    lists more (change requests, booking and equipment decisions, re-review
+    outcomes); those arrive with the stories that build their data, and until
+    then their widgets stay empty (REQUIREMENTS §6.21)."""
 
     needs_alternative_venue = "needs_alternative_venue"
     arrangement_issue = "arrangement_issue"
+    cancellation_request = "cancellation_request"
+    change_request = "change_request"
     resubmitted = "resubmitted"
     awaiting_review = "awaiting_review"
 

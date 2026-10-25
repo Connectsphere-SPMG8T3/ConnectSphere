@@ -13,7 +13,15 @@ const routes = [
   },
   {
     path: "/",
-    redirect: "/login",
+    name: "public-events",
+    component: () => import("@/views/registrations/PublicEventDirectoryView.vue"),
+    meta: { requiresAuth: false },
+  },
+  {
+    path: "/attendee/events/:id",
+    name: "public-event-detail",
+    component: () => import("@/views/registrations/PublicEventDetailView.vue"),
+    meta: { requiresAuth: false },
   },
   {
     path: "/login",
@@ -48,6 +56,13 @@ const routes = [
   {
     path: "/events/new",
     name: "event-new",
+    component: () => import("@/views/events/EventRequestView.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["event_organiser"] },
+  },
+  {
+    // Story 32: the request form in change mode, for a submitted event.
+    path: "/events/:id/request-change",
+    name: "event-request-change",
     component: () => import("@/views/events/EventRequestView.vue"),
     meta: { requiresAuth: true, allowedRoles: ["event_organiser"] },
   },
@@ -162,7 +177,7 @@ const routes = [
   },
   {
     path: "/:pathMatch(.*)*",
-    redirect: "/login",
+    redirect: "/",
   },
 ];
 

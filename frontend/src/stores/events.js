@@ -78,6 +78,8 @@ export function emptyEvent() {
     registrationCapacity: "",
     registrationOpensAt: "",
     registrationClosesAt: "",
+    reRegistrationAllowed: true,
+    waitlistEnabled: true,
   };
 }
 
@@ -96,6 +98,8 @@ export function eventToPayload(event, { clearing = false } = {}) {
     accessibility_needs: (event.accessibilityNeeds ?? "").trim() || blank,
     preliminary_equipment_needs: (event.preliminaryEquipmentNeeds ?? "").trim() || blank,
     registration_enabled: event.registrationEnabled,
+    re_registration_allowed: event.reRegistrationAllowed,
+    waitlist_enabled: event.waitlistEnabled,
     registration_capacity: blank,
     registration_opens_at: blank,
     registration_closes_at: blank,
@@ -146,6 +150,8 @@ function fromResponse(event) {
     registrationCapacity: event.registration_capacity ?? "",
     registrationOpensAt: registrationOpensAt.date && registrationOpensAt.time ? `${registrationOpensAt.date}T${registrationOpensAt.time}` : "",
     registrationClosesAt: registrationClosesAt.date && registrationClosesAt.time ? `${registrationClosesAt.date}T${registrationClosesAt.time}` : "",
+    reRegistrationAllowed: event.re_registration_allowed ?? defaults.reRegistrationAllowed,
+    waitlistEnabled: event.waitlist_enabled ?? defaults.waitlistEnabled,
   };
 }
 
@@ -193,6 +199,22 @@ export const useEventsStore = defineStore("events", {
       } finally {
         this.isLoading = false;
       }
+    },
+
+    // Story 84: errors go to the caller (the dialog shows them), not the page alert.
+    async requestCancellation(eventId, reason) {
+      const authStore = useAuthStore();
+      const request = await authStore.withSession((token) => eventsApi.requestCancellation(eventId, reason, token));
+      await this.get(eventId);
+      return request;
+    },
+
+    // Story 32: as requestCancellation, errors go to the dialog.
+    async requestChange(eventId, body) {
+      const authStore = useAuthStore();
+      const request = await authStore.withSession((token) => eventsApi.requestChange(eventId, body, token));
+      await this.get(eventId);
+      return request;
     },
 
     async get(eventId) {
