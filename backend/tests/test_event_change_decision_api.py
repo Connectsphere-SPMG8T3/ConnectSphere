@@ -17,6 +17,7 @@ COORDINATOR_ID = "a0000000-0000-4000-8000-000000000002"
 OTHER_COORDINATOR_ID = "a0000000-0000-4000-8000-000000000009"
 EVENT_ID = "e0000000-0000-4000-8000-000000000371"
 REQUEST_ID = "c0000000-0000-4000-8000-000000000371"
+SPACE_ID = "f0000000-0000-4000-8000-000000000371"
 REQUEST_REASON = "More guests confirmed"
 REJECTION_REASON = "The venue can't take more people"
 FUTURE_START = "2026-11-12T10:00:00+08:00"
@@ -35,6 +36,9 @@ def event_row(status="confirmed", starts_at=FUTURE_START):
         "registration_opens_at": None, "registration_closes_at": None,
         "technical_readiness": "not_required", "submitted_at": now, "version": 3,
         "created_at": now, "updated_at": now,
+        "spaces": [{"id": SPACE_ID, "event_id": EVENT_ID, "label": "Main hall", "expected_pax": 80,
+                    "layout_preference": "theatre", "facilities_required": [], "starts_at": None,
+                    "ends_at": None, "version": 1, "is_primary": True}],
     }
 
 
@@ -187,6 +191,148 @@ class TestRejectChangeRequest:
             assert response.json()["detail"] == detail
 
 
+ORDINARY_REQUEST = {
+    **OPEN_REQUEST, "significant": False,
+    "changes": {"event": [{"field": "name", "before": "Partner Summit", "after": "Partner Forum"}],
+                "spaces": [{"space_id": SPACE_ID, "label": "Main hall",
+                            "fields": [{"field": "label", "before": "Main hall", "after": "Great hall"}]}]},
+}
+
+
+@pytest.fixture()
+def approvals(monkeypatch, events):
+    """A fake `approve_event_change` that answers like the RPC: ok with the changed
+    event, or an outcome code."""
+    calls = []
+    outcome = {"value": "ok"}
+
+    def approve_event_change(event_id, actor_id, expected_version, from_statuses, event_values,
+                             space_values, organiser_message):
+        calls.append({"event_id": event_id, "actor_id": actor_id, "expected_version": expected_version,
+                      "from_statuses": from_statuses, "event_values": event_values,
+                      "space_values": space_values, "organiser_message": organiser_message})
+        if outcome["value"] != "ok":
+            return {"outcome": outcome["value"], "event": None}
+        changed = {**events["store"][event_id], **event_values, "version": expected_version + 1}
+        changed.pop("spaces", None)
+        return {"outcome": "ok", "event": changed}
+
+    events["request"]["value"] = deepcopy(ORDINARY_REQUEST)
+    monkeypatch.setattr(repository, "approve_event_change", approve_event_change)
+    return {"calls": calls, "outcome": outcome}
+
+
+def approve(client, auth_headers, version=3):
+    return client.post(f"/api/v1/events/{EVENT_ID}/change-request/approve",
+                       json={"version": version}, headers=auth_headers)
+
+
+class TestApproveOrdinaryChange:
+    def test_approving_applies_the_proposed_values_in_one_call(self, client, auth_headers, act_as, events,
+                                                               approvals):
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["name"] == "Partner Forum"
+        assert response.json()["status"] == "confirmed"
+        [call] = approvals["calls"]
+        assert call["event_id"] == EVENT_ID
+        assert call["actor_id"] == COORDINATOR_ID
+        assert call["expected_version"] == 3
+        assert call["event_values"] == {"name": "Partner Forum"}
+        assert call["space_values"] == {SPACE_ID: {"label": "Great hall"}}
+
+    def test_the_organiser_is_told(self, client, auth_headers, act_as, events, approvals):
+        """AC4."""
+        act_as()
+
+        approve(client, auth_headers)
+
+        assert approvals["calls"][0]["organiser_message"] == 'Your requested changes to "Partner Summit" were approved.'
+
+    def test_a_value_changed_since_the_request_refuses_approval(self, client, auth_headers, act_as, events,
+                                                                approvals):
+        """Q8: applying `after` over a value nobody reviewed would overwrite someone's edit."""
+        events["store"][EVENT_ID]["name"] = "Partner Summit 2026"
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == (
+            "This event has changed since the request was made; reject it and ask for a new one.")
+        assert approvals["calls"] == []
+
+    def test_a_space_value_changed_since_the_request_refuses_approval(self, client, auth_headers, act_as,
+                                                                      events, approvals):
+        events["store"][EVENT_ID]["spaces"][0]["label"] = "Ballroom"
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == 409
+        assert approvals["calls"] == []
+
+    def test_an_older_version_than_the_coordinator_saw_refuses(self, client, auth_headers, act_as, events,
+                                                              approvals):
+        act_as()
+
+        response = approve(client, auth_headers, version=2)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "This event was updated by someone else. Reload."
+        assert approvals["calls"] == []
+
+    def test_a_change_that_now_breaks_a_submission_rule_is_refused(self, client, auth_headers, act_as, events,
+                                                                    approvals):
+        """CR-R19 re-run at approval: the proposed date was tomorrow when requested, and is today now."""
+        today = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+        events["request"]["value"]["changes"] = {
+            "event": [{"field": "starts_at", "before": FUTURE_START, "after": today}], "spaces": []}
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == 422
+        assert approvals["calls"] == []
+
+    def test_without_an_open_request_there_is_nothing_to_approve(self, client, auth_headers, act_as, events,
+                                                                 approvals):
+        events["request"]["value"] = None
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "There is no open change request for this event."
+
+    @pytest.mark.parametrize("status", ["completed", "cancelled", "rejected"])
+    def test_a_closed_event_takes_no_decision(self, client, auth_headers, act_as, events, approvals, status):
+        """AC8."""
+        events["store"][EVENT_ID]["status"] = status
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == 409
+        assert approvals["calls"] == []
+
+    @pytest.mark.parametrize(("outcome", "status_code"), [
+        ("no_open_request", 409), ("not_assigned", 403), ("not_found", 404), ("started", 409),
+        ("stale", 409), ("status_changed", 409),
+    ])
+    def test_the_rpc_recheck_under_the_lock_decides(self, client, auth_headers, act_as, events, approvals,
+                                                    outcome, status_code):
+        approvals["outcome"]["value"] = outcome
+        act_as()
+
+        response = approve(client, auth_headers)
+
+        assert response.status_code == status_code
+
+
 class TestHistoryRecordsTheDecision:
     """Q18: the organiser sees the outcome in the history, with the reason when rejected."""
 
@@ -220,8 +366,37 @@ class TestHistoryRecordsTheDecision:
         assert requested["kind"] == "change_requested"
 
 
+class TestHistoryRecordsTheApproval:
+    @pytest.fixture()
+    def history(self, monkeypatch, events):
+        monkeypatch.setattr(repository, "list_status_history", lambda event_id: [])
+        monkeypatch.setattr(repository, "list_assignment_history", lambda event_id: [])
+        monkeypatch.setattr(repository, "list_cancellation_requests", lambda event_id: [])
+        monkeypatch.setattr(repository, "list_change_requests", lambda event_id: [
+            {**ORDINARY_REQUEST, "status": "approved", "decision_reason": None,
+             "decided_at": "2026-10-25T10:00:00+00:00",
+             "decided_by": {"id": COORDINATOR_ID, "full_name": "Cora Coordinator"}},
+        ])
+
+    def test_an_approved_change_shows_who_approved_it_and_what_changed(self, client, auth_headers, act_as,
+                                                                      history):
+        act_as("event_organiser", user_id=ORGANISER_ID)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers)
+
+        approved, requested = response.json()["entries"]
+        assert approved["id"] == f"{REQUEST_ID}:approved"
+        assert approved["kind"] == "change_approved"
+        assert approved["actor"] == {"id": COORDINATOR_ID, "full_name": "Cora Coordinator"}
+        assert approved["reason"] is None
+        assert approved["changes"] == ORDINARY_REQUEST["changes"]
+        assert approved["at"] == "2026-10-25T10:00:00Z"
+        assert requested["kind"] == "change_requested"
+
+
 DECISIONS = [
     ("reject", reject),
+    ("approve", approve),
 ]
 
 
@@ -230,39 +405,41 @@ class TestOnlyTheAssignedCoordinatorDecides:
 
     @pytest.mark.parametrize(("name", "decide"), DECISIONS)
     def test_another_coordinator_is_forbidden(self, client, auth_headers, act_as, events, rejections,
-                                              name, decide):
+                                              approvals, name, decide):
         act_as(user_id=OTHER_COORDINATOR_ID)
 
         response = decide(client, auth_headers)
 
         assert response.status_code == 403
-        assert rejections["calls"] == []
+        assert rejections["calls"] == [] and approvals["calls"] == []
 
     @pytest.mark.parametrize(("name", "decide"), DECISIONS)
     @pytest.mark.parametrize("role", ["event_organiser", "event_coordinator_lead", "venue_staff",
                                       "tech_support", "safety_officer", "attendee"])
     def test_other_roles_are_forbidden(self, client, auth_headers, act_as, events, rejections,
-                                       role, name, decide):
+                                       approvals, role, name, decide):
         act_as(role, user_id=COORDINATOR_ID)
 
         response = decide(client, auth_headers)
 
         assert response.status_code == 403
-        assert rejections["calls"] == []
+        assert rejections["calls"] == [] and approvals["calls"] == []
 
     @pytest.mark.parametrize(("name", "decide"), DECISIONS)
-    def test_a_draft_is_not_found(self, client, auth_headers, act_as, events, rejections, name, decide):
+    def test_a_draft_is_not_found(self, client, auth_headers, act_as, events, rejections, approvals,
+                                  name, decide):
         events["store"][EVENT_ID]["status"] = "draft"
         act_as()
 
         response = decide(client, auth_headers)
 
         assert response.status_code == 404
-        assert rejections["calls"] == []
+        assert rejections["calls"] == [] and approvals["calls"] == []
 
     @pytest.mark.parametrize(("name", "decide"), DECISIONS)
     def test_the_coordinator_acting_as_another_role_is_forbidden(self, client, auth_headers, monkeypatch,
-                                                                 events, rejections, name, decide):
+                                                                 events, rejections, approvals, name,
+                                                                 decide):
         """The assigned coordinator's account also holds organiser and is acting as it."""
         profile = {"id": COORDINATOR_ID, "email": "multi@connectsphere.dev", "full_name": "Multi Role",
                    "role": "event_coordinator", "organisation_name": None, "department": None,
@@ -278,4 +455,4 @@ class TestOnlyTheAssignedCoordinatorDecides:
         response = decide(client, auth_headers)
 
         assert response.status_code == 403
-        assert rejections["calls"] == []
+        assert rejections["calls"] == [] and approvals["calls"] == []

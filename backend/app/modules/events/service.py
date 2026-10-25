@@ -586,6 +586,49 @@ def _raise_for_change_outcome(outcome: str) -> None:
         raise EventConflictError(STALE_EVENT_MESSAGE)
 
 
+CHANGED_SINCE_REQUEST_MESSAGE = "This event has changed since the request was made; reject it and ask for a new one."
+
+
+def _approved_values(row: dict, changes: dict) -> tuple[dict, dict]:
+    """Q8: the request's `after` values, provided every `before` still matches the
+    event as stored. Otherwise approving would overwrite a value nobody reviewed."""
+    spaces = {space["id"]: space for space in row.get("spaces") or []}
+    event_values = {change["field"]: change["after"] for change in changes.get("event") or []}
+    stale = change_fields.diff(row, {change["field"]: change["before"] for change in changes.get("event") or []})
+    space_values = {}
+    for space_change in changes.get("spaces") or []:
+        space = spaces.get(space_change["space_id"])
+        fields = space_change["fields"]
+        if space is None or change_fields.diff(space, {change["field"]: change["before"] for change in fields}):
+            stale = True
+        space_values[space_change["space_id"]] = {change["field"]: change["after"] for change in fields}
+    if stale:
+        raise EventConflictError(CHANGED_SINCE_REQUEST_MESSAGE)
+    return event_values, space_values
+
+
+def approve_change(event_id: str, coordinator_id: str, version: int) -> EventResponse:
+    """Story 37 AC2, AC4: the assigned coordinator approves the open change request.
+    The values are applied as one transaction by the database."""
+    row = _assigned_event(event_id, coordinator_id)
+    _refuse_deciding_change(row)
+    request = repository.get_open_change_request(event_id)
+    if not request:
+        raise EventConflictError(NO_OPEN_CHANGE_MESSAGE)
+    if version != row["version"]:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    event_values, space_values = _approved_values(row, request["changes"])
+    candidate = {**row, **event_values,
+                 "spaces": [{**space, **space_values.get(space["id"], {})} for space in row.get("spaces") or []]}
+    _refuse_new_submission_errors(row, candidate)
+    result = repository.approve_event_change(
+        event_id, coordinator_id, version, lifecycle.change_requestable_from(), event_values, space_values,
+        organiser_message=f'Your requested changes to "{row["name"]}" were approved.',
+    )
+    _raise_for_change_outcome(result["outcome"])
+    return _to_response(result["event"])
+
+
 def reject_change(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
     """Story 37 AC2, AC4: the assigned coordinator rejects the open change request with
     a reason (CR-R3). The event keeps its details, status and arrangements."""
@@ -816,11 +859,17 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
                           reason=row["decision_reason"], at=row["decided_at"])
         for row in changes if row.get("status") == "superseded"
     ]
-    # Story 37 Q18: a rejection is its own entry, with who rejected it and why.
+    # Story 37 Q18: each decision is its own entry, with who made it; a rejection says
+    # why, and an approval repeats what changed.
     entries += [
         EventHistoryEntry(kind="change_rejected", id=f"{row['id']}:rejected", actor=row["decided_by"],
                           reason=row["decision_reason"], at=row["decided_at"])
         for row in changes if row.get("status") == "rejected"
+    ]
+    entries += [
+        EventHistoryEntry(kind="change_approved", id=f"{row['id']}:approved", actor=row["decided_by"],
+                          changes=row["changes"], at=row["decided_at"])
+        for row in changes if row.get("status") == "approved"
     ]
     # Stable, so entries sharing a time keep the repository's order (the creation row last).
     entries.sort(key=lambda entry: entry.at, reverse=True)

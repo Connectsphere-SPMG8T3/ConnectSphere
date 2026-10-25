@@ -156,6 +156,19 @@ describe("EventStatusHistory change requests (story 32)", () => {
 });
 
 describe("EventStatusHistory change decisions (story 37)", () => {
+  it("heads an approved change with who approved it and what changed", async () => {
+    const el = await mountHistory([
+      { id: "r1:approved", kind: "change_approved", from_status: null, to_status: null, reason: null,
+        changes: { event: [{ field: "expected_attendance", before: 80, after: 120 }], spaces: [] },
+        at: "2026-10-25T02:00:00Z", actor: { id: "c1", full_name: "Marcus Lim" } },
+    ]);
+
+    const [item] = el.querySelectorAll("li");
+    expect(item.querySelector("p").textContent).toBe("Change approved");
+    expect(item.textContent).toContain("by Marcus Lim");
+    expect(item.textContent).toContain("120");
+  });
+
   it("heads a rejected change with who rejected it and why", async () => {
     const el = await mountHistory([
       { id: "r1:rejected", kind: "change_rejected", from_status: null, to_status: null,

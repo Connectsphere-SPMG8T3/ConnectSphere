@@ -11,7 +11,7 @@ vi.mock("@/services/api", async (importOriginal) => ({
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
   eventsApi: {
     safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), listComments: vi.fn(),
-    addComment: vi.fn(), rejectChange: vi.fn(),
+    addComment: vi.fn(), rejectChange: vi.fn(), approveChange: vi.fn(),
   },
 }));
 
@@ -110,6 +110,23 @@ describe("Story 37 coordinator decides a change request", () => {
       .toHaveBeenCalledWith("event-1", "The venue can't take more people", "access"));
     await vi.waitFor(() => expect(el.querySelector('[data-testid="change-request-banner"]')).toBeNull());
     expect(dialog()).toBeNull();
+  });
+
+  it("approving asks first, then sends the version the coordinator saw", async () => {
+    const el = await mountView(eventResponse({ open_change_request: OPEN_CHANGE }));
+    const changed = eventResponse({ expected_attendance: 120, version: 4 });
+    eventsApi.approveChange.mockResolvedValue(changed);
+    eventsApi.get.mockResolvedValue(changed);
+
+    button(el, "Approve changes").click();
+    await nextTick();
+    expect(dialog().textContent).toContain("Approve the requested changes?");
+    expect(eventsApi.approveChange).not.toHaveBeenCalled();
+
+    [...dialog().querySelectorAll("button")].find((b) => b.textContent.trim() === "Approve changes").click();
+
+    await vi.waitFor(() => expect(eventsApi.approveChange).toHaveBeenCalledWith("event-1", 3, "access"));
+    await vi.waitFor(() => expect(el.querySelector('[data-testid="change-request-banner"]')).toBeNull());
   });
 
   it("keeps the dialog open with the error when the rejection is refused", async () => {

@@ -40,6 +40,7 @@ const isApproveCancellationOpen = ref(false);
 const isRejectCancellationOpen = ref(false);
 const isCancelOpen = ref(false);
 // Story 37: deciding the organiser's change request.
+const isApproveChangeOpen = ref(false);
 const isRejectChangeOpen = ref(false);
 
 const event = computed(() => review.event);
@@ -180,6 +181,16 @@ async function confirmRejectCancellation(reason) {
     showToast("Cancellation request rejected");
   } catch {
     // Kept open so the coordinator sees the error beside their reason.
+  }
+}
+
+async function confirmApproveChange() {
+  isApproveChangeOpen.value = false;
+  try {
+    await review.approveChange();
+    showToast("Changes approved");
+  } catch {
+    // review.error is shown in the page's alert.
   }
 }
 
@@ -347,6 +358,8 @@ watch(
         <p class="mt-4 text-sm font-bold">Comments:</p>
         <p class="mt-1 whitespace-pre-wrap font-medium" data-testid="change-request-comments">{{ event.open_change_request.reason }}</p>
         <div class="mt-6 flex flex-wrap gap-3">
+          <BauhausButton size="sm" variant="secondary" aria-label="Approve changes" :disabled="review.isActing"
+            @click="review.error = null; isApproveChangeOpen = true">Approve changes</BauhausButton>
           <BauhausButton size="sm" variant="outline" aria-label="Reject changes" :disabled="review.isActing"
             @click="review.error = null; isRejectChangeOpen = true">Reject changes</BauhausButton>
         </div>
@@ -631,6 +644,15 @@ watch(
       :error="isRejectCancellationOpen ? review.error : null"
       @confirm="confirmRejectCancellation"
       @cancel="isRejectCancellationOpen = false"
+    />
+    <ConfirmModal
+      :open="isApproveChangeOpen"
+      title="Approve the requested changes?"
+      message="The new details are applied and the organiser is told."
+      confirm-label="Approve changes"
+      cancel-label="Go back"
+      @confirm="confirmApproveChange"
+      @stay="isApproveChangeOpen = false"
     />
     <CancellationReasonModal
       :open="isRejectChangeOpen"

@@ -167,6 +167,10 @@ export const useEventReviewStore = defineStore("eventReview", {
     },
 
     // Story 37: deciding the organiser's change request reloads the event the same way.
+    async approveChange() {
+      return this.decideCancellation((token) => eventsApi.approveChange(this.event.id, this.event.version, token));
+    },
+
     async rejectChange(reason) {
       return this.decideCancellation((token) => eventsApi.rejectChange(this.event.id, reason.trim(), token));
     },

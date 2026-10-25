@@ -21,7 +21,14 @@ insert into public.events (id, organiser_id, coordinator_id, status, name, start
     -- A draft: not found to every coordinator.
     ('e0000000-0000-4000-8000-000000003703', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000000002', 'draft', 'Draft change check (rolled back)',
-     null, null);
+     null, null),
+    -- Ordinary change approved: values applied, nothing else moves (Q7).
+    ('e0000000-0000-4000-8000-000000003704', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'confirmed', 'Ordinary change check (rolled back)',
+     '2031-04-16 10:00+08', '2031-04-16 12:00+08');
+
+insert into public.event_space_requests (id, event_id, label, expected_pax) values
+    ('f0000000-0000-4000-8000-000000003704', 'e0000000-0000-4000-8000-000000003704', 'Main hall', 80);
 
 insert into public.venue_bookings (event_id, venue_id, occupied_period, status) values
     ('e0000000-0000-4000-8000-000000003701', 'b0000000-0000-4000-8000-000000000001',
@@ -31,13 +38,25 @@ insert into public.event_change_requests (event_id, kind, reason, requested_by, 
     ('e0000000-0000-4000-8000-000000003701', 'change', 'More guests', 'a0000000-0000-4000-8000-000000000001',
      '{"event": [{"field": "expected_attendance", "before": 80, "after": 150}], "spaces": []}', true),
     ('e0000000-0000-4000-8000-000000003702', 'change', 'Later start', 'a0000000-0000-4000-8000-000000000001',
-     '{"event": [{"field": "name", "before": "a", "after": "b"}], "spaces": []}', false);
+     '{"event": [{"field": "name", "before": "a", "after": "b"}], "spaces": []}', false),
+    ('e0000000-0000-4000-8000-000000003704', 'change', 'New title', 'a0000000-0000-4000-8000-000000000001',
+     '{"event": [{"field": "name", "before": "Ordinary change check (rolled back)", "after": "Renamed (rolled back)"}], "spaces": [{"space_id": "f0000000-0000-4000-8000-000000003704", "label": "Main hall", "fields": [{"field": "label", "before": "Main hall", "after": "Great hall"}]}]}',
+     false);
+
+insert into public.venue_bookings (event_id, event_space_request_id, venue_id, occupied_period, status) values
+    ('e0000000-0000-4000-8000-000000003704', 'f0000000-0000-4000-8000-000000003704',
+     'b0000000-0000-4000-8000-000000000001',
+     tstzrange('2031-04-16 09:00+08', '2031-04-16 13:00+08', '[)'), 'approved');
 
 do $$
 declare
     v_reject uuid := 'e0000000-0000-4000-8000-000000003701';
     v_started uuid := 'e0000000-0000-4000-8000-000000003702';
     v_draft uuid := 'e0000000-0000-4000-8000-000000003703';
+    v_ordinary uuid := 'e0000000-0000-4000-8000-000000003704';
+    v_ordinary_space uuid := 'f0000000-0000-4000-8000-000000003704';
+    v_event public.events;
+    v_version integer;
     v_organiser uuid := 'a0000000-0000-4000-8000-000000000001';
     v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
     v_venue_staff uuid := 'a0000000-0000-4000-8000-000000000003';
@@ -89,6 +108,61 @@ begin
     v_result := public.reject_event_change(v_reject, v_coordinator, 'Again', v_decidable, 'o');
     if v_result->>'outcome' is distinct from 'no_open_request' then
         raise exception 'CHANGE FAIL: a second rejection was not refused: %', v_result;
+    end if;
+
+    -- Approve an ordinary change (AC2, AC4, Q7): refusals first.
+    select version into v_version from public.events where id = v_ordinary;
+    v_result := public.approve_event_change(v_ordinary, v_venue_staff, v_version, v_decidable,
+        '{"name": "x"}', '{}', 'o');
+    if v_result->>'outcome' is distinct from 'not_assigned' then
+        raise exception 'CHANGE FAIL: an approval by someone not assigned was not refused: %', v_result;
+    end if;
+    v_result := public.approve_event_change(v_ordinary, v_coordinator, v_version + 1, v_decidable,
+        '{"name": "x"}', '{}', 'o');
+    if v_result->>'outcome' is distinct from 'stale'
+       or (select name from public.events where id = v_ordinary) <> 'Ordinary change check (rolled back)' then
+        raise exception 'CHANGE FAIL: a stale version was not refused, or it changed the event: %', v_result;
+    end if;
+    v_result := public.approve_event_change(v_started, v_coordinator, 1, v_decidable, '{"name": "b"}', '{}', 'o');
+    if v_result->>'outcome' is distinct from 'started' then
+        raise exception 'CHANGE FAIL: approving on a started event was not refused: %', v_result;
+    end if;
+    v_result := public.approve_event_change(v_ordinary, v_coordinator, v_version, array['planning'],
+        '{"name": "x"}', '{}', 'o');
+    if v_result->>'outcome' is distinct from 'status_changed' then
+        raise exception 'CHANGE FAIL: approving in a refused status was not refused: %', v_result;
+    end if;
+
+    v_result := public.approve_event_change(v_ordinary, v_coordinator, v_version, v_decidable,
+        '{"name": "Renamed (rolled back)"}',
+        jsonb_build_object(v_ordinary_space::text, '{"label": "Great hall"}'::jsonb), 'to organiser');
+    if v_result->>'outcome' is distinct from 'ok' then
+        raise exception 'CHANGE FAIL: the ordinary approval was refused: %', v_result;
+    end if;
+    select * into v_event from public.events where id = v_ordinary;
+    if v_event.name <> 'Renamed (rolled back)' or v_event.version <> v_version + 1
+       or v_event.status <> 'confirmed' or v_result->'event'->>'name' <> 'Renamed (rolled back)' then
+        raise exception 'CHANGE FAIL: the ordinary change was not applied once, or it moved the status: %', v_result;
+    end if;
+    if (select label from public.event_space_requests where id = v_ordinary_space) <> 'Great hall' then
+        raise exception 'CHANGE FAIL: the space change was not applied';
+    end if;
+    if not exists (select 1 from public.venue_bookings where event_id = v_ordinary and status = 'approved') then
+        raise exception 'CHANGE FAIL: an ordinary change touched the venue booking';
+    end if;
+    select * into v_request from public.event_change_requests where event_id = v_ordinary;
+    if v_request.status <> 'approved' or v_request.decided_by is distinct from v_coordinator
+       or v_request.decided_at is null or v_request.decision_reason is not null then
+        raise exception 'CHANGE FAIL: the approved request was not closed as approved by the coordinator';
+    end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = v_ordinary and type = 'event_change_approved' and recipient_id = v_organiser
+       and recipient_role = 'event_organiser' and message = 'to organiser';
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: the organiser was not told of the approval once'; end if;
+    v_result := public.approve_event_change(v_ordinary, v_coordinator, v_version + 1, v_decidable,
+        '{"name": "Again"}', '{}', 'o');
+    if v_result->>'outcome' is distinct from 'no_open_request' then
+        raise exception 'CHANGE FAIL: a second approval was not refused: %', v_result;
     end if;
 
     raise notice 'CHANGE DECISION CHECKS PASSED';

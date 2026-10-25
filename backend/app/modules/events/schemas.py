@@ -486,6 +486,12 @@ class EventListResponse(BaseModel):
 REJECT_REASON_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; no customer limit given
 
 
+class ChangeApproveRequest(BaseModel):
+    """Story 37: the event version the coordinator saw when they approved (Q8)."""
+
+    version: int
+
+
 class EventRejectRequest(BaseModel):
     reason: str = Field(max_length=REJECT_REASON_MAX_LENGTH)
 
@@ -556,9 +562,9 @@ class EventHistoryEntry(BaseModel):
 
     @model_serializer(mode="wrap")
     def _omit_changes_outside_change_requests(self, handler):
-        # Only change-request entries have proposed changes; the others keep their shape.
+        # Only change-request entries and approvals (story 37) have changes; the others keep their shape.
         data = handler(self)
-        if not self.kind.startswith("change_request"):
+        if not (self.kind.startswith("change_request") or self.kind == "change_approved"):
             data.pop("changes", None)
         return data
 
