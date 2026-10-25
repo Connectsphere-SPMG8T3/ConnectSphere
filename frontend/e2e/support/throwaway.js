@@ -142,6 +142,16 @@ export function createThrowawayCancellationRequest(event, reason) {
   );
 }
 
+/** The organiser's open change request on a throwaway event (story 37), raising its attendance
+ * from 20. It is deleted with the event when the run ends (requests cascade). */
+export function createThrowawayChangeRequest(event, after, reason) {
+  query(
+    "insert into public.event_change_requests (event_id, kind, reason, requested_by, changes, significant) values " +
+      `('${event.id}', 'change', '${reason}', 'a0000000-0000-4000-8000-000000000001', ` +
+      `'{"event": [{"field": "expected_attendance", "before": 20, "after": ${after}}], "spaces": []}', true)`,
+  );
+}
+
 /** Free-text accessibility needs on a throwaway event (SCRUM-18). */
 export function setThrowawayEventAccessibilityNeeds(event, needs) {
   query(`update public.events set accessibility_needs = '${needs}' where id = '${event.id}'`);
