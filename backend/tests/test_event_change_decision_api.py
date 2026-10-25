@@ -207,10 +207,13 @@ def approvals(monkeypatch, events):
     outcome = {"value": "ok"}
 
     def approve_event_change(event_id, actor_id, expected_version, from_statuses, event_values,
-                             space_values, organiser_message):
+                             space_values, organiser_message, history_reason, officer_message,
+                             attendee_message):
         calls.append({"event_id": event_id, "actor_id": actor_id, "expected_version": expected_version,
                       "from_statuses": from_statuses, "event_values": event_values,
-                      "space_values": space_values, "organiser_message": organiser_message})
+                      "space_values": space_values, "organiser_message": organiser_message,
+                      "history_reason": history_reason, "officer_message": officer_message,
+                      "attendee_message": attendee_message})
         if outcome["value"] != "ok":
             return {"outcome": outcome["value"], "event": None}
         changed = {**events["store"][event_id], **event_values, "version": expected_version + 1}
@@ -331,6 +334,55 @@ class TestApproveOrdinaryChange:
         response = approve(client, auth_headers)
 
         assert response.status_code == status_code
+
+
+class TestApproveSignificantChange:
+    """AC7, Q6, Q9: the database moves the event; the API words what it records and tells."""
+
+    def test_the_history_says_what_the_change_was(self, client, auth_headers, act_as, events, approvals):
+        events["request"]["value"] = deepcopy(OPEN_REQUEST)
+        act_as()
+
+        approve(client, auth_headers)
+
+        assert approvals["calls"][0]["history_reason"] == "Change approved: expected attendance"
+
+    def test_the_safety_officers_are_told_why_it_left_their_queue(self, client, auth_headers, act_as, events,
+                                                                 approvals):
+        events["request"]["value"] = deepcopy(OPEN_REQUEST)
+        act_as()
+
+        approve(client, auth_headers)
+
+        assert approvals["calls"][0]["officer_message"] == (
+            '"Partner Summit" returned to planning. Approved event details changed.')
+
+    def test_attendees_are_not_told_of_an_attendance_change(self, client, auth_headers, act_as, events,
+                                                           approvals):
+        events["request"]["value"] = deepcopy(OPEN_REQUEST)
+        act_as()
+
+        approve(client, auth_headers)
+
+        assert approvals["calls"][0]["attendee_message"] is None
+
+    @pytest.mark.parametrize(("field", "after"), [
+        ("starts_at", "2026-11-12T11:00:00+08:00"),
+        ("ends_at", "2026-11-12T13:00:00+08:00"),
+        ("event_timezone", "Asia/Tokyo"),
+    ])
+    def test_attendees_are_told_of_a_new_date_or_time(self, client, auth_headers, act_as, events, approvals,
+                                                     field, after):
+        """RG-R4, Q9."""
+        before = events["store"][EVENT_ID][field]
+        events["request"]["value"]["changes"] = {
+            "event": [{"field": field, "before": before, "after": after}], "spaces": []}
+        act_as()
+
+        approve(client, auth_headers)
+
+        assert approvals["calls"][0]["attendee_message"] == (
+            'The date or time of "Partner Summit" has changed. Check the event page for the new time.')
 
 
 class TestHistoryRecordsTheDecision:

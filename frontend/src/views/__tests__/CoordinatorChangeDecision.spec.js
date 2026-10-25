@@ -129,6 +129,25 @@ describe("Story 37 coordinator decides a change request", () => {
     await vi.waitFor(() => expect(el.querySelector('[data-testid="change-request-banner"]')).toBeNull());
   });
 
+  it.each(["confirmed", "preparation", "safety_review"])(
+    "warns that a significant change sends a %s event back to Planning", async (status) => {
+      const el = await mountView(eventResponse({ status, open_change_request: OPEN_CHANGE }));
+
+      button(el, "Approve changes").click();
+      await nextTick();
+
+      expect(dialog().textContent).toContain("The event goes back to Planning and needs a new safety check.");
+    });
+
+  it("doesn't warn of a return to Planning for an ordinary change", async () => {
+    const el = await mountView(eventResponse({ open_change_request: { ...OPEN_CHANGE, significant: false } }));
+
+    button(el, "Approve changes").click();
+    await nextTick();
+
+    expect(dialog().textContent).not.toContain("goes back to Planning");
+  });
+
   it("keeps the dialog open with the error when the rejection is refused", async () => {
     const el = await mountView(eventResponse({ open_change_request: OPEN_CHANGE }));
     eventsApi.rejectChange.mockRejectedValue(new Error("There is no open change request for this event."));

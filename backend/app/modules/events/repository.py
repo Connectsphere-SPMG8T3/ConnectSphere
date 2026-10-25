@@ -400,10 +400,14 @@ def reject_cancellation_request(event_id: str, actor_id: str, reason: str, organ
 
 
 def approve_event_change(event_id: str, actor_id: str, expected_version: int, from_statuses: list[str],
-                         event_values: dict, space_values: dict, organiser_message: str) -> dict:
+                         event_values: dict, space_values: dict, organiser_message: str,
+                         history_reason: str, officer_message: str, attendee_message: str | None) -> dict:
     """Story 37 AC2: run `public.approve_event_change` under the event's lock. It applies
     the changed event and space values, bumps the version, closes the request as
-    approved and notifies the organiser. Answers `{outcome, event}`: ok / not_found /
+    approved and notifies the organiser. A significant change returns a Confirmed,
+    Preparation or Safety review event to Planning, recorded with `history_reason`,
+    and the Safety Officers hear of it (`officer_message`); registered attendees hear
+    `attendee_message` unless it is None. Answers `{outcome, event}`: ok / not_found /
     not_assigned / status_changed / started / stale / no_open_request."""
     response = get_supabase_admin_client().rpc("approve_event_change", {
         "p_event_id": event_id,
@@ -413,6 +417,9 @@ def approve_event_change(event_id: str, actor_id: str, expected_version: int, fr
         "p_event_values": event_values,
         "p_space_values": space_values,
         "p_organiser_message": organiser_message,
+        "p_history_reason": history_reason,
+        "p_officer_message": officer_message,
+        "p_attendee_message": attendee_message,
     }).execute()
     return response.data
 

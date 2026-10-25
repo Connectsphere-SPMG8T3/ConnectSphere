@@ -27,7 +27,10 @@ create or replace function public.approve_event_change(
     p_from_statuses text[],
     p_event_values jsonb,
     p_space_values jsonb,
-    p_organiser_message text
+    p_organiser_message text,
+    p_history_reason text default null,
+    p_officer_message text default null,
+    p_attendee_message text default null
 )
 returns jsonb
 language plpgsql
@@ -39,6 +42,7 @@ declare
     v_after public.events;
     v_space_id text;
     v_values jsonb;
+    v_significant boolean;
 begin
     select * into v_event from public.events where id = p_event_id for update;
     if not found or v_event.status = 'draft' then
@@ -60,7 +64,8 @@ begin
 
     update public.event_change_requests
        set status = 'approved', decided_by = p_actor_id, decided_at = now()
-     where event_id = p_event_id and kind = 'change' and status = 'open';
+     where event_id = p_event_id and kind = 'change' and status = 'open'
+    returning significant into v_significant;
     if not found then
         return jsonb_build_object('outcome', 'no_open_request');
     end if;
@@ -90,8 +95,30 @@ begin
          where s.id = v_space_id::uuid and s.event_id = p_event_id and current_space.id = s.id;
     end loop;
 
+    -- AC7, QA3-16: a significant change must pass the safety check again, so a Confirmed
+    -- or Preparation event goes back to Planning, and so does one in Safety review,
+    -- which is being checked against details that no longer hold (Q6).
+    if v_significant and v_event.status in ('confirmed', 'preparation', 'safety_review') then
+        select * into v_after from public.transition_event(p_event_id, p_actor_id,
+            array[v_event.status::text], 'planning', v_after.version, p_history_reason, null, null);
+        if v_event.status = 'safety_review' then
+            insert into public.event_safety_decisions (event_id, decision, reason_code, decided_by)
+            values (p_event_id, 'withdrawn', 'approved_details_changed', null);
+            insert into public.notifications (recipient_id, recipient_role, event_id, type, message)
+            select distinct ur.profile_id, 'safety_officer'::public.user_role, p_event_id,
+                   'event_returned_to_planning', p_officer_message
+              from public.user_roles ur
+             where ur.role = 'safety_officer' and ur.profile_id is distinct from p_actor_id;
+        end if;
+    end if;
+
     perform public.add_notification(v_event.organiser_id, p_event_id,
         'event_change_approved', p_organiser_message, p_actor_id);
+    -- RG-R4, Q9: the API sends a message only when the date or time changed.
+    if p_attendee_message is not null then
+        perform public.notify_registered_attendees(p_event_id, 'attendee_event_changed',
+            p_attendee_message, p_actor_id);
+    end if;
 
     return jsonb_build_object('outcome', 'ok', 'event', to_jsonb(v_after));
 end;
@@ -100,9 +127,9 @@ $$;
 comment on function public.approve_event_change is
     'Story 37 AC2: approves the open change request on an event the actor coordinates, in one of p_from_statuses, not yet started and still at p_expected_version. Applies p_event_values (only the changed event fields) and p_space_values ({space_id: changed fields}) in one transaction, bumps the versions, closes the request as approved and notifies the organiser. Answers {outcome: ok|not_found|not_assigned|status_changed|started|stale|no_open_request, event}. API-only.';
 
-revoke execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text)
+revoke execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text, text, text, text)
     from public, anon, authenticated;
-grant execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text)
+grant execute on function public.approve_event_change(uuid, uuid, integer, text[], jsonb, jsonb, text, text, text, text)
     to service_role;
 
 -- ---------------------------------------------------------------------------

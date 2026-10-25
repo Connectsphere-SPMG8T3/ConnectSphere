@@ -27,6 +27,32 @@ insert into public.events (id, organiser_id, coordinator_id, status, name, start
      'a0000000-0000-4000-8000-000000000002', 'confirmed', 'Ordinary change check (rolled back)',
      '2031-04-16 10:00+08', '2031-04-16 12:00+08');
 
+-- Significant changes (AC7, Q6): back to Planning from Confirmed, Preparation and
+-- Safety review; Planning stays Planning.
+insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at,
+                           expected_attendance) values
+    ('e0000000-0000-4000-8000-000000003705', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'confirmed', 'Confirmed change check (rolled back)',
+     '2031-04-17 10:00+08', '2031-04-17 12:00+08', 80),
+    ('e0000000-0000-4000-8000-000000003706', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'preparation', 'Preparation change check (rolled back)',
+     '2031-04-18 10:00+08', '2031-04-18 12:00+08', 80),
+    ('e0000000-0000-4000-8000-000000003707', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'safety_review', 'Safety change check (rolled back)',
+     '2031-04-19 10:00+08', '2031-04-19 12:00+08', 80),
+    ('e0000000-0000-4000-8000-000000003708', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'planning', 'Planning change check (rolled back)',
+     '2031-04-20 10:00+08', '2031-04-20 12:00+08', 80);
+
+insert into public.event_change_requests (event_id, kind, reason, requested_by, changes, significant)
+select id, 'change', 'More guests', 'a0000000-0000-4000-8000-000000000001',
+       '{"event": [{"field": "expected_attendance", "before": 80, "after": 90}], "spaces": []}', true
+  from public.events where id in ('e0000000-0000-4000-8000-000000003705', 'e0000000-0000-4000-8000-000000003706',
+                                  'e0000000-0000-4000-8000-000000003707', 'e0000000-0000-4000-8000-000000003708');
+
+insert into public.event_registrations (event_id, attendee_id) values
+    ('e0000000-0000-4000-8000-000000003705', 'a0000000-0000-4000-8000-000000000005');
+
 insert into public.event_space_requests (id, event_id, label, expected_pax) values
     ('f0000000-0000-4000-8000-000000003704', 'e0000000-0000-4000-8000-000000003704', 'Main hall', 80);
 
@@ -163,6 +189,64 @@ begin
         '{"name": "Again"}', '{}', 'o');
     if v_result->>'outcome' is distinct from 'no_open_request' then
         raise exception 'CHANGE FAIL: a second approval was not refused: %', v_result;
+    end if;
+
+    -- AC7: a significant change on a Confirmed event sends it back to Planning, recorded
+    -- as the coordinator's, with attendees told of it when the API asks (Q9).
+    select version into v_version from public.events where id = 'e0000000-0000-4000-8000-000000003705';
+    v_result := public.approve_event_change('e0000000-0000-4000-8000-000000003705', v_coordinator, v_version,
+        v_decidable, '{"expected_attendance": 90}', '{}', 'to organiser',
+        'Change approved: expected attendance', 'to officers', 'to attendees');
+    if v_result->>'outcome' is distinct from 'ok' or v_result->'event'->>'status' <> 'planning' then
+        raise exception 'CHANGE FAIL: a significant change left a Confirmed event confirmed: %', v_result;
+    end if;
+    select count(*) into v_rows from public.event_status_history
+     where event_id = 'e0000000-0000-4000-8000-000000003705' and from_status = 'confirmed'
+       and to_status = 'planning' and actor_id = v_coordinator and reason = 'Change approved: expected attendance';
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: the return to Planning has no history row'; end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-000000003705' and type = 'attendee_event_changed'
+       and recipient_id = 'a0000000-0000-4000-8000-000000000005' and message = 'to attendees';
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: the registered attendee was not told once'; end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-000000003705' and recipient_role = 'safety_officer';
+    if v_rows <> 0 then raise exception 'CHANGE FAIL: Safety Officers heard of an event not in safety review'; end if;
+
+    select version into v_version from public.events where id = 'e0000000-0000-4000-8000-000000003706';
+    v_result := public.approve_event_change('e0000000-0000-4000-8000-000000003706', v_coordinator, v_version,
+        v_decidable, '{"expected_attendance": 90}', '{}', 'o', 'r', 'f', null);
+    if v_result->'event'->>'status' is distinct from 'planning' then
+        raise exception 'CHANGE FAIL: a significant change left a Preparation event in preparation: %', v_result;
+    end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-000000003706' and type = 'attendee_event_changed';
+    if v_rows <> 0 then raise exception 'CHANGE FAIL: attendees were told when the API said not to'; end if;
+
+    -- Q6: from Safety review it also leaves the officers' queue, as a withdrawal.
+    select version into v_version from public.events where id = 'e0000000-0000-4000-8000-000000003707';
+    v_result := public.approve_event_change('e0000000-0000-4000-8000-000000003707', v_coordinator, v_version,
+        v_decidable, '{"expected_attendance": 90}', '{}', 'o', 'r', 'to officers', null);
+    if v_result->'event'->>'status' is distinct from 'planning' then
+        raise exception 'CHANGE FAIL: a significant change left the event in safety review: %', v_result;
+    end if;
+    if not exists (select 1 from public.event_safety_decisions
+                    where event_id = 'e0000000-0000-4000-8000-000000003707' and decision = 'withdrawn'
+                      and reason_code = 'approved_details_changed') then
+        raise exception 'CHANGE FAIL: leaving safety review recorded no withdrawal';
+    end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-000000003707' and type = 'event_returned_to_planning'
+       and recipient_id = 'a0000000-0000-4000-8000-000000000006' and recipient_role = 'safety_officer'
+       and message = 'to officers';
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: the Safety Officer was not told once'; end if;
+
+    select version into v_version from public.events where id = 'e0000000-0000-4000-8000-000000003708';
+    v_result := public.approve_event_change('e0000000-0000-4000-8000-000000003708', v_coordinator, v_version,
+        v_decidable, '{"expected_attendance": 90}', '{}', 'o', 'r', 'f', null);
+    if v_result->'event'->>'status' is distinct from 'planning'
+       or exists (select 1 from public.event_status_history
+                   where event_id = 'e0000000-0000-4000-8000-000000003708' and from_status is not null) then
+        raise exception 'CHANGE FAIL: a Planning event moved or got a status row: %', v_result;
     end if;
 
     raise notice 'CHANGE DECISION CHECKS PASSED';

@@ -621,9 +621,16 @@ def approve_change(event_id: str, coordinator_id: str, version: int) -> EventRes
     candidate = {**row, **event_values,
                  "spaces": [{**space, **space_values.get(space["id"], {})} for space in row.get("spaces") or []]}
     _refuse_new_submission_errors(row, candidate)
+    name = row["name"]
+    moved = bool(event_values.keys() & {"starts_at", "ends_at", "event_timezone"})
     result = repository.approve_event_change(
         event_id, coordinator_id, version, lifecycle.change_requestable_from(), event_values, space_values,
-        organiser_message=f'Your requested changes to "{row["name"]}" were approved.',
+        organiser_message=f'Your requested changes to "{name}" were approved.',
+        history_reason=f"Change approved: {change_fields.describe(request['changes'])}",
+        officer_message=f'"{name}" returned to planning. {_RETURN_REASONS["approved_details_changed"]}',
+        # RG-R4, Q9: attendees act on a new date or time, not on attendance or layout.
+        attendee_message=(f'The date or time of "{name}" has changed. Check the event page for the new time.'
+                          if moved else None),
     )
     _raise_for_change_outcome(result["outcome"])
     return _to_response(result["event"])

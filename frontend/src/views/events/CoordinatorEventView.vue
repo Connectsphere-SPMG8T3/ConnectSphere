@@ -42,6 +42,14 @@ const isCancelOpen = ref(false);
 // Story 37: deciding the organiser's change request.
 const isApproveChangeOpen = ref(false);
 const isRejectChangeOpen = ref(false);
+// AC7, Q6: a significant change on these events must pass the safety check again.
+const approveChangeMessage = computed(() => {
+  const request = event.value?.open_change_request;
+  const reopens = request?.significant && ["confirmed", "preparation", "safety_review"].includes(event.value.status);
+  return reopens
+    ? "The new details are applied and the organiser is told. The event goes back to Planning and needs a new safety check."
+    : "The new details are applied and the organiser is told.";
+});
 
 const event = computed(() => review.event);
 const showApprove = computed(() => canApprove(event.value?.status));
@@ -648,7 +656,7 @@ watch(
     <ConfirmModal
       :open="isApproveChangeOpen"
       title="Approve the requested changes?"
-      message="The new details are applied and the organiser is told."
+      :message="approveChangeMessage"
       confirm-label="Approve changes"
       cancel-label="Go back"
       @confirm="confirmApproveChange"
