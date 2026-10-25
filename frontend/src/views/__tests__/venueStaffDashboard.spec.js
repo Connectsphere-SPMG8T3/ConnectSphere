@@ -231,6 +231,16 @@ describe("VenueStaffDashboard", () => {
     expect(venues.className).toMatch(/max-h-/);
   });
 
+  it("opens the bookings under re-review from their tile (story 37)", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const jump = el.querySelector('a[href="/dashboard/venue-staff/requests?status=re_review"]');
+
+    expect(jump).not.toBeNull();
+    expect(jump.textContent).toContain("In re-review");
+  });
+
   it("opens the dedicated booking requests page from the summary tile", async () => {
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
 

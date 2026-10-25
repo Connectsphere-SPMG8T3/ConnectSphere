@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRoute } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
@@ -10,6 +10,7 @@ import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import {
   ALL_BOOKING_STATUSES,
   ALL_VENUE_STATUSES,
+  BOOKING_STATUS_ORDER,
   bookingStatusLabel,
   bookingStatusFilterOptions,
   expiryInputBounds,
@@ -30,7 +31,14 @@ const props = defineProps({
 });
 
 const dashboard = props.dashboard;
-const requestStatus = ref(PENDING_BOOKING_STATUS);
+// A link may open the list on one status (the dashboard's In re-review tile, story 37);
+// anything else starts on Pending, as before.
+const linkedStatus = useRoute().query.status;
+const requestStatus = ref(
+  [ALL_BOOKING_STATUSES, ...BOOKING_STATUS_ORDER.filter((status) => status !== "held")].includes(linkedStatus)
+    ? linkedStatus
+    : PENDING_BOOKING_STATUS,
+);
 const requestVenueId = ref(ALL_VENUE_STATUSES);
 const requestSort = ref("event_soonest");
 const requestStartDate = ref("");
