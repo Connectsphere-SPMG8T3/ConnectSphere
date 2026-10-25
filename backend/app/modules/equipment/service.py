@@ -487,6 +487,7 @@ def technical_view(event_id: str) -> TechnicalEventResponse:
     row = repository.get_event_technical(event_id)
     if not row or row["status"] == "draft":
         raise events_service.EventNotFoundError()
+    lines = [EquipmentRequestLine(**_embedded_line_fields(line)) for line in repository.list_event_requests(event_id)]
     return TechnicalEventResponse(
         event=TechnicalEvent(
             id=row["id"], name=row["name"], status=row["status"],
@@ -495,8 +496,10 @@ def technical_view(event_id: str) -> TechnicalEventResponse:
         ),
         technical_status=row["technical_readiness"],
         exit_confirmation=exit_confirmation(event_id, row),
-        lines=[EquipmentRequestLine(**_embedded_line_fields(line)) for line in repository.list_event_requests(event_id)],
+        lines=lines,
         history=[_history_entry(entry) for entry in repository.list_technical_history(event_id)],
+        re_review_changes=(events_service.latest_approved_change(event_id)
+                           if any(line.status == "re_review" for line in lines) else None),
     )
 
 

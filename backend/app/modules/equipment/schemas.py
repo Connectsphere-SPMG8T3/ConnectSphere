@@ -232,6 +232,8 @@ class TechnicalEventResponse(BaseModel):
     exit_confirmation: ExitConfirmation | None
     lines: list[EquipmentRequestLine]
     history: list[TechnicalHistoryEntry]
+    # Story 37 Q21: the approved change a line under re-review is checked against.
+    re_review_changes: dict | None = None
 
 
 EquipmentRequestLinesResponse.model_rebuild()

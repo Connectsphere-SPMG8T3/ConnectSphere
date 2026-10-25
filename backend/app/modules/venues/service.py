@@ -27,6 +27,7 @@ from app.modules.auth.dependencies import CurrentUser
 from app.modules.venues import impact, repository, search, suitability
 from app.modules.venues.search import OCCUPYING_STATUSES
 from app.modules.venues.schemas import (
+    ReReviewContext,
     BLOCK_REASON_LABELS,
     INACTIVE_REASON_LABELS,
     AffectedBooking,
@@ -902,6 +903,7 @@ def _booking_detail(booking: dict) -> VenueBookingDetail:
     if booking["status"] == "rejected" and booking.get("decision_reason") and booking.get("decided_at"):
         decision = BookingDecision(reason=booking["decision_reason"], suggestion=booking.get("suggestion_note"),
                                    decided_by_name=booking.get("decided_by_name"), decided_at=booking["decided_at"])
+    history = repository.list_booking_history(booking["id"])
     return VenueBookingDetail(
         id=booking["id"], status=booking["status"], venue_id=booking["venue_id"],
         venue_name=booking.get("venue_name"), period=booking["period"], request_note=booking.get("request_note"),
@@ -913,7 +915,20 @@ def _booking_detail(booking: dict) -> VenueBookingDetail:
             facilities_required=context.facilities_required, accessibility_needs=context.accessibility_needs,
         ),
         decision=decision,
-        history=[BookingHistoryEntry(**entry) for entry in repository.list_booking_history(booking["id"])],
+        history=[BookingHistoryEntry(**entry) for entry in history],
+        re_review=_re_review_context(booking, history) if booking["status"] == "re_review" else None,
+    )
+
+
+def _re_review_context(booking: dict, history: list[dict]) -> ReReviewContext:
+    """Story 37 Q21: the latest approved change, the latest move, and the note the
+    coordinator sent it with (the latest send's reason)."""
+    sends = [entry for entry in history if entry["action"] == "sent_for_re_review"]
+    move = repository.get_last_move(booking["id"]) or {}
+    return ReReviewContext(
+        changes=events_service.latest_approved_change(booking["event_id"]),
+        note=sends[-1]["reason"] if sends else None,
+        moved_from=move.get("old_period"), moved_to=move.get("new_period"),
     )
 
 
@@ -982,10 +997,14 @@ def reject_booking(booking_id: str, actor_id: str, body: VenueBookingReject) -> 
         raise BookingNotFoundError()
     event_name = events_service.names_by_id([booking["event_id"]]).get(booking["event_id"], "your event")
     venue_name = booking.get("venue_name") or "the venue"
+    # Story 37: after a re-review the coordinator needs another venue, so the notice says so.
+    message = (f'Venue staff rejected {venue_name} for "{event_name}" after its change. Find another venue.'
+               if booking["status"] == "re_review"
+               else f'Venue staff rejected the booking of {venue_name} for "{event_name}".')
     result = repository.reject_booking(
         booking_id, actor_id, body.reason, body.suggestion,
         # No reason in the notification: the coordinator reads it on the page.
-        notify_message=f'Venue staff rejected the booking of {venue_name} for "{event_name}".',
+        notify_message=message,
     )
     outcome = result["outcome"]
     if outcome == "booking_not_found":
@@ -1017,7 +1036,9 @@ def approve_booking(booking_id: str, actor_id: str) -> VenueBookingDetail:
     venue_name = booking.get("venue_name") or "the venue"
     result = repository.approve_booking(
         booking_id, actor_id,
-        notify_message=f'Venue staff approved the booking of {venue_name} for "{event_name}".',
+        notify_message=(f'Venue staff re-approved {venue_name} for "{event_name}" after its change.'
+                        if booking["status"] == "re_review"
+                        else f'Venue staff approved the booking of {venue_name} for "{event_name}".'),
     )
     outcome = result["outcome"]
     if outcome == "booking_not_found":

@@ -703,6 +703,25 @@ def get_booking(booking_id: str) -> dict | None:
     }
 
 
+def get_last_move(booking_id: str) -> dict | None:
+    """Story 37 Q19: `{old_period, new_period}` of the latest move an approved change
+    made to the booking, or None if no change moved it."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_booking_history")
+        .select("old_period, new_period")
+        .eq("booking_id", booking_id)
+        .eq("action", "moved_by_change")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    if not rows:
+        return None
+    return {"old_period": _parse_range(rows[0]["old_period"]), "new_period": _parse_range(rows[0]["new_period"])}
+
+
 def list_booking_history(booking_id: str) -> list[dict]:
     """CR-99's history of one booking, oldest first, with each actor's name.
     A null actor is the system (the expiry job)."""

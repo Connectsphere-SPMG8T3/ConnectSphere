@@ -197,3 +197,102 @@ class TestTheCoordinatorSeesTheMarker:
         body = client.get(f"/api/v1/equipment/requests/event/{EVENT_ID}", headers=auth_headers).json()
 
         assert body["lines"][0]["needs_re_review_reason"] == "Event time changed; 5 free for 8."
+
+
+class TestVenueStaffDecideTheReReview:
+    """Q12, Q21: the booking page tells venue staff what changed, and the coordinator
+    hears of their decision in the words of a re-review."""
+
+    @pytest.fixture()
+    def booking(self, monkeypatch):
+        from datetime import datetime, timezone
+
+        from app.modules.events import repository as events_repository
+        from app.modules.events.schemas import EventPlanningContext
+        from app.modules.venues.schemas import Period
+
+        row = {
+            "id": BOOKING_ID, "event_id": EVENT_ID, "venue_id": "v1", "venue_name": "Grand Ballroom",
+            "period": Period(starts_at=datetime(2026, 11, 12, 6, tzinfo=timezone.utc),
+                             ends_at=datetime(2026, 11, 12, 8, tzinfo=timezone.utc)),
+            "status": "re_review", "request_note": None,
+            "requested_at": datetime(2026, 10, 20, tzinfo=timezone.utc), "requested_by_name": "Marcus Lim",
+            "flag": None, "flag_reason": None, "decision_reason": None, "suggestion_note": None,
+            "decided_by_name": None, "decided_at": None,
+        }
+        changes = {"event": [{"field": "starts_at", "before": "2026-11-12T02:00:00Z",
+                              "after": "2026-11-12T06:00:00Z"}], "spaces": []}
+        monkeypatch.setattr(venues_repository, "get_booking", lambda booking_id: dict(row))
+        monkeypatch.setattr(venues_repository, "list_booking_history", lambda booking_id: [
+            {"action": "moved_by_change", "from_status": "approved", "to_status": "approved",
+             "actor_name": "Marcus Lim", "reason": None, "suggestion": None,
+             "at": datetime(2026, 10, 25, 2, tzinfo=timezone.utc)},
+            {"action": "sent_for_re_review", "from_status": "approved", "to_status": "re_review",
+             "actor_name": "Marcus Lim", "reason": NOTE, "suggestion": None,
+             "at": datetime(2026, 10, 25, 3, tzinfo=timezone.utc)},
+        ])
+        monkeypatch.setattr(venues_repository, "get_last_move", lambda booking_id: {
+            "old_period": Period(starts_at=datetime(2026, 11, 12, 2, tzinfo=timezone.utc),
+                                 ends_at=datetime(2026, 11, 12, 4, tzinfo=timezone.utc)),
+            "new_period": row["period"]})
+        monkeypatch.setattr(events_service, "names_by_id", lambda ids: {EVENT_ID: "Partner Summit"})
+        monkeypatch.setattr(events_service, "planning_context_by_id",
+                            lambda ids: {EVENT_ID: EventPlanningContext(name="Partner Summit", status="planning")})
+        monkeypatch.setattr(events_repository, "list_change_requests", lambda event_id: [
+            {"id": "r2", "status": "open", "changes": {"event": [], "spaces": []}},
+            {"id": "r1", "status": "approved", "changes": changes},
+        ])
+        return {"row": row, "changes": changes}
+
+    def test_venue_staff_see_what_changed_and_the_coordinators_note(self, client, auth_headers, authenticate_as,
+                                                                    booking):
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venue-bookings/{BOOKING_ID}", headers=auth_headers).json()
+
+        assert body["re_review"] == {
+            "changes": booking["changes"], "note": NOTE,
+            "moved_from": {"starts_at": "2026-11-12T02:00:00Z", "ends_at": "2026-11-12T04:00:00Z"},
+            "moved_to": {"starts_at": "2026-11-12T06:00:00Z", "ends_at": "2026-11-12T08:00:00Z"},
+        }
+
+    def test_a_booking_not_under_re_review_has_no_context(self, client, auth_headers, authenticate_as, booking):
+        booking["row"]["status"] = "approved"
+        authenticate_as("venue_staff")
+
+        body = client.get(f"/api/v1/venue-bookings/{BOOKING_ID}", headers=auth_headers).json()
+
+        assert body["re_review"] is None
+
+    def test_re_approving_is_worded_as_a_re_review(self, client, auth_headers, authenticate_as, booking,
+                                                   monkeypatch):
+        sent = {}
+
+        def approve_booking(booking_id, actor_id, *, notify_message):
+            sent["message"] = notify_message
+            return {"outcome": "ok", "event_id": EVENT_ID, "from_status": "re_review"}
+
+        monkeypatch.setattr(venues_repository, "approve_booking", approve_booking)
+        authenticate_as("venue_staff")
+
+        response = client.post(f"/api/v1/venue-bookings/{BOOKING_ID}/approve", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert sent["message"] == 'Venue staff re-approved Grand Ballroom for "Partner Summit" after its change.'
+
+    def test_rejecting_is_worded_as_a_re_review(self, client, auth_headers, authenticate_as, booking, monkeypatch):
+        sent = {}
+
+        def reject_booking(booking_id, actor_id, reason, suggestion, *, notify_message):
+            sent["message"] = notify_message
+            return {"outcome": "ok", "event_id": EVENT_ID, "from_status": "re_review"}
+
+        monkeypatch.setattr(venues_repository, "reject_booking", reject_booking)
+        authenticate_as("venue_staff")
+
+        response = client.post(f"/api/v1/venue-bookings/{BOOKING_ID}/reject", json={"reason": "Too small now"},
+                               headers=auth_headers)
+
+        assert response.status_code == 200
+        assert sent["message"] == (
+            'Venue staff rejected Grand Ballroom for "Partner Summit" after its change. Find another venue.')

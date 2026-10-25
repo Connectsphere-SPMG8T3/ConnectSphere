@@ -645,6 +645,15 @@ def approve_change(event_id: str, coordinator_id: str, version: int) -> EventRes
     return _to_response(result["event"])
 
 
+def latest_approved_change(event_id: str) -> dict | None:
+    """Story 37 Q21: the changes of the event's most recent approved change request,
+    which venue staff and technical support re-review against, or None."""
+    for request in repository.list_change_requests(event_id):  # newest first
+        if request.get("status") == "approved":
+            return request["changes"]
+    return None
+
+
 def reject_change(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
     """Story 37 AC2, AC4: the assigned coordinator rejects the open change request with
     a reason (CR-R3). The event keeps its details, status and arrangements."""

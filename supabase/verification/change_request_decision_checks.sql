@@ -125,6 +125,17 @@ insert into public.event_change_requests (event_id, kind, reason, requested_by, 
      '{"event": [{"field": "starts_at", "before": "2031-04-21T02:00:00Z", "after": "2031-04-21T06:00:00Z"}], "spaces": []}',
      true);
 
+-- Venue staff reject a booking under re-review (Q12, Q21): an approved booking already marked.
+insert into public.events (id, organiser_id, coordinator_id, status, name, starts_at, ends_at) values
+    ('e0000000-0000-4000-8000-000000003711', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'planning', 'Re-review reject check (rolled back)',
+     '2031-04-22 10:00+08', '2031-04-22 12:00+08');
+insert into public.venue_bookings (id, event_id, venue_id, booked_period, status, needs_re_review_since,
+                                   needs_re_review_reason) values
+    ('d0000000-0000-4000-8000-000000003711', 'e0000000-0000-4000-8000-000000003711',
+     'b0000000-0000-4000-8000-000000000003', tstzrange('2031-04-22 10:00+08', '2031-04-22 12:00+08', '[)'),
+     'approved', now(), 'Layout changed.');
+
 insert into public.event_space_requests (id, event_id, label, expected_pax) values
     ('f0000000-0000-4000-8000-000000003704', 'e0000000-0000-4000-8000-000000003704', 'Main hall', 80);
 
@@ -156,6 +167,7 @@ declare
     v_event public.events;
     v_version integer;
     v_replacement record;
+    v_decision record;
     v_organiser uuid := 'a0000000-0000-4000-8000-000000000001';
     v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
     v_venue_staff uuid := 'a0000000-0000-4000-8000-000000000003';
@@ -456,6 +468,42 @@ begin
     v_result := public.send_booking_for_re_review('d0000000-0000-4000-8000-000000003792', v_coordinator, null, 's');
     if v_result->>'outcome' is distinct from 'not_marked' then
         raise exception 'CHANGE FAIL: a booking was sent twice: %', v_result;
+    end if;
+
+    -- Q12, Q21: venue staff decide a booking under re-review with the same Approve and Reject.
+    select * into v_decision from public.approve_venue_booking('d0000000-0000-4000-8000-000000003792', v_venue_staff,
+        'to coordinator');
+    if v_decision.outcome is distinct from 'ok' or v_decision.from_status is distinct from 're_review'
+       or (select status from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003792') <> 'approved' then
+        raise exception 'CHANGE FAIL: venue staff could not re-approve a booking under re-review: %', v_decision;
+    end if;
+    select count(*) into v_rows from public.venue_booking_history
+     where booking_id = 'd0000000-0000-4000-8000-000000003792' and action = 're_review_approved'
+       and from_status = 're_review' and to_status = 'approved' and actor_id = v_venue_staff;
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: the re-approval is not in the booking history'; end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-000000003709' and type = 'venue_booking_approved'
+       and recipient_id = v_coordinator and message = 'to coordinator';
+    if v_rows <> 1 then raise exception 'CHANGE FAIL: the coordinator was not told of the re-approval'; end if;
+    -- An approved booking is decided; re-approving it is refused as before.
+    select * into v_decision from public.approve_venue_booking('d0000000-0000-4000-8000-000000003792', v_venue_staff, 'x');
+    if v_decision.outcome is distinct from 'not_held' then
+        raise exception 'CHANGE FAIL: an approved booking was approved again: %', v_decision;
+    end if;
+
+    v_result := public.send_booking_for_re_review('d0000000-0000-4000-8000-000000003711', v_coordinator, null, 's');
+    select * into v_decision from public.reject_venue_booking('d0000000-0000-4000-8000-000000003711', v_venue_staff,
+        'Banquet doesn''t fit this room', null, 'to coordinator');
+    if v_decision.outcome is distinct from 'ok'
+       or (select status from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003711') <> 'rejected'
+       or (select decision_reason from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003711')
+         <> 'Banquet doesn''t fit this room' then
+        raise exception 'CHANGE FAIL: venue staff could not reject a booking under re-review: %', v_decision;
+    end if;
+    if not exists (select 1 from public.venue_booking_history
+                    where booking_id = 'd0000000-0000-4000-8000-000000003711' and action = 're_review_rejected'
+                      and from_status = 're_review' and to_status = 'rejected') then
+        raise exception 'CHANGE FAIL: the re-review rejection is not in the booking history';
     end if;
 
     -- And a marked equipment line to technical support; it keeps its units.
