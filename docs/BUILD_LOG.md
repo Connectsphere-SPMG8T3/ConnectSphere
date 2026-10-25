@@ -3408,7 +3408,7 @@ Implemented on `feature/scrum-56-view-registered-events`. The estimate was confi
 
 **Verification:** A focused view test reproduced the missing state before the fix. Focused frontend registration tests passed (20/20); the production build passed. The E2E check now verifies the disabled action when the seeded Attendee is already registered, but a live E2E rerun remains pending.
 
-### 4.92. Bug fix D59 — align Attendee My events with Organiser Events
+### 4.99. Bug fix D59 — align Attendee My events with Organiser Events
 
 **Reported:** 2026-10-25 during the SCRUM-56 UI review. Upcoming and Past registrations were stacked vertically, and each section used a denser multi-column card grid than the Organiser Events page.
 
@@ -3417,3 +3417,32 @@ Implemented on `feature/scrum-56-view-registered-events`. The estimate was confi
 **Fix:** Upcoming and Past now render side by side at wide breakpoints and stack on small screens; filtering to only one period uses the full width. Reused `SectionHeading` for the section labels and `BauhausCard` for the Requests-style card frame and typography. Registered retains a green stripe; Waitlisted uses the dimmed grey treatment. A first manual review confirmed the column layout but still found the headings and cards smaller than Requests; those styles were then aligned, and a final manual check is pending.
 
 **Verification:** Regression assertions first failed because the registration columns and Requests-style heading/card treatment were absent. The full frontend coverage run passed 1,700 tests across 113 files (97.86% overall line coverage; 100% line coverage for all changed frontend components); focused BauhausCard, Attendee and Organiser dashboard tests pass (47/47), and `npm run build` passes. The first manual review found the remaining typography mismatch; after aligning it, the developer's TC-REG-016 desktop/375px visual recheck passed ([run](test-cases/runs/2026-10-25-1611-manual-6a5b9ea.md)).
+### 4.100. SCRUM-92 — Edit my own profile
+
+On `feature/scrum-92-edit-profile`, branched from the latest `origin/main` at `55faf9b`, 2026-10-25. The developer provided the story and acceptance criteria; no Product backlog connector was available during this work.
+
+**What was built.**
+- `PATCH /auth/me` updates only the authenticated caller's `full_name` and nullable `phone_number`. The schema forbids extra fields, and the service scopes its profile update using the verified user's id. Email, role, organisation and department stay server-controlled. No migration is needed.
+- `/profile/me` now has Edit, Save and Cancel controls, client-side blank-name validation and field-specific API validation feedback. Successful saves update the auth store and display the returned profile. The existing signup and profile pages share `serverFieldErrors`; signup behavior is unchanged.
+- Blank phone values normalize to `NULL` in both signup and profile update schemas via one shared helper. No new phone-format rule was introduced.
+
+**Tests and verification.**
+- Test-first backend cases cover caller-scoped writes, protected fields, blank-name rejection, phone clearing, a missing profile and the PostgREST update builder's real method surface. Focused backend profile tests: 5 passed. Auth module tests: 90 passed; `auth.schemas` and `auth.router` are fully covered, and the 96% service coverage's three uncovered lines (84, 143, 166) are pre-existing branches unrelated to this story.
+- Focused frontend API/store/profile/signup tests: 80 passed. Full backend suite: 2,130 passed. Full frontend suite: 1,651 passed with `--maxWorkers=2`; the initial unconstrained run hit 14 unrelated timeouts/navigation failures under load, and the bounded rerun passed. Frontend coverage: 97.77% overall; the changed `ProfileView.vue` has 100% statement, function and line coverage.
+- Frontend production build passed. The new browser case TC-AUTH-055 is discoverable.
+- Added live checks TC-AUTH-053–054, browser case TC-AUTH-055 and manual case TC-AUTH-056. The first live-check attempt got connection refused from `localhost:8000`; after the developer's backend was available, the combined recorded API checks passed 2/2 ([run](test-cases/runs/2026-10-25-2039-api-db-55faf9b.md)). The browser check passed 1/1 ([run](test-cases/runs/2026-10-25-2046-e2e-55faf9b.md)).
+
+**Remaining.**
+- Complete and record the developer's manual pass for TC-AUTH-056.
+- No commit or push was made. PR review, PO acceptance and merge remain with the developer/team.
+
+**D65 follow-up — profile save returned 500 (reported 2026-10-25).**
+- The developer's traceback showed `SyncFilterRequestBuilder` has no `maybe_single()` method. The profile update had chained that select-only method onto an update builder.
+- Added a regression test first using an update builder that deliberately has no `maybe_single()`; it failed with the reported `AttributeError`. Removed the invalid call and now read the returned profile from the update response list, retaining the not-found behavior when no row is returned.
+- Verified: the focused profile-update tests pass (5/5), the full backend suite passes (2,131), and recorded live checks TC-AUTH-053/054 and browser check TC-AUTH-055 pass. D65 is marked fixed in `docs/DEFECTS.md`.
+
+**D66 follow-up — phone format validation (reported during manual TC-AUTH-056, 2026-10-25).**
+- The developer found that short phone numbers were accepted and formats were not normalized consistently. The developer selected the shared rule: exactly eight digits, optionally prefixed by `+65`, spaces/hyphens allowed, and canonical storage as `+65########`; blank clears the value. The rule is documented as a team decision and applies to profile edits and organiser sign-up.
+- Added backend and frontend regression cases before implementation. The shared backend schema validator and frontend helper now reject invalid values with field feedback and normalize accepted numbers. Updated live/API and browser checks verify persisted canonical values and invalid-input rejection.
+- Verified: the full backend suite with coverage passes (2,141; 97.79% total), and the full frontend suite with coverage passes (1,655; 97.77% total). The production build passes. Recorded live API/database checks TC-AUTH-053/054 pass 2/2 ([run](test-cases/runs/2026-10-25-2039-api-db-55faf9b.md)); recorded browser TC-AUTH-055 passes 1/1 after the display-only refinement ([run](test-cases/runs/2026-10-25-2046-e2e-55faf9b.md)). The consolidated manual record preserves the initial phone-validation failure and both subsequent passes ([run](test-cases/runs/2026-10-25-2051-manual-55faf9b.md)).
+- The developer clarified that the requested space after `+65` is display-only: the profile now shows `+65 ########` while API and storage remain `+65########`. The recorded profile browser check asserts both representations, and the developer confirmed the updated display and layout at desktop and 375px.

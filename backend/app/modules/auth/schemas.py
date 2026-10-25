@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, EmailStr, Field, StringConstraints, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, ValidationInfo, field_validator
 from pydantic_core import PydanticCustomError
 
 # Trimmed first, so a whitespace-only value counts as empty.
@@ -8,6 +8,22 @@ RequiredText = Annotated[str, StringConstraints(strip_whitespace=True, min_lengt
 
 PASSWORD_MIN_LENGTH = 8
 PASSWORD_RULE = "Password must be at least 8 characters and include at least one letter and one digit."
+PHONE_NUMBER_RULE = "Enter 8 digits, with an optional +65 country code."
+
+
+def _normalise_optional_phone(phone_number: str | None) -> str | None:
+    if phone_number is None:
+        return None
+    value = phone_number.strip()
+    if not value:
+        return None
+
+    digits = value.replace(" ", "").replace("-", "")
+    if digits.startswith("+65"):
+        digits = digits[3:]
+    if len(digits) != 8 or not digits.isascii() or not digits.isdigit():
+        raise PydanticCustomError("phone_number", PHONE_NUMBER_RULE)
+    return f"+65{digits}"
 
 
 class UserLoginRequest(BaseModel):
@@ -52,9 +68,19 @@ class SignupRequest(BaseModel):
     @classmethod
     def _blank_phone_is_no_phone(cls, phone_number: str | None) -> str | None:
         # The form sends an unfilled optional field as "", which is not a number.
-        if phone_number is None:
-            return None
-        return phone_number.strip() or None
+        return _normalise_optional_phone(phone_number)
+
+
+class ProfileUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: RequiredText
+    phone_number: str | None
+
+    @field_validator("phone_number")
+    @classmethod
+    def _blank_phone_is_no_phone(cls, phone_number: str | None) -> str | None:
+        return _normalise_optional_phone(phone_number)
 
 
 class RefreshTokenRequest(BaseModel):

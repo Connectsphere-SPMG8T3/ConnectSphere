@@ -526,10 +526,11 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 
 ### 6.1 User authorisation and authentication *(SCRUM-7; partly done by SCRUM-48 and SCRUM-80)*
 
-**Done:** email and password login, `/auth/me`, logout, role dashboard redirect, route guards. Organiser sign-up (SCRUM-80): `POST /auth/signup` and `/signup`, following ACC-R5, ACC-R7 and ACC-R8. Attendee sign-up (SCRUM-83) extends the same endpoint and page, following ACC-R2 and ACC-R5b.
+**Done:** email and password login, `/auth/me`, logout, role dashboard redirect, route guards. Organiser sign-up (SCRUM-80): `POST /auth/signup` and `/signup`, following ACC-R5, ACC-R7 and ACC-R8. Attendee sign-up (SCRUM-83) extends the same endpoint and page, following ACC-R2 and ACC-R5b. Profile editing (SCRUM-92) updates only the signed-in user's name and optional phone through `PATCH /auth/me`.
 
 **Remaining behaviour**
 - **Sign-up** for Organisers and Attendees only (ACC-R2). Organisers enter an organisation name and may enter a phone number; Attendees enter neither (ACC-R5, ACC-R5b). Internal staff accounts are seeded (ACC-R3). *Organiser sign-up is SCRUM-80; Attendee sign-up is SCRUM-83.*
+- **Profile edits (SCRUM-92):** a signed-in user can change their own full name and optional phone number. Email, role, organisation and department remain server-controlled; the API rejects attempts to include protected fields and derives the profile id from the verified session. A blank full name is rejected against that field; a blank phone is stored as null. **[Team decision]** A nonblank phone accepts exactly eight digits, optionally prefixed by `+65`, with spaces or hyphens allowed; the API normalizes accepted values to `+65########`, while the profile displays the number as `+65 ########`. This shared validation also applies to organiser sign-up.
 - **Logout** revokes only the caller's own session.
 - **Session refresh:** on `401` for an expired token, the SPA calls `POST /auth/refresh` once and retries. If the refresh fails, it logs out with "Your session has expired, please log in again."
 - **Relationship-based authorisation** (§2.2) is enforced by policy functions in every module.
@@ -538,6 +539,8 @@ Format: behaviour, business rules (with sources), edge cases, then acceptance cr
 - **Given** I sign up choosing "Event Organiser" or "Attendee", **then** my profile role is the selected external role. Attendee sign-up does not require organisation name or phone; Event Organiser sign-up requires organisation name. **Given** any sign-up request that asks for an internal role, **then** it is rejected before Supabase is called.
 - **Given** users A and B are both logged in, **when** A logs out, **then** B's next request still succeeds.
 - **Given** my access token has expired but my refresh token is valid, **when** I perform an action, **then** it succeeds without re-login.
+- **Given** I am signed in, **when** I update my profile, **then** only my full name and optional phone number change, and the saved values are shown; email, role, organisation and department cannot be changed through the API.
+- **Given** a profile update has a blank full name or a malformed phone number, **when** I save it, **then** it is refused with an error on the corresponding field; a blank phone number clears the saved phone, a valid phone is stored as `+65########`, and the profile displays it as `+65 ########`.
 - **Given** an organiser, **when** they request another organiser's event by ID, **then** they receive `404` and no data.
 
 ### 6.2 Event request creation *(SCRUM-8)*
