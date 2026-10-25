@@ -286,6 +286,9 @@ export const registrationsApi = {
   directory() {
     return request("/public/events");
   },
+  myRegistrations(token) {
+    return request("/registrations/me", { token });
+  },
   event(eventId) {
     return request(`/public/events/${encodeURIComponent(eventId)}`);
   },

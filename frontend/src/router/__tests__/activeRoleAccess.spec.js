@@ -50,6 +50,7 @@ async function protectedRoutes() {
     .map((route) => ({
       name: route.name,
       allowedRoles: route.meta.allowedRoles,
+      standalone: route.meta.standalone,
       // Fill `:id`-style params so the path resolves.
       path: route.path.replace(/:[^/]+/g, "x"),
     }));
@@ -77,7 +78,11 @@ describe("route access follows the active role (SCRUM-76)", () => {
     const router = await loadAppActingAs("attendee");
     const route = router.getRoutes().find((entry) => entry.name === name);
 
-    expect(route.meta).toEqual({ requiresAuth: false });
+    expect(route.meta).toEqual(
+      name === "public-event-detail"
+        ? { requiresAuth: false, attendeeNavigation: true }
+        : { requiresAuth: false },
+    );
     await router.push(path);
     expect(router.currentRoute.value.name).toBe(name);
     expect(router.currentRoute.value.path).toBe(path);
@@ -106,6 +111,23 @@ describe("route access follows the active role (SCRUM-76)", () => {
     await router.push("/dashboard/coordinator");
 
     expect(router.currentRoute.value.path).toBe("/dashboard/organiser");
+  });
+
+  it("protects registered event details with the active Attendee role", async () => {
+    const routes = await protectedRoutes();
+    const detail = routes.find((route) => route.path === "/dashboard/attendee/events/x");
+
+    expect(detail).toBeTruthy();
+    expect(detail.allowedRoles).toEqual(["attendee"]);
+    expect(detail.standalone).toBeUndefined();
+
+    const attendeeRouter = await loadAppActingAs("attendee");
+    await attendeeRouter.push(detail.path);
+    expect(attendeeRouter.currentRoute.value.name).toBe("attendee-registered-event");
+
+    const organiserRouter = await loadAppActingAs("event_organiser");
+    await organiserRouter.push(detail.path);
+    expect(organiserRouter.currentRoute.value.name).not.toBe("attendee-registered-event");
   });
 
   // 12 AC12 / CR-103 AC5: each new staff role has a dashboard only it can open.

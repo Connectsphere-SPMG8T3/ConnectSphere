@@ -24,6 +24,27 @@ describe("Story 43 public registration API", () => {
   });
 });
 
+describe("Story 56 attendee registrations API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("loads the signed-in attendee's registrations", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({ registrations: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(registrationsApi.myRegistrations("attendee-token")).resolves.toEqual({
+      registrations: [],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/registrations/me",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+});
+
 describe("eventsApi.clone", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
