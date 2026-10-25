@@ -48,8 +48,8 @@ const approveChangeMessage = computed(() => {
   const request = event.value?.open_change_request;
   const reopens = request?.significant && ["confirmed", "preparation", "safety_review"].includes(event.value.status);
   return reopens
-    ? "The new details are applied and the organiser is told. The event goes back to Planning and needs a new safety check."
-    : "The new details are applied and the organiser is told.";
+    ? "The new details are applied and the organiser is notified. The event goes back to Planning and needs a new safety check."
+    : "The new details are applied and the organiser is notified.";
 });
 
 const event = computed(() => review.event);
@@ -398,7 +398,7 @@ watch(
               No venue booking or equipment needs anything from staff.
             </li>
             <li v-if="review.changeImpact.attendees_notified">
-              {{ review.changeImpact.attendees_notified }} registered attendees will be told of the new time.
+              {{ review.changeImpact.attendees_notified }} registered attendees will be notified of the new time.
             </li>
           </ul>
         </div>

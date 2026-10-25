@@ -637,7 +637,9 @@ def approve_change(event_id: str, coordinator_id: str, version: int) -> EventRes
     moved = bool(event_values.keys() & {"starts_at", "ends_at", "event_timezone"})
     result = repository.approve_event_change(
         event_id, coordinator_id, version, lifecycle.change_requestable_from(), event_values, space_values,
-        organiser_message=f'Your requested changes to "{name}" were approved.',
+        # Approving the request isn't confirming its arrangements: staff may still re-review them.
+        organiser_message=(f'Your requested changes to "{name}" were approved. '
+                           "Your coordinator will confirm the arrangements they affect."),
         history_reason=f"Change approved: {change_fields.describe(request['changes'])}",
         officer_message=f'"{name}" returned to planning. {_RETURN_REASONS["approved_details_changed"]}',
         # RG-R4, Q9: attendees act on a new date or time, not on attendance or layout.
@@ -674,7 +676,7 @@ def change_request_impact(event_id: str, coordinator_id: str) -> ChangeImpact:
             messages.append(f"Clashes with {clash}: it keeps its time and is flagged Conflict.")
         elif booking.status == "re_review" and plan.mark:
             # Q22: it is with venue staff already, and stays with them.
-            messages.append(f"Already with venue staff: they are told the details changed again ({plan.mark})")
+            messages.append(f"Already with venue staff: they are notified that the details changed again ({plan.mark})")
         else:
             if plan.period:
                 messages.append("Moves to the new time.")

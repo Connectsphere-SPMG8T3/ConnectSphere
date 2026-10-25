@@ -138,7 +138,7 @@ describe("Story 37 coordinator decides a change request", () => {
       button(el, "Approve changes").click();
       await nextTick();
 
-      expect(dialog().textContent).toContain("The event goes back to Planning and needs a new safety check.");
+      expect(dialog().textContent).toContain("The new details are applied and the organiser is notified. The event goes back to Planning and needs a new safety check.");
     });
 
   it("doesn't warn of a return to Planning for an ordinary change", async () => {
@@ -234,7 +234,7 @@ describe("Story 37 coordinator decides a change request", () => {
     expect(preview.textContent).toContain("If you approve");
     expect(preview.textContent).toContain('Main hall, Grand Ballroom: Clashes with "Product Launch"');
     expect(preview.textContent).toContain("8 × PA Systems: 5 free at the new time.");
-    expect(preview.textContent).toContain("3 registered attendees will be told of the new time.");
+    expect(preview.textContent).toContain("3 registered attendees will be notified of the new time.");
   });
 
   it("says when approving changes no arrangement", async () => {

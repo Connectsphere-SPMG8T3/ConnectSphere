@@ -279,7 +279,9 @@ class TestApproveOrdinaryChange:
 
         approve(client, auth_headers)
 
-        assert approvals["calls"][0]["organiser_message"] == 'Your requested changes to "Partner Summit" were approved.'
+        assert approvals["calls"][0]["organiser_message"] == (
+            'Your requested changes to "Partner Summit" were approved. '
+            "Your coordinator will confirm the arrangements they affect.")
 
     def test_a_value_changed_since_the_request_refuses_approval(self, client, auth_headers, act_as, events,
                                                                 approvals):
@@ -548,7 +550,7 @@ class TestASecondChangeUnderReReview:
         body = client.get(f"/api/v1/events/{EVENT_ID}/change-request/impact", headers=auth_headers).json()
 
         assert body["bookings"][0]["messages"] == [
-            "Already with venue staff: they are told the details changed again (Layout changed.)"]
+            "Already with venue staff: they are notified that the details changed again (Layout changed.)"]
 
 
 class TestImpactPreview:
