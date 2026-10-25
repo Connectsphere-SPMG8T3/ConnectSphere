@@ -148,7 +148,8 @@ def equipment_readiness_by_event(event_ids: Iterable[str]) -> dict[str, Readines
     (SCRUM-24 AC11). Events without lines are Not required."""
     statuses: dict[str, list[str]] = defaultdict(list)
     for row in repository.list_line_statuses(event_ids):
-        statuses[row["event_id"]].append(row["status"])
+        # Story 37 Q14: a line an approved time change left short isn't ready, whatever its status.
+        statuses[row["event_id"]].append("pending" if row.get("needs_re_review_since") else row["status"])
     return {event_id: rules.equipment_readiness(statuses.get(event_id, [])) for event_id in event_ids}
 
 
@@ -420,10 +421,12 @@ def set_exit_confirmation(event_id: str, actor_id: str, confirmed: bool) -> None
 
 @_equipment_service_available
 def recheck_event(event_id: str, actor_id: str | None = None) -> int:
-    """AC7, for story 37 to call after an event's date or time changes.
+    """AC7: re-check the event's reservations after its date or time changes.
 
-    Each reservation moves to the new window; a line that no longer fits goes to
-    re-review and keeps its reservation. Returns how many lines were flagged."""
+    Each reservation moves to the new window; a reserved line that no longer fits
+    keeps its reservation and is marked Needs re-review, for the coordinator to send
+    to technical support (story 37 Q14). Story 37's approval runs the same database
+    function inside its own transaction. Returns how many lines were marked."""
     outcome, flagged, left_ready = repository.recheck_event(event_id, actor_id)
     if outcome != "ok":
         return 0

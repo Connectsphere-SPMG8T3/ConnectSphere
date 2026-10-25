@@ -269,8 +269,13 @@ begin
     if v_outcome <> 'ok' or v_flagged <> 1 or not v_left then
         raise exception 'EQRES FAIL: recheck gave % with % flagged, left_ready %', v_outcome, v_flagged, v_left;
     end if;
+    -- Story 37 Q14: the line that no longer fits stays Reserved and is marked Needs re-review;
+    -- the coordinator sends it to technical support.
     select status into v_status from public.equipment_requests where id = v_l1;
-    if v_status <> 're_review' then raise exception 'EQRES FAIL: the line that no longer fits is %', v_status; end if;
+    if v_status <> 'reserved' or (select needs_re_review_reason from public.equipment_requests where id = v_l1)
+                                  is distinct from 'Event time changed; 1 free for 3.' then
+        raise exception 'EQRES FAIL: the line that no longer fits is % and not marked', v_status;
+    end if;
     select status into v_status from public.equipment_requests where id = v_l1b;
     if v_status <> 'reserved' then raise exception 'EQRES FAIL: a line that still fits became %', v_status; end if;
     if not exists (select 1 from public.equipment_reservations where request_line_id = v_l1 and status = 'confirmed'
@@ -284,8 +289,12 @@ begin
      where recipient_id = c_coord and event_id = c_e1 and type = 'equipment_re_review';
     if v_rows <> 1 then raise exception 'EQRES FAIL: the coordinator was not told about the re-review'; end if;
     if (select technical_readiness from public.events where id = c_e1) <> 'pending' then
-        raise exception 'EQRES FAIL: a re-review line is not Pending';
+        raise exception 'EQRES FAIL: a marked line is not Pending';
     end if;
+    -- Sent to technical support, as the coordinator's send does (story 37 AC6).
+    update public.equipment_requests
+       set status = 're_review', needs_re_review_since = null, needs_re_review_reason = null
+     where id = v_l1;
     -- D8: re-reserving is refused while it still doesn't fit, and the line stays flagged.
     select r.outcome, r.free_quantity into v_outcome, v_free from public.reserve_equipment_line(v_l1, c_tech) r;
     if v_outcome <> 'insufficient' or v_free <> 1 then
@@ -327,8 +336,9 @@ begin
     if not exists (select 1 from public.event_technical_history where request_id = v_l2 and action = 'refused') then
         raise exception 'EQRES FAIL: the refused reserve is not in history';
     end if;
-    if not exists (select 1 from public.event_technical_history where request_id = v_l1 and action = 're_review') then
-        raise exception 'EQRES FAIL: the re-review flag is not in history';
+    -- Story 37 Q14: the time change records the marker; sending it is a step of its own.
+    if not exists (select 1 from public.event_technical_history where request_id = v_l1 and action = 'needs_re_review') then
+        raise exception 'EQRES FAIL: the re-review marker is not in history';
     end if;
     if not exists (select 1 from public.event_technical_history where event_id = c_e4 and action = 'released') then
         raise exception 'EQRES FAIL: the release on rejection is not in history';

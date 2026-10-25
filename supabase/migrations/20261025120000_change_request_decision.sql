@@ -27,6 +27,28 @@ comment on column public.venue_bookings.needs_re_review_since is
 comment on column public.venue_bookings.needs_re_review_reason is
     'Story 37: what the change touched, such as "Date or time changed."';
 
+-- Q14: a reserved line an approved time change leaves short is marked the same way,
+-- keeping its reservation; the coordinator sends it to technical support.
+alter table public.equipment_requests
+    add column needs_re_review_since timestamptz null,
+    add column needs_re_review_reason text null,
+    add constraint equipment_requests_needs_re_review_together
+        check ((needs_re_review_since is null) = (needs_re_review_reason is null)),
+    add constraint equipment_requests_needs_re_review_reason_length
+        check (needs_re_review_reason is null or length(btrim(needs_re_review_reason)) between 1 and 1000);
+
+comment on column public.equipment_requests.needs_re_review_since is
+    'Story 37: when an approved time change left this reserved line short. Cleared when the coordinator sends it for re-review. Not ready while set.';
+comment on column public.equipment_requests.needs_re_review_reason is
+    'Story 37: why, such as "Event time changed; 5 free for 8."';
+
+-- The technical history names both steps: marked by the change, then sent to technical support.
+alter table public.event_technical_history drop constraint event_technical_history_action_known;
+alter table public.event_technical_history add constraint event_technical_history_action_known
+    check (action = any (array['reserved', 'refused', 'not_available', 'note_updated', 'released', 're_review',
+                               'exit_ticked', 'exit_unticked', 'exit_cleared', 'technical_status',
+                               'needs_re_review', 'sent_for_re_review']));
+
 -- Q19: a booking moved by an approved change records both windows.
 alter table public.venue_booking_history
     add column old_period tstzrange null,
@@ -181,6 +203,12 @@ begin
              where id = v_booking.id;
         end if;
     end loop;
+
+    -- Q14, RS-R5: a new time moves every reservation; a line the new time leaves short is
+    -- marked. The coordinator is the actor, so the re-check's notice skips them (NT-R1).
+    if (v_after.starts_at, v_after.ends_at) is distinct from (v_event.starts_at, v_event.ends_at) then
+        perform public.recheck_event_reservations(p_event_id, p_actor_id);
+    end if;
 
     -- AC7, QA3-16: a significant change must pass the safety check again, so a Confirmed
     -- or Preparation event goes back to Planning, and so does one in Safety review,
@@ -590,3 +618,105 @@ begin
     return query select 'ok'::text, v_booking_id, null::jsonb;
 end;
 $function$;
+
+-- ---------------------------------------------------------------------------
+-- Equipment after an approved time change (Q14, RS-R5). As SCRUM-24 built it
+-- (20261019120000), except that a reserved line the new time leaves short is
+-- marked Needs re-review rather than sent straight to technical support: the
+-- coordinator sends it (AC6). A marked line is not Ready.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.recheck_event_reservations(p_event_id uuid, p_actor_id uuid)
+returns table (outcome text, flagged integer, left_ready boolean)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+    v_event public.events;
+    v_line public.equipment_requests;
+    v_reservation_id uuid;
+    v_free integer;
+    v_flagged integer := 0;
+    v_reason text;
+begin
+    perform private.set_actor(p_actor_id);
+    select * into v_event from public.events where id = p_event_id for update;
+    if not found then
+        return query select 'event_not_found', 0, false;
+        return;
+    end if;
+    if v_event.starts_at is null or v_event.ends_at is null then
+        return query select 'no_schedule', 0, false;
+        return;
+    end if;
+    perform 1 from public.equipment
+     where id in (select equipment_id from public.equipment_requests
+                   where event_id = p_event_id and status in ('reserved', 're_review'))
+     order by id for update;
+
+    for v_line in
+        select * from public.equipment_requests
+         where event_id = p_event_id and status in ('reserved', 're_review')
+         order by equipment_id, id
+         for update
+    loop
+        update public.equipment_reservations
+           set start_at = v_event.starts_at, end_at = v_event.ends_at
+         where request_line_id = v_line.id and status = 'confirmed'
+        returning id into v_reservation_id;
+        if v_line.status <> 'reserved' then
+            continue;
+        end if;
+        select a.free_quantity into v_free
+          from public.equipment_availability(array[v_line.equipment_id], v_event.starts_at, v_event.ends_at, v_reservation_id) a;
+        if coalesce(v_free, 0) < v_line.quantity then
+            v_reason := 'Event time changed; ' || coalesce(v_free, 0) || ' free for ' || v_line.quantity || '.';
+            update public.equipment_requests
+               set needs_re_review_since = now(), needs_re_review_reason = v_reason
+             where id = v_line.id;
+            perform private.log_technical(p_event_id, v_line.id, 'needs_re_review', 'reserved', 'reserved', v_reason);
+            perform private.notify_coordinator(p_event_id, 'equipment_re_review',
+                'Equipment needs re-review after a time change: ' || private.line_label(v_line)
+                || ' for "' || v_event.name || '". Send it to technical support; the reservation is kept until they decide.');
+            v_flagged := v_flagged + 1;
+        end if;
+    end loop;
+
+    return query select 'ok', v_flagged,
+        v_event.technical_readiness = 'ready' and (select technical_readiness from public.events where id = p_event_id) <> 'ready';
+end;
+$$;
+
+-- A marked line is not Ready, whatever its status.
+create or replace function public.derive_technical_status(p_event_id uuid)
+returns public.technical_readiness
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+    select case
+        when not exists (select 1 from public.equipment_requests r
+                          where r.event_id = p_event_id and r.status <> 'released')
+            then 'not_required'::public.technical_readiness
+        when exists (select 1 from public.equipment_requests r
+                      where r.event_id = p_event_id and r.status = 'rejected')
+            then 'issue'
+        when not exists (select 1 from public.equipment_requests r
+                          where r.event_id = p_event_id
+                            and (r.status not in ('reserved', 'released') or r.needs_re_review_since is not null))
+             and exists (select 1 from public.events e
+                          where e.id = p_event_id and e.exit_confirmed_at is not null)
+            then 'ready'
+        else 'pending'
+    end;
+$$;
+
+-- Marking or sending a line moves technical status, so the refresh trigger watches the marker too.
+drop trigger equipment_requests_refresh_technical_status on public.equipment_requests;
+create trigger equipment_requests_refresh_technical_status
+    after insert or delete or update of equipment_id, quantity, status, needs_re_review_since
+    on public.equipment_requests
+    for each row execute function private.equipment_request_changed();
+

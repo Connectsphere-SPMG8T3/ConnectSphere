@@ -102,6 +102,24 @@ insert into public.venue_bookings (id, event_id, event_space_request_id, venue_i
      'f0000000-0000-4000-8000-000000003796', 'b0000000-0000-4000-8000-000000000002',
      tstzrange('2031-04-21 13:00+08', '2031-04-21 14:00+08', '[)'), 0, 'held', null, null, null);
 
+-- Equipment on the moved event (Q14): 8 of 10 PA Systems, with 5 taken at the new time by
+-- the blocker; 2 Wireless Mics, which still fit. Exits ticked, so it was Ready.
+insert into public.equipment_requests (id, event_id, equipment_id, submission_id, quantity, status) values
+    ('c0000000-0000-4000-8000-000000003791', 'e0000000-0000-4000-8000-000000003709',
+     'b0000000-0000-4000-8000-000000000003', gen_random_uuid(), 8, 'reserved'),
+    ('c0000000-0000-4000-8000-000000003792', 'e0000000-0000-4000-8000-000000003709',
+     'b0000000-0000-4000-8000-000000000002', gen_random_uuid(), 2, 'reserved');
+insert into public.equipment_reservations (equipment_id, event_id, quantity, start_at, end_at, request_line_id) values
+    ('b0000000-0000-4000-8000-000000000003', 'e0000000-0000-4000-8000-000000003709', 8,
+     '2031-04-21 10:00+08', '2031-04-21 12:00+08', 'c0000000-0000-4000-8000-000000003791'),
+    ('b0000000-0000-4000-8000-000000000002', 'e0000000-0000-4000-8000-000000003709', 2,
+     '2031-04-21 10:00+08', '2031-04-21 12:00+08', 'c0000000-0000-4000-8000-000000003792'),
+    ('b0000000-0000-4000-8000-000000000003', 'e0000000-0000-4000-8000-000000003710', 5,
+     '2031-04-21 14:00+08', '2031-04-21 16:00+08', null);
+update public.events set exit_confirmed_at = now(), exit_confirmed_by = 'a0000000-0000-4000-8000-000000000004'
+ where id = 'e0000000-0000-4000-8000-000000003709';
+select private.refresh_technical_status('e0000000-0000-4000-8000-000000003709');
+
 insert into public.event_change_requests (event_id, kind, reason, requested_by, changes, significant) values
     ('e0000000-0000-4000-8000-000000003709', 'change', 'Afternoon instead', 'a0000000-0000-4000-8000-000000000001',
      '{"event": [{"field": "starts_at", "before": "2031-04-21T02:00:00Z", "after": "2031-04-21T06:00:00Z"}], "spaces": []}',
@@ -326,6 +344,31 @@ begin
     if v_result->>'outcome' is distinct from 'ok' then
         raise exception 'CHANGE FAIL: the approval with booking plans was refused: %', v_result;
     end if;
+
+    -- Q14: every reservation moves; a line still in stock stays Reserved, a short one keeps its
+    -- units and is marked Needs re-review, and the event is no longer technically Ready.
+    if exists (select 1 from public.equipment_reservations
+                where event_id = 'e0000000-0000-4000-8000-000000003709'
+                  and (start_at, end_at) <> ('2031-04-21 14:00+08'::timestamptz, '2031-04-21 16:00+08'::timestamptz)) then
+        raise exception 'CHANGE FAIL: a reservation did not move to the new time';
+    end if;
+    if (select status from public.equipment_requests where id = 'c0000000-0000-4000-8000-000000003791') <> 'reserved'
+       or (select needs_re_review_reason from public.equipment_requests where id = 'c0000000-0000-4000-8000-000000003791')
+         is distinct from 'Event time changed; 5 free for 8.'
+       or (select status from public.equipment_reservations
+            where request_line_id = 'c0000000-0000-4000-8000-000000003791') <> 'confirmed' then
+        raise exception 'CHANGE FAIL: a short line was not marked, or lost its reservation';
+    end if;
+    if (select needs_re_review_since from public.equipment_requests where id = 'c0000000-0000-4000-8000-000000003792')
+         is not null then
+        raise exception 'CHANGE FAIL: a line still in stock was marked';
+    end if;
+    if (select technical_readiness from public.events where id = 'e0000000-0000-4000-8000-000000003709') <> 'pending' then
+        raise exception 'CHANGE FAIL: a marked line left the event technically Ready';
+    end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = 'e0000000-0000-4000-8000-000000003709' and recipient_id = v_coordinator;
+    if v_rows <> 0 then raise exception 'CHANGE FAIL: the coordinator was notified of their own approval (NT-R1)'; end if;
 
     -- A clash (setup included) keeps the old window and is flagged Conflict, not marked (Q11, Q16).
     if (select booked_period from public.venue_bookings where id = 'd0000000-0000-4000-8000-000000003791')

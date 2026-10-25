@@ -353,14 +353,14 @@ def list_technical_history(event_id: str) -> list[dict]:
 
 
 def list_line_statuses(event_ids: Iterable[str]) -> list[dict]:
-    """`{event_id, status}` for every line on `event_ids`."""
+    """`{event_id, status, needs_re_review_since}` for every line on `event_ids`."""
     ids = sorted({str(i) for i in event_ids})
     if not ids:
         return []
     response = (
         get_supabase_admin_client()
         .table("equipment_requests")
-        .select("event_id, status")
+        .select("event_id, status, needs_re_review_since")
         .in_("event_id", ids)
         .execute()
     )
