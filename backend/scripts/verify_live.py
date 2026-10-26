@@ -571,6 +571,33 @@ def _(ctx: Context) -> None:
     expect_status(ctx.client.get(f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=session.headers), 403)
 
 
+# --- Registered events (SCRUM-56) -----------------------------------------
+
+@check("TC-REG-008", "The active Attendee can read their registrations; another active role is refused")
+def _(ctx: Context) -> None:
+    attendee_response = ctx.client.get(
+        f"{ctx.api}/registrations/me",
+        headers=ctx.shared("attendee").headers,
+    )
+    expect_status(attendee_response, 200)
+    registrations = attendee_response.json().get("registrations")
+    expect(isinstance(registrations, list), "response does not contain a registrations list")
+    for registration in registrations:
+        expect(
+            registration.get("status") in {"registered", "waitlisted"},
+            f"unexpected registration status {registration.get('status')!r}",
+        )
+        event = registration.get("event")
+        expect(isinstance(event, dict), "registration has no event details")
+        for field in ("id", "name", "starts_at", "ends_at", "event_timezone", "venues"):
+            expect(field in event, f"event details are missing {field}")
+    denied = ctx.client.get(
+        f"{ctx.api}/registrations/me",
+        headers=ctx.shared("event_coordinator").headers,
+    )
+    expect_status(denied, 403)
+
+
 # --- Coordinator dashboard (SCRUM-72) --------------------------------------
 
 COORDINATOR_DASHBOARD = "/events/dashboard/coordinator"

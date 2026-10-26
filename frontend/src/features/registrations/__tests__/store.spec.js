@@ -6,6 +6,7 @@ const { registrationsApi, authStore } = vi.hoisted(() => ({
     directory: vi.fn(),
     event: vi.fn(),
     register: vi.fn(),
+    myRegistrations: vi.fn(),
   },
   authStore: { token: "attendee-token", withSession: vi.fn((callback) => callback("attendee-token")) },
 }));
@@ -96,5 +97,29 @@ describe("registration discovery store", () => {
     await expect(store.register("event-1")).rejects.toMatchObject({ status: 409 });
 
     expect(store.event.availability).toBe("full");
+  });
+
+  it("loads the signed-in attendee's registrations with the session token", async () => {
+    const registrations = [{ id: "registration-1", status: "registered" }];
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations });
+    const store = useRegistrationStore();
+
+    await store.loadMyRegistrations();
+
+    expect(registrationsApi.myRegistrations).toHaveBeenCalledWith("attendee-token");
+    expect(store.myRegistrations).toEqual(registrations);
+    expect(store.isLoadingMyRegistrations).toBe(false);
+    expect(store.myRegistrationsError).toBeNull();
+  });
+
+  it("surfaces a registration-list error and clears its loading state", async () => {
+    const error = new Error("Unable to load registrations.");
+    registrationsApi.myRegistrations.mockRejectedValue(error);
+    const store = useRegistrationStore();
+
+    await expect(store.loadMyRegistrations()).rejects.toBe(error);
+
+    expect(store.myRegistrationsError).toBe("Unable to load registrations.");
+    expect(store.isLoadingMyRegistrations).toBe(false);
   });
 });

@@ -6,9 +6,14 @@ import Nav from "@/components/common/Nav.vue";
 import TopBar from "@/components/common/TopBar.vue";
 import Toast from "@/components/common/Toast.vue";
 import { useSidebarState } from "@/composables/useSidebarState";
+import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
-const showSidebar = computed(() => route.meta.requiresAuth === true);
+const auth = useAuthStore();
+const showSidebar = computed(() =>
+  (route.meta.requiresAuth === true && route.meta.standalone !== true) ||
+  (route.meta.attendeeNavigation === true && auth.isAuthenticated && auth.role === "attendee"),
+);
 const { isCollapsed } = useSidebarState();
 
 const contentOffsetClass = computed(() => {

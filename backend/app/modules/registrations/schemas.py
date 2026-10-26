@@ -37,6 +37,28 @@ class PublicEventDirectory(BaseModel):
     events: list[PublicEvent]
 
 
+class RegisteredEvent(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    starts_at: datetime
+    ends_at: datetime
+    event_timezone: str
+    status: str
+    venues: list[PublicVenue]
+
+
+class AttendeeRegistration(BaseModel):
+    id: str
+    status: str
+    registered_at: datetime
+    event: RegisteredEvent
+
+
+class AttendeeRegistrationList(BaseModel):
+    registrations: list[AttendeeRegistration]
+
+
 class RegistrationResult(BaseModel):
     registration_id: str | None = None
     status: str
