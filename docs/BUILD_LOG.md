@@ -3294,9 +3294,6 @@ On `feature/scrum-32-request-event-changes`, 2026-10-24, stacked on PR #106 (sto
 - Migration `20261025110000_close_cancellation_request_on_ended_event.sql` adds a trigger that closes the open request as `superseded` when the event becomes `rejected` or `completed` (CR-R22), the same way story 32 closes change requests. Reject remains a decision on the event, available with or without a request.
 - Tests: a failing case added to `event_cancellation_decision_checks.sql` first, then TC-CANCEL-024 in `verify_live.py`. No API or SPA code changed: the event read and the dashboard already list open requests only.
 - Verified (2026-10-24): migration applied to the live project with its ledger row; [TC-CANCEL-024](test-cases/runs/2026-10-24-2031-api-db-c197023.md) and [TC-CANCEL-018](test-cases/runs/2026-10-24-2032-api-db-c197023.md) pass. Only the checks this change touches were run, not the full suite. Every other rolled-back verification script also passed with the migration in place, except `event_cancellation_request_checks.sql`, which already fails on the live project because of story 32's `changes_only_on_change` constraint (story 32's branch updates it).
-
-
-
 ### 4.90. Bug fix D49 — the notification panel closes on a sidebar click; two bell-store minors
 
 On `fix/notification-panel-polish`, 2026-10-24. Defect: DEFECTS D49 (Low, usability), plus two Minors deferred from the PR #95 review (§4.76). Affects 113 (the bell). SPA only: no API, database or contract change.
@@ -3387,3 +3384,36 @@ After the manual pass and screenshot capture, the three own DEMO equipment rows 
 Draft PR #111 created at the developer's request with screenshot evidence pinned to the evidence commit. GitHub reported conflicts only in BUILD_LOG, DEFECTS and IMPLEMENTATION_MAP. Merged current main 55faf9b into the feature branch without rewriting pushed history. Preserved upstream story43/84/115/32 and notification/workflow/live-cleanup changes, retained both sets of build entries, and assigned the appended 23-R build headings 4.90–4.94 to avoid collisions with main 4.85–4.89. Entry content and immutable run logs remain intact; the one internal section reference follows the new heading. Main's existing D56 notification fix remains canonical; the older 23-R assignment-check IndexError entry is now D62, with historical alias explained in DEFECTS.
 
 No existing test was edited to make the integration green. Fresh full backend coverage passed 2,146 tests (97.75%); frontend passed 1,645 tests in 106 files (97.59%); production build passed. [API/rollback SQL](test-cases/runs/2026-10-25-1440-api-db-3d61d17.md) passed 3/3, then [headless browser](test-cases/runs/2026-10-25-1442-e2e-3d61d17.md) passed 4/4. Migration dry run reported upToDate:true with no pending migrations; no DB writes were applied. Screenshot files describe the unchanged equipment UI component and stay pinned in the draft PR description. Sprint 4's sheet is now called AC ticks; no sheet was edited.
+### 4.97. Story 56 — View Registered Events
+
+Implemented on `feature/scrum-56-view-registered-events`. The estimate was confirmed as 1 point before the approved expansion to the Overview/My events/Explore dashboard; the backlog was not edited, and the estimate should be revisited with the team.
+
+**Scope decisions.** The Overview shows upcoming registrations, open public events, and past registrations. The past metric counts registered events that have ended and does not claim attendance. My events uses the caller-scoped `GET /registrations/me` response. Event cards open an Attendee-only, read-only detail page sourced from that same response, so completed events remain available without making private details public. Explore reuses the public directory's event card and data.
+
+**Changed.** Added the active-Attendee registrations endpoint, dashboard tabs and metrics, My events filters and details, public-event search/sorting, a shared public event card and detail layout, active-role navigation and route coverage. After the developer's visual feedback, added shared full/compact event-timezone date ranges, removed lifecycle-status labels from public/Attendee surfaces, and kept the Attendee sidebar on both detail routes when that is the active role. Signed-out public event details retain the ConnectSphere header; active Attendees see no detail header on Explore or My events, and registered-event details have no back link. Updated `REQUIREMENTS.md`, `IMPLEMENTATION_MAP.md`, Story 56 cases in `docs/test-cases/events.md`, and recorded D63; no schema change.
+
+**Automated verification.** The full backend suite passed 1,917 tests. Full frontend coverage passed: 1,573 tests across 106 files, 97.77% overall line coverage, and 100% line coverage on Story 56 changed frontend code. `npm run build` passed after the UI refinements. The earlier full recorded browser suite passed 87/92: its Story 56 locator failure is corrected in the focused run, and the other four failures were unrelated (TC-RBAC-005, TC-TSD-017, TC-EQR-035 and TC-NOTIF-004). The focused recorded Story 56 browser run passed 3/3 on 2026-10-25 (`2026-10-25-1111-e2e-f39323b.md`). The full API/database run passed 181/182; Story 56 checks passed, while unrelated TC-BOOK-051 hit a Supabase transport error. See the run logs in `docs/test-cases/runs/`.
+
+**Developer-reported manual results (2026-10-25).** TC-REG-009 and TC-REG-016 passed before the final UI refinements. TC-REG-010 initially failed because the date range was split and too verbose; D63 is fixed in the worktree and the developer later reported TC-REG-010 passing. TC-REG-011, TC-REG-012 and TC-REG-014 were initially blocked by missing past, multi-venue and additional registrations; later E2E and manual outcomes are recorded in `docs/IMPLEMENTATION_MAP.md` and the run logs.
+
+**Not verified.** The manual recheck of TC-REG-010 and TC-REG-016, and TC-REG-011/012/014 when suitable disposable data is available. Disposable fixture creation was blocked by a Supabase transport error; no shared records were changed. The confirmed 1-point estimate also needs review against the expanded scope.
+
+### 4.98. Bug fix D64 — public event detail ignored an existing Attendee registration
+
+**Reported:** 2026-10-25 while verifying SCRUM-56. The developer opened an event from Explore after already registering and found the **Register** action remained active; the report is recorded in `docs/test-cases/runs/2026-10-25-1137-manual-f39323b.md`.
+
+**Root cause:** `PublicEventDetailView` only checked `registrationResult`, which represents a registration made during the current visit and is reset when event details load. It did not load the active Attendee's existing registrations.
+
+**Fix:** When the signed-in user's active role is Attendee, the public detail view loads `GET /registrations/me` and compares the current event ID. A matching `registered` entry shows a disabled **Registered** action. Register stays disabled while the lookup is pending; lookup errors are shown, and non-Attendee/public sessions do not call the private endpoint. The backend remains authoritative for duplicate prevention.
+
+**Verification:** A focused view test reproduced the missing state before the fix. Focused frontend registration tests passed (20/20); the production build passed. The E2E check now verifies the disabled action when the seeded Attendee is already registered, but a live E2E rerun remains pending.
+
+### 4.92. Bug fix D59 — align Attendee My events with Organiser Events
+
+**Reported:** 2026-10-25 during the SCRUM-56 UI review. Upcoming and Past registrations were stacked vertically, and each section used a denser multi-column card grid than the Organiser Events page.
+
+**Root cause:** My events grouped events correctly but stacked the groups, used plain smaller section headings, and used compact status-board link cards instead of the larger card style in Organiser Events → Requests.
+
+**Fix:** Upcoming and Past now render side by side at wide breakpoints and stack on small screens; filtering to only one period uses the full width. Reused `SectionHeading` for the section labels and `BauhausCard` for the Requests-style card frame and typography. Registered retains a green stripe; Waitlisted uses the dimmed grey treatment. A first manual review confirmed the column layout but still found the headings and cards smaller than Requests; those styles were then aligned, and a final manual check is pending.
+
+**Verification:** Regression assertions first failed because the registration columns and Requests-style heading/card treatment were absent. The full frontend coverage run passed 1,700 tests across 113 files (97.86% overall line coverage; 100% line coverage for all changed frontend components); focused BauhausCard, Attendee and Organiser dashboard tests pass (47/47), and `npm run build` passes. The first manual review found the remaining typography mismatch; after aligning it, the developer's TC-REG-016 desktop/375px visual recheck passed ([run](test-cases/runs/2026-10-25-1611-manual-6a5b9ea.md)).

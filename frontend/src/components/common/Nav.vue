@@ -33,24 +33,35 @@ const showVenueStaffRequests = computed(() => authStore.role === "venue_staff");
 const EVENT_VIEW_DASHBOARDS = {
   event_organiser: "dashboard-organiser",
   event_coordinator: "dashboard-coordinator",
+  attendee: "dashboard-attendee",
 };
 const eventViewsDashboard = computed(() => EVENT_VIEW_DASHBOARDS[authStore.role] ?? null);
+const eventListLabel = computed(() => (authStore.role === "attendee" ? "My events" : "Events"));
+const showAttendeeExplore = computed(() => authStore.role === "attendee");
 const showTechSupportViews = computed(() => authStore.role === "tech_support");
 
 const isDashboardActive = computed(() => route.path === authStore.dashboardPath);
 const isVenueStaffRequestsActive = computed(() => route.name === "dashboard-venue-staff-requests");
 const isEventOverviewActive = computed(
-  () => route.name === eventViewsDashboard.value && route.query.tab !== "events",
+  () =>
+    route.name === eventViewsDashboard.value &&
+    !["events", "explore"].includes(route.query.tab),
 );
 // An event's own page belongs to Events, since that is where its card is listed.
 const EVENT_PAGES = {
   event_organiser: ["event-detail"],
   event_coordinator: ["coordinator-event"],
+  attendee: ["attendee-registered-event"],
 };
 const isEventListActive = computed(
   () =>
     (route.name === eventViewsDashboard.value && route.query.tab === "events") ||
     (EVENT_PAGES[authStore.role] ?? []).includes(route.name),
+);
+const isAttendeeExploreActive = computed(
+  () =>
+    (route.name === eventViewsDashboard.value && route.query.tab === "explore") ||
+    (route.name === "public-event-detail" && authStore.role === "attendee"),
 );
 // Must stay in sync with the tab names TechSupportDashboard reads from the query.
 // Inventory is the default view, so it is active unless availability is asked for.
@@ -170,8 +181,8 @@ async function handleLogout() {
         <RouterLink
           :to="{ name: eventViewsDashboard, query: { tab: 'events' } }"
           :class="navLinkClass(isEventListActive)"
-          title="Events"
-          aria-label="Events"
+          :title="eventListLabel"
+          :aria-label="eventListLabel"
         >
           <svg
             viewBox="0 0 24 24"
@@ -186,7 +197,30 @@ async function handleLogout() {
             <rect x="3" y="4" width="18" height="17" />
             <path d="M16 2v4M8 2v4M3 10h18" />
           </svg>
-          <span :class="labelClass">Events</span>
+          <span :class="labelClass">{{ eventListLabel }}</span>
+        </RouterLink>
+
+        <RouterLink
+          v-if="showAttendeeExplore"
+          :to="{ name: eventViewsDashboard, query: { tab: 'explore' } }"
+          :class="navLinkClass(isAttendeeExploreActive)"
+          title="Explore events"
+          aria-label="Explore events"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-5 w-5 shrink-0"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M15.5 8.5l-2.3 5.2-5.2 2.3 2.3-5.2 5.2-2.3z" />
+          </svg>
+          <span :class="labelClass">Explore events</span>
         </RouterLink>
       </template>
 

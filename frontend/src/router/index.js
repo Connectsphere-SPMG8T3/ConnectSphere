@@ -21,7 +21,7 @@ const routes = [
     path: "/attendee/events/:id",
     name: "public-event-detail",
     component: () => import("@/views/registrations/PublicEventDetailView.vue"),
-    meta: { requiresAuth: false },
+    meta: { requiresAuth: false, attendeeNavigation: true },
   },
   {
     path: "/login",
@@ -142,6 +142,12 @@ const routes = [
     path: "/dashboard/attendee",
     name: "dashboard-attendee",
     component: () => import("@/views/dashboards/AttendeeDashboard.vue"),
+    meta: { requiresAuth: true, allowedRoles: ["attendee"] },
+  },
+  {
+    path: "/dashboard/attendee/events/:id",
+    name: "attendee-registered-event",
+    component: () => import("@/views/registrations/AttendeeRegisteredEventView.vue"),
     meta: { requiresAuth: true, allowedRoles: ["attendee"] },
   },
   {

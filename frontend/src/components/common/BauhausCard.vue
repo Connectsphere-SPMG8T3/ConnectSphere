@@ -14,7 +14,7 @@ const props = defineProps({
   background: {
     type: String,
     default: "white",
-    validator: (value) => ["white", "red", "blue", "yellow"].includes(value),
+    validator: (value) => ["white", "red", "blue", "yellow", "green"].includes(value),
   },
   /** Greys the card out (grey fill, faded text, grey stripe), for a closed item such as a rejected request. */
   dimmed: { type: Boolean, default: false },
@@ -54,6 +54,7 @@ const toneClasses = {
   red: "bg-bauhaus-red",
   blue: "bg-bauhaus-blue",
   yellow: "bg-bauhaus-yellow",
+  green: "bg-bauhaus-green",
 };
 
 const accentBgClasses = {
