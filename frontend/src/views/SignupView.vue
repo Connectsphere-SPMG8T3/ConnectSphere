@@ -6,6 +6,8 @@ import AuthPageLayout from "@/components/common/AuthPageLayout.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
+import { serverFieldErrors } from "@/features/auth/fieldErrors";
+import { normalizeSingaporePhoneNumber, singaporePhoneError } from "@/features/auth/phoneNumber";
 import { ApiError, authApi } from "@/services/api";
 
 // Sign-up creates no session, so it calls the API directly rather than
@@ -51,6 +53,10 @@ function validate() {
   if (role.value === "event_organiser" && !form.value.organisation_name.trim()) {
     errors.organisation_name = "Organisation name is required.";
   }
+  if (role.value === "event_organiser") {
+    const phoneError = singaporePhoneError(form.value.phone_number);
+    if (phoneError) errors.phone_number = phoneError;
+  }
   if (!errors.email && !EMAIL_PATTERN.test(form.value.email.trim())) {
     errors.email = "Enter a valid email address.";
   }
@@ -59,16 +65,6 @@ function validate() {
   }
   fieldErrors.value = errors;
   return Object.keys(errors).length === 0;
-}
-
-// A 422's `detail[]` entries each name a field as `loc: ["body", <field>]`.
-function serverFieldErrors(detail) {
-  const errors = {};
-  for (const { loc, msg } of detail) {
-    const name = loc?.[loc.length - 1];
-    if (name in form.value && !errors[name]) errors[name] = msg;
-  }
-  return errors;
 }
 
 const router = useRouter();
@@ -94,14 +90,14 @@ async function handleSubmit() {
     if (role.value === "event_organiser") {
       details.organisation_name = form.value.organisation_name;
       // Optional: an unfilled field means no phone number, not "".
-      details.phone_number = form.value.phone_number.trim() || null;
+      details.phone_number = normalizeSingaporePhoneNumber(form.value.phone_number);
     }
     await authApi.signup(details);
     // History state, not the query string, so the email stays out of the URL.
     router.push({ ...loginLocation.value, state: { signedUpEmail: form.value.email } });
   } catch (error) {
     if (error.status === 409) fieldErrors.value = { email: error.message };
-    else if (error.status === 422 && Array.isArray(error.detail)) fieldErrors.value = serverFieldErrors(error.detail);
+    else if (error.status === 422 && Array.isArray(error.detail)) fieldErrors.value = serverFieldErrors(error.detail, form.value);
     else if (error instanceof ApiError) formError.value = error.message;
     else formError.value = "Could not create your account. Please try again.";
   } finally {

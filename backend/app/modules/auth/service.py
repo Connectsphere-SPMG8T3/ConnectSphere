@@ -6,6 +6,7 @@ from app.core.exceptions import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     InvalidOrExpiredTokenError,
+    ProfileNotFoundError,
     RoleNotAssignedError,
     SupabasePasswordRejectedError,
 )
@@ -21,6 +22,7 @@ _FOREIGN_KEY_VIOLATION = "23503"
 from app.db.supabase import create_auth_client, get_supabase_admin_client, get_supabase_anon_client
 from app.modules.auth.schemas import (
     ProfileResponse,
+    ProfileUpdateRequest,
     SignupRequest,
     TokenResponse,
     UserLoginRequest,
@@ -180,6 +182,26 @@ def set_active_role(current_user: CurrentUser, role: str) -> ProfileResponse:
         department=current_user.department,
         phone_number=current_user.phone_number,
         roles=roles,
+    )
+
+
+def update_profile(current_user: CurrentUser, request: ProfileUpdateRequest) -> ProfileResponse:
+    """Update only the caller's name and phone number (SCRUM-92)."""
+    admin_client = get_supabase_admin_client()
+    response = (
+        admin_client.table("profiles")
+        .update({"full_name": request.full_name, "phone_number": request.phone_number})
+        .eq("id", current_user.id)
+        .select("id, email, full_name, role, organisation_name, department, phone_number")
+        .execute()
+    )
+    profiles = response.data if response else None
+    profile = profiles[0] if profiles else None
+    if not profile:
+        raise ProfileNotFoundError()
+    return ProfileResponse(
+        **{**profile, "role": current_user.role},
+        roles=get_roles(current_user.id),
     )
 
 

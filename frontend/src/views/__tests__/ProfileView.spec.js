@@ -2,11 +2,19 @@ import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError, authApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn(), setActiveRole: vi.fn() },
+  authApi: {
+    login: vi.fn(),
+    refresh: vi.fn(),
+    me: vi.fn(),
+    logout: vi.fn(),
+    setActiveRole: vi.fn(),
+    updateProfile: vi.fn(),
+  },
 }));
 
 async function mountProfileView(profile) {
@@ -26,7 +34,28 @@ async function mountProfileView(profile) {
   app.mount(el);
   await nextTick();
   await nextTick();
-  return { el };
+  return { el, authStore };
+}
+
+function field(el, label) {
+  const labelElement = [...el.querySelectorAll("label")].find(
+    (node) => node.textContent.replace("*", "").trim() === label,
+  );
+  if (!labelElement) throw new Error(`No field labelled "${label}"`);
+  return el.querySelector(`#${labelElement.htmlFor}`);
+}
+
+function fill(el, label, value) {
+  const input = field(el, label);
+  input.value = value;
+  input.dispatchEvent(new Event("input"));
+}
+
+async function submit(el) {
+  el.querySelector("form").dispatchEvent(new Event("submit"));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await nextTick();
+  await nextTick();
 }
 
 describe("ProfileView", () => {
@@ -59,5 +88,161 @@ describe("ProfileView", () => {
     expect(el.textContent).toContain("All roles");
     expect(el.textContent).toContain("Event Coordinator");
     expect(el.textContent).toContain("Venue Staff");
+  });
+
+  it("leaves an unrecognized existing phone value unchanged in the profile display", async () => {
+    const { el } = await mountProfileView({
+      id: "u1",
+      full_name: "Siti Rahman",
+      email: "attendee@connectsphere.dev",
+      role: "attendee",
+      roles: ["attendee"],
+      phone_number: "legacy phone value",
+    });
+
+    expect(el.textContent).toContain("legacy phone value");
+  });
+
+  it("saves the edited name and optional phone and displays the saved profile", async () => {
+    const profile = {
+      id: "u1",
+      full_name: "Siti Rahman",
+      email: "attendee@connectsphere.dev",
+      role: "attendee",
+      roles: ["attendee"],
+      phone_number: "+65 9000 0000",
+    };
+    const updatedProfile = { ...profile, full_name: "Siti Updated", phone_number: "+6591234567" };
+    const { el, authStore } = await mountProfileView(profile);
+    authApi.updateProfile.mockResolvedValue(updatedProfile);
+
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Edit profile").click();
+    await nextTick();
+    fill(el, "Full name", "Siti Updated");
+    fill(el, "Phone number", "9123-4567");
+    await submit(el);
+
+    expect(authApi.updateProfile).toHaveBeenCalledWith("access", {
+      full_name: "Siti Updated",
+      phone_number: "+6591234567",
+    });
+    expect(authStore.profile).toEqual(updatedProfile);
+    expect(el.textContent).toContain("Siti Updated");
+    expect(el.textContent).toContain("+65 91234567");
+    expect(el.textContent).not.toContain("+65 9000 0000");
+  });
+
+  it("shows a field error and does not send a whitespace-only name", async () => {
+    const { el } = await mountProfileView({
+      id: "u1",
+      full_name: "Siti Rahman",
+      email: "attendee@connectsphere.dev",
+      role: "attendee",
+      roles: ["attendee"],
+    });
+
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Edit profile").click();
+    await nextTick();
+    fill(el, "Full name", "   ");
+    await submit(el);
+
+    const nameInput = field(el, "Full name");
+    expect(el.querySelector(`#${nameInput.id}-error`)?.textContent.trim()).toBe("Full name is required.");
+    expect(authApi.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a phone number shorter than eight digits before calling the API", async () => {
+    const { el } = await mountProfileView({
+      id: "u1",
+      full_name: "Siti Rahman",
+      email: "attendee@connectsphere.dev",
+      role: "attendee",
+      roles: ["attendee"],
+    });
+
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Edit profile").click();
+    await nextTick();
+    fill(el, "Phone number", "1234567");
+    await submit(el);
+
+    const phoneInput = field(el, "Phone number");
+    expect(el.querySelector(`#${phoneInput.id}-error`)?.textContent.trim()).toBe(
+      "Enter 8 digits, with an optional +65 country code.",
+    );
+    expect(authApi.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it("cancels edits and discards validation errors", async () => {
+    const { el } = await mountProfileView({
+      id: "u1",
+      full_name: "Siti Rahman",
+      email: "attendee@connectsphere.dev",
+      role: "attendee",
+      roles: ["attendee"],
+      phone_number: "+65 9000 0000",
+    });
+
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Edit profile").click();
+    await nextTick();
+    fill(el, "Full name", "   ");
+    await submit(el);
+    expect(el.textContent).toContain("Full name is required.");
+
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Cancel").click();
+    await nextTick();
+    expect(el.querySelector("form")).toBeNull();
+    expect(el.textContent).not.toContain("Full name is required.");
+    expect(el.textContent).toContain("Siti Rahman");
+
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Edit profile").click();
+    await nextTick();
+    expect(field(el, "Full name").value).toBe("Siti Rahman");
+    expect(field(el, "Phone number").value).toBe("+65 90000000");
+  });
+
+  it("shows server validation errors beside their matching fields", async () => {
+    const { el } = await mountProfileView({
+      id: "u1",
+      full_name: "Siti Rahman",
+      email: "attendee@connectsphere.dev",
+      role: "attendee",
+      roles: ["attendee"],
+    });
+    authApi.updateProfile.mockRejectedValue(
+      new ApiError("Phone number is invalid.", 422, [
+        { loc: ["body", "phone_number"], msg: "Phone number is invalid." },
+      ]),
+    );
+
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Edit profile").click();
+    await nextTick();
+    fill(el, "Full name", "Siti Rahman");
+    fill(el, "Phone number", "+65 9876 5432");
+    await submit(el);
+
+    const phoneInput = field(el, "Phone number");
+    expect(el.querySelector(`#${phoneInput.id}-error`)?.textContent.trim()).toBe("Phone number is invalid.");
+  });
+
+  it.each([
+    [new ApiError("Profile update rejected.", 422, [{ loc: ["body", "unknown"], msg: "Unknown field." }]), "Profile update rejected."],
+    [new ApiError("Profile service unavailable.", 503), "Profile service unavailable."],
+    [new Error("network failure"), "Could not update your profile. Please try again."],
+  ])("shows a form-level error when the API cannot attach an error to a visible field", async (failure, message) => {
+    const { el } = await mountProfileView({
+      id: "u1",
+      full_name: "Siti Rahman",
+      email: "attendee@connectsphere.dev",
+      role: "attendee",
+      roles: ["attendee"],
+    });
+    authApi.updateProfile.mockRejectedValue(failure);
+
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Edit profile").click();
+    await nextTick();
+    fill(el, "Full name", "Siti Updated");
+    await submit(el);
+
+    expect(el.querySelector('[role="alert"]')?.textContent.trim()).toBe(message);
   });
 });
