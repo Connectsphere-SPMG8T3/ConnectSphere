@@ -340,6 +340,18 @@ export const equipmentApi = {
   eventRequests(eventId, token) {
     return request(`/equipment/requests/event/${encodeURIComponent(eventId)}`, { token });
   },
+  // SCRUM-44: the assigned coordinator changes or removes a line, naming the
+  // status they saw, and reads the event's equipment history.
+  updateLine(lineId, payload, token) {
+    return request(`/equipment/requests/${encodeURIComponent(lineId)}`, { method: "PATCH", body: payload, token });
+  },
+  removeLine(lineId, expectedStatus, token) {
+    const query = new URLSearchParams({ expected_status: expectedStatus });
+    return request(`/equipment/requests/${encodeURIComponent(lineId)}?${query}`, { method: "DELETE", token });
+  },
+  eventHistory(eventId, token) {
+    return request(`/equipment/requests/event/${encodeURIComponent(eventId)}/history`, { token });
+  },
   // Every line on every open event, any status (SCRUM-24 requests page).
   requestList(token) {
     return request("/equipment/requests", { token });

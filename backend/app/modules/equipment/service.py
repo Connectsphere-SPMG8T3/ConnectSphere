@@ -25,6 +25,7 @@ from app.modules.events.schemas import ReadinessState
 from app.modules.equipment.schemas import (
     CatalogueItem,
     CatalogueResponse,
+    EquipmentLineUpdate,
     EquipmentRequestCreate,
     EquipmentRequestLine,
     EquipmentRequestLinesResponse,
@@ -33,6 +34,7 @@ from app.modules.equipment.schemas import (
     TechnicalEvent,
     TechnicalEventResponse,
     TechnicalHistoryEntry,
+    TechnicalHistoryResponse,
     PendingEquipmentLine,
     PendingEquipmentLinesResponse,
     EquipmentAvailabilityResponse,
@@ -472,6 +474,77 @@ def recheck_event(event_id: str, actor_id: str | None = None) -> int:
         return 0
     _after(event_id, left_ready)
     return flagged
+
+
+# --- SCRUM-44 modify or remove equipment requirements ------------------------
+
+PLANNING_ONLY_MESSAGE = "Equipment can only be changed while the event is in Planning."
+STALE_LINE_MESSAGE = "This line changed while you were editing it. Reload to see its current status."
+
+
+def _changeable_line(line_id: str, coordinator_id: str, expected_status: str) -> dict:
+    """AC4, AC7: the line, if the caller is its event's assigned coordinator and
+    the event is in Planning. The database re-checks all of it under its locks."""
+    line = _line(line_id)
+    event = events_service.assigned_event(line["event_id"], coordinator_id)
+    if event["status"] != "planning":
+        raise EquipmentArrangementConflictError(PLANNING_ONLY_MESSAGE)
+    if line["status"] != expected_status:
+        raise EquipmentArrangementConflictError(STALE_LINE_MESSAGE)
+    return line
+
+
+def _raise_for_change(outcome: str) -> None:
+    if outcome in ("ok", "unchanged"):
+        return
+    if outcome == "line_not_found":
+        raise EquipmentLineNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "not_planning":
+        raise EquipmentArrangementConflictError(PLANNING_ONLY_MESSAGE)
+    if outcome == "stale":
+        raise EquipmentArrangementConflictError(STALE_LINE_MESSAGE)
+    if outcome == "unknown_equipment":
+        raise EquipmentNotInCatalogueError(loc=["body", "equipment_id"])
+    raise RuntimeError(f"equipment function returned {outcome!r}")
+
+
+@_equipment_service_available
+def update_line(line_id: str, coordinator_id: str, body: EquipmentLineUpdate) -> LineActionResponse:
+    """AC2, AC3: change a line's item, quantity or requirements. The database
+    decides its next status (a Reserved line goes to re-review and keeps its
+    reservation; a Not available one returns to Pending), alerts Technical
+    Support and records the before and after values (AC8)."""
+    _changeable_line(line_id, coordinator_id, body.expected_status)
+    equipment_id = str(body.equipment_id)
+    if not repository.list_catalogue([equipment_id]):
+        raise EquipmentNotInCatalogueError(loc=["body", "equipment_id"])
+    outcome, line_status = repository.update_line(
+        line_id, coordinator_id, equipment_id, body.quantity, body.technical_requirements, body.expected_status,
+    )
+    _raise_for_change(outcome)
+    return LineActionResponse(line_id=line_id, status=line_status)
+
+
+@_equipment_service_available
+def remove_line(line_id: str, coordinator_id: str, expected_status: str) -> LineActionResponse:
+    """AC1: remove a line. It is kept as Released, so history still names it
+    (AC8); any reservation is freed and Technical Support are alerted when it
+    was Reserved or under re-review."""
+    _changeable_line(line_id, coordinator_id, expected_status)
+    _raise_for_change(repository.remove_line(line_id, coordinator_id, expected_status))
+    return LineActionResponse(line_id=line_id, status="released")
+
+
+def event_history(event_id: str, coordinator_id: str) -> TechnicalHistoryResponse:
+    """AC8: the event's equipment history for its assigned coordinator, newest
+    first: the same entries Technical Support see. Notes never appear in it
+    (SCRUM-24 AC12)."""
+    events_service.assigned_event(event_id, coordinator_id)
+    return TechnicalHistoryResponse(
+        history=[_history_entry(entry) for entry in repository.list_technical_history(event_id)],
+    )
 
 
 def exit_confirmation(event_id: str, row: dict | None = None) -> ExitConfirmation | None:

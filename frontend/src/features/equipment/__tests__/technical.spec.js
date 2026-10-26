@@ -81,6 +81,11 @@ describe("SCRUM-24 how the tick and history read", () => {
       .toBe("Reserve refused · 3 × Mic");
     expect(historyEntryText({ action: "exit_cleared", line_label: null, from_status: null, to_status: null }))
       .toBe("Exit check cleared");
+    // SCRUM-44 AC8: the coordinator's change and removal.
+    expect(historyEntryText({ action: "edited", line_label: "4 × Projector", from_status: "reserved", to_status: "re_review" }))
+      .toBe("Changed by the coordinator · 4 × Projector · Reserved → Re-review");
+    expect(historyEntryText({ action: "removed", line_label: "4 × Projector", from_status: "pending", to_status: "released" }))
+      .toBe("Removed by the coordinator · 4 × Projector · Pending → Removed");
     expect(historyEntryText({ action: "something_new", line_label: null, from_status: "a", to_status: "b" }))
       .toBe("something_new · a → b");
   });

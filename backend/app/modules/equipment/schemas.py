@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
@@ -116,6 +116,19 @@ class EquipmentRequestCreate(BaseModel):
         return self
 
 
+# SCRUM-44: the statuses a line can be changed or removed from. A released line
+# has already left the request.
+LiveLineStatus = Literal["pending", "reserved", "re_review", "rejected"]
+
+
+class EquipmentLineUpdate(EquipmentRequestItem):
+    """SCRUM-44 AC2: a line's new item, quantity and requirements, with the same
+    rules as submitting it (SCRUM-45). `expected_status` is the status the
+    coordinator saw, so a reservation that lands first refuses the edit (AC6)."""
+
+    expected_status: LiveLineStatus
+
+
 class Requester(BaseModel):
     id: UUID
     full_name: str
@@ -217,6 +230,13 @@ class TechnicalHistoryEntry(BaseModel):
     detail: str | None
     actor_name: str | None
     created_at: datetime
+
+
+class TechnicalHistoryResponse(BaseModel):
+    """SCRUM-44 AC8: an event's equipment history for its assigned coordinator,
+    where a removed line stays visible."""
+
+    history: list[TechnicalHistoryEntry]
 
 
 class TechnicalEvent(BaseModel):

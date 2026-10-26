@@ -424,3 +424,24 @@ describe("story 37 change decision and re-review API", () => {
   });
 });
 
+
+// SCRUM-44: the coordinator changes or removes an equipment line and reads its history.
+describe("SCRUM-44 equipment line change API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it.each([
+    ["equipmentApi.updateLine", () => equipmentApi.updateLine("l/1", { quantity: 2, expected_status: "pending" }, "access"),
+      "/equipment/requests/l%2F1", "PATCH", { quantity: 2, expected_status: "pending" }],
+    ["equipmentApi.removeLine", () => equipmentApi.removeLine("l/1", "re_review", "access"),
+      "/equipment/requests/l%2F1?expected_status=re_review", "DELETE", undefined],
+    ["equipmentApi.eventHistory", () => equipmentApi.eventHistory("event/one", "access"),
+      "/equipment/requests/event/event%2Fone/history", "GET", undefined],
+  ])("%s sends the documented authenticated request", async (name, call, path, method, body) => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: "result" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(call()).resolves.toEqual({ id: "result" });
+    expect(fetchMock).toHaveBeenCalledWith(`http://localhost:8000/api/v1${path}`, {
+      method, body: body === undefined ? undefined : JSON.stringify(body),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer access" },
+    });
+  });
+});

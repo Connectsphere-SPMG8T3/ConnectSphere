@@ -6,6 +6,7 @@ import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import EquipmentLineArrangement from "@/components/equipment/EquipmentLineArrangement.vue";
+import TechnicalHistoryList from "@/components/equipment/TechnicalHistoryList.vue";
 import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
 import { describeChanges } from "@/features/events/changeRequest";
 import { STATUS_LABELS as EVENT_STATUS_LABELS } from "@/features/events/dashboard";
@@ -13,8 +14,6 @@ import {
   exitConfirmationText,
   formatTechnicalTime,
   hasLiveLines,
-  historyActor,
-  historyEntryText,
   isOpenForArrangements,
   TECHNICAL_STATUS_BADGE_CLASSES,
   TECHNICAL_STATUS_LABELS,
@@ -107,14 +106,7 @@ watch(() => route.params.id, (id) => { if (id) store.load(id); }, { immediate: t
 
           <BauhausCard background="white" accent="none">
             <h2 class="text-2xl font-bold">History</h2>
-            <p v-if="!view.history.length" class="mt-4 text-sm">Nothing recorded yet.</p>
-            <ol v-else class="mt-4 flex flex-col gap-3">
-              <li v-for="(entry, index) in view.history" :key="index" class="border-l-4 border-ink pl-3">
-                <p class="text-sm font-bold">{{ historyEntryText(entry) }}</p>
-                <p v-if="entry.detail" class="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">{{ entry.detail }}</p>
-                <p class="text-xs font-bold text-ink/60">{{ historyActor(entry) }} · {{ formatTechnicalTime(entry.created_at) }}</p>
-              </li>
-            </ol>
+            <TechnicalHistoryList :entries="view.history" />
           </BauhausCard>
         </div>
       </div>

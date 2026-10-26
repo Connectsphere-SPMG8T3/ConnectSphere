@@ -15,12 +15,15 @@ from app.modules.equipment.schemas import (
     EquipmentAvailabilityRequest,
     EquipmentAvailabilityResponse,
     EquipmentInventoryResponse,
+    EquipmentLineUpdate,
     EquipmentMaintenanceResponse,
     ExitConfirmationRequest,
     LineActionResponse,
+    LiveLineStatus,
     LineNoteRequest,
     NotAvailableRequest,
     TechnicalEventResponse,
+    TechnicalHistoryResponse,
 )
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
@@ -63,6 +66,31 @@ def pending_requests(current_user: EquipmentReader) -> PendingEquipmentLinesResp
 )
 def event_requests(event_id: UUID, current_user: EquipmentRequester) -> EquipmentRequestLinesResponse:
     return service.event_requests(str(event_id), current_user.id)
+
+
+@router.get(
+    "/requests/event/{event_id}/history",
+    response_model=TechnicalHistoryResponse,
+    status_code=status.HTTP_200_OK,
+)
+def event_history(event_id: UUID, current_user: EquipmentRequester) -> TechnicalHistoryResponse:
+    return service.event_history(str(event_id), current_user.id)
+
+
+# SCRUM-44: the assigned coordinator changes or removes a line while the event
+# is in Planning. `expected_status` is the status they saw (AC6).
+@router.patch("/requests/{line_id}", response_model=LineActionResponse, status_code=status.HTTP_200_OK)
+def update_line(line_id: UUID, body: EquipmentLineUpdate, current_user: EquipmentRequester) -> LineActionResponse:
+    return service.update_line(str(line_id), current_user.id, body)
+
+
+@router.delete("/requests/{line_id}", response_model=LineActionResponse, status_code=status.HTTP_200_OK)
+def remove_line(
+    line_id: UUID,
+    current_user: EquipmentRequester,
+    expected_status: LiveLineStatus = Query(),
+) -> LineActionResponse:
+    return service.remove_line(str(line_id), current_user.id, expected_status)
 
 
 @router.post("/requests/{line_id}/reserve", response_model=LineActionResponse, status_code=status.HTTP_200_OK)

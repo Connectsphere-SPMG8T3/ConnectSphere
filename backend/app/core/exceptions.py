@@ -198,9 +198,13 @@ class EquipmentRequestNotAllowedError(HTTPException):
 class EquipmentNotInCatalogueError(HTTPException):
     """A requested item is missing from the catalogue or retired (SCRUM-45)."""
 
-    def __init__(self, indexes: list[int] | None = None) -> None:
+    def __init__(self, indexes: list[int] | None = None, loc: list | None = None) -> None:
         # No indexes when the database refused the batch: it doesn't say which item.
-        locs = [["body", "items", index, "equipment_id"] for index in indexes] if indexes else [["body", "items"]]
+        # `loc` names a single field instead (SCRUM-44's edit of one line).
+        if loc:
+            locs = [loc]
+        else:
+            locs = [["body", "items", index, "equipment_id"] for index in indexes] if indexes else [["body", "items"]]
         super().__init__(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=[

@@ -80,3 +80,60 @@ export function toPayload(eventId, lines) {
     })),
   };
 }
+
+// --- SCRUM-44: changing or removing a recorded line --------------------------
+// The API decides; these offer the actions only where they can succeed and say
+// what each will do before the coordinator commits to it.
+
+const RE_REVIEW_NOTICE = "Technical Support will re-check this line. Its reservation is kept until they re-approve or reject it.";
+
+const CHANGE_NOTICES = {
+  pending: "",
+  reserved: RE_REVIEW_NOTICE,
+  re_review: RE_REVIEW_NOTICE,
+  rejected: "The line goes back to Pending and Technical Support are told.",
+};
+
+const REMOVE_NOTICES = {
+  pending: "It leaves the request. Technical Support haven't acted on it yet.",
+  reserved: "Its reservation is released and Technical Support are told.",
+  re_review: "Its reservation is released and Technical Support are told.",
+  rejected: "It leaves the request. It was marked Not available, so nothing is held.",
+};
+
+// AC1, AC2, AC4: any line still on the request, while the event is in planning.
+export function canChangeLine(eventStatus, lineStatus) {
+  return eventStatus === "planning" && lineStatus in CHANGE_NOTICES;
+}
+
+// A removed line is kept as released for the history (AC8), not listed.
+export function liveLines(lines) {
+  return lines.filter((line) => line.status !== "released");
+}
+
+export function lineToDraft(line) {
+  return {
+    equipmentId: line.equipment_id,
+    quantity: String(line.quantity),
+    technicalRequirements: line.technical_requirements ?? "",
+  };
+}
+
+export function canSaveLine(draft) {
+  return canSubmit([draft]);
+}
+
+// AC6: the status the coordinator saw goes with the change, so a reservation
+// that landed first refuses it.
+export function toLineUpdate(draft, expectedStatus) {
+  const [item] = toPayload(null, [draft]).items;
+  return { ...item, expected_status: expectedStatus };
+}
+
+export function changeNotice(lineStatus) {
+  return CHANGE_NOTICES[lineStatus] ?? "";
+}
+
+export function removeNotice(lineStatus) {
+  return REMOVE_NOTICES[lineStatus] ?? "";
+}
