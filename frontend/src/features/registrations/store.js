@@ -12,6 +12,7 @@ export const useRegistrationStore = defineStore("registrations", {
     isLoading: false,
     isLoadingMyRegistrations: false,
     isRegistering: false,
+    isWithdrawing: false,
     error: null,
     myRegistrationsError: null,
   }),
@@ -82,6 +83,30 @@ export const useRegistrationStore = defineStore("registrations", {
         throw error;
       } finally {
         this.isRegistering = false;
+      }
+    },
+
+    async withdraw(eventId) {
+      const auth = useAuthStore();
+      this.isWithdrawing = true;
+      this.error = null;
+      try {
+        const result = await auth.withSession((token) => registrationsApi.withdraw(eventId, token));
+        this.myRegistrations = this.myRegistrations.filter(({ event }) => event.id !== eventId);
+        const refreshResults = await Promise.allSettled([
+          this.loadMyRegistrations(),
+          this.loadDirectory(),
+        ]);
+        const refreshError = refreshResults.find(({ status }) => status === "rejected");
+        if (refreshError) {
+          this.error = `Registration was withdrawn, but updated event data could not be loaded: ${refreshError.reason.message || "Please refresh and try again."}`;
+        }
+        return result;
+      } catch (error) {
+        this.error = error.message || "Registration could not be withdrawn.";
+        throw error;
+      } finally {
+        this.isWithdrawing = false;
       }
     },
   },

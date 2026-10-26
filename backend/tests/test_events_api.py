@@ -62,6 +62,7 @@ def mock_event_repository(monkeypatch, request):
             "registration_capacity": None,
             "registration_opens_at": None,
             "registration_closes_at": None,
+            "withdrawal_closes_at": None,
             "re_registration_allowed": True,
             "waitlist_enabled": True,
             "technical_readiness": "not_required",
@@ -535,6 +536,75 @@ class TestEventSubmission:
 
         assert response.status_code == 422
         assert "Registration closing time cannot be after the event end time." in str(response.json())
+
+    def test_withdrawal_cutoff_cannot_be_after_the_event_start(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+
+        response = client.post(
+            f"/api/v1/events/{EVENT_ID}/submit",
+            json={
+                **COMPLETE_REQUEST,
+                "withdrawal_closes_at": sgt_at(EVENT_DAY, 14, 0, 1),
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+        assert "Withdrawal cutoff cannot be after the event start time." in str(response.json())
+
+    def test_withdrawal_cutoff_may_equal_the_event_start(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+
+        response = client.post(
+            f"/api/v1/events/{EVENT_ID}/submit",
+            json={
+                **COMPLETE_REQUEST,
+                "withdrawal_closes_at": sgt_at(EVENT_DAY, 14),
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        assert response.json()["withdrawal_closes_at"] == sgt_at(EVENT_DAY, 14)
+
+    def test_draft_update_rejects_a_withdrawal_cutoff_after_the_event_start(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+
+        response = client.patch(
+            f"/api/v1/events/{EVENT_ID}",
+            json={
+                **COMPLETE_REQUEST,
+                "withdrawal_closes_at": sgt_at(EVENT_DAY, 14, 0, 1),
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+        assert "Withdrawal cutoff cannot be after the event start time." in str(response.json())
+
+    def test_submission_requires_an_event_start_when_a_withdrawal_cutoff_is_set(
+        self, client, auth_headers, authenticate_as
+    ):
+        authenticate_as("event_organiser")
+
+        response = client.post(
+            f"/api/v1/events/{EVENT_ID}/submit",
+            json={
+                **COMPLETE_REQUEST,
+                "starts_at": None,
+                "withdrawal_closes_at": sgt_at(EVENT_DAY, 14),
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+        assert "Withdrawal cutoff requires an event start time." in str(response.json())
 
     def test_submitting_an_already_submitted_event_returns_conflict(
         self, client, auth_headers, authenticate_as

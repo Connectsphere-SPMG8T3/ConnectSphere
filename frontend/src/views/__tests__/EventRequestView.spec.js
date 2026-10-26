@@ -160,6 +160,83 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     expect(buttonByText(el, "Save draft")).toBeUndefined();
   });
 
+  it("shows the optional organiser-configured withdrawal cutoff with the event registration settings", async () => {
+    const event = returnedEvent({
+      registration_enabled: true,
+      registration_capacity: 80,
+      registration_opens_at: "2026-11-01T01:00:00Z",
+      registration_closes_at: "2026-11-30T01:00:00Z",
+      withdrawal_closes_at: "2026-12-01T01:30:00Z",
+    });
+    const { el } = await mountForm([returnedEvent({ amendment: null })], event);
+
+    expect(labelled(el, "Withdrawal cutoff")).toBeTruthy();
+    expect(controlFor(el, "Withdrawal cutoff").value).toBe("2026-12-01T09:30");
+    expect(el.textContent).toContain("Leave blank to use the event start time.");
+  });
+
+  it("rejects a withdrawal cutoff when the event has no start time", async () => {
+    const event = returnedEvent({
+      starts_at: null,
+      ends_at: null,
+      registration_enabled: true,
+      registration_capacity: 80,
+      registration_opens_at: "2026-11-01T01:00:00Z",
+      registration_closes_at: "2026-11-30T01:00:00Z",
+    });
+    const { el } = await mountForm([returnedEvent({ amendment: null })], event);
+    const cutoff = controlFor(el, "Withdrawal cutoff");
+    cutoff.value = "2026-12-01T09:30";
+    cutoff.dispatchEvent(new Event("input"));
+    await nextTick();
+
+    buttonByText(el, "Resubmit").click();
+    await nextTick();
+
+    expect(el.textContent).toContain("Set the event start time before the withdrawal cutoff.");
+    expect(eventsApi.resubmit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a withdrawal cutoff after the event start", async () => {
+    const event = returnedEvent({
+      registration_enabled: true,
+      registration_capacity: 80,
+      registration_opens_at: "2026-11-01T01:00:00Z",
+      registration_closes_at: "2026-11-30T01:00:00Z",
+    });
+    const { el } = await mountForm([returnedEvent({ amendment: null })], event);
+    const cutoff = controlFor(el, "Withdrawal cutoff");
+    cutoff.value = "2026-12-01T10:30";
+    cutoff.dispatchEvent(new Event("input"));
+    await nextTick();
+
+    buttonByText(el, "Resubmit").click();
+    await nextTick();
+
+    expect(el.textContent).toContain("Withdrawal cutoff cannot be after the event start time.");
+    expect(eventsApi.resubmit).not.toHaveBeenCalled();
+  });
+
+  it("allows a withdrawal cutoff before the event start", async () => {
+    const event = returnedEvent({
+      registration_enabled: true,
+      registration_capacity: 80,
+      registration_opens_at: "2026-11-01T01:00:00Z",
+      registration_closes_at: "2026-11-30T01:00:00Z",
+    });
+    const { el } = await mountForm([returnedEvent({ amendment: null })], event);
+    const cutoff = controlFor(el, "Withdrawal cutoff");
+    cutoff.value = "2026-12-01T09:30";
+    cutoff.dispatchEvent(new Event("input"));
+    await nextTick();
+
+    buttonByText(el, "Resubmit").click();
+    await nextTick();
+
+    expect(el.textContent).not.toContain("Withdrawal cutoff cannot be after the event start time.");
+    expect(document.body.textContent).toContain("Resubmit this request?");
+  });
+
   it("resubmits the edited request with a note and returns to the dashboard", async () => {
     const { el, router } = await mountForm([returnedEvent({ amendment: null })], returnedEvent());
     eventsApi.resubmit.mockResolvedValue(returnedEvent({ status: "under_review", expected_attendance: 60, amendment: null, version: 6 }));

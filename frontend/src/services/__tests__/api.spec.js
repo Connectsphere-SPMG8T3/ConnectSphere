@@ -69,6 +69,28 @@ describe("Story 56 attendee registrations API", () => {
   });
 });
 
+describe("SCRUM-55 attendee withdrawal API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("posts an authenticated withdrawal request with an encoded event id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({ registration_id: "registration-1", status: "withdrawn" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(registrationsApi.withdraw("event/one", "attendee-token")).resolves.toEqual({
+      registration_id: "registration-1",
+      status: "withdrawn",
+    });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/registrations/event%2Fone/withdraw");
+    expect(options.method).toBe("POST");
+    expect(options.headers.Authorization).toBe("Bearer attendee-token");
+  });
+});
+
 describe("eventsApi.clone", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

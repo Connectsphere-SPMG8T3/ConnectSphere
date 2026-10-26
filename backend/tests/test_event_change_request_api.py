@@ -145,6 +145,20 @@ class TestRequestChange:
 
         assert events["calls"][0]["reason"] == REASON
 
+    def test_withdrawal_cutoff_cannot_be_changed_through_a_change_request(
+            self, client, auth_headers, act_as, events):
+        act_as()
+
+        response = request_change(
+            client,
+            auth_headers,
+            event={"withdrawal_closes_at": "2026-11-12T09:00:00+08:00"},
+        )
+
+        assert response.status_code == 422
+        assert "Withdrawal cutoff cannot be changed" in response.json()["detail"][0]["msg"]
+        assert events["calls"] == []
+
 
 class TestRefusedRequests:
     @pytest.mark.parametrize("status", ["rejected", "cancelled", "completed"])

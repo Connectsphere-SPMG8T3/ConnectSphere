@@ -45,6 +45,7 @@ class RegisteredEvent(BaseModel):
     ends_at: datetime
     event_timezone: str
     status: str
+    withdrawal_closes_at: datetime | None = None
     venues: list[PublicVenue]
 
 
@@ -63,3 +64,8 @@ class RegistrationResult(BaseModel):
     registration_id: str | None = None
     status: str
     registered_at: datetime | None = None
+
+
+class WithdrawalResult(BaseModel):
+    registration_id: str
+    status: str

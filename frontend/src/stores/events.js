@@ -78,6 +78,7 @@ export function emptyEvent() {
     registrationCapacity: "",
     registrationOpensAt: "",
     registrationClosesAt: "",
+    withdrawalClosesAt: "",
     reRegistrationAllowed: true,
     waitlistEnabled: true,
   };
@@ -103,6 +104,7 @@ export function eventToPayload(event, { clearing = false } = {}) {
     registration_capacity: blank,
     registration_opens_at: blank,
     registration_closes_at: blank,
+    withdrawal_closes_at: blank,
   };
   if (event.date && event.startTime) payload.starts_at = toZonedIso(event.date, event.startTime, payload.event_timezone);
   if (event.date && event.endTime) payload.ends_at = toZonedIso(event.date, event.endTime, payload.event_timezone);
@@ -119,6 +121,12 @@ export function eventToPayload(event, { clearing = false } = {}) {
       payload.registration_closes_at = toZonedIso(registrationClosesDate, registrationClosesTime, payload.event_timezone);
     }
   }
+  if (event.withdrawalClosesAt) {
+    const [withdrawalDate, withdrawalTime] = event.withdrawalClosesAt.split("T");
+    if (withdrawalDate && withdrawalTime) {
+      payload.withdrawal_closes_at = toZonedIso(withdrawalDate, withdrawalTime, payload.event_timezone);
+    }
+  }
   return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
 }
 
@@ -129,6 +137,7 @@ function fromResponse(event) {
   const endsAt = fromZonedDateTime(event.ends_at, eventTimezone);
   const registrationOpensAt = fromZonedDateTime(event.registration_opens_at, eventTimezone);
   const registrationClosesAt = fromZonedDateTime(event.registration_closes_at, eventTimezone);
+  const withdrawalClosesAt = fromZonedDateTime(event.withdrawal_closes_at, eventTimezone);
   return {
     ...defaults,
     ...event,
@@ -150,6 +159,7 @@ function fromResponse(event) {
     registrationCapacity: event.registration_capacity ?? "",
     registrationOpensAt: registrationOpensAt.date && registrationOpensAt.time ? `${registrationOpensAt.date}T${registrationOpensAt.time}` : "",
     registrationClosesAt: registrationClosesAt.date && registrationClosesAt.time ? `${registrationClosesAt.date}T${registrationClosesAt.time}` : "",
+    withdrawalClosesAt: withdrawalClosesAt.date && withdrawalClosesAt.time ? `${withdrawalClosesAt.date}T${withdrawalClosesAt.time}` : "",
     reRegistrationAllowed: event.re_registration_allowed ?? defaults.reRegistrationAllowed,
     waitlistEnabled: event.waitlist_enabled ?? defaults.waitlistEnabled,
   };

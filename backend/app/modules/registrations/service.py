@@ -10,6 +10,7 @@ from app.modules.registrations.schemas import (
     RegistrationAvailability,
     RegistrationResult,
     RegisteredEvent,
+    WithdrawalResult,
 )
 
 
@@ -91,6 +92,7 @@ def attendee_registrations(attendee_id: str) -> AttendeeRegistrationList:
             ends_at=event_row["ends_at"],
             event_timezone=event_row["event_timezone"],
             status=event_row["status"],
+            withdrawal_closes_at=event_row.get("withdrawal_closes_at"),
             venues=_attendee_facing_venues(event_row.get("event_space_requests")),
         )
         registrations.append(
@@ -129,3 +131,24 @@ def register_attendee(event_id: str, attendee_id: str) -> RegistrationResult:
         status="already_registered" if outcome == "already_registered" else "registered",
         registered_at=result.get("registered_at"),
     )
+
+
+def withdraw_attendee(event_id: str, attendee_id: str) -> WithdrawalResult:
+    result = repository.withdraw_registration(event_id, attendee_id)
+    outcome = result["outcome"]
+    if outcome == "unavailable":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found.")
+    if outcome == "cutoff_passed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The withdrawal cutoff has passed.")
+    if outcome == "event_started":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The event has started.")
+    if outcome == "already_withdrawn":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This registration has already been withdrawn.",
+        )
+    if outcome == "not_registered":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No active registration found.")
+    if outcome != "withdrawn":
+        raise RuntimeError(f"Unexpected withdrawal outcome: {outcome!r}")
+    return WithdrawalResult(registration_id=result["registration_id"], status="withdrawn")
