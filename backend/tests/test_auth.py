@@ -1,4 +1,4 @@
-"""Auth API tests, including Attendee signup (SCRUM-83)."""
+"""Auth API tests, including Attendee signup (SCRUM-83) and profile editing (SCRUM-92)."""
 
 import threading
 import time
@@ -402,6 +402,170 @@ class TestMe:
         assert response.status_code == 404
 
 
+class TestProfileUpdate:
+    def _authenticate(self, monkeypatch, *, updated_profile: dict | None):
+        anon_client = _make_anon_client_with_claims(_valid_claims())
+        admin_client = _make_table_mock(PROFILE_ROW, profile_update=updated_profile)
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
+        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
+        return admin_client
+
+    def test_updates_only_the_authenticated_users_name_and_phone(self, client, monkeypatch):
+        updated_profile = {
+            **PROFILE_ROW,
+            "full_name": "Updated Name",
+            "phone_number": None,
+        }
+        admin_client = self._authenticate(monkeypatch, updated_profile=updated_profile)
+
+        response = client.patch(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + FAKE_ACCESS_TOKEN},
+            json={"full_name": " Updated Name ", "phone_number": "   "},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["full_name"] == "Updated Name"
+        assert response.json()["phone_number"] is None
+        assert response.json()["role"] == PROFILE_ROW["role"]
+        profile_query = admin_client.table("profiles")
+        profile_query.update.assert_called_once_with({"full_name": "Updated Name", "phone_number": None})
+        profile_query.eq.assert_any_call("id", TEST_USER_ID)
+
+    @pytest.mark.parametrize("phone_number", ["9123 4567", "+65-9123-4567"])
+    def test_normalizes_valid_singapore_phone_numbers(self, client, monkeypatch, phone_number):
+        updated_profile = {**PROFILE_ROW, "full_name": "Updated Name", "phone_number": "+6591234567"}
+        admin_client = self._authenticate(monkeypatch, updated_profile=updated_profile)
+
+        response = client.patch(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + FAKE_ACCESS_TOKEN},
+            json={"full_name": "Updated Name", "phone_number": phone_number},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["phone_number"] == "+6591234567"
+        admin_client.table("profiles").update.assert_called_once_with(
+            {"full_name": "Updated Name", "phone_number": "+6591234567"}
+        )
+
+    @pytest.mark.parametrize(
+        "phone_number",
+        ["1234567", "+65 1234 567", "912345678", "65 9123 4567", "+65 9123 45A7"],
+    )
+    def test_rejects_invalid_singapore_phone_numbers_on_the_phone_field(
+        self, client, monkeypatch, phone_number
+    ):
+        admin_client = self._authenticate(monkeypatch, updated_profile=PROFILE_ROW)
+
+        response = client.patch(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + FAKE_ACCESS_TOKEN},
+            json={"full_name": "Updated Name", "phone_number": phone_number},
+        )
+
+        assert response.status_code == 422
+        [error] = response.json()["detail"]
+        assert error["loc"] == ["body", "phone_number"]
+        assert error["msg"] == "Enter 8 digits, with an optional +65 country code."
+        admin_client.table("profiles").update.assert_not_called()
+
+    def test_uses_the_postgrest_update_builder_without_maybe_single(self, client, monkeypatch):
+        """Supabase's update builder is a filter request builder, not a select builder."""
+        updated_profile = {**PROFILE_ROW, "full_name": "Updated Name"}
+
+        class UpdateQuery:
+            def update(self, values):
+                assert values == {"full_name": "Updated Name", "phone_number": None}
+                return self
+
+            def eq(self, column, value):
+                assert (column, value) == ("id", TEST_USER_ID)
+                return self
+
+            def select(self, fields):
+                assert fields == "id, email, full_name, role, organisation_name, department, phone_number"
+                return self
+
+            def execute(self):
+                return SimpleNamespace(data=[updated_profile])
+
+        class RoleQuery:
+            def select(self, fields):
+                return self
+
+            def eq(self, column, value):
+                return self
+
+            def order(self, column):
+                return self
+
+            def execute(self):
+                return SimpleNamespace(data=[{"role": PROFILE_ROW["role"]}])
+
+        service_client = MagicMock()
+        service_client.table.side_effect = lambda name: {
+            "profiles": UpdateQuery(),
+            "user_roles": RoleQuery(),
+        }[name]
+        self._authenticate(monkeypatch, updated_profile=updated_profile)
+        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: service_client)
+
+        response = client.patch(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + FAKE_ACCESS_TOKEN},
+            json={"full_name": "Updated Name", "phone_number": None},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["full_name"] == "Updated Name"
+
+    def test_rejects_attempts_to_change_protected_profile_fields(self, client, monkeypatch):
+        admin_client = self._authenticate(monkeypatch, updated_profile=PROFILE_ROW)
+
+        response = client.patch(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + FAKE_ACCESS_TOKEN},
+            json={
+                "full_name": "Updated Name",
+                "phone_number": None,
+                "email": "other@example.com",
+                "role": "attendee",
+                "organisation_name": "Other organisation",
+                "department": "Other department",
+                "id": "other-user",
+            },
+        )
+
+        assert response.status_code == 422
+        admin_client.table("profiles").update.assert_not_called()
+
+    def test_rejects_blank_name_with_a_field_error_without_writing(self, client, monkeypatch):
+        admin_client = self._authenticate(monkeypatch, updated_profile=PROFILE_ROW)
+
+        response = client.patch(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + FAKE_ACCESS_TOKEN},
+            json={"full_name": "   ", "phone_number": ""},
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"] == ["body", "full_name"]
+        admin_client.table("profiles").update.assert_not_called()
+
+    def test_returns_not_found_if_the_profile_disappears_before_update(self, client, monkeypatch):
+        self._authenticate(monkeypatch, updated_profile=None)
+
+        response = client.patch(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer " + FAKE_ACCESS_TOKEN},
+            json={"full_name": "Updated Name", "phone_number": None},
+        )
+
+        assert response.status_code == 404
+
+
 class TestEventLoopIsNotBlocked:
     def test_concurrent_authenticated_requests_run_in_parallel(self, monkeypatch):
         """D5: supabase-py is synchronous; declaring its callers `async def` blocks the event
@@ -662,7 +826,7 @@ NEW_ORGANISER_PROFILE_ROW = {
     "role": "event_organiser",
     "organisation_name": "SMU Events Club",
     "department": None,
-    "phone_number": "+65 9123 4567",
+    "phone_number": "+6591234567",
 }
 
 NEW_ATTENDEE_ID = "44444444-4444-4444-4444-444444444444"
@@ -723,10 +887,22 @@ class TestSignup:
                     "role": "event_organiser",
                     "full_name": "Olivia Organiser",
                     "organisation_name": "SMU Events Club",
-                    "phone_number": "+65 9123 4567",
+                    "phone_number": "+6591234567",
                 },
             }
         )
+
+    @pytest.mark.parametrize("phone_number", ["1234567", "+65 1234 567", "65 9123 4567"])
+    def test_signup_rejects_invalid_phone_number_before_creating_account(self, client, monkeypatch, phone_number):
+        admin_client = _admin_client_for_signup(monkeypatch)
+
+        response = client.post("/api/v1/auth/signup", json={**VALID_SIGNUP, "phone_number": phone_number})
+
+        assert response.status_code == 422
+        [error] = response.json()["detail"]
+        assert error["loc"] == ["body", "phone_number"]
+        assert error["msg"] == "Enter 8 digits, with an optional +65 country code."
+        admin_client.auth.admin.create_user.assert_not_called()
 
     def test_attendee_signup_creates_an_account_without_organiser_fields(self, client, monkeypatch):
         admin_client = _admin_client_for_signup(

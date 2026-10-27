@@ -51,6 +51,9 @@ export const authApi = {
   me(token) {
     return request("/auth/me", { token });
   },
+  updateProfile(token, changes) {
+    return request("/auth/me", { method: "PATCH", body: changes, token });
+  },
   setActiveRole(token, role) {
     return request("/auth/active-role", { method: "POST", body: { role }, token });
   },

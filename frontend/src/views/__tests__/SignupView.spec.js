@@ -18,7 +18,7 @@ const CREATED_PROFILE = {
   role: "event_organiser",
   organisation_name: "SMU Events Club",
   department: null,
-  phone_number: "+65 9123 4567",
+  phone_number: "+6591234567",
   roles: ["event_organiser"],
 };
 
@@ -119,7 +119,7 @@ describe("SignupView", () => {
       email: "olivia@connectsphere.dev",
       password: "Secure123",
       organisation_name: "SMU Events Club",
-      phone_number: "+65 9123 4567",
+      phone_number: "+6591234567",
     });
     // The first visit to login lazily loads and compiles that view.
     await vi.waitFor(() => expect(el.textContent).toContain("Account created. Please sign in."));
@@ -175,6 +175,17 @@ describe("SignupView", () => {
     expect(errorFor(el, "Password")).toBe("Password is required.");
     expect(errorFor(el, "Organisation name")).toBe("Organisation name is required.");
     expect(errorFor(el, "Phone number")).toBe("");
+    expect(authApi.signup).not.toHaveBeenCalled();
+  });
+
+  it("rejects a short organiser phone number before submitting", async () => {
+    const { el } = await mountAt("/signup");
+
+    fillValidForm(el);
+    fill(el, "Phone number", "1234567");
+    await submit(el);
+
+    expect(errorFor(el, "Phone number")).toBe("Enter 8 digits, with an optional +65 country code.");
     expect(authApi.signup).not.toHaveBeenCalled();
   });
 

@@ -30,6 +30,7 @@ def auth_headers() -> dict[str, str]:
 def make_table_mock(
     profile_row: dict | None,
     *,
+    profile_update: dict | None = None,
     delay_seconds: float = 0.0,
     session_active_role: dict | None = None,
     user_roles: list[dict] | None = None,
@@ -51,6 +52,7 @@ def make_table_mock(
         query = MagicMock()
         query.select.return_value = query
         query.eq.return_value = query
+        query.update.return_value = query
         query.maybe_single.return_value = query
         query.upsert.return_value = query
         query.order.return_value = query
@@ -60,7 +62,8 @@ def make_table_mock(
             def _execute():
                 if delay_seconds:
                     time.sleep(delay_seconds)
-                return SimpleNamespace(data=profile_row)
+                data = ([profile_update] if profile_update else []) if query.update.called else profile_row
+                return SimpleNamespace(data=data)
 
             query.execute.side_effect = _execute
         elif name == "session_active_roles":

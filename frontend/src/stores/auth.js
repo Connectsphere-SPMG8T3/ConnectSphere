@@ -175,6 +175,13 @@ export const useAuthStore = defineStore("auth", {
       return profile;
     },
 
+    async updateProfile(changes) {
+      const profile = await this.withSession((token) => authApi.updateProfile(token, changes));
+      this.profile = profile;
+      persistSession(this);
+      return profile;
+    },
+
     async logout() {
       const { token, refreshToken } = this;
       this.clearSession();

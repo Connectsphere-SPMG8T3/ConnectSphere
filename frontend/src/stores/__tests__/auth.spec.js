@@ -5,7 +5,14 @@ import { ApiError, authApi } from "@/services/api";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn(), setActiveRole: vi.fn() },
+  authApi: {
+    login: vi.fn(),
+    refresh: vi.fn(),
+    me: vi.fn(),
+    logout: vi.fn(),
+    setActiveRole: vi.fn(),
+    updateProfile: vi.fn(),
+  },
 }));
 
 const STORAGE_KEY = "connectsphere.session";
@@ -114,6 +121,36 @@ describe("auth store role switching (SCRUM-74/75)", () => {
     await expect(store.setActiveRole("venue_staff")).rejects.toThrow();
 
     expect(store.role).toBe("event_coordinator");
+  });
+});
+
+describe("auth store profile editing (SCRUM-92)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("updates and persists the profile returned by the API", async () => {
+    const store = await storeWithStoredSession();
+    const updatedProfile = { ...PROFILE, full_name: "Updated Name", phone_number: null };
+    const changes = { full_name: "Updated Name", phone_number: null };
+    authApi.updateProfile.mockResolvedValue(updatedProfile);
+
+    await store.updateProfile(changes);
+
+    expect(authApi.updateProfile).toHaveBeenCalledWith(STORED_SESSION.token, changes);
+    expect(store.profile).toEqual(updatedProfile);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)).profile).toEqual(updatedProfile);
+  });
+
+  it("leaves the stored profile unchanged when the update is rejected", async () => {
+    const store = await storeWithStoredSession();
+    authApi.updateProfile.mockRejectedValue(new ApiError("Full name is required.", 422));
+
+    await expect(store.updateProfile({ full_name: "", phone_number: null })).rejects.toThrow();
+
+    expect(store.profile).toEqual(PROFILE);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)).profile).toEqual(PROFILE);
   });
 });
 

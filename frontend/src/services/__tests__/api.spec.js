@@ -1,6 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { eventsApi, notificationsApi, registrationsApi, venueBookingsApi } from "@/services/api";
+import { authApi, eventsApi, notificationsApi, registrationsApi, venueBookingsApi } from "@/services/api";
+
+describe("SCRUM-92 profile update API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("patches only the current profile using the authenticated session", async () => {
+    const accessToken = "access-token";
+    const profile = { id: "user-1", full_name: "New Name", phone_number: null };
+    const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => profile });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      authApi.updateProfile(accessToken, { full_name: "New Name", phone_number: null }),
+    ).resolves.toEqual(profile);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/auth/me",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ full_name: "New Name", phone_number: null }),
+        headers: expect.objectContaining({ Authorization: `Bearer ${accessToken}` }),
+      }),
+    );
+  });
+});
 
 describe("Story 43 public registration API", () => {
   afterEach(() => vi.unstubAllGlobals());

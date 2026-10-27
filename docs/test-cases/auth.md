@@ -1,8 +1,8 @@
-# Authentication — sign-up, login, session, logout (SCRUM-48, SCRUM-80, SCRUM-83)
+# Authentication — sign-up, login, profile, session, logout (SCRUM-48, SCRUM-80, SCRUM-83, SCRUM-92)
 
 Epic SCRUM-7. Shared environment, seeded accounts and the priority key are in [README.md](README.md). The role-based access control and data-layer cases for the same story are in [roles-and-access.md](roles-and-access.md).
 
-**In scope:** `POST /api/v1/auth/signup`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`, and the `SignupView`/`LoginView`/`ProfileView` pages.
+**In scope:** `POST /api/v1/auth/signup`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `GET`/`PATCH /api/v1/auth/me`, `POST /api/v1/auth/logout`, and the `SignupView`/`LoginView`/`ProfileView` pages.
 
 ## Login — successful cases
 
@@ -139,3 +139,22 @@ These cases extend the existing sign-up route and API. The role check is enforce
 | AC7 — success message, login, and Attendee dashboard | TC-AUTH-050, TC-AUTH-051 |
 
 `backend/tests/test_auth.py::TestSignup` covers the API role, field and password rules. `frontend/src/views/__tests__/SignupView.spec.js` covers the role-specific links, routes, fields, attendee payload and required-field feedback. `backend/scripts/verify_live.py` runs TC-AUTH-050 against Supabase; `frontend/e2e/signup.e2e.js` runs TC-AUTH-051 with a throwaway account and checks TC-AUTH-052's mechanical 375 CSS-pixel content/wordmark overflow. See the [recorded E2E run](runs/2026-10-19-1214-e2e-810bde3.md). TC-AUTH-052's manual pass is recorded in the [manual run](runs/2026-10-19-1238-manual-810bde3.md); the developer confirmed the checked items were all okay.
+
+## Profile editing — SCRUM-92
+
+These cases cover edits to the authenticated user's own profile. Live and browser automation use disposable accounts that the existing run cleanup removes.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-AUTH-053 | A user updates, normalizes and clears their own name and phone | Integration | Backend connected to the linked Supabase project | Run `verify_live.py` with recording enabled | Throwaway signed-up account; valid name and phone with separators, then whitespace phone | `PATCH /auth/me` updates the caller's profile; a valid phone is stored as `+65########`, a blank phone becomes NULL, and `GET /auth/me` returns the persisted values. The script deletes the throwaway account. | 🔴 | 2026-10-25 | 2026-10-25 ([run](runs/2026-10-25-2039-api-db-55faf9b.md)) |
+| TC-AUTH-054 | Protected fields, invalid phones and a blank name are refused by the API | Integration | Backend connected to the linked Supabase project | Run `verify_live.py` with recording enabled | Throwaway account; patch with protected fields, a 7-digit phone, then a whitespace-only name | Protected fields cause 422 and no profile data changes. A malformed phone causes 422 with an error located at `phone_number`; a blank name causes 422 on `full_name`. The script deletes the throwaway account. | 🔴 | 2026-10-25 | 2026-10-25 ([run](runs/2026-10-25-2039-api-db-55faf9b.md)) |
+| TC-AUTH-055 | Attendee edits their own profile and sees the normalized saved values | E2E | Backend and frontend running against the same Supabase project | Run the profile E2E case | New throwaway attendee account; updated name and phone with separators | The signed-in attendee can edit name and phone; API/storage use `+65########` while the profile displays `+65 ########` after saving and reload. A blank name shows its field error. The E2E cleanup deletes the account. | 🔴 | 2026-10-25 | 2026-10-25 ([run](runs/2026-10-25-2046-e2e-55faf9b.md)) |
+| TC-AUTH-056 | Profile edit controls and validation are clear at desktop and phone widths | Manual | Signed in at `/profile/me` | At desktop and 375px width, inspect the read-only profile, enter Edit profile, submit a blank name and a short phone number, then save a valid name and phone | — | Email and role remain visible but not editable; only name and phone are inputs. The Full name and phone errors are clear and associated with their fields; Save/Cancel remain usable and the page is readable without overlap at both widths. A valid phone is stored as `+65########` and displayed as `+65 ########`. | 🟠 | 2026-10-25 | 2026-10-25 ([consolidated runs](runs/2026-10-25-2051-manual-55faf9b.md)) |
+
+### Traceability — SCRUM-92
+
+| SCRUM-92 acceptance criterion | Covered by |
+|---|---|
+| AC1 — edit own name and phone and see saved values | TC-AUTH-053, TC-AUTH-055, TC-AUTH-056 |
+| AC2 — email, role and organisation cannot be changed, including by direct API request | TC-AUTH-054, TC-AUTH-056 |
+| AC3 — invalid values are refused with a field-specific message; valid phone numbers normalize consistently | TC-AUTH-053, TC-AUTH-054, TC-AUTH-055, TC-AUTH-056 |
