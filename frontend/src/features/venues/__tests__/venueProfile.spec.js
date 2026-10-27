@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   BOOKING_GROUPS,
   VENUE_PROFILE_TABS,
+  countBookings,
   defaultBookingGroupKey,
   editFormToPayload,
   groupUpcomingBookings,
@@ -387,5 +388,13 @@ describe("formatVenuePeriod", () => {
     expect(
       formatVenuePeriod({ starts_at: "2031-05-20T06:00:00Z", ends_at: "2031-05-20T09:00:00Z" }),
     ).toBe("20 May 2031, 14:00 – 20 May 2031, 17:00");
+  });
+});
+
+describe("countBookings", () => {
+  it("counts bookings in the singular for one and the plural otherwise", () => {
+    expect(countBookings(1)).toBe("1 booking");
+    expect(countBookings(2)).toBe("2 bookings");
+    expect(countBookings(0)).toBe("0 bookings");
   });
 });
