@@ -3448,3 +3448,18 @@ On `feature/scrum-92-edit-profile`, branched from the latest `origin/main` at `5
 - The developer clarified that the requested space after `+65` is display-only: the profile now shows `+65 ########` while API and storage remain `+65########`. The recorded profile browser check asserts both representations, and the developer confirmed the updated display and layout at desktop and 375px.
 
 **SCRUM-92 status update — 2026-10-25 21:02 SGT.** The developer's manual TC-AUTH-056 pass is recorded in the consolidated run above. The implementation is committed locally as `3c9f1fb` on `feature/scrum-92-edit-profile` (one commit ahead of `origin/main`). The earlier “Remaining” notes describe the state before the manual recheck and commit; they are superseded by this update. PR/CI, peer review, PO acceptance, merge and backlog/sprint DoD updates remain team workflow steps.
+
+### 4.101. 72-R — acceptance criteria traced to existing tests
+
+On `chore/72r-traceability`, branched from `main` at `e728617`, 2026-10-27. The 72-R backlog row could not be read through the Sheets connector; the developer confirmed the text quoted in §4.82 (read 2026-10-21) is current. The developer chose to close 72-R by tracing its criteria to tests that already exist, without new tests or code. The earlier unmerged branch `feature/scrum-72r-coordinator-dashboard-assigned-alerts` (`6d2a726`, new tests from 2026-10-20 whose case IDs clash with the kanban rework) was left as it is.
+
+**How it maps to the ticket.**
+- AC1 [W7 CR-05]: `events.service.coordinator_dashboard` reads only `repository.list_coordinator_events(coordinator_id, …)`, which filters on the caller's `coordinator_id`; unassigned events are the Lead's queue (§6.5). Covered by TC-DASH-013, TC-DASH-015 and pytest `TestScope`, `TestRepositoryQueries`, `TestUnassignedEvents`.
+- AC2 [W7 CR-02]: `venues_service.affected_event_ids` turns an Affected booking into a `needs_alternative_venue` item and a `venue_affected` flag, shown as a red board card with that badge. Covered by TC-BOOK-048 (browser, real data), TC-DASH-026 and three `TestActionItems` tests.
+- AC3: the original 72 rows in the traceability table, and the suites below. The PO still has to confirm the AC1 reading recorded in §4.82.
+
+**Changed.** Docs only: `test-cases/dashboards.md` traceability (72-R rows and a known-gap note), `IMPLEMENTATION_MAP` SCRUM-72 row and "Last updated".
+
+**Verified.** Backend `pytest`: 2,167 passed. Frontend `vitest`: all 113 files passed with `--maxWorkers=2`. A first run made while the backend suite was running at the same time had 5 failures; they did not recur on the bounded rerun, the same load timeouts §4.100 saw.
+
+**Not verified.** No live checks or manual pass: nothing changed that crosses an integration boundary or that anyone sees. Known gap: that another coordinator's or an unassigned event, or another coordinator's Affected booking, stays off the dashboard is proven by the query filter in pytest, not by a real-data check.
