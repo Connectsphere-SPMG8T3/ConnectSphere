@@ -23,6 +23,8 @@ const props = defineProps({
   // Another line's action is running.
   locked: { type: Boolean, default: false },
   error: { type: String, default: null },
+  // D69: why the line is under re-review, worked out by the page from its history.
+  reReviewReason: { type: String, default: "This line needs re-review." },
 });
 const emit = defineEmits(["reserve", "not-available", "save-note"]);
 
@@ -84,7 +86,7 @@ function saveNote() {
       <span class="font-bold">Requirements:</span> {{ line.technical_requirements }}
     </p>
     <p v-if="line.status === 're_review'" class="border-l-4 border-bauhaus-yellow pl-2 text-sm font-bold">
-      The event's time changed and this no longer fits. Its reservation is kept until you reserve it again or mark it not available.
+      {{ reReviewReason }} Its reservation is kept until you reserve it again or mark it not available.
     </p>
     <p v-if="line.not_available_reason" class="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
       <span class="font-bold">Not available:</span> {{ line.not_available_reason }}

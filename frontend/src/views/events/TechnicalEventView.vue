@@ -15,6 +15,8 @@ import {
   formatTechnicalTime,
   hasLiveLines,
   isOpenForArrangements,
+  reReviewCause,
+  reReviewText,
   TECHNICAL_STATUS_BADGE_CLASSES,
   TECHNICAL_STATUS_LABELS,
 } from "@/features/equipment/technical";
@@ -29,6 +31,11 @@ const store = useTechnicalEventStore();
 const view = computed(() => (store.view?.event.id === route.params.id ? store.view : null));
 const open = computed(() => !!view.value && isOpenForArrangements(view.value.event.status));
 const showExit = computed(() => !!view.value && hasLiveLines(view.value.lines));
+// D69: story 37's "What changed" is only for lines a change request sent; a line
+// the coordinator edited says what they changed on its own card.
+const showChangeRequest = computed(() => !!view.value?.re_review_changes && view.value.lines.some(
+  (line) => line.status === "re_review" && reReviewCause(line.id, view.value.history)?.action !== "edited",
+));
 
 watch(() => route.params.id, (id) => { if (id) store.load(id); }, { immediate: true });
 </script>
@@ -63,7 +70,7 @@ watch(() => route.params.id, (id) => { if (id) store.load(id); }, { immediate: t
         <section aria-labelledby="lines-title" class="min-w-0">
           <h2 id="lines-title" class="mb-4 text-2xl font-bold">Equipment lines</h2>
           <!-- Story 37 Q21: what an approved change asks technical support to re-review. -->
-          <div v-if="view.re_review_changes" class="mb-4 border-l-4 border-bauhaus-yellow bg-canvas px-4 py-3" data-testid="technical-re-review">
+          <div v-if="showChangeRequest" class="mb-4 border-l-4 border-bauhaus-yellow bg-canvas px-4 py-3" data-testid="technical-re-review">
             <p class="text-xs font-bold">Under re-review</p>
             <p class="mt-1 text-sm font-bold">What changed</p>
             <ChangeRequestChanges :rows="describeChanges(view.re_review_changes)" class="mt-2" />
@@ -79,6 +86,7 @@ watch(() => route.params.id, (id) => { if (id) store.load(id); }, { immediate: t
               :busy="store.busy === line.id"
               :locked="!!store.busy && store.busy !== line.id"
               :error="store.lineErrors[line.id] ?? null"
+              :re-review-reason="reReviewText(reReviewCause(line.id, view.history))"
               @reserve="store.reserve(line.id)"
               @not-available="(reason) => store.markNotAvailable(line.id, reason)"
               @save-note="(note) => store.saveNote(line.id, note)"

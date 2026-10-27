@@ -7,6 +7,7 @@ import {
   createThrowawayEvent,
   createThrowawayLine,
   setThrowawayEventStatus,
+  setThrowawayLineStatus,
 } from "./support/throwaway.js";
 
 test("TC-EQR-052 TC-EQR-054 the coordinator changes one line and removes another; the history keeps both", async ({ page, sharedSessions }) => {
@@ -57,4 +58,30 @@ test("TC-EQR-055 outside planning the coordinator is told equipment can't be cha
   await expect(panel).toContainText("Equipment can only be changed while the event is in Planning.");
   await expect(panel.getByRole("button", { name: `Edit ${item.name}` })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: `Remove ${item.name} from the request` })).toHaveCount(0);
+});
+
+test("TC-EQR-058 D69 after the coordinator edits a reserved line, tech support see why it needs re-review", async ({ page, browser, sharedSessions }) => {
+  const event = createThrowawayEvent("EQR058", "2031-09-12 09:00+08", "2031-09-12 12:00+08");
+  const item = createThrowawayEquipment("058", 5);
+  setThrowawayLineStatus(createThrowawayLine(event, item, 2), "reserved");
+
+  await seedSession(page, await sharedSessions("event_coordinator"));
+  await page.goto(`/coordinator/events/${event.id}`);
+  const line = page.getByTestId("equipment-line").filter({ hasText: item.name });
+  await line.getByRole("button", { name: `Edit ${item.name}` }).click();
+  await line.getByLabel("Quantity").fill("3");
+  await line.getByRole("button", { name: `Save changes to ${item.name}` }).click();
+  await expect(line).toContainText("Re-review");
+
+  const context = await browser.newContext();
+  try {
+    const techPage = await context.newPage();
+    await seedSession(techPage, await sharedSessions("tech_support"));
+    await techPage.goto(`/tech-support/events/${event.id}`);
+    const card = techPage.locator("article").filter({ hasText: item.name });
+    await expect(card).toContainText("The coordinator changed this line. Quantity: 2 → 3.");
+    await expect(card).not.toContainText("time changed");
+  } finally {
+    await context.close();
+  }
 });

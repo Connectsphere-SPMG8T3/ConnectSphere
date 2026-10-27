@@ -114,3 +114,27 @@ export function historyEntryText(entry) {
 export function historyActor(entry) {
   return entry.actor_name ?? "System";
 }
+
+// D69: a line reaches re-review by a coordinator's edit (SCRUM-44), a change
+// request they sent (story 37), or an old time-change recheck. The newest of
+// this line's history entries that put it there says which; history is newest first.
+const RE_REVIEW_CAUSES = new Set(["edited", "sent_for_re_review", "re_review"]);
+
+export function reReviewCause(lineId, history) {
+  const entry = history.find(
+    (e) => e.request_id === lineId && e.to_status === "re_review" && RE_REVIEW_CAUSES.has(e.action),
+  );
+  return entry ? { action: entry.action, detail: entry.detail ?? null } : null;
+}
+
+export function reReviewText(cause) {
+  if (cause?.action === "edited") {
+    return cause.detail ? `The coordinator changed this line. ${cause.detail}` : "The coordinator changed this line.";
+  }
+  if (cause?.action === "sent_for_re_review") {
+    const sent = "The coordinator sent this line for re-review after an approved change to the event.";
+    return cause.detail ? `${sent} Note: ${cause.detail}` : sent;
+  }
+  if (cause?.action === "re_review") return "The event's time changed and this no longer fits.";
+  return "This line needs re-review.";
+}

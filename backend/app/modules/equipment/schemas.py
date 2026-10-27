@@ -224,6 +224,9 @@ class ExitConfirmation(BaseModel):
 
 class TechnicalHistoryEntry(BaseModel):
     action: str
+    # D69: the line the entry is about, or null for the event's own entries, so a
+    # line under re-review can say what put it there.
+    request_id: UUID | None = None
     line_label: str | None
     from_status: str | None
     to_status: str | None

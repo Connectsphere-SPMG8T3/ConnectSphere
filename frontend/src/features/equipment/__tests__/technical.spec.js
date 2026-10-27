@@ -8,6 +8,8 @@ import {
   hasLiveLines,
   historyActor,
   historyEntryText,
+  reReviewCause,
+  reReviewText,
   isOpenForArrangements,
   NOT_AVAILABLE_REASON_MAX_LENGTH,
   notesError,
@@ -93,5 +95,43 @@ describe("SCRUM-24 how the tick and history read", () => {
   it("an entry without an actor was the system", () => {
     expect(historyActor({ actor_name: null })).toBe("System");
     expect(historyActor({ actor_name: "Tan Wei" })).toBe("Tan Wei");
+  });
+});
+
+describe("D69 why a line is under re-review", () => {
+  const entry = (overrides) => ({
+    action: "edited", request_id: "l1", from_status: "reserved", to_status: "re_review",
+    detail: "Quantity: 2 → 4.", created_at: "2026-10-26T02:00:00Z", ...overrides,
+  });
+
+  it("takes the newest entry that put this line under re-review", () => {
+    const history = [
+      entry({ action: "reserved", to_status: "reserved", detail: null }),
+      entry({ detail: "Quantity: 4 → 5." }),
+      entry({ action: "sent_for_re_review", detail: null }),
+    ];
+
+    expect(reReviewCause("l1", history)).toEqual({ action: "edited", detail: "Quantity: 4 → 5." });
+  });
+
+  it("ignores other lines and entries that didn't put it there", () => {
+    const history = [
+      entry({ request_id: "l2" }),
+      entry({ action: "note_updated", from_status: null, to_status: null }),
+    ];
+
+    expect(reReviewCause("l1", history)).toBeNull();
+    expect(reReviewCause("l1", [])).toBeNull();
+  });
+
+  it.each([
+    [{ action: "edited", detail: "Quantity: 2 → 4." }, "The coordinator changed this line. Quantity: 2 → 4."],
+    [{ action: "edited", detail: null }, "The coordinator changed this line."],
+    [{ action: "sent_for_re_review", detail: null }, "The coordinator sent this line for re-review after an approved change to the event."],
+    [{ action: "sent_for_re_review", detail: "Check the bigger room" }, "The coordinator sent this line for re-review after an approved change to the event. Note: Check the bigger room"],
+    [{ action: "re_review", detail: "Event time changed; 1 free for 3." }, "The event's time changed and this no longer fits."],
+    [null, "This line needs re-review."],
+  ])("says why: %j", (cause, expected) => {
+    expect(reReviewText(cause)).toBe(expected);
   });
 });

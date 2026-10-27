@@ -562,6 +562,7 @@ def _history_entry(row: dict) -> TechnicalHistoryEntry:
     line = _one(row.get("line")) or {}
     return TechnicalHistoryEntry(
         action=row["action"],
+        request_id=row.get("request_id"),
         line_label=rules.line_label(line.get("quantity"), (_one(line.get("equipment")) or {}).get("name")),
         from_status=row.get("from_status"),
         to_status=row.get("to_status"),

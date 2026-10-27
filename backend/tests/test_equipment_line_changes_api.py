@@ -382,7 +382,7 @@ class TestCoordinatorSeesHistory:
 
     def test_the_history_names_the_removed_line_who_and_when(self, client, auth_headers, store, coordinator):
         store["history"] = [{
-            "action": "removed", "from_status": "reserved", "to_status": "released",
+            "request_id": LINE_ID, "action": "removed", "from_status": "reserved", "to_status": "released",
             "detail": "Removed 3 × 4K Projector.", "created_at": "2026-10-26T02:00:00+00:00",
             "actor": {"full_name": "Marcus Lim"},
             "line": {"quantity": 3, "equipment": {"name": "4K Projector"}},
@@ -392,7 +392,7 @@ class TestCoordinatorSeesHistory:
 
         assert response.status_code == 200
         assert response.json() == {"history": [{
-            "action": "removed", "line_label": "3 × 4K Projector", "from_status": "reserved",
+            "action": "removed", "request_id": LINE_ID, "line_label": "3 × 4K Projector", "from_status": "reserved",
             "to_status": "released", "detail": "Removed 3 × 4K Projector.", "actor_name": "Marcus Lim",
             "created_at": "2026-10-26T02:00:00Z",
         }]}

@@ -52,10 +52,19 @@ describe("EquipmentLineArrangement (SCRUM-24)", () => {
   });
 
   it("a flagged line explains itself and offers Reserve again (AC7, D8)", () => {
-    mountLine({ status: "re_review" });
+    // D69: the reason comes from the page; a time change is no longer assumed.
+    mountLine({ status: "re_review" }, { reReviewReason: "The event's time changed and this no longer fits." });
 
     expect(document.body.textContent).toContain("no longer fits");
+    expect(document.body.textContent).toContain("Its reservation is kept until you reserve it again or mark it not available.");
     expect(button("Reserve again")).toBeTruthy();
+  });
+
+  it("a flagged line with no known reason doesn't claim one (D69)", () => {
+    mountLine({ status: "re_review" });
+
+    expect(document.body.textContent).toContain("This line needs re-review.");
+    expect(document.body.textContent).not.toContain("time changed");
   });
 
   it("a reserved line can only be marked not available", () => {
