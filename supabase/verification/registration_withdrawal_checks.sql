@@ -127,5 +127,5 @@ begin
 end;
 $$;
 
-raise notice 'REGISTRATION WITHDRAWAL CHECKS PASSED';
+select 'REGISTRATION WITHDRAWAL CHECKS PASSED' as result;
 rollback;

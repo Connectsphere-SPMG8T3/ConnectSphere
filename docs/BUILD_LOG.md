@@ -3455,4 +3455,46 @@ Enabler on `chore/block-affected-wording`, no PBI. Venue staff found the Block v
 
 Tests first: four new BlockVenueModal cases, two new DeactivateVenueModal cases and a `countBookings` case failed on the old wording, then passed. Five existing assertions that quoted the old text were changed for the deliberate wording change (named in `326d505`'s message); the e2e TC-VENUE-097 now expects the singular already-flagged sentence, since it deactivates over one flagged booking. Frontend: 1,658 tests pass, the build is clean, every new line is covered (DeactivateVenueModal's one uncovered branch, the early `return` in `submit`, predates this change).
 
-Live runs: [API/database](test-cases/runs/2026-10-25-2243-api-db-02dc0e3.md) 201/205, with all seven block checks passing; the four failures (approve, reject, equipment reservation and availability SQL checks) are on `main` and logged as D67. [Full browser run](test-cases/runs/2026-10-25-2311-e2e-02dc0e3.md) 93/98: TC-RBAC-005, TC-TSD-017 and the sign-up checks fail on `main` (D68), and TC-BLOCK-014's `fetch failed` was traced to a reused connection after those sign-up failures, reproduced and recorded under D68. Targeted recorded runs then passed: [block](test-cases/runs/2026-10-25-2321-e2e-02dc0e3.md) 3/3 and, with the final code, [block and deactivation](test-cases/runs/2026-10-25-2353-e2e-02dc0e3.md) 5/5. The developer's [manual pass](test-cases/runs/2026-10-26-0055-manual-326d505.md) (TC-BLOCK-017/018, TC-VENUE-071/098) passed. `venues.md` has two cases numbered TC-VENUE-071 (deactivate dialog and a re-review case); not renumbered here. The defects were first numbered D63 and D64 on this branch (as `326d505`'s message says) and renumbered on merging main, where SCRUM-56 had taken those numbers.
+
+### 4.102. SCRUM-55 — Withdraw Registration
+
+| Field | Value |
+|---|---|
+| ID | `SCRUM-55` |
+| Title | Withdraw Registration |
+| Type | US: Core feature |
+| Epic | Attendee registration |
+| Persona | Attendee |
+| Estimate | 1 point (confirmed before organiser cutoff configuration was added) |
+| Status | Implemented on `feature/scrum-55-withdraw-registration`; live API and rollback checks pass; recorded Playwright E2E run remains pending |
+
+**User story (developer-provided):**
+
+> Withdraw from an event I've registered for.
+
+**Benefit (developer-provided):**
+
+> My spot becomes available to someone else.
+
+**Acceptance criteria (developer-provided revised wording):**
+
+> AC1. Given I’m acting as an Attendee and have my own current registered event, when I open My registered events before the configured cutoff, then I can withdraw from it. Other roles and attendees cannot withdraw that registration, and withdrawal is unavailable at or after the event start.
+>
+> AC2. Given I’m eligible to withdraw, when my withdrawal succeeds, then my registration is marked withdrawn and removed from My registered events, the available-place count updates immediately, and I receive a withdrawal confirmation. A failed or repeated request does not release another place.
+>
+> AC3. Given I withdrew from an event, when I try to register again, then I can register if the event allows re-registration and normal registration and capacity rules are met; otherwise, re-registration is refused.
+
+#### How the implementation maps to the ticket
+
+The configured cutoff was added within SCRUM-55 at the developer's direction; a null cutoff means event start. The user decided to keep withdrawal invitations out of scope for this story (Story 86 owns waitlist invitations and acceptance). Because the coordinator's post-submission change-approval contract does not update the cutoff, the field is available on draft and returned requests but excluded from change requests.
+
+What was actually built:
+
+1. `POST /registrations/{event_id}/withdraw` derives the attendee from the verified session, requires the active Attendee role, and calls the service-role-only `withdraw_registration` RPC. The RPC serializes with registration under the event-row lock, enforces the cutoff/start boundary, and releases a registration only once.
+2. Organisers can configure `withdrawal_closes_at` in the event timezone on drafts and returned requests. The schema constraint rejects cutoffs after event start.
+3. Attendees can confirm withdrawal from registered-event details. Success refreshes the caller's registrations and public availability; waitlist invitations are not sent.
+4. The post-submission change-request form hides the cutoff and the API rejects attempts to change it through that path.
+
+**Verification.** Full backend and frontend automated suites and the production build passed during implementation. The withdrawal migration was applied to the linked Supabase project on 2026-10-26. Recorded live checks TC-REG-017 and TC-REG-018 passed (combined evidence: [API/database run](test-cases/runs/2026-10-27-2145-api-db-0af4d3d.md)); developer-reported manual TC-REG-019 passed ([manual run](test-cases/runs/2026-10-26-1945-manual-0af4d3d.md)). Linked database advisors were checked; no finding names the new cutoff column or withdrawal RPC. A pre-existing unindexed `event_registrations.attendee_id` foreign key was reported and left unchanged.
+
+**Not verified / remaining workflow.** The recorded Playwright E2E suite remains to be run. The local Supabase database was not checked because Docker is unavailable. The 1-point estimate should be reviewed with the team against the added cutoff configuration. The team backlog sheet was not edited; PR screenshots, commit/push, teammate review, PO acceptance, merge, and sprint DoD updates remain developer-owned.
