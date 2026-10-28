@@ -21,6 +21,8 @@ export const useEquipmentRequestStore = defineStore("equipmentRequest", {
     isLoading: false,
     isSubmitting: false,
     error: null,
+    // Story 37: a refused Send for re-review, shown above the lines rather than instead of them.
+    actionError: null,
     submitError: null,
   }),
 
@@ -33,6 +35,7 @@ export const useEquipmentRequestStore = defineStore("equipmentRequest", {
         this.exitConfirmation = null;
         this.isSubmitting = false;
         this.submitError = null;
+        this.actionError = null;
       }
       this.eventId = eventId;
       this.isLoading = true;
@@ -69,6 +72,25 @@ export const useEquipmentRequestStore = defineStore("equipmentRequest", {
         return true;
       } catch (error) {
         if (this.eventId === eventId) this.submitError = error.message;
+        return false;
+      } finally {
+        if (this.eventId === eventId) this.isSubmitting = false;
+      }
+    },
+
+    // Story 37 AC6: a line an approved time change left short goes to technical support.
+    async sendForReReview(lineId, note) {
+      const eventId = this.eventId;
+      if (!eventId || this.isSubmitting) return false;
+      const auth = useAuthStore();
+      this.isSubmitting = true;
+      this.actionError = null;
+      try {
+        await auth.withSession((token) => equipmentApi.sendLineForReReview(lineId, note, token));
+        if (this.eventId === eventId) await this.load(eventId);
+        return true;
+      } catch (error) {
+        if (this.eventId === eventId) this.actionError = error.message;
         return false;
       } finally {
         if (this.eventId === eventId) this.isSubmitting = false;

@@ -205,3 +205,29 @@ describe("TechnicalEventView (SCRUM-24)", () => {
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-tech-support"));
   });
 });
+
+describe("TechnicalEventView re-review (story 37)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  afterEach(() => {
+    apps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  it("shows technical support what the approved change changed", async () => {
+    equipmentApi.technicalView.mockResolvedValue(view({
+      lines: [{ ...LINE, status: "re_review" }],
+      re_review_changes: { event: [{ field: "expected_attendance", before: 80, after: 120 }], spaces: [] },
+      history: [{ action: "sent_for_re_review", line_label: "3 × 4K Projector", from_status: "reserved",
+        to_status: "re_review", detail: "Check the bigger room", actor_name: "Marcus Lim",
+        created_at: "2026-10-25T03:00:00Z" }],
+    }));
+    await mountView();
+
+    const panel = document.querySelector('[data-testid="technical-re-review"]');
+    expect(panel.textContent).toContain("What changed");
+    expect(panel.textContent).toContain("Expected attendance: 80 → 120");
+    expect(document.body.textContent).toContain("Sent for re-review");
+  });
+});
+

@@ -1,8 +1,9 @@
 """Venue module use cases: search the catalogue, read one venue, edit one, request a booking."""
 
 import logging
+import sys
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 
@@ -26,6 +27,7 @@ from app.modules.auth.dependencies import CurrentUser
 from app.modules.venues import impact, repository, search, suitability
 from app.modules.venues.search import OCCUPYING_STATUSES
 from app.modules.venues.schemas import (
+    ReReviewContext,
     BLOCK_REASON_LABELS,
     INACTIVE_REASON_LABELS,
     AffectedBooking,
@@ -666,6 +668,42 @@ def affected_event_ids(event_ids: Iterable[str]) -> set[str]:
     }
 
 
+def change_bookings(event_id: str) -> list[dict]:
+    """Story 37: the event's occupying bookings, each with its venue's name and a
+    `capacity_for(layout)` through the shared capacity rule, for the events module to
+    plan an approved change with. A venue the catalogue doesn't return has no
+    capacity to judge here, so nothing is flagged for it."""
+    venues = {venue.id: venue for venue in repository.list_venues()}
+    bookings = []
+    for row in repository.list_change_bookings(event_id):
+        venue = venues.get(row["venue_id"])
+        bookings.append({
+            "id": row["id"], "space_id": row.get("event_space_request_id"), "status": row["status"],
+            "flag": row.get("flag"), "flag_reason": row.get("flag_reason"), "venue_id": row["venue_id"],
+            "setup_minutes": row.get("setup_minutes") or 0, "turnaround_minutes": row.get("turnaround_minutes") or 0,
+            "venue_name": venue.name if venue else "",
+            "capacity_for": ((lambda layout, venue=venue: suitability.effective_capacity(venue, layout)) if venue
+                             else (lambda layout: sys.maxsize)),
+        })
+    return bookings
+
+
+def move_clash(booking_id: str, venue_id: str, setup_minutes: int, turnaround_minutes: int,
+               starts_at: datetime, ends_at: datetime) -> str | None:
+    """Story 37 preview: what a booking moved to `[starts_at, ends_at)` would clash with,
+    in words, judged on its occupied window (setup and turnaround) at its venue and
+    leaving the booking itself out (SCRUM-21 AC4). None when the window is free."""
+    occupied = Period(starts_at=starts_at - timedelta(minutes=setup_minutes),
+                      ends_at=ends_at + timedelta(minutes=turnaround_minutes))
+    clash = repository.first_conflict(occupied, venue_id, booking_id)
+    if clash is None:
+        return None
+    if clash["kind"] == "block":
+        label = BLOCK_REASON_LABELS.get(clash.get("block_reason"), str(clash.get("block_reason")))
+        return f"a venue block ({label})"
+    return f'"{clash.get("event_name") or "another event"}"'
+
+
 def booking_readiness_by_space(event_id: str) -> dict[str, list[BookingReadiness]]:
     """`{event_space_request_id: [BookingReadiness, ...]}` for one event (CR-97
     AC10): each of its event spaces' bookings, with status and open flag, so a
@@ -675,7 +713,8 @@ def booking_readiness_by_space(event_id: str) -> dict[str, list[BookingReadiness
         if row.get("event_space_request_id"):
             flags = [row["flag"]] if row.get("flag") else []
             readiness.setdefault(row["event_space_request_id"], []).append(
-                BookingReadiness(status=row["status"], flags=flags)
+                BookingReadiness(status=row["status"], flags=flags,
+                                 needs_re_review=bool(row.get("needs_re_review_since")))
             )
     return readiness
 
@@ -688,7 +727,8 @@ def booking_readiness_by_event(event_ids: Iterable[str]) -> dict[str, list[Booki
     readiness: dict[str, list[BookingReadiness]] = {}
     for row in repository.list_booking_statuses(event_ids):
         flags = [row["flag"]] if row.get("flag") else []
-        readiness.setdefault(row["event_id"], []).append(BookingReadiness(status=row["status"], flags=flags))
+        readiness.setdefault(row["event_id"], []).append(BookingReadiness(
+            status=row["status"], flags=flags, needs_re_review=bool(row.get("needs_re_review_since"))))
     return readiness
 
 
@@ -708,12 +748,14 @@ BOOKING_REFUSALS = {
 
 
 # CR-95 AC4 / D52: both follow-up flags permit requesting another venue.
-REPLACEABLE_FLAGS = ("affected", "safety_rejected")
+# Story 37 Q16, Q17: a clash with an approved change's new time, or attendance over capacity.
+REPLACEABLE_FLAGS = ("affected", "safety_rejected", "conflict", "unsuitable")
 
 
 def _prepare_replacement(replaces_id: str, event: dict, space_id: str | None) -> None:
     """Refuse before changing anything unless `replaces_id` is this event's (or
-    space's) own affected or Safety-rejected booking that is still held or approved, then return a
+    space's) own flagged booking (Affected, Safety rejected, Conflict or Unsuitable) that is still
+    held or approved, then return a
     Confirmed or Safety-review event to planning, which the booking functions
     require (CR-95 AC4, AC7). The coordinator has decided to replace the venue
     by asking, so the event stays in planning even if the venue they pick is
@@ -878,6 +920,7 @@ def _booking_detail(booking: dict) -> VenueBookingDetail:
     if booking["status"] == "rejected" and booking.get("decision_reason") and booking.get("decided_at"):
         decision = BookingDecision(reason=booking["decision_reason"], suggestion=booking.get("suggestion_note"),
                                    decided_by_name=booking.get("decided_by_name"), decided_at=booking["decided_at"])
+    history = repository.list_booking_history(booking["id"])
     return VenueBookingDetail(
         id=booking["id"], status=booking["status"], venue_id=booking["venue_id"],
         venue_name=booking.get("venue_name"), period=booking["period"], request_note=booking.get("request_note"),
@@ -889,7 +932,20 @@ def _booking_detail(booking: dict) -> VenueBookingDetail:
             facilities_required=context.facilities_required, accessibility_needs=context.accessibility_needs,
         ),
         decision=decision,
-        history=[BookingHistoryEntry(**entry) for entry in repository.list_booking_history(booking["id"])],
+        history=[BookingHistoryEntry(**entry) for entry in history],
+        re_review=_re_review_context(booking, history) if booking["status"] == "re_review" else None,
+    )
+
+
+def _re_review_context(booking: dict, history: list[dict]) -> ReReviewContext:
+    """Story 37 Q21: the latest approved change, the latest move, and the note the
+    coordinator sent it with (the latest send's reason)."""
+    sends = [entry for entry in history if entry["action"] == "sent_for_re_review"]
+    move = repository.get_last_move(booking["id"]) or {}
+    return ReReviewContext(
+        changes=events_service.latest_approved_change(booking["event_id"]),
+        note=sends[-1]["reason"] if sends else None,
+        moved_from=move.get("old_period"), moved_to=move.get("new_period"),
     )
 
 
@@ -958,10 +1014,14 @@ def reject_booking(booking_id: str, actor_id: str, body: VenueBookingReject) -> 
         raise BookingNotFoundError()
     event_name = events_service.names_by_id([booking["event_id"]]).get(booking["event_id"], "your event")
     venue_name = booking.get("venue_name") or "the venue"
+    # Story 37: after a re-review the coordinator needs another venue, so the notice says so.
+    message = (f'Venue staff rejected {venue_name} for "{event_name}" after its change. Find another venue.'
+               if booking["status"] == "re_review"
+               else f'Venue staff rejected the booking of {venue_name} for "{event_name}".')
     result = repository.reject_booking(
         booking_id, actor_id, body.reason, body.suggestion,
         # No reason in the notification: the coordinator reads it on the page.
-        notify_message=f'Venue staff rejected the booking of {venue_name} for "{event_name}".',
+        notify_message=message,
     )
     outcome = result["outcome"]
     if outcome == "booking_not_found":
@@ -993,7 +1053,9 @@ def approve_booking(booking_id: str, actor_id: str) -> VenueBookingDetail:
     venue_name = booking.get("venue_name") or "the venue"
     result = repository.approve_booking(
         booking_id, actor_id,
-        notify_message=f'Venue staff approved the booking of {venue_name} for "{event_name}".',
+        notify_message=(f'Venue staff re-approved {venue_name} for "{event_name}" after its change.'
+                        if booking["status"] == "re_review"
+                        else f'Venue staff approved the booking of {venue_name} for "{event_name}".'),
     )
     outcome = result["outcome"]
     if outcome == "booking_not_found":
@@ -1039,6 +1101,8 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
             "status": row["status"],
             "expires_at": row.get("expires_at"),
             **_flag_fields(row),
+            # Story 37 Q20: why an approved change marked it, so it can be sent for re-review.
+            **({"needs_re_review_reason": row["needs_re_review_reason"]} if row.get("needs_re_review_reason") else {}),
         }
         for row in shown.values()
     ]
@@ -1066,6 +1130,31 @@ def mark_safety_revision(booking_id: str, actor_id: str, note: str) -> VenueBook
     if outcome in MARK_REVISED_REFUSALS:
         raise BookingDecisionConflictError(MARK_REVISED_REFUSALS[outcome])
     return _booking_detail(repository.get_booking(booking_id))
+
+
+NOT_PLANNING_MESSAGE = "Arrangements can be sent for re-review only while the event is in Planning."
+
+
+def send_booking_for_re_review(booking_id: str, coordinator_id: str, note: str | None) -> None:
+    """Story 37 AC6, Q20: the assigned coordinator sends a booking an approved change
+    marked Needs re-review to venue staff. The RPC checks assignment, Planning and the
+    marker under the event's lock; the booking keeps its hold."""
+    booking = repository.get_booking(booking_id)
+    if booking is None:
+        raise BookingNotFoundError()
+    name = events_service.names_by_id([booking["event_id"]]).get(booking["event_id"], "An event")
+    message = f'"{name}" changed: {booking["venue_name"]} needs re-review.'
+    if note:
+        message += f" Note: {note}"
+    outcome = repository.send_booking_for_re_review(booking_id, coordinator_id, note, message)["outcome"]
+    if outcome == "not_found":
+        raise BookingNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "status_changed":
+        raise BookingDecisionConflictError(NOT_PLANNING_MESSAGE)
+    if outcome != "ok":
+        raise BookingDecisionConflictError("This booking doesn't need re-review.")
 
 
 def booking_venue_names(booking_ids: list[str]) -> dict[str, str | None]:

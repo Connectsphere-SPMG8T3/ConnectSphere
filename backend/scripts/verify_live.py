@@ -125,6 +125,7 @@ DB_SCRIPTS = [
     ("event_cancellation_request_checks.sql", "TC-CANCEL-007, 008 (story 84 database half: superseding, index, RLS)"),
     ("event_cancellation_decision_checks.sql", "TC-CANCEL-018 (story 115 database half: releases, notices, refusals)"),
     ("event_change_request_checks.sql", "TC-CHANGE-007 (story 32 database half: one open per event, closing, RLS)"),
+    ("change_request_decision_checks.sql", "TC-CHANGE-024 (story 37 database half: decisions, moves, marks, sends, re-review)"),
 ]
 
 
@@ -3871,6 +3872,354 @@ def _(ctx: Context) -> None:
     notices = db_query(f"select count(*) as n from public.notifications "
                        f"where event_id = '{event_id}' and type = 'event_cancellation_rejected'")
     expect(int(notices[0]["n"]) == 0, "the organiser was told their request was rejected")
+
+
+# --- Story 37: the coordinator decides a change request ---------------------------
+# Throwaway events, venues and equipment again; everything goes with them.
+
+TECH_SUPPORT_ID = "a0000000-0000-4000-8000-000000000004"
+SAFETY_OFFICER_ID = "a0000000-0000-4000-8000-000000000006"
+CHANGE_DECISION_REASON = "live-check: the venue can't take more people"
+
+
+def decision_fixture(ctx: Context, case: str, day: str, status: str = "planning",
+                     spaces: tuple[str, ...] = ("Main hall",)) -> tuple[str, list[str]]:
+    """A complete throwaway event for 40 on `day` 10:00-12:00, with 40-pax theatre spaces
+    that inherit its times. Returns (event, spaces)."""
+    event_id = throwaway_event(ctx, case, f"{day} 10:00+08", f"{day} 12:00+08", status=status)
+    db_query("update public.events set purpose = 'live-check', expected_attendance = 40, "
+             f"layout_preference = 'theatre' where id = '{event_id}'")
+    return event_id, [throwaway_space(event_id, label, pax=40, layout="theatre") for label in spaces]
+
+
+def booking_on(event_id: str, space_id: str | None, venue_id: str, day: str, status: str = "approved", *,
+               start: str = "10:00", end: str = "12:00", setup: int = 0) -> str:
+    space = f"'{space_id}'" if space_id else "null"
+    [row] = db_query(
+        "insert into public.venue_bookings (event_id, event_space_request_id, venue_id, booked_period, setup_minutes, "
+        f"status) values ('{event_id}', {space}, '{venue_id}', tstzrange('{day} {start}+08', '{day} {end}+08', '[)'), "
+        f"{setup}, '{status}') returning id"
+    )
+    return row["id"]
+
+
+def decide_change(ctx: Context, event_id: str, decision: str, *, reason: str | None = None,
+                  session: Session | None = None) -> httpx.Response:
+    session = session or ctx.shared("event_coordinator")
+    body = {"version": event_version(event_id)} if decision == "approve" else {"reason": reason}
+    return ctx.client.post(f"{ctx.api}/events/{event_id}/change-request/{decision}", headers=session.headers, json=body)
+
+
+def later(day: str, start: str = "14:00", end: str = "16:00") -> dict:
+    return {"starts_at": f"{day}T{start}:00+08:00", "ends_at": f"{day}T{end}:00+08:00"}
+
+
+def booking_row(booking_id: str) -> dict:
+    [row] = db_query("select status::text as status, flag::text as flag, flag_reason, needs_re_review_reason, "
+                     "lower(booked_period) as starts, upper(booked_period) as ends "
+                     f"from public.venue_bookings where id = '{booking_id}'")
+    return row
+
+
+def at_hour(value: str) -> str:
+    """'2031-12-01 06:00:00+00' as the SGT hour, for comparing a booking's window."""
+    return dt.datetime.fromisoformat(value.replace(" ", "T").replace("+00", "+00:00")).astimezone(SGT).strftime("%H:%M")
+
+
+def notices_of(event_id: str, kind: str) -> list[dict]:
+    return db_query("select recipient_id, recipient_role::text as role, message from public.notifications "
+                    f"where event_id = '{event_id}' and type = '{kind}'")
+
+
+@check("TC-CHANGE-013", "The coordinator rejects a change with a reason; the event keeps everything (AC2, AC4)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, [space] = decision_fixture(ctx, "37-013", "2031-12-01", status="confirmed")
+    booking_id = booking_on(event_id, space, throwaway_venue(ctx, "37-013"), "2031-12-01")
+    expect_status(request_change(ctx, event_id, event={"expected_attendance": 45}), 201)
+    for reason in ("   ", "x" * 1001):
+        expect_status(decide_change(ctx, event_id, "reject", reason=reason), 422)
+    response = decide_change(ctx, event_id, "reject", reason=f"  {CHANGE_DECISION_REASON}  ")
+    expect_status(response, 200)
+    [event] = db_query(f"select status::text, expected_attendance from public.events where id = '{event_id}'")
+    expect(event == {"status": "confirmed", "expected_attendance": 40}, f"rejecting changed the event: {event}")
+    expect(booking_row(booking_id)["status"] == "approved", "rejecting touched the booking")
+    [request] = stored_requests(event_id)
+    expect(request["status"] == "rejected" and request["decision_reason"] == CHANGE_DECISION_REASON, f"request: {request}")
+    notices = notices_of(event_id, "event_change_rejected")
+    expect(len(notices) == 1 and notices[0]["role"] == "event_organiser"
+           and CHANGE_DECISION_REASON in notices[0]["message"], f"notices: {notices}")
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history",
+                             headers=ctx.shared("event_organiser").headers).json()["entries"]
+    expect(any(e["kind"] == "change_rejected" and e["reason"] == CHANGE_DECISION_REASON for e in history),
+           f"history: {history}")
+
+
+@check("TC-CHANGE-014", "An ordinary change is applied with no status change; a stale one is refused (Q7, Q8)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, [space] = decision_fixture(ctx, "37-014", "2031-12-02", status="confirmed")
+    booking_id = booking_on(event_id, space, throwaway_venue(ctx, "37-014"), "2031-12-02")
+    expect_status(request_change(ctx, event_id, event={"description": "live-check: new description"},
+                                 spaces=[{"id": space, "label": "Great hall"}]), 201)
+    before = event_version(event_id)
+    expect_status(decide_change(ctx, event_id, "approve"), 200)
+    [event] = db_query(f"select status::text, description, version from public.events where id = '{event_id}'")
+    expect(event["status"] == "confirmed" and event["description"] == "live-check: new description"
+           and int(event["version"]) == before + 1, f"event: {event}")
+    [label] = db_query(f"select label from public.event_space_requests where id = '{space}'")
+    expect(label["label"] == "Great hall", f"space: {label}")
+    expect(booking_row(booking_id)["status"] == "approved", "an ordinary change touched the booking")
+    expect(stored_requests(event_id)[0]["status"] == "approved", "the request isn't approved")
+    expect(len(notices_of(event_id, "event_change_approved")) == 1, "the organiser wasn't told once")
+
+    stale_event, _spaces = decision_fixture(ctx, "37-014b", "2031-12-03", status="confirmed")
+    expect_status(request_change(ctx, stale_event, event={"description": "live-check: requested"}), 201)
+    db_query(f"update public.events set description = 'live-check: edited since' where id = '{stale_event}'")
+    stale = decide_change(ctx, stale_event, "approve")
+    expect_status(stale, 409)
+    expect_detail(stale, "This event has changed since the request was made; reject it and ask for a new one.")
+    expect(stored_requests(stale_event)[0]["status"] == "open", "a refused approval closed the request")
+
+
+@check("TC-CHANGE-015", "A significant change sends Confirmed, Preparation and Safety review back to Planning (AC7, Q6)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    outcomes = {}
+    for status in ("confirmed", "preparation", "safety_review", "planning"):
+        event_id, _spaces = decision_fixture(ctx, f"37-015-{status}", "2031-12-04", status=status)
+        if status == "confirmed":
+            db_query(f"insert into public.event_registrations (event_id, attendee_id) values ('{event_id}', '{ATTENDEE_ID}')")
+        expect_status(request_change(ctx, event_id, event={"expected_attendance": 45}), 201)
+        expect_status(decide_change(ctx, event_id, "approve"), 200)
+        [event] = db_query(f"select status::text from public.events where id = '{event_id}'")
+        outcomes[status] = (event_id, event["status"])
+    expect(all(after == "planning" for _id, after in outcomes.values()), f"statuses: {outcomes}")
+    confirmed = outcomes["confirmed"][0]
+    rows = db_query(f"select actor_id, reason from public.event_status_history where event_id = '{confirmed}' "
+                    "and from_status = 'confirmed' and to_status = 'planning'")
+    expect(len(rows) == 1 and rows[0]["actor_id"] == COORDINATOR_ID and "expected attendance" in rows[0]["reason"],
+           f"history: {rows}")
+    expect(notices_of(confirmed, "attendee_event_changed") == [], "an attendee was told of an attendance change")
+    safety = outcomes["safety_review"][0]
+    withdrawn = db_query(f"select reason_code from public.event_safety_decisions where event_id = '{safety}' "
+                         "and decision = 'withdrawn'")
+    expect(withdrawn == [{"reason_code": "approved_details_changed"}], f"safety decisions: {withdrawn}")
+    officers = notices_of(safety, "event_returned_to_planning")
+    expect(any(n["recipient_id"] == SAFETY_OFFICER_ID and n["role"] == "safety_officer" for n in officers),
+           f"officer notices: {officers}")
+    planning = outcomes["planning"][0]
+    moved = db_query(f"select count(*) as n from public.event_status_history where event_id = '{planning}' "
+                     "and from_status is not null")
+    expect(int(moved[0]["n"]) == 0, "a Planning event got a status row")
+
+
+def moved_event(ctx: Context, case: str, day: str) -> dict:
+    """A planning event on `day` with four spaces and their bookings, and two reserved
+    equipment lines, ready for a change that moves it to 14:00-16:00 and raises the
+    Crowded space to 60: Clear (approved, free at the new time), Clash (approved, an
+    hour's setup runs into another event's 13:00-14:00 hold), Held and Crowded (a venue
+    for 50). One line of 8 is left short by another event's 5 of the same 10 at the new
+    time; one of 2 still fits. Exits are ticked, so it is technically Ready."""
+    event_id, (clear, clash, held, crowded) = decision_fixture(
+        ctx, case, day, spaces=("Clear", "Clash", "Held", "Crowded"))
+    venues = {name: throwaway_venue(ctx, f"{case} {name}") for name in ("clear", "clash", "held", "crowded")}
+    blocker = throwaway_event(ctx, f"{case} blocker", f"{day} 13:00+08", f"{day} 14:00+08")
+    booking_on(blocker, None, venues["clash"], day, status="held", start="13:00", end="14:00")
+    bookings = {
+        "clear": booking_on(event_id, clear, venues["clear"], day),
+        "clash": booking_on(event_id, clash, venues["clash"], day, setup=60),
+        "held": booking_on(event_id, held, venues["held"], day, status="held"),
+        "crowded": booking_on(event_id, crowded, venues["crowded"], day),
+    }
+    stock = throwaway_equipment(ctx, f"{case} short", 10)
+    roomy = throwaway_equipment(ctx, f"{case} roomy", 10)
+    lines = {"short": throwaway_line(event_id, stock, 8), "fits": throwaway_line(event_id, roomy, 2)}
+    for line_id, item, quantity in ((lines["short"], stock, 8), (lines["fits"], roomy, 2)):
+        db_query(f"update public.equipment_requests set status = 'reserved' where id = '{line_id}'")
+        db_query("insert into public.equipment_reservations (equipment_id, event_id, quantity, start_at, end_at, "
+                 f"request_line_id) values ('{item}', '{event_id}', {quantity}, '{day} 10:00+08', '{day} 12:00+08', "
+                 f"'{line_id}')")
+    db_query("insert into public.equipment_reservations (equipment_id, event_id, quantity, start_at, end_at) values "
+             f"('{stock}', '{blocker}', 5, '{day} 14:00+08', '{day} 16:00+08')")
+    db_query(f"update public.events set exit_confirmed_at = now(), exit_confirmed_by = '{TECH_SUPPORT_ID}' "
+             f"where id = '{event_id}'")
+    db_query(f"select private.refresh_technical_status('{event_id}')")
+    expect_status(request_change(ctx, event_id, event=later(day), spaces=[{"id": crowded, "expected_pax": 60}]), 201)
+    return {"event": event_id, "bookings": bookings, "lines": lines, "venues": venues,
+            "spaces": {"clear": clear, "clash": clash, "held": held, "crowded": crowded}}
+
+
+@check("TC-CHANGE-016", "A new time moves, marks or flags each booking (AC3, AC5, Q11, Q15, Q17)", needs_db=True)
+def _(ctx: Context) -> None:
+    fixture = moved_event(ctx, "37-016", "2031-12-05")
+    expect_status(decide_change(ctx, fixture["event"], "approve"), 200)
+    clear, clash, held, crowded = (booking_row(fixture["bookings"][k]) for k in ("clear", "clash", "held", "crowded"))
+    expect(clear["status"] == "approved" and at_hour(clear["starts"]) == "14:00"
+           and clear["needs_re_review_reason"] == "Date or time changed.", f"clear booking: {clear}")
+    moves = db_query("select at_hour from (select to_char(lower(old_period) at time zone 'Asia/Singapore', 'HH24:MI') "
+                     "as at_hour from public.venue_booking_history where booking_id = "
+                     f"'{fixture['bookings']['clear']}' and action = 'moved_by_change') m")
+    expect(moves == [{"at_hour": "10:00"}], f"move history: {moves}")
+    expect(clash["flag"] == "conflict" and at_hour(clash["starts"]) == "10:00" and clash["needs_re_review_reason"] is None
+           and "blocker" in (clash["flag_reason"] or ""), f"clashing booking: {clash}")
+    expect(held["status"] == "held" and at_hour(held["starts"]) == "14:00" and held["needs_re_review_reason"] is None,
+           f"held booking: {held}")
+    expect(crowded["flag"] == "unsuitable" and "needs 60 people" in (crowded["flag_reason"] or ""),
+           f"crowded booking: {crowded}")
+    readiness = ctx.client.get(f"{ctx.api}/events/{fixture['event']}",
+                               headers=ctx.shared("event_coordinator").headers).json()["safety_readiness"]
+    expect("Clear: needs re-review." in readiness["missing"] and "Clash: flagged Conflict." in readiness["missing"],
+           f"readiness: {readiness}")
+
+
+@check("TC-CHANGE-017", "A new time moves every reservation; only a short line is marked, keeping its units (Q14)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    fixture = moved_event(ctx, "37-017", "2031-12-06")
+    expect_status(decide_change(ctx, fixture["event"], "approve"), 200)
+    windows = db_query("select to_char(start_at at time zone 'Asia/Singapore', 'HH24:MI') as at from "
+                       f"public.equipment_reservations where event_id = '{fixture['event']}'")
+    expect(windows and all(w["at"] == "14:00" for w in windows), f"reservations: {windows}")
+    lines = {key: db_query("select status::text, needs_re_review_reason from public.equipment_requests "
+                           f"where id = '{line_id}'")[0] for key, line_id in fixture["lines"].items()}
+    expect(lines["short"] == {"status": "reserved", "needs_re_review_reason": "Event time changed; 5 free for 8."},
+           f"short line: {lines['short']}")
+    expect(lines["fits"]["needs_re_review_reason"] is None, f"the line that fits was marked: {lines['fits']}")
+    [event] = db_query(f"select technical_readiness::text from public.events where id = '{fixture['event']}'")
+    expect(event["technical_readiness"] == "pending", f"technical status: {event}")
+    # The organiser's request told them (story 32); nothing since should have.
+    own = db_query(f"select type, message from public.notifications where event_id = '{fixture['event']}' "
+                   f"and recipient_id = '{COORDINATOR_ID}' and type <> 'event_change_requested'")
+    expect(own == [], f"the coordinator was told of their own approval: {own}")
+
+
+@check("TC-CHANGE-018", "The coordinator sends a marked booking and line for re-review; staff are told (AC6, Q20)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    fixture = moved_event(ctx, "37-018", "2031-12-07")
+    expect_status(decide_change(ctx, fixture["event"], "approve"), 200)
+    coordinator = ctx.shared("event_coordinator")
+    booking, line = fixture["bookings"]["clear"], fixture["lines"]["short"]
+    for role in ("event_organiser", "venue_staff", "tech_support"):
+        expect_status(ctx.client.post(f"{ctx.api}{BOOKINGS}/{booking}/send-for-re-review",
+                                      headers=ctx.shared(role).headers, json={}), 403)
+    sent = ctx.client.post(f"{ctx.api}{BOOKINGS}/{booking}/send-for-re-review", headers=coordinator.headers,
+                           json={"note": "  live-check: please check the afternoon  "})
+    expect_status(sent, 204)
+    row = booking_row(booking)
+    expect(row["status"] == "re_review" and row["needs_re_review_reason"] is None, f"sent booking: {row}")
+    notes = db_query("select reason from public.venue_booking_history where booking_id = "
+                     f"'{booking}' and action = 'sent_for_re_review'")
+    expect(notes == [{"reason": "live-check: please check the afternoon"}], f"send history: {notes}")
+    staff = notices_of(fixture["event"], "venue_booking_re_review")
+    expect(any(n["recipient_id"] == VENUE_STAFF_ID and n["role"] == "venue_staff" for n in staff), f"notices: {staff}")
+    again = ctx.client.post(f"{ctx.api}{BOOKINGS}/{booking}/send-for-re-review", headers=coordinator.headers, json={})
+    expect_status(again, 409)
+    expect_detail(again, "This booking doesn't need re-review.")
+
+    expect_status(ctx.client.post(f"{ctx.api}{EQUIPMENT_REQUESTS}/{line}/send-for-re-review",
+                                  headers=coordinator.headers, json={}), 204)
+    [state] = db_query(f"select status::text, needs_re_review_reason from public.equipment_requests where id = '{line}'")
+    expect(state == {"status": "re_review", "needs_re_review_reason": None}, f"sent line: {state}")
+    kept = db_query(f"select status from public.equipment_reservations where request_line_id = '{line}'")
+    expect(kept == [{"status": "confirmed"}], f"the line's reservation: {kept}")
+    tech = notices_of(fixture["event"], "equipment_line_re_review")
+    expect(any(n["recipient_id"] == TECH_SUPPORT_ID and n["role"] == "tech_support" for n in tech), f"notices: {tech}")
+
+
+@check("TC-CHANGE-019", "Venue staff see what changed, then re-approve or reject a booking under re-review (Q12, Q21)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    fixture = moved_event(ctx, "37-019", "2031-12-08")
+    second = booking_on(fixture["event"], throwaway_space(fixture["event"], "Second", pax=40, layout="theatre"),
+                        throwaway_venue(ctx, "37-019 second"), "2031-12-08")
+    expect_status(decide_change(ctx, fixture["event"], "approve"), 200)
+    coordinator, staff = ctx.shared("event_coordinator"), ctx.shared("venue_staff")
+    first = fixture["bookings"]["clear"]
+    for booking_id in (first, second):
+        expect_status(ctx.client.post(f"{ctx.api}{BOOKINGS}/{booking_id}/send-for-re-review",
+                                      headers=coordinator.headers, json={"note": "live-check note"}), 204)
+    detail = ctx.client.get(f"{ctx.api}{BOOKINGS}/{first}", headers=staff.headers).json()
+    context = detail["re_review"]
+    expect(context and context["note"] == "live-check note" and context["changes"]["event"]
+           and context["moved_from"] and context["moved_to"], f"re-review context: {context}")
+    expect_status(ctx.client.post(f"{ctx.api}{BOOKINGS}/{first}/approve", headers=staff.headers), 200)
+    expect(booking_row(first)["status"] == "approved", "re-approval didn't approve")
+    told = notices_of(fixture["event"], "venue_booking_approved")
+    expect(any("re-approved" in n["message"] for n in told), f"coordinator notices: {told}")
+    expect_status(ctx.client.post(f"{ctx.api}{BOOKINGS}/{second}/reject", headers=staff.headers,
+                                  json={"reason": "live-check: too small now"}), 200)
+    expect(booking_row(second)["status"] == "rejected", "the re-review rejection didn't reject")
+    actions = db_query(f"select action from public.venue_booking_history where booking_id in ('{first}', '{second}') "
+                       "and action like 're_review_%' order by action")
+    expect(actions == [{"action": "re_review_approved"}, {"action": "re_review_rejected"}], f"history: {actions}")
+
+
+@check("TC-CHANGE-020", "A booking an approved change flagged Conflict or Unsuitable can be replaced (Q16, Q17)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    fixture = moved_event(ctx, "37-020", "2031-12-09")
+    expect_status(decide_change(ctx, fixture["event"], "approve"), 200)
+    coordinator = ctx.shared("event_coordinator")
+    for key in ("clash", "crowded"):
+        venue = throwaway_venue(ctx, f"37-020 replacement {key}")
+        db_query(f"update public.venues set capacity = 100 where id = '{venue}'")
+        response = ctx.client.post(f"{ctx.api}{BOOKINGS}", headers=coordinator.headers, json={
+            "event_space_request_id": fixture["spaces"][key], "venue_id": venue,
+            "replaces_booking_id": fixture["bookings"][key]})
+        expect_status(response, 201)
+
+
+@check("TC-CHANGE-021", "The impact preview says what approving would do; only the coordinator sees it (Q1)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    fixture = moved_event(ctx, "37-021", "2031-12-10")
+    db_query(f"insert into public.event_registrations (event_id, attendee_id) values ('{fixture['event']}', '{ATTENDEE_ID}')")
+    url = f"{ctx.api}/events/{fixture['event']}/change-request/impact"
+    for role in ("event_organiser", "venue_staff", "tech_support", "event_coordinator_lead", "attendee"):
+        expect_status(ctx.client.get(url, headers=ctx.shared(role).headers), 403)
+    response = ctx.client.get(url, headers=ctx.shared("event_coordinator").headers)
+    expect_status(response, 200)
+    impact = response.json()
+    messages = {b["space_label"]: " ".join(b["messages"]) for b in impact["bookings"]}
+    expect("Needs re-review by venue staff" in messages.get("Clear", ""), f"Clear: {messages}")
+    expect("Clashes with" in messages.get("Clash", "") and "flagged Conflict" in messages["Clash"], f"Clash: {messages}")
+    expect("A replacement venue is needed." in messages.get("Crowded", ""), f"Crowded: {messages}")
+    expect([(e["needed"], e["free"]) for e in impact["equipment"]] == [(8, 5)], f"equipment: {impact['equipment']}")
+    expect(impact["attendees_notified"] == 1, f"attendees: {impact['attendees_notified']}")
+    expect(stored_requests(fixture["event"])[0]["status"] == "open", "previewing decided the request")
+
+
+@check("TC-CHANGE-022", "A closed or started event takes no decision; nothing changes (AC8, Q5)", needs_db=True)
+def _(ctx: Context) -> None:
+    for status in ("completed", "cancelled", "rejected", "started"):
+        if status == "started":
+            event_id = throwaway_event(ctx, "37-022-started", "2020-01-01 10:00+08", "2099-01-01 12:00+08",
+                                       status="confirmed")
+        else:
+            event_id, _spaces = decision_fixture(ctx, f"37-022-{status}", "2031-12-11", status=status)
+        db_query("insert into public.event_change_requests (event_id, kind, reason, requested_by, changes, significant) "
+                 f"values ('{event_id}', 'change', 'live-check', 'a0000000-0000-4000-8000-000000000001', "
+                 """'{"event": [{"field": "description", "before": null, "after": "x"}], "spaces": []}', false)""")
+        expect_status(decide_change(ctx, event_id, "approve"), 409)
+        expect_status(decide_change(ctx, event_id, "reject", reason=CHANGE_DECISION_REASON), 409)
+        [request] = stored_requests(event_id)
+        [event] = db_query(f"select status::text, description from public.events where id = '{event_id}'")
+        expect(request["status"] == "open" and event["description"] is None, f"{status}: {request}, {event}")
+
+
+@check("TC-CHANGE-023", "A second change keeps a booking under re-review with venue staff (Q22)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, [space] = decision_fixture(ctx, "37-023", "2031-12-12")
+    booking_id = booking_on(event_id, space, throwaway_venue(ctx, "37-023"), "2031-12-12", status="re_review")
+    expect_status(request_change(ctx, event_id, event=later("2031-12-12")), 201)
+    expect_status(decide_change(ctx, event_id, "approve"), 200)
+    row = booking_row(booking_id)
+    expect(row["status"] == "re_review" and at_hour(row["starts"]) == "14:00" and row["needs_re_review_reason"] is None,
+           f"booking: {row}")
+    told = notices_of(event_id, "venue_booking_re_review")
+    expect(any(n["role"] == "venue_staff" and "changed again" in n["message"] for n in told), f"notices: {told}")
 
 
 def db_query(sql: str) -> list[dict]:

@@ -32,6 +32,11 @@ def _as_utc(value: datetime | str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def registered_count(event_id: str) -> int:
+    """How many attendees are registered for the event now (story 37's preview)."""
+    return repository.registered_count(event_id)
+
+
 def public_directory() -> list[PublicEvent]:
     now = datetime.now(timezone.utc)
     return [_to_public_event(row, now) for row in repository.list_public_event_rows()]

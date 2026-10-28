@@ -24,14 +24,17 @@ export function rejectionPayload({ reason = "", suggestion = "" } = {}) {
   return { reason: (reason ?? "").trim(), suggestion: (suggestion ?? "").trim() || null };
 }
 
-/** Only a held booking can be rejected (AC9), and only by a session acting as venue staff (AC11). UX only: the API decides. */
+// A hold, or a booking an approved change sent back to venue staff (story 37 Q12).
+const DECIDABLE_STATUSES = ["held", "re_review"];
+
+/** Only a held or re-review booking can be rejected (AC9), and only by a session acting as venue staff (AC11). UX only: the API decides. */
 export function canRejectBooking(booking, role) {
-  return role === "venue_staff" && booking?.status === "held";
+  return role === "venue_staff" && DECIDABLE_STATUSES.includes(booking?.status);
 }
 
 /** The same rule for approval (SCRUM-36 AC6, AC8). UX only: the API decides, including blocks and inactive venues. */
 export function canApproveBooking(booking, role) {
-  return role === "venue_staff" && booking?.status === "held";
+  return role === "venue_staff" && DECIDABLE_STATUSES.includes(booking?.status);
 }
 
 /** Only a live booking flagged Affected can be restored (CR-95 AC9), and only by a session acting as venue staff. UX only: the API decides. */
@@ -78,6 +81,10 @@ const HISTORY_ACTION_LABELS = {
   approved: "Approved",
   expired: "Expired",
   expiry_changed: "Expiry changed",
+  moved_by_change: "Moved by an approved change",
+  sent_for_re_review: "Sent for re-review",
+  re_review_approved: "Re-approved",
+  re_review_rejected: "Rejected after re-review",
 };
 
 /** One history row's action as a person reads it; an unknown one is spelled out rather than hidden. */

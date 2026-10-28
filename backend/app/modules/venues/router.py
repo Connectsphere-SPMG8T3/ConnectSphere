@@ -1,9 +1,10 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.modules.auth.dependencies import CurrentUser, require_roles
+from app.modules.events.schemas import ReReviewSendRequest
 from app.modules.venues import service
 from app.modules.venues.schemas import (
     SafetyRevisionRequest,
@@ -188,6 +189,15 @@ def read_venue_booking(booking_id: UUID, current_user: BookingViewer) -> VenueBo
 def mark_venue_booking_revised(booking_id: UUID, body: SafetyRevisionRequest, current_user: CoordinatorOnly) -> VenueBookingDetail:
     """CR-104 AC3/AC4 [Team decision]: the assigned coordinator marks revised."""
     return service.mark_safety_revision(str(booking_id), current_user.id, body.note)
+
+
+@bookings_router.post("/{booking_id}/send-for-re-review", status_code=status.HTTP_204_NO_CONTENT)
+def send_venue_booking_for_re_review(booking_id: UUID, body: ReReviewSendRequest,
+                                     current_user: CoordinatorOnly) -> Response:
+    """Story 37 AC6: send a booking an approved change marked Needs re-review to venue
+    staff, with an optional note. It keeps its hold until they decide."""
+    service.send_booking_for_re_review(str(booking_id), current_user.id, body.note)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @bookings_router.post("/{booking_id}/restore", response_model=VenueBookingDetail, status_code=status.HTTP_200_OK)

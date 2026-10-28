@@ -7,8 +7,8 @@ import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  venueBookingsApi: { markRevised: vi.fn() },
-  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), setPrimarySpace: vi.fn(), clearPrimarySpace: vi.fn(), cancelEvent: vi.fn() },
+  venueBookingsApi: { markRevised: vi.fn(), sendForReReview: vi.fn() },
+  eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), setPrimarySpace: vi.fn(), clearPrimarySpace: vi.fn(), cancelEvent: vi.fn(), changeImpact: vi.fn() },
 }));
 
 const EVENT = { id: "event-1", name: "Partner Summit", status: "under_review", version: 3 };
@@ -355,5 +355,46 @@ describe("D54 revision note", () => {
     expect(eventsApi.cancelEvent).toHaveBeenCalledWith(EVENT.id, "No replacement venue", "access-token");
     expect(store.event.status).toBe("cancelled");
     expect(store.error).toBeNull();
+  });
+});
+
+describe("useEventReviewStore story 37", () => {
+  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks(); signedInCoordinator(); });
+
+  it("sends a marked booking once, even when asked twice at the same time", async () => {
+    const store = useEventReviewStore(); store.event = { ...EVENT };
+    eventsApi.get.mockResolvedValue(EVENT); eventsApi.history.mockResolvedValue({ entries: [] });
+
+    await Promise.all([store.sendBookingForReReview("b1", null), store.sendBookingForReReview("b1", null)]);
+
+    expect(venueBookingsApi.sendForReReview).toHaveBeenCalledTimes(1);
+    expect(venueBookingsApi.sendForReReview).toHaveBeenCalledWith("b1", null, "access-token");
+  });
+
+  it("shows why a send was refused and lets the page know", async () => {
+    const store = useEventReviewStore(); store.event = { ...EVENT };
+    venueBookingsApi.sendForReReview.mockRejectedValue(new ApiError("This booking doesn't need re-review.", 409));
+
+    await expect(store.sendBookingForReReview("b1", null)).rejects.toThrow("This booking doesn't need re-review.");
+
+    expect(store.error).toBe("This booking doesn't need re-review.");
+    expect(store.isActing).toBe(false);
+  });
+
+  it("has no preview to load without an event", async () => {
+    const store = useEventReviewStore();
+
+    await store.loadChangeImpact();
+
+    expect(eventsApi.changeImpact).not.toHaveBeenCalled();
+  });
+
+  it("leaves the preview out when it can't be worked out", async () => {
+    const store = useEventReviewStore(); store.event = { ...EVENT }; store.changeImpact = { bookings: [] };
+    eventsApi.changeImpact.mockRejectedValue(new ApiError("Service unavailable", 503));
+
+    await store.loadChangeImpact();
+
+    expect(store.changeImpact).toBeNull();
   });
 });

@@ -36,6 +36,8 @@ def _per_space_missing(spaces: list[SpaceReadiness]) -> list[str]:
             missing.append(f"{space.label}: awaiting venue staff approval.")
         elif "re_review" in statuses:
             missing.append(f"{space.label}: under re-review.")
+        if any(booking.needs_re_review for booking in active):
+            missing.append(f"{space.label}: needs re-review.")
         missing += [f"{space.label}: flagged {label}." for label in _flag_labels(active)]
     return missing
 
@@ -50,5 +52,7 @@ def _event_wide_missing(bookings: list[BookingReadiness]) -> list[str]:
         missing.append("A venue booking is awaiting venue staff approval.")
     if "re_review" in statuses:
         missing.append("A venue booking is under re-review.")
+    if any(booking.needs_re_review for booking in active):
+        missing.append("A venue booking needs re-review.")
     missing += [f"A venue booking is flagged {label}." for label in _flag_labels(active)]
     return missing

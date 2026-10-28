@@ -400,6 +400,15 @@ class TestCrossModuleReads:
         }
         assert seen["ids"] == ["e-040", "e-041"]
 
+    def test_a_reserved_line_marked_needs_re_review_is_not_ready(self, monkeypatch):
+        """Story 37 Q14: an approved time change left it short; it keeps its units but isn't ready."""
+        from app.modules.equipment import repository as equipment_repository
+
+        monkeypatch.setattr(equipment_repository, "list_line_statuses", lambda ids: [
+            {"event_id": "e-040", "status": "reserved", "needs_re_review_since": "2026-10-25T02:00:00+00:00"}])
+
+        assert equipment_service.equipment_readiness_by_event(["e-040"]) == {"e-040": ReadinessState.pending}
+
 
 class TestApi:
     def test_coordinator_gets_the_dashboard(self, client, auth_headers, authenticate_as, data):

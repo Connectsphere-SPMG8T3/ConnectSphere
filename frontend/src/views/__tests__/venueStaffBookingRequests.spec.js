@@ -53,7 +53,7 @@ const PAYLOAD = {
   blocks: [],
 };
 
-async function mountPage() {
+async function mountPage(path = "/dashboard/venue-staff/requests") {
   const pinia = createPinia();
   setActivePinia(pinia);
   const authStore = useAuthStore();
@@ -62,7 +62,7 @@ async function mountPage() {
   authStore.profile = { id: "staff-1", role: "venue_staff", full_name: "Priya Nair" };
   authStore.sessionVerified = true;
   const { default: router } = await import("@/router");
-  await router.push("/dashboard/venue-staff/requests");
+  await router.push(path);
   await router.isReady();
   const el = document.createElement("div");
   document.body.appendChild(el);
@@ -157,6 +157,29 @@ describe("VenueStaffBookingRequestsView", () => {
     await nextTick();
 
     expect(el.querySelectorAll('a[href^="/bookings/"]')).toHaveLength(3);
+  });
+
+  it("opens on the bookings under re-review when the link asks for them (story 37)", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue({
+      ...PAYLOAD,
+      booking_requests: [...PAYLOAD.booking_requests, {
+        id: "booking-re-review", event_id: "event-4", venue_id: "venue-2", venue_name: "Rooftop Terrace",
+        status: "re_review", requested_at: "2026-09-06T10:30:00+08:00",
+        period: { starts_at: "2026-10-16T09:00:00+08:00", ends_at: "2026-10-16T12:00:00+08:00" },
+      }],
+    });
+    const { el } = await mountPage("/dashboard/venue-staff/requests?status=re_review");
+    const [status] = el.querySelectorAll("select");
+
+    expect(status.value).toBe("re_review");
+    expect([...el.querySelectorAll('a[href^="/bookings/"]')].map((a) => a.getAttribute("href")))
+      .toEqual(["/bookings/booking-re-review"]);
+  });
+
+  it("ignores a status the page doesn't know", async () => {
+    const { el } = await mountPage("/dashboard/venue-staff/requests?status=nonsense");
+
+    expect(el.querySelectorAll("select")[0].value).toBe("pending");
   });
 
   it("filters resolved requests by status and venue", async () => {

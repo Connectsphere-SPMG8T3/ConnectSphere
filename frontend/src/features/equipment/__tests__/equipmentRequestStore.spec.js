@@ -14,6 +14,7 @@ vi.mock("@/services/api", async (importOriginal) => ({
     eventRequests: vi.fn(),
     submitRequest: vi.fn(),
     requestList: vi.fn(),
+    sendLineForReReview: vi.fn(),
   },
 }));
 
@@ -164,3 +165,47 @@ describe("useEquipmentQueueStore (SCRUM-45, SCRUM-24)", () => {
     expect(store.error).toBe("Service unavailable");
   });
 });
+
+describe("useEquipmentRequestStore send for re-review (story 37)", () => {
+  it("does nothing before an event is loaded", async () => {
+    const store = useEquipmentRequestStore();
+
+    expect(await store.sendForReReview("l1", null)).toBe(false);
+    expect(equipmentApi.sendLineForReReview).not.toHaveBeenCalled();
+  });
+
+  it("drops the answer for an event the panel has since left", async () => {
+    equipmentApi.catalogue.mockResolvedValue({ items: [] });
+    equipmentApi.eventRequests.mockResolvedValue({ lines: [LINE] });
+    const store = useEquipmentRequestStore();
+    await store.load("event-1");
+    const pending = deferred();
+    equipmentApi.sendLineForReReview.mockReturnValue(pending.promise);
+
+    const sending = store.sendForReReview("l1", null);
+    await store.load("event-2");
+    pending.resolve(null);
+
+    expect(await sending).toBe(true);
+    expect(store.eventId).toBe("event-2");
+    expect(store.isSubmitting).toBe(false);
+    expect(equipmentApi.eventRequests).toHaveBeenCalledTimes(2);
+  });
+
+  it("doesn't show the old event's refusal on the new one", async () => {
+    equipmentApi.catalogue.mockResolvedValue({ items: [] });
+    equipmentApi.eventRequests.mockResolvedValue({ lines: [LINE] });
+    const store = useEquipmentRequestStore();
+    await store.load("event-1");
+    let reject;
+    equipmentApi.sendLineForReReview.mockReturnValue(new Promise((_, r) => { reject = r; }));
+
+    const sending = store.sendForReReview("l1", null);
+    await store.load("event-2");
+    reject(new Error("This equipment line doesn't need re-review."));
+
+    expect(await sending).toBe(false);
+    expect(store.actionError).toBeNull();
+  });
+});
+
