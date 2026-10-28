@@ -232,7 +232,7 @@ describe("TechnicalEventView re-review (story 37)", () => {
 });
 
 
-describe("TechnicalEventView re-review after a coordinator's edit (D69)", () => {
+describe("TechnicalEventView re-review after a coordinator's edit (D70)", () => {
   beforeEach(() => vi.clearAllMocks());
 
   afterEach(() => {

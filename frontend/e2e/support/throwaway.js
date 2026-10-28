@@ -248,7 +248,7 @@ export function createThrowawayLine(event, equipment, quantity) {
   return row;
 }
 
-/** Sets a throwaway line's status directly, as if tech support had acted on it (D69). */
+/** Sets a throwaway line's status directly, as if tech support had acted on it (D70). */
 export function setThrowawayLineStatus(line, status) {
   query(`update public.equipment_requests set status = '${status}' where id = '${line.id}'`);
 }

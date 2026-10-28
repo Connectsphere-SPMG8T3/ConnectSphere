@@ -48,7 +48,7 @@ test("TC-VENUE-097 deactivating again after reactivation lists the still-flagged
 
   await deactivate();
   await expect(dialog).toContainText("Already flagged: Affected");
-  await expect(dialog).toContainText("Any not already flagged will be flagged Affected");
+  await expect(dialog).toContainText("It is already flagged, so it keeps its flag");
   await dialog.getByRole("button", { name: "Deactivate anyway" }).click();
   await expect(page.getByTestId("venue-inactive-banner")).toContainText("Inactive: Long-term renovation");
 });

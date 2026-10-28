@@ -60,7 +60,7 @@ test("TC-EQR-055 outside planning the coordinator is told equipment can't be cha
   await expect(panel.getByRole("button", { name: `Remove ${item.name} from the request` })).toHaveCount(0);
 });
 
-test("TC-EQR-058 D69 after the coordinator edits a reserved line, tech support see why it needs re-review", async ({ page, browser, sharedSessions }) => {
+test("TC-EQR-058 D70 after the coordinator edits a reserved line, tech support see why it needs re-review", async ({ page, browser, sharedSessions }) => {
   const event = createThrowawayEvent("EQR058", "2031-09-12 09:00+08", "2031-09-12 12:00+08");
   const item = createThrowawayEquipment("058", 5);
   setThrowawayLineStatus(createThrowawayLine(event, item, 2), "reserved");

@@ -6,9 +6,15 @@ from fastapi import APIRouter, Depends, Response, status
 from app.modules.auth.dependencies import CurrentUser, require_roles
 
 from app.modules.registrations import service
-from app.modules.registrations.schemas import PublicEvent, PublicEventDirectory, RegistrationResult
+from app.modules.registrations.schemas import (
+    AttendeeRegistrationList,
+    PublicEvent,
+    PublicEventDirectory,
+    RegistrationResult,
+)
 
 router = APIRouter(prefix="/public", tags=["public events"])
+attendee_router = APIRouter(prefix="/registrations", tags=["attendee registrations"])
 Attendee = Annotated[CurrentUser, Depends(require_roles(["attendee"]))]
 
 
@@ -32,3 +38,8 @@ def register_for_event(event_id: UUID, response: Response, current_user: Attende
     if result.status == "already_registered":
         response.status_code = status.HTTP_200_OK
     return result
+
+
+@attendee_router.get("/me", response_model=AttendeeRegistrationList)
+def list_my_registrations(current_user: Attendee) -> AttendeeRegistrationList:
+    return service.attendee_registrations(current_user.id)

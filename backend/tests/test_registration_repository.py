@@ -85,3 +85,18 @@ def test_register_for_event_returns_rpc_result(monkeypatch):
         "register_for_event",
         {"p_event_id": "event-1", "p_attendee_id": "attendee-1"},
     )
+
+
+def test_list_attendee_registration_rows_scopes_to_attendee_and_active_statuses(monkeypatch):
+    client, query = _client_with_query()
+    rows = [{"id": "registration-1", "status": "registered"}]
+    query.execute.return_value = SimpleNamespace(data=rows)
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    result = repository.list_attendee_registration_rows("attendee-1")
+
+    assert result == rows
+    client.table.assert_called_once_with("event_registrations")
+    query.eq.assert_called_once_with("attendee_id", "attendee-1")
+    query.in_.assert_called_once_with("status", ["registered", "waitlisted"])
+    query.order.assert_called_once_with("registered_at", desc=True)

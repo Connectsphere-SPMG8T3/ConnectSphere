@@ -51,6 +51,9 @@ export const authApi = {
   me(token) {
     return request("/auth/me", { token });
   },
+  updateProfile(token, changes) {
+    return request("/auth/me", { method: "PATCH", body: changes, token });
+  },
   setActiveRole(token, role) {
     return request("/auth/active-role", { method: "POST", body: { role }, token });
   },
@@ -297,6 +300,9 @@ export const eventsApi = {
 export const registrationsApi = {
   directory() {
     return request("/public/events");
+  },
+  myRegistrations(token) {
+    return request("/registrations/me", { token });
   },
   event(eventId) {
     return request(`/public/events/${encodeURIComponent(eventId)}`);

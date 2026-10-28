@@ -23,7 +23,7 @@ const props = defineProps({
   // Another line's action is running.
   locked: { type: Boolean, default: false },
   error: { type: String, default: null },
-  // D69: why the line is under re-review, worked out by the page from its history.
+  // D70: why the line is under re-review, worked out by the page from its history.
   reReviewReason: { type: String, default: "This line needs re-review." },
 });
 const emit = defineEmits(["reserve", "not-available", "save-note"]);

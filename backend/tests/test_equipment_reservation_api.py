@@ -299,7 +299,7 @@ class TestTechnicalView:
         assert body["exit_confirmation"] == {"confirmed_by_name": "Tan Wei", "confirmed_at": "2026-10-19T03:00:00Z"}
         assert body["lines"][0]["technical_notes"] == "Ask vendor"
         assert body["lines"][0]["not_available_reason"] == "Only 2 in stock"
-        # D69: each entry names its line, so a re-review line can say why it is under re-review.
+        # D70: each entry names its line, so a re-review line can say why it is under re-review.
         assert body["history"] == [{
             "action": "not_available", "request_id": LINE_ID, "line_label": "3 × 4K Projector",
             "from_status": "pending", "to_status": "rejected", "detail": "Only 2 in stock", "actor_name": "Tan Wei",

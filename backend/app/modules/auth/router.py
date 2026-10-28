@@ -6,6 +6,7 @@ from app.modules.auth import service
 from app.modules.auth.dependencies import CurrentUser, get_current_user
 from app.modules.auth.schemas import (
     ProfileResponse,
+    ProfileUpdateRequest,
     RefreshTokenRequest,
     SetActiveRoleRequest,
     SignupRequest,
@@ -56,6 +57,15 @@ def read_current_user(
         phone_number=current_user.phone_number,
         roles=service.get_roles(current_user.id),
     )
+
+
+@router.patch("/me", response_model=ProfileResponse, status_code=status.HTTP_200_OK)
+def update_current_user(
+    body: ProfileUpdateRequest,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> ProfileResponse:
+    """Update the authenticated user's editable profile fields (SCRUM-92)."""
+    return service.update_profile(current_user, body)
 
 
 @router.post("/active-role", response_model=ProfileResponse, status_code=status.HTTP_200_OK)

@@ -115,7 +115,7 @@ export function historyActor(entry) {
   return entry.actor_name ?? "System";
 }
 
-// D69: a line reaches re-review by a coordinator's edit (SCRUM-44), a change
+// D70: a line reaches re-review by a coordinator's edit (SCRUM-44), a change
 // request they sent (story 37), or an old time-change recheck. The newest of
 // this line's history entries that put it there says which; history is newest first.
 const RE_REVIEW_CAUSES = new Set(["edited", "sent_for_re_review", "re_review"]);

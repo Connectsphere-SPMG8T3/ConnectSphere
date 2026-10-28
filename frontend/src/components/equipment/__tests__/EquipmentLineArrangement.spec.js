@@ -52,7 +52,7 @@ describe("EquipmentLineArrangement (SCRUM-24)", () => {
   });
 
   it("a flagged line explains itself and offers Reserve again (AC7, D8)", () => {
-    // D69: the reason comes from the page; a time change is no longer assumed.
+    // D70: the reason comes from the page; a time change is no longer assumed.
     mountLine({ status: "re_review" }, { reReviewReason: "The event's time changed and this no longer fits." });
 
     expect(document.body.textContent).toContain("no longer fits");
@@ -60,7 +60,7 @@ describe("EquipmentLineArrangement (SCRUM-24)", () => {
     expect(button("Reserve again")).toBeTruthy();
   });
 
-  it("a flagged line with no known reason doesn't claim one (D69)", () => {
+  it("a flagged line with no known reason doesn't claim one (D70)", () => {
     mountLine({ status: "re_review" });
 
     expect(document.body.textContent).toContain("This line needs re-review.");

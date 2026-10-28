@@ -126,6 +126,39 @@ describe("Nav role switcher (SCRUM-74/75)", () => {
     expect(el.querySelector('a[href="/venues"]')).toBeTruthy();
   });
 
+  it("shows attendee Overview, My events and Explore events views", async () => {
+    const { el } = await mountNav(
+      { id: "u1", role: "attendee", roles: ["attendee"] },
+      "/dashboard/attendee?tab=explore",
+    );
+
+    expect(el.querySelector('a[href="/dashboard/attendee?tab=overview"]')).toBeTruthy();
+    expect(el.querySelector('a[href="/dashboard/attendee?tab=events"]')).toBeTruthy();
+    expect(el.querySelector('a[href="/dashboard/attendee?tab=explore"]')).toBeTruthy();
+    expect(el.querySelector('a[href="/dashboard/attendee?tab=overview"]').className).not.toContain("bg-bauhaus-yellow");
+    expect(el.querySelector('a[href="/dashboard/attendee?tab=explore"]').className).toContain("bg-bauhaus-yellow");
+  });
+
+  it("highlights My events while viewing an attendee's registered event", async () => {
+    const { el } = await mountNav(
+      { id: "u1", role: "attendee", roles: ["attendee"] },
+      "/dashboard/attendee/events/event-1",
+    );
+
+    expect(el.querySelector('a[href="/dashboard/attendee?tab=events"]').className).toContain("bg-bauhaus-yellow");
+    expect(el.querySelector('a[href="/dashboard/attendee?tab=overview"]').className).not.toContain("bg-bauhaus-yellow");
+  });
+
+  it("highlights Explore events while an attendee views a public event detail", async () => {
+    const { el } = await mountNav(
+      { id: "u1", role: "attendee", roles: ["attendee"] },
+      "/attendee/events/event-1",
+    );
+
+    expect(el.querySelector('a[href="/dashboard/attendee?tab=explore"]').className).toContain("bg-bauhaus-yellow");
+    expect(el.querySelector('a[href="/dashboard/attendee?tab=events"]').className).not.toContain("bg-bauhaus-yellow");
+  });
+
   it("shows the tech support availability and inventory views in the side navigation", async () => {
     const { el } = await mountNav({
       id: "u1",

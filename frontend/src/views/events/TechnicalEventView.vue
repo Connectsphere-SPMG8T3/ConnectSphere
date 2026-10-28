@@ -31,7 +31,7 @@ const store = useTechnicalEventStore();
 const view = computed(() => (store.view?.event.id === route.params.id ? store.view : null));
 const open = computed(() => !!view.value && isOpenForArrangements(view.value.event.status));
 const showExit = computed(() => !!view.value && hasLiveLines(view.value.lines));
-// D69: story 37's "What changed" is only for lines a change request sent; a line
+// D70: story 37's "What changed" is only for lines a change request sent; a line
 // the coordinator edited says what they changed on its own card.
 const showChangeRequest = computed(() => !!view.value?.re_review_changes && view.value.lines.some(
   (line) => line.status === "re_review" && reReviewCause(line.id, view.value.history)?.action !== "edited",

@@ -7,10 +7,13 @@ export const useRegistrationStore = defineStore("registrations", {
   state: () => ({
     events: [],
     event: null,
+    myRegistrations: [],
     registrationResult: null,
     isLoading: false,
+    isLoadingMyRegistrations: false,
     isRegistering: false,
     error: null,
+    myRegistrationsError: null,
   }),
 
   actions: {
@@ -39,6 +42,21 @@ export const useRegistrationStore = defineStore("registrations", {
         throw error;
       } finally {
         this.isLoading = false;
+      }
+    },
+
+    async loadMyRegistrations() {
+      const auth = useAuthStore();
+      this.isLoadingMyRegistrations = true;
+      this.myRegistrationsError = null;
+      try {
+        const response = await auth.withSession((token) => registrationsApi.myRegistrations(token));
+        this.myRegistrations = response.registrations ?? [];
+      } catch (error) {
+        this.myRegistrationsError = error.message || "Unable to load your registered events. Please try again.";
+        throw error;
+      } finally {
+        this.isLoadingMyRegistrations = false;
       }
     },
 

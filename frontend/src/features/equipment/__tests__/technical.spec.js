@@ -98,7 +98,7 @@ describe("SCRUM-24 how the tick and history read", () => {
   });
 });
 
-describe("D69 why a line is under re-review", () => {
+describe("D70 why a line is under re-review", () => {
   const entry = (overrides) => ({
     action: "edited", request_id: "l1", from_status: "reserved", to_status: "re_review",
     detail: "Quantity: 2 → 4.", created_at: "2026-10-26T02:00:00Z", ...overrides,
