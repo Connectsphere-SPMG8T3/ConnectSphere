@@ -47,6 +47,11 @@ describe("BauhausCard", () => {
     expect(card.querySelector("span[aria-hidden]").className).toContain("bg-bauhaus-red");
   });
 
+  it("supports a green status stripe", async () => {
+    const { card } = await mountCard({ background: "green" }, "p");
+    expect(card.querySelector("span[aria-hidden]").className).toContain("bg-bauhaus-green");
+  });
+
   it("greys out when dimmed: grey fill, faded text and a grey stripe whatever its tone", async () => {
     const { card } = await mountCard({ background: "red", dimmed: true }, "p");
     expect(card.className).toContain("bg-muted");

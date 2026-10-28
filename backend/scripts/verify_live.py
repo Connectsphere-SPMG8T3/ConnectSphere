@@ -442,6 +442,106 @@ def _(ctx: Context) -> None:
     expect(response.json()["email"] == ACCOUNTS["event_organiser"], "a different profile came back")
 
 
+@check("TC-AUTH-053", "Profile update normalizes and clears its phone number", creates_accounts=True)
+def _(ctx: Context) -> None:
+    email = ctx.throwaway_email("053")
+    expect_status(
+        ctx.signup(
+            role="attendee",
+            full_name="Profile Check",
+            email=email,
+            organisation_name=None,
+            phone_number=None,
+        ),
+        201,
+    )
+    session = ctx.login("attendee", email=email, password=THROWAWAY_PASSWORD)
+    response = ctx.client.patch(
+        f"{ctx.api}/auth/me",
+        headers=session.headers,
+        json={"full_name": "Updated Profile", "phone_number": "+65 9000 0001"},
+    )
+    expect_status(response, 200)
+    expect(response.json()["full_name"] == "Updated Profile", "updated name is missing from the response")
+    expect(response.json()["phone_number"] == "+6590000001", "updated phone was not normalized in the response")
+
+    response = ctx.client.get(f"{ctx.api}/auth/me", headers=session.headers)
+    expect_status(response, 200)
+    expect(response.json()["phone_number"] == "+6590000001", "normalized phone was not persisted")
+
+    response = ctx.client.patch(
+        f"{ctx.api}/auth/me",
+        headers=session.headers,
+        json={"full_name": "Updated Profile", "phone_number": "   "},
+    )
+    expect_status(response, 200)
+    expect(response.json()["phone_number"] is None, "blank phone was not normalized to NULL")
+
+    response = ctx.client.get(f"{ctx.api}/auth/me", headers=session.headers)
+    expect_status(response, 200)
+    expect(response.json()["full_name"] == "Updated Profile", "updated name was not persisted")
+    expect(response.json()["phone_number"] is None, "cleared phone was not persisted as NULL")
+
+
+@check("TC-AUTH-054", "Profile update refuses protected fields, invalid phones and a blank name", creates_accounts=True)
+def _(ctx: Context) -> None:
+    email = ctx.throwaway_email("054")
+    expect_status(
+        ctx.signup(
+            role="attendee",
+            full_name="Profile Check",
+            email=email,
+            organisation_name=None,
+            phone_number=None,
+        ),
+        201,
+    )
+    session = ctx.login("attendee", email=email, password=THROWAWAY_PASSWORD)
+    original = ctx.client.get(f"{ctx.api}/auth/me", headers=session.headers)
+    expect_status(original, 200)
+    original_profile = original.json()
+
+    response = ctx.client.patch(
+        f"{ctx.api}/auth/me",
+        headers=session.headers,
+        json={
+            "full_name": "Attempted Change",
+            "phone_number": "+65 9000 0002",
+            "email": "other@example.com",
+            "role": "event_organiser",
+            "organisation_name": "Other organisation",
+            "department": "Other department",
+            "id": "00000000-0000-4000-8000-000000000000",
+        },
+    )
+    expect_status(response, 422)
+
+    response = ctx.client.patch(
+        f"{ctx.api}/auth/me",
+        headers=session.headers,
+        json={"full_name": "Profile Check", "phone_number": "9123 456"},
+    )
+    expect_field_error(response, "phone_number", "Enter 8 digits, with an optional +65 country code.")
+
+    response = ctx.client.patch(
+        f"{ctx.api}/auth/me",
+        headers=session.headers,
+        json={"full_name": "   ", "phone_number": None},
+    )
+    expect_status(response, 422)
+    errors = response.json().get("detail", [])
+    expect(
+        any(error.get("loc") == ["body", "full_name"] for error in errors),
+        "blank name error was not attached to full_name",
+    )
+
+    response = ctx.client.get(f"{ctx.api}/auth/me", headers=session.headers)
+    expect_status(response, 200)
+    current = response.json()
+    for field in ("id", "email", "full_name", "role", "organisation_name", "department", "phone_number"):
+        expect(current[field] == original_profile[field], f"rejected update changed {field}")
+
+
 # DEFECTS D18: the backend once sent every database call over one shared HTTP/2
 # connection to Supabase. After about two minutes with no requests, Supabase
 # closed that connection, the client reused it anyway, and every request of the
@@ -570,6 +670,33 @@ def _(ctx: Context) -> None:
     expect_status(ctx.client.get(f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=session.headers), 200)
     switch("event_coordinator")
     expect_status(ctx.client.get(f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=session.headers), 403)
+
+
+# --- Registered events (SCRUM-56) -----------------------------------------
+
+@check("TC-REG-008", "The active Attendee can read their registrations; another active role is refused")
+def _(ctx: Context) -> None:
+    attendee_response = ctx.client.get(
+        f"{ctx.api}/registrations/me",
+        headers=ctx.shared("attendee").headers,
+    )
+    expect_status(attendee_response, 200)
+    registrations = attendee_response.json().get("registrations")
+    expect(isinstance(registrations, list), "response does not contain a registrations list")
+    for registration in registrations:
+        expect(
+            registration.get("status") in {"registered", "waitlisted"},
+            f"unexpected registration status {registration.get('status')!r}",
+        )
+        event = registration.get("event")
+        expect(isinstance(event, dict), "registration has no event details")
+        for field in ("id", "name", "starts_at", "ends_at", "event_timezone", "venues"):
+            expect(field in event, f"event details are missing {field}")
+    denied = ctx.client.get(
+        f"{ctx.api}/registrations/me",
+        headers=ctx.shared("event_coordinator").headers,
+    )
+    expect_status(denied, 403)
 
 
 # --- Coordinator dashboard (SCRUM-72) --------------------------------------
@@ -2756,7 +2883,7 @@ def _(ctx: Context) -> None:
     expect(stored["role"] == "event_organiser", f"profiles.role is {stored['role']!r}")
     expect(stored["roles"] == "event_organiser", f"user_roles holds {stored['roles']!r}")
     expect(stored["organisation_name"] == "SMU Events Club", "organisation not stored")
-    expect(stored["phone_number"] == "+65 9123 4567", "phone number not stored")
+    expect(stored["phone_number"] == "+6591234567", "phone number not stored in normalized form")
     expect(stored["confirmed"] is True, "email_confirmed_at is not set (ADR-0003)")
 
 

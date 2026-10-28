@@ -3,10 +3,13 @@ from fastapi import HTTPException, status
 
 from app.modules.registrations import repository
 from app.modules.registrations.schemas import (
+    AttendeeRegistration,
+    AttendeeRegistrationList,
     PublicEvent,
     PublicVenue,
     RegistrationAvailability,
     RegistrationResult,
+    RegisteredEvent,
 )
 
 
@@ -40,20 +43,7 @@ def public_directory() -> list[PublicEvent]:
 
 
 def _to_public_event(row: dict, now: datetime) -> PublicEvent:
-    spaces = row.get("event_space_requests") or []
-    confirmed_venues = []
-    primary_space_venues = []
-    for space in spaces:
-        approved = [
-            booking.get("venue")
-            for booking in space.get("venue_bookings") or []
-            if booking.get("status") == "approved" and booking.get("venue")
-        ]
-        confirmed_venues.extend(approved)
-        if space.get("is_primary"):
-            primary_space_venues.extend(approved)
-    selected_venues = primary_space_venues or confirmed_venues
-    venues = [PublicVenue(**venue) for venue in selected_venues]
+    venues = _attendee_facing_venues(row.get("event_space_requests"))
     venue_capacity = min((venue.capacity for venue in venues), default=None)
     organiser_capacity = row.get("registration_capacity")
     capacities = [value for value in (organiser_capacity, venue_capacity) if value is not None]
@@ -73,6 +63,50 @@ def _to_public_event(row: dict, now: datetime) -> PublicEvent:
         waitlist_enabled=row.get("waitlist_enabled", True),
         venues=venues,
     )
+
+
+def _attendee_facing_venues(spaces: list[dict] | None) -> list[PublicVenue]:
+    confirmed_venues = []
+    primary_venues = []
+    primary_is_set = False
+    for space in spaces or []:
+        approved = [
+            booking["venue"]
+            for booking in space.get("venue_bookings") or []
+            if booking.get("status") == "approved" and booking.get("venue")
+        ]
+        confirmed_venues.extend(approved)
+        if space.get("is_primary"):
+            primary_is_set = True
+            primary_venues.extend(approved)
+    selected = primary_venues if primary_is_set else confirmed_venues
+    return [PublicVenue(**venue) for venue in selected]
+
+
+def attendee_registrations(attendee_id: str) -> AttendeeRegistrationList:
+    rows = repository.list_attendee_registration_rows(attendee_id)
+    registrations = []
+    for row in rows:
+        event_row = row["event"]
+        event = RegisteredEvent(
+            id=event_row["id"],
+            name=event_row["name"],
+            description=event_row.get("description"),
+            starts_at=event_row["starts_at"],
+            ends_at=event_row["ends_at"],
+            event_timezone=event_row["event_timezone"],
+            status=event_row["status"],
+            venues=_attendee_facing_venues(event_row.get("event_space_requests")),
+        )
+        registrations.append(
+            AttendeeRegistration(
+                id=row["id"],
+                status=row["status"],
+                registered_at=row["registered_at"],
+                event=event,
+            )
+        )
+    return AttendeeRegistrationList(registrations=registrations)
 
 
 def public_event(event_id: str) -> PublicEvent:

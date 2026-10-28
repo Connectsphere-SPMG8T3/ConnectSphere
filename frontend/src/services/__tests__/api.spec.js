@@ -1,6 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { equipmentApi, eventsApi, notificationsApi, registrationsApi, venueBookingsApi } from "@/services/api";
+import { authApi, equipmentApi, eventsApi, notificationsApi, registrationsApi, venueBookingsApi } from "@/services/api";
+
+describe("SCRUM-92 profile update API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("patches only the current profile using the authenticated session", async () => {
+    const accessToken = "access-token";
+    const profile = { id: "user-1", full_name: "New Name", phone_number: null };
+    const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => profile });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      authApi.updateProfile(accessToken, { full_name: "New Name", phone_number: null }),
+    ).resolves.toEqual(profile);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/auth/me",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ full_name: "New Name", phone_number: null }),
+        headers: expect.objectContaining({ Authorization: `Bearer ${accessToken}` }),
+      }),
+    );
+  });
+});
 
 describe("Story 43 public registration API", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -21,6 +45,27 @@ describe("Story 43 public registration API", () => {
       ["http://localhost:8000/api/v1/public/events/event%2Fone", "GET", undefined],
       ["http://localhost:8000/api/v1/public/events/event%2Fone/registrations", "POST", "Bearer attendee-token"],
     ]);
+  });
+});
+
+describe("Story 56 attendee registrations API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("loads the signed-in attendee's registrations", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({ registrations: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(registrationsApi.myRegistrations("attendee-token")).resolves.toEqual({
+      registrations: [],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/registrations/me",
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 });
 
