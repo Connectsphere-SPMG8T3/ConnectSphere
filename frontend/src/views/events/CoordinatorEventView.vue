@@ -21,6 +21,7 @@ import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import { showToast } from "@/composables/useToast";
 import { canCancelEvent } from "@/features/events/cancellation";
 import { describeChanges } from "@/features/events/changeRequest";
+import { canRequestReassignment } from "@/features/events/reassignmentRequest";
 import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReviewStore } from "@/features/events/eventReviewStore";
 import { formatDecisionTime } from "@/features/venues/bookingDecision";
 import SafetyRejectedNotice from "@/components/venues/SafetyRejectedNotice.vue";
@@ -53,13 +54,18 @@ const approveChangeMessage = computed(() => {
     ? "The new details are applied and the organiser is notified. The event goes back to Planning and needs a new safety check."
     : "The new details are applied and the organiser is notified.";
 });
+// CR-106: asking a Lead to reassign this event.
+const isReassignmentOpen = ref(false);
 
 const event = computed(() => review.event);
+const showRequestReassignment = computed(() => canRequestReassignment(event.value));
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
 const showCancel = computed(() => canCancelEvent(event.value));
-const isReasonOpen = computed(() => isRejectCancellationOpen.value || isCancelOpen.value || isRejectChangeOpen.value);
+const isReasonOpen = computed(
+  () => isRejectCancellationOpen.value || isCancelOpen.value || isRejectChangeOpen.value || isReassignmentOpen.value,
+);
 // CR-97: with spaces, each space card shows its own booking; the panel keeps
 // rejections and the reason no venue can be requested yet.
 const venuePanel = computed(() => {
@@ -224,6 +230,16 @@ async function confirmRejectChange(reason) {
   }
 }
 
+async function confirmRequestReassignment(reason) {
+  try {
+    await review.requestReassignment(reason);
+    isReassignmentOpen.value = false;
+    showToast("Reassignment requested");
+  } catch {
+    // Kept open so the coordinator sees the error beside their reason.
+  }
+}
+
 async function confirmCancel(reason) {
   try {
     await review.cancelEvent(reason);
@@ -275,7 +291,7 @@ watch(
             <h1 class="mt-2 break-words text-4xl font-bold leading-tight sm:text-5xl">{{ event.name }}</h1>
           </div>
           <div
-            v-if="showApprove || showReject || showReturn || showCancel || event.status === 'planning'"
+            v-if="showApprove || showReject || showReturn || showCancel || showRequestReassignment || event.status === 'planning'"
             class="flex flex-wrap gap-3 lg:justify-end"
             data-testid="review-actions"
           >
@@ -322,6 +338,16 @@ watch(
               @click="review.error = null; isCancelOpen = true"
             >
               Cancel event
+            </BauhausButton>
+            <BauhausButton
+              v-if="showRequestReassignment"
+              size="sm"
+              variant="outline"
+              aria-label="Request reassignment"
+              :disabled="review.isActing"
+              @click="review.error = null; isReassignmentOpen = true"
+            >
+              Request reassignment
             </BauhausButton>
           </div>
         </div>
@@ -370,6 +396,18 @@ watch(
           <BauhausButton size="sm" variant="outline" aria-label="Reject cancellation" :disabled="review.isActing"
             @click="review.error = null; isRejectCancellationOpen = true">Reject cancellation</BauhausButton>
         </div>
+      </section>
+
+      <!-- CR-106: your own request to a Lead. It changes nothing until a Lead acts. -->
+      <section
+        v-if="event.open_reassignment_request"
+        data-testid="reassignment-request-banner"
+        class="mb-8 border-4 border-ink bg-canvas p-6 shadow-hard sm:p-8"
+      >
+        <h2 class="text-2xl font-bold">Reassignment requested</h2>
+        <p class="mt-4 text-sm font-bold">Your reason:</p>
+        <p class="mt-1 whitespace-pre-wrap font-medium" data-testid="reassignment-request-reason">{{ event.open_reassignment_request.reason }}</p>
+        <p class="mt-4 text-sm font-bold">You stay assigned until a Lead acts on your request.</p>
       </section>
 
       <!-- Story 32 shows the request; story 37 decides it. -->
@@ -732,6 +770,17 @@ watch(
       :error="isRejectChangeOpen ? review.error : null"
       @confirm="confirmRejectChange"
       @cancel="isRejectChangeOpen = false"
+    />
+    <CancellationReasonModal
+      :open="isReassignmentOpen"
+      title="Ask the Lead to reassign this event?"
+      message="The Lead is told and decides. You stay assigned until a Lead reassigns the event, and you can't hand it over yourself."
+      confirm-label="Send request"
+      confirm-aria-label="Send reassignment request"
+      :busy="review.isActing"
+      :error="isReassignmentOpen ? review.error : null"
+      @confirm="confirmRequestReassignment"
+      @cancel="isReassignmentOpen = false"
     />
     <CancellationReasonModal
       :open="isCancelOpen"

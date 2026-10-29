@@ -255,6 +255,13 @@ export const eventsApi = {
   requestCancellation(eventId, reason, token) {
     return request(`/events/${encodeURIComponent(eventId)}/cancellation-request`, { method: "POST", body: { reason }, token });
   },
+  // CR-106: the assigned coordinator asks the Lead to reassign; the Lead may decline with a reason.
+  requestReassignment(eventId, reason, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/reassignment-request`, { method: "POST", body: { reason }, token });
+  },
+  declineReassignment(eventId, reason, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/reassignment-request/decline`, { method: "POST", body: { reason }, token });
+  },
   // Story 32: `body` is {reason, version, event, spaces}, only the changed fields.
   requestChange(eventId, body, token) {
     return request(`/events/${encodeURIComponent(eventId)}/change-request`, { method: "POST", body, token });

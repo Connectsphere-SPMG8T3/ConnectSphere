@@ -29,6 +29,7 @@ from app.modules.events.schemas import (
     EventChangeRequest,
     EventReassignRequest,
     EventRejectRequest,
+    ReassignmentRequestCreate,
     EventResponse,
     EventResubmitRequest,
     EventReturnRequest,
@@ -211,6 +212,19 @@ def resubmit_event(event_id: UUID, body: EventResubmitRequest, current_user: Eve
 def request_cancellation(event_id: UUID, body: CancellationRequestCreate,
                          current_user: EventOrganiser) -> EventChangeRequest:
     return service.request_cancellation(str(event_id), current_user.id, current_user.full_name, body.reason)
+
+
+@router.post("/{event_id}/reassignment-request", response_model=EventChangeRequest,
+             status_code=status.HTTP_201_CREATED)
+def request_reassignment(event_id: UUID, body: ReassignmentRequestCreate,
+                         current_user: EventCoordinator) -> EventChangeRequest:
+    return service.request_reassignment(str(event_id), current_user.id, current_user.full_name, body.reason)
+
+
+@router.post("/{event_id}/reassignment-request/decline", response_model=EventChangeRequest)
+def decline_reassignment_request(event_id: UUID, body: ReassignmentRequestCreate,
+                                 current_user: EventCoordinatorLead) -> EventChangeRequest:
+    return service.decline_reassignment_request(str(event_id), current_user.id, body.reason)
 
 
 @router.post("/{event_id}/change-request", response_model=EventChangeRequest,

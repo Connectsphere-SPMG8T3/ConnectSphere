@@ -658,7 +658,7 @@ CR-98 introduces organiser-proposed event spaces before venue booking. A space r
   - LA-R6 and LA-R11 (minimal): a Lead-only `POST /events/{id}/reassign` through `reassign_event`, in the Lead's scope, to an account holding the coordinator role, with an `expected_version` check so a stale screen can't overwrite a newer assignment. It notifies the new coordinator, the previous coordinator and the organiser, never the Lead.
 - **Not built (story 81, SCRUM-12).**
   - ~~LA-R1 and LA-R4: a request still goes `draft → under_review` with no coordinator~~ — **built by SCRUM-12**, see the build notes below.
-  - The coordinator's "Request reassignment" action (LA-R6).
+  - ~~The coordinator's "Request reassignment" action (LA-R6).~~ — **built by CR-106**, see the CR-106 build notes below.
   - LA-R8: the refusal to deactivate a coordinator with active events (CR-101 AC6, QA3-22) is out of scope by decision.
   - ~~LA-R11's history ("who, when, from, to")~~ — **built by SCRUM-12** in `event_assignment_history`, see the SCRUM-12 build notes below. (Writing `event_status_history` was tried and rejected: readers treat every row there as a status transition.)
 
@@ -669,7 +669,18 @@ CR-98 introduces organiser-proposed event spaces before venue booking. A space r
 - **[Assumption]** "Active user" (AC2) means an account holding the Event Coordinator role that is not banned or deleted in Supabase Auth; the schema has no other active/inactive flag (§9 item 82).
 - AUTH-R7 / AC12: a database trigger on `user_roles` refuses a second role for a Lead and the Lead role for anyone holding another role. A Lead acting as Lead already gets 403 on approve, return, reject and send-for-safety-check (active-role guard), proved by tests.
 - **LA-R11 history.** A reassignment is recorded in `event_assignment_history` (Lead, previous and new coordinator, time), written by `reassign_event`, and shown in the event history merged with the status history (migration `20261020110000`). It stays out of `event_status_history` because a reassignment is not a status change. An assignment from the queue is already a status change (`submitted` → `under_review`), so it appears once, as that row. Built here at the developer's request; story 81 reuses it.
-- The coordinator-initiated "Request reassignment" remains story 81's.
+- The coordinator-initiated "Request reassignment" was built by CR-106, below.
+
+**CR-106 build notes (`feature/cr-106-request-reassignment`, migration `20261029120000_reassignment_requests.sql`).**
+- **The request (LA-R6).** The assigned coordinator, acting as coordinator, asks the Lead to reassign an active event (`under_review`, `returned`, `planning`, `safety_review`, `confirmed`, `preparation`: the statuses a Lead can reassign, Preparation included since CR-110, QA3-3, D73) with a reason (`POST /events/{id}/reassignment-request`). The request changes nothing on its own: the coordinator stays assigned until a Lead reassigns the event. A coordinator still cannot reassign or hand over directly; `/reassign` and `/assign` stay Lead-only, on the active role.
+- **At most one open request per event**, enforced by a partial unique index; a second one is refused with 409 until a Lead acts.
+- **Recipients.** The Lead whose scope holds the event (`events.assigned_by`, while that user still holds the Lead role) is notified; if no Lead does, every Lead is. The request appears on that Lead's dashboard row and event page.
+- **The Lead's response.** Either the Lead reassigns the event, which closes the request as reassigned in the same transaction (the previous coordinator, who asked, is already told by LA-R11's reassignment notice), or the Lead declines with a required reason (`POST /events/{id}/reassignment-request/decline`, Lead only, in scope). A decline notifies the coordinator and leaves the assignment unchanged; the coordinator may then ask again.
+- **History.** The request, the Lead's decline and who and when are recorded in the event history; a reassignment is already its own entry from SCRUM-12, so it is not repeated.
+- **Its own table.** Requests live in `event_reassignment_requests`, not in `event_change_requests`: that table allows one open request per event across kinds (CR-R14), and a coordinator asking to be moved must not block the organiser's change or cancellation request, or the reverse.
+- **[Team decision]** An open request is closed as superseded, with the reason "Closed because the event was <status>.", when the event leaves the statuses a Lead can reassign: it is rejected, cancelled or completed. Otherwise it could never be answered and would block a new one. The customer left the Lead's handling of a request to the team (QA3-39). Moving to Preparation does not close it: an event in Preparation is still reassignable (migration `20261101130000`; the first version of the rule closed it, before CR-110 made Preparation active).
+- **[Assumption]** The request and its history entries are the coordinator's. The organiser's event read and history show none of it, because the request is internal to the coordinator and the Lead; the customer said nothing either way.
+- **[Assumption]** The reason is capped at 1000 characters, like the other reasons (§9).
 
 **Acceptance criteria**
 - **Given** an organiser submits a request, **then** it is `submitted` and in the unassigned queue, no coordinator is set, and no coordinator is notified.
@@ -1213,6 +1224,7 @@ The delivery channel and delivery preferences are a team choice (QA-11, QA-39, Q
 | CoordinatorAssigned | Organiser; the assigned coordinator | QA3-43 |
 | CoordinatorReassigned | Organiser; new coordinator; previous coordinator (the Lead's action is recorded; other Leads not notified, LA-R11) | QA3-14, QA3-43 |
 | ReassignmentRequested | The Lead whose scope holds the event (every Lead if none) | QA3-12, LA-R6 |
+| ReassignmentDeclined | The coordinator who asked, with the Lead's reason (a reassignment instead sends CoordinatorReassigned to them) | LA-R6, CR-106 AC5 |
 | EventReturned / EventResubmitted | Organiser / coordinator | QA-22 |
 | EventApproved / EventRejected (with reason) | Organiser (+ venue staff and tech support if holds were freed) | W1 §6 |
 | VenueBookingRequested | Venue staff | W1 §6 |
@@ -1551,7 +1563,7 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 35. ~~**[Team decision]** Setup and turnaround: the venue holds defaults; Venue Staff set each booking's own figures for the event's needs while it is `held`, and they lock on approval (VC-R9). QA3-4 (written: no per-event adjustment) and M3 (meeting: set per event) disagree. We follow M3 because it is the later, more specific statement, and keep QA3-6's lock. Confirm with the customer.~~ **Reversed 2026-10-19 (CR-100):** the team follows the written answer QA3-4 instead; bookings keep the figures copied at request time and there is no per-booking edit (VC-R9). Item 74 asks the customer to settle QA3-4 against M3.
 36. **[Team decision]** A Lead's supervisory scope is the active events they assigned or last reassigned. Pre-Week 7 events with no Lead are visible to every Lead (LA-R2). QA3-33 asks for the scope to be recorded without defining it; QA3-41 defines what a Lead sees.
 37. **[Team decision]** Deactivating a coordinator who still holds active events is refused, naming the events (ACC-R10). This replaces CR-101 AC6's "return them to the unassigned queue", which QA3-22 rules out.
-38. **[Team decision]** A coordinator's reassignment request is an in-app action with a reason that notifies the responsible Lead (LA-R6). The customer said only that the coordinator "may ask" (QA3-12).
+38. **[Team decision]** A coordinator's reassignment request is an in-app action with a reason that notifies the responsible Lead (LA-R6). The customer said only that the coordinator "may ask" (QA3-12). Built by CR-106. Left to the team and answered there: a decline needs a reason; one request may be open per event; an event that can no longer be reassigned closes its request. **[Assumption]** the organiser does not see the request or its history entries, and the reason is capped at 1000 characters. Open for the customer: should the organiser be told that a coordinator asked to be moved?
 39. **[Assumption]** A single-venue event's only venue is its primary venue automatically (BR-R17).
 40. **[Team decision]** Registration stays open while the event is in `preparation` (RG-R1).
 41. ~~**[Open, M3]** Scope of a safety "request changes".~~ **Closed by team decision (SF-R3):** the event returns to `planning`, not `under_review`, and only the venue the finding concerns is reworked. For a single-venue event that is the whole event, which is how we read the meeting's "review phase".

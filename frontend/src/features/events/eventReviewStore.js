@@ -224,6 +224,31 @@ export const useEventReviewStore = defineStore("eventReview", {
       return this.event;
     },
 
+    // CR-106: the request answers the request, not the event, so read the event again for the
+    // open request and its history entry. The request stands if that fails.
+    async requestReassignment(reason) {
+      const auth = useAuthStore();
+      const eventId = this.event.id;
+      this.isActing = true;
+      this.error = null;
+      try {
+        await auth.withSession((token) => eventsApi.requestReassignment(eventId, reason.trim(), token));
+      } catch (error) {
+        this.error = error.message;
+        throw error;
+      } finally {
+        this.isActing = false;
+      }
+      try {
+        const event = await auth.withSession((token) => eventsApi.get(eventId, token));
+        if (this.historyEventId === eventId) this.event = event;
+        await this.loadHistory(eventId);
+      } catch {
+        // The request already went through; the page catches up on the next load.
+      }
+      return this.event;
+    },
+
     async returnForAmendment(message, flaggedFields) {
       return this.act((token) =>
         eventsApi.returnForAmendment(this.event.id, { message: message.trim(), flagged_fields: flaggedFields }, token),

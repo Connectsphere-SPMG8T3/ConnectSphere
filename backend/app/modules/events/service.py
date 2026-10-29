@@ -415,6 +415,49 @@ def request_cancellation(event_id: str, organiser_id: str, organiser_name: str, 
     return EventChangeRequest(**result["request"])
 
 
+def request_reassignment(event_id: str, coordinator_id: str, coordinator_name: str, reason: str) -> EventChangeRequest:
+    """CR-106: the assigned coordinator asks the Lead to reassign an active event. The
+    request changes nothing; only a Lead reassigns (81), which closes it."""
+    row = _assigned_event(event_id, coordinator_id)
+    if row["status"] not in ACTIVE_COORDINATOR_STATUSES:
+        raise EventConflictError(
+            f"Reassignment can't be requested for an event that is {row['status'].replace('_', ' ')}.")
+    result = repository.request_reassignment(
+        event_id, coordinator_id, reason, list(ACTIVE_COORDINATOR_STATUSES),
+        lead_message=f'{coordinator_name} asked to be reassigned from "{row["name"]}". Reason: {reason}',
+    )
+    outcome = result["outcome"]
+    if outcome == "not_found":
+        raise EventNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "already_open":
+        raise EventConflictError("A reassignment request is already open for this event.")
+    if outcome != "ok":
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    return EventChangeRequest(**result["request"])
+
+
+def decline_reassignment_request(event_id: str, lead_id: str, reason: str) -> EventChangeRequest:
+    """CR-106 AC5: a Lead whose scope holds the event declines the coordinator's open
+    reassignment request, with a reason. The coordinator stays assigned and is told."""
+    row = repository.get_lead_event(event_id)
+    if not row or row.get("status") == "draft":
+        raise EventNotFoundError()
+    if not lead_scope.in_lead_scope(row, lead_id, repository.list_lead_ids()):
+        raise EventNotInLeadScopeError()
+    result = repository.decline_reassignment_request(
+        event_id, lead_id, reason,
+        coordinator_message=f'Your request to be reassigned from "{row["name"]}" was declined. Reason: {reason}',
+    )
+    outcome = result["outcome"]
+    if outcome == "not_found":
+        raise EventNotFoundError()
+    if outcome == "no_open_request":
+        raise EventConflictError("There is no open reassignment request for this event.")
+    return EventChangeRequest(**result["request"])
+
+
 def _refuse_change_request(row: dict) -> None:
     """AC4 and CR-R15: a draft or returned request is edited directly, a closed event
     takes no requests, and nor does one that has started (as CR-R10)."""
@@ -959,6 +1002,10 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
     open_change = repository.get_open_change_request(event_id)
     if open_change:
         response.open_change_request = EventChangeRequest(**open_change)
+    if role == "event_coordinator":
+        open_reassignment = repository.get_open_reassignment_request(event_id)
+        if open_reassignment:
+            response.open_reassignment_request = _reassignment_request(open_reassignment)
     if role == "event_coordinator" and row["status"] == "planning":
         response.safety_readiness = _safety_readiness_for(row)
     if role == "event_coordinator" or row["status"] in _ORGANISER_ARRANGEMENT_STATUSES:
@@ -992,6 +1039,35 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
                     decision=latest.decision, reason_label=_SAFETY_LABELS[latest.decision], decided_at=latest.decided_at,
                 )
     return response
+
+
+def _reassignment_request(row: dict) -> EventChangeRequest:
+    """The reassignment request in the shape shared with the other requests. The table
+    holds only this kind, so `kind` is not a column."""
+    return EventChangeRequest(**{**row, "kind": "reassignment"})
+
+
+def _reassignment_history(requests: list[dict]) -> list[EventHistoryEntry]:
+    """CR-106 AC6: each request, and the Lead's decline or the automatic closing. A
+    reassignment is not an entry here: the assignment history already records it, with
+    the Lead and both coordinators. These are the coordinator's: the organiser's history
+    shows none of them [Assumption]."""
+    entries = [
+        EventHistoryEntry(kind="reassignment_requested", id=row["id"], actor=row["requested_by"],
+                          reason=row["reason"], at=row["requested_at"])
+        for row in requests
+    ]
+    entries += [
+        EventHistoryEntry(kind="reassignment_declined", id=f"{row['id']}:declined", actor=row["decided_by"],
+                          reason=row["decision_reason"], at=row["decided_at"])
+        for row in requests if row.get("status") == "declined"
+    ]
+    entries += [
+        EventHistoryEntry(kind="reassignment_request_closed", id=f"{row['id']}:closed", actor=row["decided_by"],
+                          reason=row["decision_reason"], at=row["decided_at"])
+        for row in requests if row.get("status") == "superseded"
+    ]
+    return entries
 
 
 def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
@@ -1053,6 +1129,8 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
                           changes=row["changes"], at=row["decided_at"])
         for row in changes if row.get("status") == "approved"
     ]
+    if role == "event_coordinator":
+        entries += _reassignment_history(repository.list_reassignment_requests(event_id))
     # Stable, so entries sharing a time keep the repository's order (the creation row last).
     entries.sort(key=lambda entry: entry.at, reverse=True)
     return EventHistoryResponse(entries=entries)
@@ -1234,8 +1312,9 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
     return CoordinatorDashboard(action_items=action_items, active_events=active_events, rejected_events=rejected_events)
 
 
-def _lead_event(row: dict) -> LeadEvent:
+def _lead_event(row: dict, open_request: dict | None = None) -> LeadEvent:
     return LeadEvent(
+        open_reassignment_request=_reassignment_request(open_request) if open_request else None,
         event_id=row["id"],
         event_name=row["name"],
         status=row["status"],
@@ -1263,6 +1342,9 @@ def lead_dashboard(lead_id: str) -> LeadDashboard:
         if lead_scope.in_lead_scope(row, lead_id, lead_ids)
     ]
     counts = lead_scope.active_counts(rows)
+    # CR-106 AC2: only an assigned event can have a coordinator asking to be moved.
+    open_requests = repository.list_open_reassignment_requests(
+        r["id"] for r in rows if r.get("coordinator_id") is not None)
     return LeadDashboard(
         unassigned=[
             _lead_event(r)
@@ -1271,7 +1353,7 @@ def lead_dashboard(lead_id: str) -> LeadDashboard:
                 key=lambda r: r.get("submitted_at") or "",
             )
         ],
-        active_events=[_lead_event(r) for r in rows if r.get("coordinator_id") is not None],
+        active_events=[_lead_event(r, open_requests.get(r["id"])) for r in rows if r.get("coordinator_id") is not None],
         coordinators=[
             LeadCoordinator(id=c["id"], full_name=c["full_name"], active_count=counts.get(c["id"], 0))
             for c in repository.list_coordinators()

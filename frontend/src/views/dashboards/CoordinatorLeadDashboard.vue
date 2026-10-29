@@ -222,6 +222,13 @@ const rowClasses =
                 {{ STATUS_LABELS[event.status] }} · {{ formatDate(event.starts_at) }}
               </p>
               <p class="mt-2 text-sm font-medium">Coordinator: {{ event.coordinator?.full_name ?? "Unassigned" }}</p>
+              <!-- CR-106 AC2: the coordinator asked to be reassigned. -->
+              <p
+                v-if="event.open_reassignment_request"
+                class="mt-3 inline-block border-2 border-ink bg-bauhaus-yellow px-2 py-1 text-xs font-bold"
+              >
+                Reassignment requested
+              </p>
             </RouterLink>
           </li>
         </ul>

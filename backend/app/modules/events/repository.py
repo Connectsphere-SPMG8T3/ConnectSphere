@@ -345,6 +345,45 @@ def request_event_cancellation(
     return response.data
 
 
+def request_reassignment(
+    event_id: str,
+    actor_id: str,
+    reason: str,
+    active_statuses: list[str],
+    lead_message: str,
+) -> dict:
+    """CR-106: run `public.request_reassignment` under the event's lock. It records the
+    coordinator's request and notifies the Lead whose scope holds the event, or every
+    Lead if none does, without touching the assignment. Answers `{outcome, request}`:
+    ok / not_found / not_assigned / status_changed / already_open."""
+    response = get_supabase_admin_client().rpc("request_reassignment", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_reason": reason,
+        "p_active_statuses": active_statuses,
+        "p_lead_message": lead_message,
+    }).execute()
+    return response.data
+
+
+def decline_reassignment_request(
+    event_id: str,
+    lead_id: str,
+    reason: str,
+    coordinator_message: str,
+) -> dict:
+    """CR-106 AC5: run `public.decline_reassignment_request` under the event's lock. It closes
+    the open request as declined with the Lead's reason and notifies the coordinator. Answers
+    `{outcome, request}`: ok / not_found / no_open_request."""
+    response = get_supabase_admin_client().rpc("decline_reassignment_request", {
+        "p_event_id": event_id,
+        "p_lead_id": lead_id,
+        "p_reason": reason,
+        "p_coordinator_message": coordinator_message,
+    }).execute()
+    return response.data
+
+
 def request_event_change(
     event_id: str,
     actor_id: str,
@@ -652,6 +691,58 @@ def _list_requests(event_id: str, kind: str, columns: str) -> list[dict]:
         .select(columns)
         .eq("event_id", event_id)
         .eq("kind", kind)
+        .order("requested_at", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
+_REASSIGNMENT_REQUESTED_BY = "requested_by:profiles!event_reassignment_requests_requested_by_fkey(id, full_name)"
+_REASSIGNMENT_DECIDED_BY = "decided_by:profiles!event_reassignment_requests_decided_by_fkey(id, full_name)"
+
+
+def get_open_reassignment_request(event_id: str) -> dict | None:
+    """CR-106: the event's open reassignment request, with who asked. At most one is
+    open per event (partial unique index)."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_reassignment_requests")
+        .select(f"id, status, reason, requested_at, {_REASSIGNMENT_REQUESTED_BY}")
+        .eq("event_id", event_id)
+        .eq("status", "open")
+        .maybe_single()
+        .execute()
+    )
+    return response.data if response else None
+
+
+def list_open_reassignment_requests(event_ids: Iterable[str]) -> dict[str, dict]:
+    """CR-106 AC2: `{event_id: request}` of each event's open reassignment request, for
+    the Lead's dashboard."""
+    ids = list(event_ids)
+    if not ids:
+        return {}
+    response = (
+        get_supabase_admin_client()
+        .table("event_reassignment_requests")
+        .select(f"id, event_id, status, reason, requested_at, {_REASSIGNMENT_REQUESTED_BY}")
+        .in_("event_id", ids)
+        .eq("status", "open")
+        .execute()
+    )
+    return {row["event_id"]: row for row in response.data or []}
+
+
+def list_reassignment_requests(event_id: str) -> list[dict]:
+    """CR-106 AC6: every reassignment request on the event, newest first, for its
+    history, with the Lead's decision. Who asked and who decided are embedded; each is
+    null if their profile was deleted."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_reassignment_requests")
+        .select("id, status, reason, requested_at, decision_reason, decided_at, "
+                f"{_REASSIGNMENT_REQUESTED_BY}, {_REASSIGNMENT_DECIDED_BY}")
+        .eq("event_id", event_id)
         .order("requested_at", desc=True)
         .execute()
     )
