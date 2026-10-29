@@ -73,6 +73,9 @@ function flagFor(key) {
 
 const earliestEventDate = computed(() => getEarliestEventDate(form.eventTimezone));
 const earliestRegistrationDateTime = computed(() => `${earliestEventDate.value}T00:00`);
+const latestWithdrawalDateTime = computed(() =>
+  form.date && form.startTime ? `${form.date}T${form.startTime}` : undefined,
+);
 const isLeaveModalOpen = ref(false);
 const isSubmitModalOpen = ref(false);
 const pendingRoute = ref(null);
@@ -141,6 +144,18 @@ function validateSubmission() {
   const errors = {};
   if (!form.name.trim()) errors.name = "Enter an event title.";
   else if (form.name.trim().length < 3) errors.name = "Use at least 3 characters.";
+  if (form.withdrawalClosesAt) {
+    if (!form.date || !form.startTime) {
+      errors.withdrawalClosesAt = "Set the event start time before the withdrawal cutoff.";
+    } else {
+      const [cutoffDate, cutoffTime] = form.withdrawalClosesAt.split("T");
+      if (cutoffDate && cutoffTime &&
+          Date.parse(toZonedIso(cutoffDate, cutoffTime, form.eventTimezone)) >
+            Date.parse(toZonedIso(form.date, form.startTime, form.eventTimezone))) {
+        errors.withdrawalClosesAt = "Withdrawal cutoff cannot be after the event start time.";
+      }
+    }
+  }
   if (intent.value === "submit") {
     if (!form.purpose.trim()) errors.purpose = "Enter the event purpose.";
     if (!form.date) errors.date = "Enter the event date.";
@@ -580,6 +595,17 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
             <BauhausInput v-model="form.registrationCapacity" label="Registration capacity" required type="number" :error="fieldErrors.registrationCapacity" :flag="flagFor('registrationCapacity')" />
             <BauhausInput v-model="form.registrationOpensAt" label="Registration opens" required type="datetime-local" :min="earliestRegistrationDateTime" :error="fieldErrors.registrationOpensAt" :flag="flagFor('registrationOpensAt')" />
             <BauhausInput v-model="form.registrationClosesAt" label="Registration closes" required type="datetime-local" :min="earliestRegistrationDateTime" :error="fieldErrors.registrationClosesAt" :flag="flagFor('registrationClosesAt')" />
+            <div v-if="!isChange">
+              <BauhausInput
+                v-model="form.withdrawalClosesAt"
+                label="Withdrawal cutoff"
+                type="datetime-local"
+                :max="latestWithdrawalDateTime"
+                :error="fieldErrors.withdrawalClosesAt"
+                :flag="flagFor('withdrawalClosesAt')"
+              />
+              <p class="mt-2 text-xs font-medium">Leave blank to use the event start time.</p>
+            </div>
           </div>
         </BauhausCard>
 

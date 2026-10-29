@@ -14,7 +14,9 @@ export function canRequestChange(event, now = new Date()) {
   return !event.starts_at || new Date(event.starts_at) > now;
 }
 
-const TIME_FIELDS = new Set(["starts_at", "ends_at", "registration_opens_at", "registration_closes_at"]);
+const TIME_FIELDS = new Set([
+  "starts_at", "ends_at", "registration_opens_at", "registration_closes_at",
+]);
 
 // Q10, mirroring the API: blank text is no text, lists are sets, times are instants.
 function comparable(field, value) {

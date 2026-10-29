@@ -313,6 +313,12 @@ export const registrationsApi = {
       token,
     });
   },
+  withdraw(eventId, token) {
+    return request(`/registrations/${encodeURIComponent(eventId)}/withdraw`, {
+      method: "POST",
+      token,
+    });
+  },
 };
 
 export const equipmentApi = {

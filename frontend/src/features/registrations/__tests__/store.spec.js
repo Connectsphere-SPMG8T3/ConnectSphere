@@ -6,6 +6,7 @@ const { registrationsApi, authStore } = vi.hoisted(() => ({
     directory: vi.fn(),
     event: vi.fn(),
     register: vi.fn(),
+    withdraw: vi.fn(),
     myRegistrations: vi.fn(),
   },
   authStore: { token: "attendee-token", withSession: vi.fn((callback) => callback("attendee-token")) },
@@ -110,6 +111,66 @@ describe("registration discovery store", () => {
     expect(store.myRegistrations).toEqual(registrations);
     expect(store.isLoadingMyRegistrations).toBe(false);
     expect(store.myRegistrationsError).toBeNull();
+  });
+
+  it("withdraws a registration, removes it from My events, and refreshes public availability", async () => {
+    const remaining = [{ id: "registration-2", event: { id: "event-2" } }];
+    registrationsApi.withdraw.mockResolvedValue({ status: "withdrawn" });
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations: remaining });
+    registrationsApi.directory.mockResolvedValue({ events: [{ id: "event-1", registered_count: 4 }] });
+    const store = useRegistrationStore();
+    store.myRegistrations = [
+      { id: "registration-1", event: { id: "event-1" } },
+      ...remaining,
+    ];
+
+    const result = await store.withdraw("event-1");
+
+    expect(registrationsApi.withdraw).toHaveBeenCalledWith("event-1", "attendee-token");
+    expect(registrationsApi.myRegistrations).toHaveBeenCalledWith("attendee-token");
+    expect(registrationsApi.directory).toHaveBeenCalledOnce();
+    expect(result).toEqual({ status: "withdrawn" });
+    expect(store.myRegistrations).toEqual(remaining);
+    expect(store.events).toEqual([{ id: "event-1", registered_count: 4 }]);
+  });
+
+  it("keeps a successful withdrawal when refreshing event data fails", async () => {
+    registrationsApi.withdraw.mockResolvedValue({ status: "withdrawn" });
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations: [] });
+    registrationsApi.directory.mockRejectedValue(new Error("Directory refresh failed."));
+    const store = useRegistrationStore();
+    store.myRegistrations = [{ id: "registration-1", event: { id: "event-1" } }];
+
+    const result = await store.withdraw("event-1");
+
+    expect(result).toEqual({ status: "withdrawn" });
+    expect(store.myRegistrations).toEqual([]);
+    expect(store.error).toContain("Registration was withdrawn, but updated event data could not be loaded:");
+    expect(store.error).toContain("Directory refresh failed.");
+  });
+
+  it("asks the attendee to refresh when withdrawal refresh fails without a message", async () => {
+    registrationsApi.withdraw.mockResolvedValue({ status: "withdrawn" });
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations: [] });
+    registrationsApi.directory.mockRejectedValue(new Error(""));
+    const store = useRegistrationStore();
+
+    await store.withdraw("event-1");
+
+    expect(store.error).toContain("Please refresh and try again.");
+  });
+
+  it("keeps the registration when the withdrawal request fails", async () => {
+    const registration = { id: "registration-1", event: { id: "event-1" } };
+    registrationsApi.withdraw.mockRejectedValue(new Error("The withdrawal cutoff has passed."));
+    const store = useRegistrationStore();
+    store.myRegistrations = [registration];
+
+    await expect(store.withdraw("event-1")).rejects.toThrow("The withdrawal cutoff has passed.");
+
+    expect(store.myRegistrations).toEqual([registration]);
+    expect(registrationsApi.myRegistrations).not.toHaveBeenCalled();
+    expect(registrationsApi.directory).not.toHaveBeenCalled();
   });
 
   it("surfaces a registration-list error and clears its loading state", async () => {

@@ -126,6 +126,7 @@ DB_SCRIPTS = [
     ("event_cancellation_request_checks.sql", "TC-CANCEL-007, 008 (story 84 database half: superseding, index, RLS)"),
     ("event_cancellation_decision_checks.sql", "TC-CANCEL-018 (story 115 database half: releases, notices, refusals)"),
     ("event_change_request_checks.sql", "TC-CHANGE-007 (story 32 database half: one open per event, closing, RLS)"),
+    ("registration_withdrawal_checks.sql", "TC-REG-018 (SCRUM-55 withdrawal, cutoff, re-registration and grants)"),
     ("change_request_decision_checks.sql", "TC-CHANGE-024 (story 37 database half: decisions, moves, marks, sends, re-review)"),
 ]
 
@@ -673,8 +674,7 @@ def _(ctx: Context) -> None:
     expect_status(ctx.client.get(f"{ctx.api}{VENUE_STAFF_DASHBOARD}", headers=session.headers), 403)
 
 
-# --- Registered events (SCRUM-56) -----------------------------------------
-
+# --- Registered events (SCRUM-55/56) --------------------------------------
 @check("TC-REG-008", "The active Attendee can read their registrations; another active role is refused")
 def _(ctx: Context) -> None:
     attendee_response = ctx.client.get(
@@ -698,6 +698,120 @@ def _(ctx: Context) -> None:
         headers=ctx.shared("event_coordinator").headers,
     )
     expect_status(denied, 403)
+
+
+@check(
+    "TC-REG-017",
+    "Withdrawal is caller-scoped, releases one place, and follows cutoff and re-registration settings",
+    creates_accounts=True,
+    needs_db=True,
+)
+def _(ctx: Context) -> None:
+    attendee = ctx.shared("attendee")
+    other_email = ctx.throwaway_email("55-other")
+    signup = ctx.signup(
+        role="attendee",
+        email=other_email,
+        full_name="Live Check Attendee",
+        organisation_name=None,
+    )
+    expect_status(signup, 201)
+    other_attendee = ctx.login("attendee", email=other_email, password=THROWAWAY_PASSWORD)
+    event_id = throwaway_event(
+        ctx,
+        "55-017",
+        "2031-08-12 09:00+08",
+        "2031-08-12 17:00+08",
+        status="confirmed",
+        assigned=False,
+    )
+    attendee_id = attendee.body["profile"]["id"]
+    db_query(
+        "update public.events set registration_enabled = true, registration_capacity = 2, "
+        "registration_opens_at = now() - interval '1 day', "
+        "registration_closes_at = '2031-08-12 17:00+08', re_registration_allowed = true, "
+        "withdrawal_closes_at = now() - interval '1 minute' "
+        f"where id = '{event_id}'"
+    )
+    [registration] = db_query(
+        "insert into public.event_registrations (event_id, attendee_id) "
+        f"values ('{event_id}', '{attendee_id}') returning id"
+    )
+    withdrawal_url = f"{ctx.api}/registrations/{event_id}/withdraw"
+
+    denied_role = ctx.client.post(
+        withdrawal_url,
+        headers=ctx.shared("event_organiser").headers,
+    )
+    expect_status(denied_role, 403)
+    wrong_attendee = ctx.client.post(withdrawal_url, headers=other_attendee.headers)
+    expect_status(wrong_attendee, 409)
+    expect_detail(wrong_attendee, "No active registration found.")
+
+    cutoff = ctx.client.post(withdrawal_url, headers=attendee.headers)
+    expect_status(cutoff, 409)
+    expect_detail(cutoff, "The withdrawal cutoff has passed.")
+    [unchanged] = db_query(
+        "select status, withdrawn_at from public.event_registrations "
+        f"where id = '{registration['id']}'"
+    )
+    expect(unchanged == {"status": "registered", "withdrawn_at": None}, f"cutoff refusal changed registration: {unchanged}")
+
+    db_query(
+        "update public.events set withdrawal_closes_at = starts_at "
+        f"where id = '{event_id}'"
+    )
+    withdrawn = ctx.client.post(withdrawal_url, headers=attendee.headers)
+    expect_status(withdrawn, 200)
+    expect(withdrawn.json() == {"registration_id": registration["id"], "status": "withdrawn"},
+           f"unexpected withdrawal response: {withdrawn.json()}")
+    [stored] = db_query(
+        "select status, withdrawn_at from public.event_registrations "
+        f"where id = '{registration['id']}'"
+    )
+    expect(stored["status"] == "withdrawn" and stored["withdrawn_at"], f"withdrawal was not persisted: {stored}")
+
+    public_event = ctx.client.get(f"{ctx.api}/public/events/{event_id}")
+    expect_status(public_event, 200)
+    expect(public_event.json()["registered_count"] == 0, "the released place is still counted")
+    my_events = ctx.client.get(f"{ctx.api}/registrations/me", headers=attendee.headers)
+    expect_status(my_events, 200)
+    expect(event_id not in {row["event"]["id"] for row in my_events.json()["registrations"]},
+           "the withdrawn event remains in My events")
+
+    repeated = ctx.client.post(withdrawal_url, headers=attendee.headers)
+    expect_status(repeated, 409)
+    expect_detail(repeated, "This registration has already been withdrawn.")
+    expect(ctx.client.get(f"{ctx.api}/public/events/{event_id}").json()["registered_count"] == 0,
+           "a repeated withdrawal changed the available-place count")
+
+    reregistered = ctx.client.post(
+        f"{ctx.api}/public/events/{event_id}/registrations",
+        headers=attendee.headers,
+    )
+    expect_status(reregistered, 201)
+    expect(reregistered.json()["status"] == "registered", f"unexpected re-registration: {reregistered.json()}")
+    expect(ctx.client.get(f"{ctx.api}/public/events/{event_id}").json()["registered_count"] == 1,
+           "re-registration did not consume a place")
+
+    second_withdrawal = ctx.client.post(withdrawal_url, headers=attendee.headers)
+    expect_status(second_withdrawal, 200)
+    db_query(f"update public.events set re_registration_allowed = false where id = '{event_id}'")
+    refused = ctx.client.post(
+        f"{ctx.api}/public/events/{event_id}/registrations",
+        headers=attendee.headers,
+    )
+    expect_status(refused, 409)
+    expect_detail(refused, "Re-registration is not allowed for this event.")
+    [final] = db_query(
+        "select r.status, r.withdrawn_at, "
+        "(select count(*) from public.event_registrations active "
+        "where active.event_id = r.event_id and active.status = 'registered') as registered_count "
+        "from public.event_registrations r "
+        f"where r.id = '{registration['id']}'"
+    )
+    expect(final["status"] == "withdrawn" and final["withdrawn_at"] and int(final["registered_count"]) == 0,
+           f"disabled re-registration changed the withdrawn registration: {final}")
 
 
 # --- Coordinator dashboard (SCRUM-72) --------------------------------------

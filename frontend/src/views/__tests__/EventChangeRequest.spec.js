@@ -93,9 +93,28 @@ describe("EventRequestView change mode (story 32)", () => {
     expect(buttonByText(el, "Send change request").disabled).toBe(true);
   });
 
+  it("does not offer withdrawal cutoff changes in change-request mode", async () => {
+    const event = plannedEvent({
+      registration_enabled: true,
+      registration_capacity: 80,
+      registration_opens_at: "2026-11-01T01:00:00Z",
+      registration_closes_at: "2026-11-30T01:00:00Z",
+      withdrawal_closes_at: "2026-12-01T01:30:00Z",
+    });
+    const { el } = await mountLoaded(event);
+
+    expect(labelled(el, "Withdrawal cutoff")).toBeUndefined();
+  });
+
   it("sends only the changed fields with the reason and the version it was filled in against", async () => {
     eventsApi.requestChange.mockResolvedValue({ id: "r1", kind: "change", status: "open" });
-    const { el, router } = await mountLoaded();
+    const { el, router } = await mountLoaded(plannedEvent({
+      registration_enabled: true,
+      registration_capacity: 80,
+      registration_opens_at: "2026-11-01T01:00:00Z",
+      registration_closes_at: "2026-11-30T01:00:00Z",
+      withdrawal_closes_at: "2026-12-01T01:30:00Z",
+    }));
 
     await type(controlFor(el, "Expected attendance"), "120");
     await type(controlFor(el, "Expected pax"), "120");

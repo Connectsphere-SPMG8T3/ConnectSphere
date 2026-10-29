@@ -17,6 +17,7 @@ export const EVENT_FIELD_LABELS = [
   { value: "registration_capacity", label: "Registration capacity" },
   { value: "registration_opens_at", label: "Registration opens" },
   { value: "registration_closes_at", label: "Registration closes" },
+  { value: "withdrawal_closes_at", label: "Withdrawal cutoff" },
   { value: "re_registration_allowed", label: "Re-registration after withdrawal" },
   { value: "waitlist_enabled", label: "Waitlist when full" },
 ];
@@ -44,6 +45,7 @@ const FORM_KEYS_BY_FIELD = {
   registration_capacity: ["registrationCapacity"],
   registration_opens_at: ["registrationOpensAt"],
   registration_closes_at: ["registrationClosesAt"],
+  withdrawal_closes_at: ["withdrawalClosesAt"],
   re_registration_allowed: ["reRegistrationAllowed"],
   waitlist_enabled: ["waitlistEnabled"],
 };

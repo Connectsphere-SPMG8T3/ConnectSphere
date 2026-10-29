@@ -3455,8 +3455,6 @@ Enabler on `chore/block-affected-wording`, no PBI. Venue staff found the Block v
 
 Tests first: four new BlockVenueModal cases, two new DeactivateVenueModal cases and a `countBookings` case failed on the old wording, then passed. Five existing assertions that quoted the old text were changed for the deliberate wording change (named in `326d505`'s message); the e2e TC-VENUE-097 now expects the singular already-flagged sentence, since it deactivates over one flagged booking. Frontend: 1,658 tests pass, the build is clean, every new line is covered (DeactivateVenueModal's one uncovered branch, the early `return` in `submit`, predates this change).
 
-Live runs: [API/database](test-cases/runs/2026-10-25-2243-api-db-02dc0e3.md) 201/205, with all seven block checks passing; the four failures (approve, reject, equipment reservation and availability SQL checks) are on `main` and logged as D67. [Full browser run](test-cases/runs/2026-10-25-2311-e2e-02dc0e3.md) 93/98: TC-RBAC-005, TC-TSD-017 and the sign-up checks fail on `main` (D68), and TC-BLOCK-014's `fetch failed` was traced to a reused connection after those sign-up failures, reproduced and recorded under D68. Targeted recorded runs then passed: [block](test-cases/runs/2026-10-25-2321-e2e-02dc0e3.md) 3/3 and, with the final code, [block and deactivation](test-cases/runs/2026-10-25-2353-e2e-02dc0e3.md) 5/5. The developer's [manual pass](test-cases/runs/2026-10-26-0055-manual-326d505.md) (TC-BLOCK-017/018, TC-VENUE-071/098) passed. `venues.md` has two cases numbered TC-VENUE-071 (deactivate dialog and a re-review case); not renumbered here. The defects were first numbered D63 and D64 on this branch (as `326d505`'s message says) and renumbered on merging main, where SCRUM-56 had taken those numbers.
-
 ### 4.102. Story 37 — Review and process event change requests
 
 On `feature/scrum-37-review-change-requests`, 2026-10-25, from `main` after PR #107 (story 32). PBI 37 (Event change request). The design was grilled with the developer before any code (Q1–Q24 and two follow-ups, recorded in REQUIREMENTS §6.19 CR-R23–CR-R32 and §9 items 100–103).
@@ -3492,8 +3490,68 @@ Results: backend 2,283 passed and frontend 1,675 passed, with every added line c
 - Manual pass [TC-CHANGE-026–028](test-cases/runs/2026-10-26-0130-manual-53debf1.md) passed in the developer's browser, on their own event and a throwaway tech support event created through the real flow and deleted afterwards. It found **D69**: the venue staff dashboard's In re-review tile led nowhere (built in SCRUM-70, before anything was ever under re-review); it now opens the requests page on that status. A first attempt found no re-review because the bookings were still held, the designed behaviour (CR-R27), and the developer confirmed a held booking needs no venue staff notice. After the pass the developer asked for the organiser's approval notice to add "Your coordinator will confirm the arrangements they affect." and for "told" to read "notified".
 
 **Not verified.** That final wording in the browser (unit and API tests cover it). The developer also asked whether venue staff need their own In re-review tile when tech support's Active requests counts re-review lines; REQUIREMENTS §6.21 specifies the two dashboards that way, so it is unchanged here.
+  
+### 4.103. 72-R — acceptance criteria traced to existing tests
 
-### 4.103. SCRUM-44 — Modify/remove equipment requirements
+On `chore/72r-traceability`, branched from `main` at `e728617`, 2026-10-27. The 72-R backlog row could not be read through the Sheets connector; the developer confirmed the text quoted in §4.82 (read 2026-10-21) is current. The developer chose to close 72-R by tracing its criteria to tests that already exist, without new tests or code. The earlier unmerged branch `feature/scrum-72r-coordinator-dashboard-assigned-alerts` (`6d2a726`, new tests from 2026-10-20 whose case IDs clash with the kanban rework) was left as it is.
+
+**How it maps to the ticket.**
+- AC1 [W7 CR-05]: `events.service.coordinator_dashboard` reads only `repository.list_coordinator_events(coordinator_id, …)`, which filters on the caller's `coordinator_id`; unassigned events are the Lead's queue (§6.5). Covered by TC-DASH-013, TC-DASH-015 and pytest `TestScope`, `TestRepositoryQueries`, `TestUnassignedEvents`.
+- AC2 [W7 CR-02]: `venues_service.affected_event_ids` turns an Affected booking into a `needs_alternative_venue` item and a `venue_affected` flag, shown as a red board card with that badge. Covered by TC-BOOK-048 (browser, real data), TC-DASH-026 and three `TestActionItems` tests.
+- AC3: the original 72 rows in the traceability table, and the suites below. The PO still has to confirm the AC1 reading recorded in §4.82.
+
+**Changed.** Docs only: `test-cases/dashboards.md` traceability (72-R rows and a known-gap note), `IMPLEMENTATION_MAP` SCRUM-72 row and "Last updated".
+
+**Verified.** Backend `pytest`: 2,167 passed. Frontend `vitest`: all 113 files passed with `--maxWorkers=2`. A first run made while the backend suite was running at the same time had 5 failures; they did not recur on the bounded rerun, the same load timeouts §4.100 saw.
+
+**Not verified.** No live checks or manual pass: nothing changed that crosses an integration boundary or that anyone sees. Known gap: that another coordinator's or an unassigned event, or another coordinator's Affected booking, stays off the dashboard is proven by the query filter in pytest, not by a real-data check.
+
+  
+### 4.104. SCRUM-55 — Withdraw Registration
+
+| Field | Value |
+|---|---|
+| ID | `SCRUM-55` |
+| Title | Withdraw Registration |
+| Type | US: Core feature |
+| Epic | Attendee registration |
+| Persona | Attendee |
+| Estimate | 1 point (confirmed before organiser cutoff configuration was added) |
+| Status | Implemented on `feature/scrum-55-withdraw-registration`; live API and rollback checks pass; recorded Playwright E2E run remains pending |
+
+**User story (developer-provided):**
+
+> Withdraw from an event I've registered for.
+
+**Benefit (developer-provided):**
+
+> My spot becomes available to someone else.
+
+**Acceptance criteria (developer-provided revised wording):**
+
+> AC1. Given I’m acting as an Attendee and have my own current registered event, when I open My registered events before the configured cutoff, then I can withdraw from it. Other roles and attendees cannot withdraw that registration, and withdrawal is unavailable at or after the event start.
+>
+> AC2. Given I’m eligible to withdraw, when my withdrawal succeeds, then my registration is marked withdrawn and removed from My registered events, the available-place count updates immediately, and I receive a withdrawal confirmation. A failed or repeated request does not release another place.
+>
+> AC3. Given I withdrew from an event, when I try to register again, then I can register if the event allows re-registration and normal registration and capacity rules are met; otherwise, re-registration is refused.
+
+#### How the implementation maps to the ticket
+
+The configured cutoff was added within SCRUM-55 at the developer's direction; a null cutoff means event start. The user decided to keep withdrawal invitations out of scope for this story (Story 86 owns waitlist invitations and acceptance). Because the coordinator's post-submission change-approval contract does not update the cutoff, the field is available on draft and returned requests but excluded from change requests.
+
+What was actually built:
+
+1. `POST /registrations/{event_id}/withdraw` derives the attendee from the verified session, requires the active Attendee role, and calls the service-role-only `withdraw_registration` RPC. The RPC serializes with registration under the event-row lock, enforces the cutoff/start boundary, and releases a registration only once.
+2. Organisers can configure `withdrawal_closes_at` in the event timezone on drafts and returned requests. The schema constraint rejects cutoffs after event start.
+3. Attendees can confirm withdrawal from registered-event details. Success refreshes the caller's registrations and public availability; waitlist invitations are not sent.
+4. The post-submission change-request form hides the cutoff and the API rejects attempts to change it through that path.
+
+**Verification.** Full backend and frontend automated suites and the production build passed during implementation. The withdrawal migration was applied to the linked Supabase project on 2026-10-26. Recorded live checks TC-REG-017 and TC-REG-018 passed (combined evidence: [API/database run](test-cases/runs/2026-10-27-2145-api-db-0af4d3d.md)); developer-reported manual TC-REG-019 passed ([manual run](test-cases/runs/2026-10-26-1945-manual-0af4d3d.md)). Linked database advisors were checked; no finding names the new cutoff column or withdrawal RPC. A pre-existing unindexed `event_registrations.attendee_id` foreign key was reported and left unchanged.
+
+**Not verified / remaining workflow.** The recorded Playwright E2E suite remains to be run. The local Supabase database was not checked because Docker is unavailable. The 1-point estimate should be reviewed with the team against the added cutoff configuration. The team backlog sheet was not edited; PR screenshots, commit/push, teammate review, PO acceptance, merge, and sprint DoD updates remain developer-owned.
+Live runs: [API/database](test-cases/runs/2026-10-25-2243-api-db-02dc0e3.md) 201/205, with all seven block checks passing; the four failures (approve, reject, equipment reservation and availability SQL checks) are on `main` and logged as D67. [Full browser run](test-cases/runs/2026-10-25-2311-e2e-02dc0e3.md) 93/98: TC-RBAC-005, TC-TSD-017 and the sign-up checks fail on `main` (D68), and TC-BLOCK-014's `fetch failed` was traced to a reused connection after those sign-up failures, reproduced and recorded under D68. Targeted recorded runs then passed: [block](test-cases/runs/2026-10-25-2321-e2e-02dc0e3.md) 3/3 and, with the final code, [block and deactivation](test-cases/runs/2026-10-25-2353-e2e-02dc0e3.md) 5/5. The developer's [manual pass](test-cases/runs/2026-10-26-0055-manual-326d505.md) (TC-BLOCK-017/018, TC-VENUE-071/098) passed. `venues.md` has two cases numbered TC-VENUE-071 (deactivate dialog and a re-review case); not renumbered here. The defects were first numbered D63 and D64 on this branch (as `326d505`'s message says) and renumbered on merging main, where SCRUM-56 had taken those numbers.
+
+### 4.105. SCRUM-44 — Modify/remove equipment requirements
 
 On `feature/scrum-44-modify-equipment-requirements`, 2026-10-26, **stacked on story 37's branch** (`origin/feature/scrum-37-review-change-requests`), because 37's live migration adds the Needs re-review marker on equipment lines and the history actions this story extends, and edits the same panel, store and service. PBI 44 (backlog row 44, AC1–AC8; estimate 1, Sprint 4). Planned in plan mode with the developer, who decided two things: a removed line is **kept as `released`, never deleted** (a deleted line's history rows lose their name, and safety decisions name lines, D53), and the coordinator's panel shows the equipment history too.
 
@@ -3514,4 +3572,4 @@ On `feature/scrum-44-modify-equipment-requirements`, 2026-10-26, **stacked on st
 
 **D70 follow-up (2026-10-27).** In the manual pass (TC-EQR-057) the developer found Technical Support's line card saying "The event's time changed and this no longer fits" for a line the coordinator had edited: the card assumed every re-review came from a time change. Failing tests first, then: history entries carry `request_id`, `reReviewCause`/`reReviewText` in `technical.js` find and word each line's reason, `EquipmentLineArrangement` takes it as `reReviewReason`, and story 37's What changed box only shows for a re-review line a coordinator's edit didn't cause. Two existing assertions changed for this decided fix: `test_the_view_carries_lines_notes_tick_status_and_history` (the history entry now includes `request_id`) and `EquipmentLineArrangement.spec.js`'s flagged-line case (the time-change text now comes from the page). Backend 2,384 and frontend 1,760 passed, build clean; browser TC-EQR-058 added.
 
-**Manual pass (2026-10-27).** The developer's pass of TC-EQR-056 and TC-EQR-057 [passed](test-cases/runs/2026-10-27-1905-manual-84fa8d9.md), TC-EQR-057 after the D70 fix. Remaining: the PR (after story 37 merges), review and PO acceptance.
+**Manual pass (2026-10-27).** The developer's pass of TC-EQR-056 and TC-EQR-057 [passed](test-cases/runs/2026-10-27-1905-manual-84fa8d9.md), TC-EQR-057 after the D70 fix. Remaining: the PR (story 37 has merged, PR #115), review and PO acceptance.
