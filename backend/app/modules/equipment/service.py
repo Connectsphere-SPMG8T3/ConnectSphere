@@ -151,7 +151,8 @@ def equipment_readiness_by_event(event_ids: Iterable[str]) -> dict[str, Readines
     (SCRUM-24 AC11). Events without lines are Not required."""
     statuses: dict[str, list[str]] = defaultdict(list)
     for row in repository.list_line_statuses(event_ids):
-        statuses[row["event_id"]].append(row["status"])
+        # Story 37 Q14: a line an approved time change left short isn't ready, whatever its status.
+        statuses[row["event_id"]].append("pending" if row.get("needs_re_review_since") else row["status"])
     return {event_id: rules.equipment_readiness(statuses.get(event_id, [])) for event_id in event_ids}
 
 
@@ -207,6 +208,7 @@ def _line_fields(row: dict, equipment_name: str, requester: dict | None) -> dict
         "status": row["status"],
         "technical_notes": row.get("technical_notes"),
         "not_available_reason": row.get("not_available_reason"),
+        "needs_re_review_reason": row.get("needs_re_review_reason"),
         "requested_by": requester,
         "created_at": row["created_at"],
     }
@@ -413,6 +415,42 @@ def set_note(line_id: str, actor_id: str, note: str | None) -> LineActionRespons
     return LineActionResponse(line_id=line_id, status=line["status"])
 
 
+def shortfalls(event_id: str, starts_at: datetime, ends_at: datetime) -> list[dict]:
+    """Story 37 preview: the reserved lines a new time would leave short, as
+    `{line_id, label, needed, free}`. A line already marked or under re-review is
+    with the coordinator or technical support already, so it isn't listed."""
+    short = []
+    for line in repository.list_event_requests(event_id):
+        if line["status"] != "reserved" or line.get("needs_re_review_since"):
+            continue
+        free = repository.line_free_quantity(line["id"], line["equipment_id"], starts_at, ends_at)
+        if free < line["quantity"]:
+            name = (_one(line.get("equipment")) or {}).get("name")
+            short.append({"line_id": line["id"], "label": rules.line_label(line["quantity"], name),
+                          "needed": line["quantity"], "free": free})
+    return short
+
+
+def send_line_for_re_review(line_id: str, coordinator_id: str, note: str | None) -> None:
+    """Story 37 AC6, Q20: the assigned coordinator sends a line an approved time change
+    left short to technical support. It keeps its reservation until they decide."""
+    line = _line(line_id)
+    name = events_service.names_by_id([line["event_id"]]).get(line["event_id"], "an event")
+    message = f'Equipment for "{name}" needs re-review after an approved change.'
+    if note:
+        message += f" Note: {note}"
+    outcome = repository.send_line_for_re_review(line_id, coordinator_id, note, message)["outcome"]
+    if outcome == "not_found":
+        raise EquipmentLineNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "status_changed":
+        raise EquipmentArrangementConflictError(
+            "Arrangements can be sent for re-review only while the event is in Planning.")
+    if outcome != "ok":
+        raise EquipmentArrangementConflictError("This equipment line doesn't need re-review.")
+
+
 @_equipment_service_available
 def set_exit_confirmation(event_id: str, actor_id: str, confirmed: bool) -> None:
     """AC10: tick or untick "Equipment does not block exits or walkways"."""
@@ -423,10 +461,12 @@ def set_exit_confirmation(event_id: str, actor_id: str, confirmed: bool) -> None
 
 @_equipment_service_available
 def recheck_event(event_id: str, actor_id: str | None = None) -> int:
-    """AC7, for story 37 to call after an event's date or time changes.
+    """AC7: re-check the event's reservations after its date or time changes.
 
-    Each reservation moves to the new window; a line that no longer fits goes to
-    re-review and keeps its reservation. Returns how many lines were flagged."""
+    Each reservation moves to the new window; a reserved line that no longer fits
+    keeps its reservation and is marked Needs re-review, for the coordinator to send
+    to technical support (story 37 Q14). Story 37's approval runs the same database
+    function inside its own transaction. Returns how many lines were marked."""
     outcome, flagged, left_ready = repository.recheck_event(event_id, actor_id)
     if outcome != "ok":
         return 0
@@ -466,6 +506,7 @@ def technical_view(event_id: str) -> TechnicalEventResponse:
     row = repository.get_event_technical(event_id)
     if not row or row["status"] == "draft":
         raise events_service.EventNotFoundError()
+    lines = [EquipmentRequestLine(**_embedded_line_fields(line)) for line in repository.list_event_requests(event_id)]
     return TechnicalEventResponse(
         event=TechnicalEvent(
             id=row["id"], name=row["name"], status=row["status"],
@@ -474,8 +515,10 @@ def technical_view(event_id: str) -> TechnicalEventResponse:
         ),
         technical_status=row["technical_readiness"],
         exit_confirmation=exit_confirmation(event_id, row),
-        lines=[EquipmentRequestLine(**_embedded_line_fields(line)) for line in repository.list_event_requests(event_id)],
+        lines=lines,
         history=[_history_entry(entry) for entry in repository.list_technical_history(event_id)],
+        re_review_changes=(events_service.latest_approved_change(event_id)
+                           if any(line.status == "re_review" for line in lines) else None),
     )
 
 

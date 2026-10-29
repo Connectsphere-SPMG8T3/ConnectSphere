@@ -34,6 +34,8 @@ async function fillValid() {
 
 const button = (label) => document.querySelector(`button[aria-label="${label}"]`);
 const text = () => document.body.textContent;
+// The text with its template line breaks collapsed, for whole-sentence checks.
+const said = () => text().replace(/\s+/g, " ");
 
 const BOOKING = {
   booking_id: "d-1",
@@ -113,7 +115,7 @@ describe("BlockVenueModal (SCRUM-51)", () => {
     props.affected = [BOOKING];
     await nextTick();
     expect(text()).toContain("Partner Summit");
-    expect(text()).toContain("flagged Affected");
+    expect(said()).toContain("This block overlaps 1 booking");
     expect(button("Block venue")).toBeNull();
     button("Block anyway").click();
     expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ confirm: true }));
@@ -128,6 +130,40 @@ describe("BlockVenueModal (SCRUM-51)", () => {
     expect(document.querySelector('input[aria-label="Block start"]')).toBeNull();
     button("Done").click();
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  // The preview and the saved list say what happens to the bookings in plain
+  // English, counted, in the singular for one booking.
+  it("warns before confirming that one booking will be marked Affected, not cancelled", async () => {
+    await mountModal({ affected: [BOOKING] });
+    expect(said()).toContain("This block overlaps 1 booking");
+    expect(said()).toContain(
+      "If you go ahead, it will be marked Affected and its coordinator told so they can find another venue. It will not be cancelled.",
+    );
+  });
+
+  it("warns before confirming that several bookings will be marked Affected, not cancelled", async () => {
+    await mountModal({ affected: [BOOKING, { ...BOOKING, booking_id: "d-2" }] });
+    expect(said()).toContain("This block overlaps 2 bookings");
+    expect(said()).toContain(
+      "If you go ahead, each one will be marked Affected and its coordinator told so they can find another venue. No booking will be cancelled.",
+    );
+  });
+
+  it("after saving, says the one booking is now Affected and was not cancelled", async () => {
+    await mountModal({ result: { block: { id: "blk-1" }, affected: [BOOKING] } });
+    expect(said()).toContain("1 booking affected");
+    expect(said()).toContain(
+      "The booking below is now marked Affected, and its coordinator has been notified. It was not cancelled.",
+    );
+  });
+
+  it("after saving, says the bookings are now Affected and none was cancelled", async () => {
+    await mountModal({ result: { block: { id: "blk-1" }, affected: [BOOKING, { ...BOOKING, booking_id: "d-2" }] } });
+    expect(said()).toContain("2 bookings affected");
+    expect(said()).toContain(
+      "Each booking below is now marked Affected, and its coordinator has been notified. None of them was cancelled.",
+    );
   });
 
   it("says so when the saved block affected no bookings", async () => {

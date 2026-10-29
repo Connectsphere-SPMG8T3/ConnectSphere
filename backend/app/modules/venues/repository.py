@@ -504,18 +504,43 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
 
 
 def list_booking_statuses(event_ids: Iterable[str]) -> list[dict]:
-    """`{event_id, event_space_request_id, status, flag}` for every booking of these events, whatever its status."""
+    """`{event_id, event_space_request_id, status, flag, needs_re_review_since}` for every
+    booking of these events, whatever its status."""
     ids = list(event_ids)
     if not ids:
         return []
     response = (
         get_supabase_admin_client()
         .table("venue_bookings")
-        .select("event_id, event_space_request_id, status, flag")
+        .select("event_id, event_space_request_id, status, flag, needs_re_review_since")
         .in_("event_id", ids)
         .execute()
     )
     return response.data or []
+
+
+def list_change_bookings(event_id: str) -> list[dict]:
+    """Story 37: `{id, event_space_request_id, status, venue_id, flag, flag_reason}` for
+    the event's bookings that occupy their venue, which an approved change may touch."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_bookings")
+        .select("id, event_space_request_id, status, venue_id, flag, flag_reason, setup_minutes, turnaround_minutes")
+        .eq("event_id", event_id)
+        .in_("status", ["held", "approved", "re_review"])
+        .order("created_at")
+        .execute()
+    )
+    return response.data or []
+
+
+def send_booking_for_re_review(booking_id: str, actor_id: str, note: str | None, staff_message: str) -> dict:
+    """Story 37 AC6: run `public.send_booking_for_re_review`. Answers `{outcome}`: ok /
+    not_found / not_assigned / status_changed / not_marked."""
+    response = get_supabase_admin_client().rpc("send_booking_for_re_review", {
+        "p_booking_id": booking_id, "p_actor_id": actor_id, "p_note": note, "p_staff_message": staff_message,
+    }).execute()
+    return response.data
 
 
 def get_replaceable_booking(booking_id: str) -> dict | None:
@@ -678,6 +703,40 @@ def get_booking(booking_id: str) -> dict | None:
     }
 
 
+def first_conflict(period: Period, venue_id: str, exclude_booking_id: str) -> dict | None:
+    """Story 37: `{kind, event_name, block_reason}` of what `public.venue_conflicts` finds
+    in `period` (an occupied window) at the venue, leaving one booking out: a block
+    first, then the earliest booking, as the request functions name a clash. None
+    when the window is free."""
+    response = get_supabase_admin_client().rpc("venue_conflicts", {
+        "p_period": _range_literal(period), "p_venue_id": venue_id, "p_exclude_booking_id": exclude_booking_id,
+    }).execute()
+    rows = sorted(response.data or [], key=lambda row: (row["kind"] != "block", row["occupied_period"]))
+    if not rows:
+        return None
+    return {"kind": rows[0]["kind"], "event_name": rows[0].get("event_name"),
+            "block_reason": rows[0].get("block_reason")}
+
+
+def get_last_move(booking_id: str) -> dict | None:
+    """Story 37 Q19: `{old_period, new_period}` of the latest move an approved change
+    made to the booking, or None if no change moved it."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_booking_history")
+        .select("old_period, new_period")
+        .eq("booking_id", booking_id)
+        .eq("action", "moved_by_change")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    if not rows:
+        return None
+    return {"old_period": _parse_range(rows[0]["old_period"]), "new_period": _parse_range(rows[0]["new_period"])}
+
+
 def list_booking_history(booking_id: str) -> list[dict]:
     """CR-99's history of one booking, oldest first, with each actor's name.
     A null actor is the system (the expiry job)."""
@@ -784,7 +843,7 @@ def list_active_bookings(event_id: str) -> list[dict]:
         response = (
             get_supabase_admin_client()
             .table("venue_bookings")
-            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, flag, flag_reason, replaces_booking_id, venues!venue_bookings_venue_id_fkey(name)")
+            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, flag, flag_reason, replaces_booking_id, needs_re_review_reason, venues!venue_bookings_venue_id_fkey(name)")
             .eq("event_id", event_id)
             # Expired too: a space whose hold ran out still shows it (CR-99 AC7, CR-97).
             .in_("status", [*OCCUPYING_STATUSES, "expired"])

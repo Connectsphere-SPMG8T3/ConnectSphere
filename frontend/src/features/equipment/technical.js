@@ -30,6 +30,8 @@ export const HISTORY_ACTION_LABELS = {
   note_updated: "Notes updated",
   released: "Released",
   re_review: "Flagged for re-review",
+  needs_re_review: "Needs re-review after an approved change",
+  sent_for_re_review: "Sent for re-review",
   exit_ticked: "Exit check ticked",
   exit_unticked: "Exit check unticked",
   exit_cleared: "Exit check cleared",

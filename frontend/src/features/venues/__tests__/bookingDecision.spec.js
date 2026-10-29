@@ -51,7 +51,9 @@ describe("canRejectBooking (AC9, AC11)", () => {
   it("offers Reject only to a session acting as venue staff, and only on a held booking", () => {
     expect(canRejectBooking({ status: "held" }, "venue_staff")).toBe(true);
     expect(canRejectBooking({ status: "held" }, "event_coordinator")).toBe(false);
-    for (const status of ["approved", "re_review", "rejected", "cancelled", "released", "expired"]) {
+    // Story 37 Q12: venue staff decide a booking under re-review too.
+    expect(canRejectBooking({ status: "re_review" }, "venue_staff")).toBe(true);
+    for (const status of ["approved", "rejected", "cancelled", "released", "expired"]) {
       expect(canRejectBooking({ status }, "venue_staff")).toBe(false);
     }
     expect(canRejectBooking(null, "venue_staff")).toBe(false);
@@ -64,7 +66,8 @@ describe("canApproveBooking (SCRUM-36 AC6, AC8)", () => {
     for (const role of ["event_coordinator", "event_organiser", "event_coordinator_lead", "safety_officer"]) {
       expect(canApproveBooking({ status: "held" }, role)).toBe(false);
     }
-    for (const status of ["approved", "re_review", "rejected", "cancelled", "released", "expired"]) {
+    expect(canApproveBooking({ status: "re_review" }, "venue_staff")).toBe(true);
+    for (const status of ["approved", "rejected", "cancelled", "released", "expired"]) {
       expect(canApproveBooking({ status }, "venue_staff")).toBe(false);
     }
     expect(canApproveBooking(null, "venue_staff")).toBe(false);

@@ -607,6 +607,17 @@ class BookingHistoryEntry(BaseModel):
     at: datetime
 
 
+class ReReviewContext(BaseModel):
+    """Story 37 Q21: what venue staff re-review a booking against: the approved
+    change's before and after values, where it moved from and to, and the
+    coordinator's note when they sent it."""
+
+    changes: dict | None = None
+    note: str | None = None
+    moved_from: Period | None = None
+    moved_to: Period | None = None
+
+
 class VenueBookingDetail(BaseModel):
     """One booking request as venue staff decide on it (SCRUM-38 AC1; SCRUM-36's
     approval reads the same page)."""
@@ -626,6 +637,8 @@ class VenueBookingDetail(BaseModel):
     event: BookingEventRequirements
     decision: BookingDecision | None = None
     history: list[BookingHistoryEntry] = []
+    # Story 37: set only while the booking is under re-review.
+    re_review: ReReviewContext | None = None
 
 
 class VenueDeactivateRequest(BaseModel):

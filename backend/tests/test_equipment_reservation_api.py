@@ -408,3 +408,30 @@ class TestNotesNeverReachOrganisers:
         from app.modules.events.schemas import EventResponse
 
         assert not {"technical_notes", "not_available_reason"} & set(EventResponse.model_fields)
+
+
+class TestTechnicalSupportSeeWhatChanged:
+    """Story 37 Q21: a line under re-review comes with the approved change behind it."""
+
+    CHANGES = {"event": [{"field": "starts_at", "before": "2026-11-20T10:00:00Z",
+                          "after": "2026-11-20T14:00:00Z"}], "spaces": []}
+
+    def test_a_line_under_re_review_brings_the_approved_change(self, client, auth_headers, store, authenticate_as,
+                                                               monkeypatch):
+        authenticate_as("tech_support")
+        store["lines"] = [line_row("re_review")]
+        monkeypatch.setattr(events_service, "latest_approved_change", lambda event_id: self.CHANGES)
+
+        body = client.get(TECHNICAL_URL, headers=auth_headers).json()
+
+        assert body["re_review_changes"] == self.CHANGES
+
+    def test_without_a_line_under_re_review_there_is_no_change_to_show(self, client, auth_headers, store,
+                                                                      authenticate_as, monkeypatch):
+        authenticate_as("tech_support")
+        monkeypatch.setattr(events_service, "latest_approved_change",
+                            lambda event_id: pytest.fail("no line is under re-review"))
+
+        body = client.get(TECHNICAL_URL, headers=auth_headers).json()
+
+        assert body["re_review_changes"] is None

@@ -12,7 +12,7 @@ import {
   validateBlockForm,
 } from "@/features/venues/blockForm";
 import { formatEventReference } from "@/features/venues/dashboard";
-import { bookingStatusLabel, formatVenuePeriod } from "@/features/venues/venueProfile";
+import { bookingStatusLabel, countBookings, formatVenuePeriod } from "@/features/venues/venueProfile";
 
 // SCRUM-51: block a venue in up to three steps. The first submit is a
 // preview; if the block overlaps held or approved bookings the parent passes
@@ -35,6 +35,27 @@ const attempted = ref(false);
 const errors = computed(() => (attempted.value ? validateBlockForm(form.value) : {}));
 const needsDetail = computed(() => form.value.reason === "other");
 const previewing = computed(() => props.affected.length > 0);
+
+// What happens to the overlapping bookings, before and after saving, in the
+// singular when there is just one.
+const previewNotice = computed(() => {
+  const one = props.affected.length === 1;
+  return {
+    heading: `This block overlaps ${countBookings(props.affected.length)}`,
+    detail: one
+      ? "If you go ahead, it will be marked Affected and its coordinator told so they can find another venue. It will not be cancelled."
+      : "If you go ahead, each one will be marked Affected and its coordinator told so they can find another venue. No booking will be cancelled.",
+  };
+});
+const savedNotice = computed(() => {
+  const count = props.result.affected.length;
+  return {
+    heading: `${countBookings(count)} affected`,
+    detail: count === 1
+      ? "The booking below is now marked Affected, and its coordinator has been notified. It was not cancelled."
+      : "Each booking below is now marked Affected, and its coordinator has been notified. None of them was cancelled.",
+  };
+});
 
 watch(
   () => props.open,
@@ -75,9 +96,8 @@ function submit(confirm) {
             "{{ props.venueName }}" is unavailable {{ formatVenuePeriod(props.result.block.period) }} (Singapore time).
           </p>
           <div v-if="props.result.affected.length" class="mt-6 border-4 border-ink bg-bauhaus-yellow p-4">
-            <p class="text-sm font-bold">
-              Affected bookings. Each is flagged and its coordinator notified; none was cancelled.
-            </p>
+            <p class="text-sm font-bold">{{ savedNotice.heading }}</p>
+            <p class="mt-1 text-sm font-medium">{{ savedNotice.detail }}</p>
             <ul class="mt-3 space-y-2" data-testid="block-affected">
               <li
                 v-for="booking in props.result.affected"
@@ -152,9 +172,8 @@ function submit(confirm) {
           </div>
 
           <div v-if="previewing" class="mt-6 border-4 border-ink bg-bauhaus-yellow p-4">
-            <p class="text-sm font-bold">
-              These bookings will be flagged Affected and their coordinators notified. They are not cancelled.
-            </p>
+            <p class="text-sm font-bold">{{ previewNotice.heading }}</p>
+            <p class="mt-1 text-sm font-medium">{{ previewNotice.detail }}</p>
             <ul class="mt-3 space-y-2">
               <li
                 v-for="booking in props.affected"

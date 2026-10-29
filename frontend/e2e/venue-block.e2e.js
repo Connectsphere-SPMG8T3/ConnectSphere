@@ -22,11 +22,12 @@ test("TC-BLOCK-014 venue staff block a booked venue: preview, confirm, then see 
 
   // Preview: nothing saved yet, the booking is listed.
   await dialog.getByRole("button", { name: "Block venue" }).click();
-  await expect(dialog).toContainText("will be flagged Affected");
+  await expect(dialog).toContainText("This block overlaps 1 booking");
   await expect(dialog).toContainText(event.name);
 
   await dialog.getByRole("button", { name: "Block anyway" }).click();
   await expect(dialog).toContainText("Venue blocked");
+  await expect(dialog).toContainText("1 booking affected");
   const affected = dialog.getByTestId("block-affected");
   await expect(affected).toContainText(event.name);
   await expect(affected).toContainText("Confirmed");

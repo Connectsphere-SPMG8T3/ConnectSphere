@@ -34,6 +34,8 @@ async function typeNote(text) {
 }
 
 const button = (label) => document.querySelector(`button[aria-label="${label}"]`);
+// The text with its template line breaks collapsed, for whole-sentence checks.
+const said = () => document.body.textContent.replace(/\s+/g, " ");
 
 const AFFECTED = [
   {
@@ -76,7 +78,10 @@ describe("DeactivateVenueModal (SCRUM-64)", () => {
   it("lists the bookings that would be flagged instead of the first-step button", async () => {
     await mountModal({ affected: AFFECTED });
     expect(document.body.textContent).toContain("Partner Summit");
-    expect(document.body.textContent).toContain("These bookings will be flagged Affected and their coordinators notified.");
+    expect(said()).toContain("Deactivating this venue affects 1 booking");
+    expect(said()).toContain(
+      "If you go ahead, it will be marked Affected and its coordinator told so they can find another venue. It will not be cancelled.",
+    );
     expect(document.body.textContent).toContain("20 May 2031");
     expect(document.body.textContent).toContain("Tentative");
     expect(button("Deactivate venue")).toBeNull();
@@ -91,7 +96,10 @@ describe("DeactivateVenueModal (SCRUM-64)", () => {
       ],
     });
     const text = document.body.textContent;
-    expect(text).toContain("These bookings are affected. Any not already flagged will be flagged Affected and their coordinators notified.");
+    expect(said()).toContain("Deactivating this venue affects 3 bookings");
+    expect(said()).toContain(
+      "If you go ahead, any booking not already flagged will be marked Affected and its coordinator told so they can find another venue. Bookings already flagged keep their flag, and their coordinators are not told again. No booking will be cancelled.",
+    );
     expect(text).toContain("Already flagged: Affected");
     expect(text).toContain("Already flagged: Safety rejected");
     const rows = [...document.querySelectorAll("li")].map((li) => li.textContent);
@@ -126,6 +134,23 @@ describe("DeactivateVenueModal (SCRUM-64)", () => {
     await nextTick();
     button("Deactivate anyway").click();
     expect(onConfirm).toHaveBeenLastCalledWith({ reason: "long_term_renovation", note: "Roof works", confirm: true });
+  });
+
+  it("says each of several unflagged bookings will be marked Affected, not cancelled", async () => {
+    await mountModal({ affected: [AFFECTED[0], { ...AFFECTED[0], booking_id: "d-2" }] });
+    expect(said()).toContain("Deactivating this venue affects 2 bookings");
+    expect(said()).toContain(
+      "If you go ahead, each one will be marked Affected and its coordinator told so they can find another venue. No booking will be cancelled.",
+    );
+  });
+
+  it("says a single booking that is already flagged keeps its flag and is not re-notified", async () => {
+    await mountModal({ affected: [{ ...AFFECTED[0], flag: "conflict" }] });
+    expect(said()).toContain("Deactivating this venue affects 1 booking");
+    expect(said()).toContain(
+      "It is already flagged, so it keeps its flag and its coordinator is not told again. It will not be cancelled.",
+    );
+    expect(said()).toContain("Already flagged: Conflict");
   });
 
   it("disables both actions while busy", async () => {

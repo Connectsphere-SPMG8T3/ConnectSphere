@@ -5,6 +5,7 @@ import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
+import ReReviewNotice from "@/components/events/ReReviewNotice.vue";
 import {
   canRequestEquipment,
   canSubmit,
@@ -113,6 +114,9 @@ async function submit() {
       </div>
     </dl>
 
+    <p v-if="store.actionError" role="alert" class="mb-4 border-2 border-ink bg-bauhaus-red px-3 py-2 text-sm font-bold text-canvas">
+      {{ store.actionError }}
+    </p>
     <p v-if="store.isLoading && !store.lines.length" class="text-sm font-bold text-ink/70" role="status">
       Loading equipment…
     </p>
@@ -136,6 +140,13 @@ async function submit() {
         <p v-if="line.not_available_reason" class="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
           <span class="font-bold">Not available:</span> {{ line.not_available_reason }}
         </p>
+        <ReReviewNotice
+          v-if="line.needs_re_review_reason"
+          :reason="line.needs_re_review_reason"
+          recipients="technical support"
+          :busy="store.isSubmitting"
+          @send="(note) => store.sendForReReview(line.id, note)"
+        />
         <p v-if="line.status === 're_review'" class="mt-2 text-sm font-bold">The event's time changed; Technical Support are re-checking this line. Its reservation is kept meanwhile.</p>
         <p v-if="line.technical_notes" class="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] border-l-4 border-bauhaus-blue pl-2 text-sm">
           <span class="font-bold">Technical Support notes:</span> {{ line.technical_notes }}

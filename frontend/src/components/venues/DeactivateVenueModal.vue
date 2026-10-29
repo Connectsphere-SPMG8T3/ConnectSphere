@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
-import { INACTIVE_REASONS, bookingStatusLabel, formatVenuePeriod } from "@/features/venues/venueProfile";
+import { INACTIVE_REASONS, bookingStatusLabel, countBookings, formatVenuePeriod } from "@/features/venues/venueProfile";
 import { formatEventReference } from "@/features/venues/dashboard";
 
 // SCRUM-64: deactivate a venue in two steps. The first submit is a preview;
@@ -31,6 +31,24 @@ const needsNote = computed(() => reason.value === "other");
 const valid = computed(() => reason.value !== "" && (!needsNote.value || note.value.trim().length > 0));
 const previewing = computed(() => props.affected.length > 0);
 const someAlreadyFlagged = computed(() => props.affected.some((booking) => booking.flag));
+
+// What happens to the listed bookings, in the singular when there is just
+// one. Already-flagged bookings keep their flag and are not notified again.
+const previewNotice = computed(() => {
+  const one = props.affected.length === 1;
+  let detail;
+  if (one && someAlreadyFlagged.value) {
+    detail = "It is already flagged, so it keeps its flag and its coordinator is not told again. It will not be cancelled.";
+  } else if (someAlreadyFlagged.value) {
+    detail =
+      "If you go ahead, any booking not already flagged will be marked Affected and its coordinator told so they can find another venue. Bookings already flagged keep their flag, and their coordinators are not told again. No booking will be cancelled.";
+  } else if (one) {
+    detail = "If you go ahead, it will be marked Affected and its coordinator told so they can find another venue. It will not be cancelled.";
+  } else {
+    detail = "If you go ahead, each one will be marked Affected and its coordinator told so they can find another venue. No booking will be cancelled.";
+  }
+  return { heading: `Deactivating this venue affects ${countBookings(props.affected.length)}`, detail };
+});
 
 watch(
   () => props.open,
@@ -91,13 +109,8 @@ function submit(confirm) {
         <p class="mt-1 text-right text-xs font-bold text-ink/70">{{ note.length }} / {{ NOTE_MAX_LENGTH }}</p>
 
         <div v-if="previewing" class="mt-6 border-4 border-ink bg-bauhaus-yellow p-4">
-          <p class="text-sm font-bold">
-            {{
-              someAlreadyFlagged
-                ? "These bookings are affected. Any not already flagged will be flagged Affected and their coordinators notified."
-                : "These bookings will be flagged Affected and their coordinators notified."
-            }}
-          </p>
+          <p class="text-sm font-bold">{{ previewNotice.heading }}</p>
+          <p class="mt-1 text-sm font-medium">{{ previewNotice.detail }}</p>
           <ul class="mt-3 space-y-2">
             <li
               v-for="booking in props.affected"
