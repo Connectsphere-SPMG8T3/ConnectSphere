@@ -910,7 +910,8 @@ def _(ctx: Context) -> None:
 # changes shared data and stays manual (TC-LEAD-011).
 
 LEAD_DASHBOARD = "/events/dashboard/lead"
-LEAD_ACTIVE_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed"}
+# Preparation follows Confirmed and is still the coordinator's work (D73).
+LEAD_ACTIVE_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed", "preparation"}
 # The Lead's queue also holds events waiting for a coordinator (SCRUM-12).
 LEAD_DASHBOARD_STATUSES = LEAD_ACTIVE_STATUSES | {"submitted"}
 UNKNOWN_EVENT = "e0000000-0000-4000-8000-0000000009ff"

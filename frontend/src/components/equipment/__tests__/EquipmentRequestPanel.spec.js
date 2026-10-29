@@ -387,7 +387,7 @@ describe("EquipmentRequestPanel changes and removals (SCRUM-44)", () => {
     await mountPanel();
 
     await vi.waitFor(() => expect(document.body.textContent).toContain("Removed by the coordinator · 2 × Wireless microphone"));
-    expect(document.body.textContent).toContain("Equipment history");
+    expect(document.body.textContent).toContain("Technical preparation history");
   });
 
   it("says so, without an alert, when the history can't be read", async () => {

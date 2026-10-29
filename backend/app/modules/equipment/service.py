@@ -172,7 +172,8 @@ RETURNED_MESSAGE = (
 # Tech support's queue leaves out lines on closed events. Rejecting or
 # cancelling an event releases its lines (SCRUM-24 AC6); completed events'
 # lines are only hidden.
-QUEUE_EVENT_STATUSES = ("planning", "safety_review", "confirmed")
+# Preparation follows Confirmed; tech support keep reaching its event from here (D73, CR-110).
+QUEUE_EVENT_STATUSES = ("planning", "safety_review", "confirmed", "preparation")
 
 
 def _not_planning_message(status: str) -> str:

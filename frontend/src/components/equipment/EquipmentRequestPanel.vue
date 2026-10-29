@@ -288,7 +288,7 @@ async function submit() {
     <p v-else class="mt-6 text-sm font-medium text-ink/70">New equipment can only be requested while the event is in planning.</p>
 
     <section v-if="store.history.length || store.historyError" class="mt-8" aria-labelledby="equipment-history-title">
-      <h3 id="equipment-history-title" class="text-sm font-bold">Equipment history</h3>
+      <h3 id="equipment-history-title" class="text-sm font-bold">Technical preparation history</h3>
       <p v-if="store.historyError" role="status" class="mt-4 text-sm font-medium">The equipment history couldn't be loaded.</p>
       <TechnicalHistoryList v-else :entries="store.history" />
     </section>

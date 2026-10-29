@@ -456,6 +456,18 @@ class TestTechSupportRequestList:
 
         assert client.get(QUEUE_URL, headers=auth_headers).json()["lines"] == []
 
+    def test_lines_on_an_event_in_preparation_stay_listed(self, client, auth_headers, act_as, store):
+        """D73: tech support reach the event from here to keep recording its preparation (CR-110)."""
+        act_as("event_coordinator", COORDINATOR_ID)
+        submit(client, auth_headers)
+        store["lines"][0]["status"] = "reserved"
+        store["events"][EVENT_ID]["status"] = "preparation"
+        act_as("tech_support", TECH_ID)
+
+        lines = client.get(QUEUE_URL, headers=auth_headers).json()["lines"]
+
+        assert [line["event_id"] for line in lines] == [EVENT_ID]
+
     def test_the_pending_queue_asks_only_for_waiting_lines(self, client, auth_headers, act_as, store):
         act_as("tech_support", TECH_ID)
 
