@@ -8,7 +8,7 @@ _PUBLIC_EVENT_COLUMNS = (
 )
 
 _ATTENDEE_REGISTRATION_COLUMNS = (
-    "id, status, registered_at, "
+    "id, status, registered_at, invitation_expires_at, "
     "event:events!event_registrations_event_id_fkey("
     "id, name, description, starts_at, ends_at, event_timezone, status, withdrawal_closes_at, "
     "event_space_requests(id, is_primary, "
@@ -49,7 +49,7 @@ def list_attendee_registration_rows(attendee_id: str) -> list[dict]:
         .table("event_registrations")
         .select(_ATTENDEE_REGISTRATION_COLUMNS)
         .eq("attendee_id", attendee_id)
-        .in_("status", ["registered", "waitlisted"])
+        .in_("status", ["registered", "waitlisted", "invited"])
         .order("registered_at", desc=True)
         .execute()
     )
@@ -68,6 +68,14 @@ def registered_count(event_id: str) -> int:
     return response.count or 0
 
 
+def registration_occupied_count(event_id: str) -> int:
+    response = get_supabase_admin_client().rpc(
+        "registration_occupied_count",
+        {"p_event_id": event_id},
+    ).execute()
+    return response.data or 0
+
+
 def register_for_event(event_id: str, attendee_id: str) -> dict:
     response = get_supabase_admin_client().rpc(
         "register_for_event",
@@ -80,5 +88,21 @@ def withdraw_registration(event_id: str, attendee_id: str) -> dict:
     response = get_supabase_admin_client().rpc(
         "withdraw_registration",
         {"p_event_id": event_id, "p_attendee_id": attendee_id},
+    ).execute()
+    return response.data
+
+
+def accept_waitlist_invitation(registration_id: str, attendee_id: str) -> dict:
+    response = get_supabase_admin_client().rpc(
+        "accept_waitlist_invitation",
+        {"p_registration_id": registration_id, "p_attendee_id": attendee_id},
+    ).execute()
+    return response.data
+
+
+def leave_waitlist(registration_id: str, attendee_id: str) -> dict:
+    response = get_supabase_admin_client().rpc(
+        "leave_waitlist",
+        {"p_registration_id": registration_id, "p_attendee_id": attendee_id},
     ).execute()
     return response.data

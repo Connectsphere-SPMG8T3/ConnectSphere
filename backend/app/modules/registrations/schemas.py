@@ -53,6 +53,7 @@ class AttendeeRegistration(BaseModel):
     id: str
     status: str
     registered_at: datetime
+    invitation_expires_at: datetime | None = None
     event: RegisteredEvent
 
 
@@ -64,6 +65,7 @@ class RegistrationResult(BaseModel):
     registration_id: str | None = None
     status: str
     registered_at: datetime | None = None
+    invitation_expires_at: datetime | None = None
 
 
 class WithdrawalResult(BaseModel):

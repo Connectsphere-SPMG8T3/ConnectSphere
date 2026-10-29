@@ -23,11 +23,19 @@ const availabilityLabels = {
   full: "Full",
 };
 const canRegister = computed(() => event.value?.availability === "open");
+const currentRegistration = computed(() =>
+  store.myRegistrations.find(({ event: registrationEvent }) => registrationEvent?.id === route.params.id),
+);
 const hasRegistered = computed(() =>
   ["registered", "already_registered"].includes(store.registrationResult?.status) ||
-  store.myRegistrations.some(({ event: registrationEvent, status }) =>
-    registrationEvent?.id === route.params.id && status === "registered",
-  ),
+  currentRegistration.value?.status === "registered",
+);
+const isWaitlisted = computed(() =>
+  ["waitlisted", "already_waitlisted"].includes(store.registrationResult?.status) ||
+  currentRegistration.value?.status === "waitlisted",
+);
+const isInvited = computed(() =>
+  store.registrationResult?.status === "invited" || currentRegistration.value?.status === "invited",
 );
 const mustChooseAttendeeRole = computed(() => auth.isAuthenticated && auth.role !== "attendee");
 
@@ -39,9 +47,12 @@ async function handleRegister() {
   if (mustChooseAttendeeRole.value) return;
   try {
     const result = await store.register(route.params.id);
-    showToast(result.status === "already_registered"
-      ? "You are already registered for this event."
-      : "You are registered for this event.");
+    showToast({
+      already_registered: "You are already registered for this event.",
+      already_waitlisted: "You are already on the waitlist.",
+      waitlisted: "You joined the waitlist.",
+      invited: "You have an invitation to accept from My events.",
+    }[result.status] ?? "You are registered for this event.");
   } catch {
     return;
   }
@@ -88,6 +99,14 @@ onMounted(() => {
         <BauhausButton v-if="hasRegistered" class="mt-5 w-full" variant="primary" disabled>
           Registered
         </BauhausButton>
+        <BauhausButton v-else-if="isWaitlisted" class="mt-5 w-full" variant="secondary" disabled>
+          Waitlisted
+        </BauhausButton>
+        <RouterLink
+          v-else-if="isInvited"
+          :to="{ name: 'dashboard-attendee', query: { tab: 'events' } }"
+          class="mt-5 block text-sm font-bold underline decoration-2 underline-offset-4"
+        >Accept your invitation in My events</RouterLink>
         <BauhausButton
           v-else-if="canRegister"
           class="mt-5 w-full"
@@ -101,9 +120,10 @@ onMounted(() => {
           v-else-if="event.availability === 'full' && event.waitlist_enabled"
           class="mt-5 w-full"
           variant="secondary"
-          disabled
+          :disabled="store.isRegistering || mustChooseAttendeeRole || isCheckingRegistration"
+          @click="handleRegister"
         >
-          Join waitlist
+          {{ store.isRegistering ? "Joining waitlist…" : "Join waitlist" }}
         </BauhausButton>
         <RouterLink
           v-else-if="event.availability === 'not_open' && !auth.isAuthenticated"

@@ -8,6 +8,8 @@ const { registrationsApi, authStore } = vi.hoisted(() => ({
     register: vi.fn(),
     withdraw: vi.fn(),
     myRegistrations: vi.fn(),
+    acceptInvitation: vi.fn(),
+    leaveWaitlist: vi.fn(),
   },
   authStore: { token: "attendee-token", withSession: vi.fn((callback) => callback("attendee-token")) },
 }));
@@ -182,5 +184,27 @@ describe("registration discovery store", () => {
 
     expect(store.myRegistrationsError).toBe("Unable to load registrations.");
     expect(store.isLoadingMyRegistrations).toBe(false);
+  });
+
+  it("accepts an invitation with the attendee session and refreshes registrations", async () => {
+    registrationsApi.acceptInvitation.mockResolvedValue({ status: "registered" });
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations: [{ id: "registration-1", status: "registered" }] });
+    const store = useRegistrationStore();
+
+    await store.acceptInvitation("registration-1");
+
+    expect(registrationsApi.acceptInvitation).toHaveBeenCalledWith("registration-1", "attendee-token");
+    expect(store.myRegistrations).toEqual([{ id: "registration-1", status: "registered" }]);
+  });
+
+  it("leaves a waitlist with the attendee session and refreshes registrations", async () => {
+    registrationsApi.leaveWaitlist.mockResolvedValue(null);
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations: [] });
+    const store = useRegistrationStore();
+
+    await store.leaveWaitlist("registration-1");
+
+    expect(registrationsApi.leaveWaitlist).toHaveBeenCalledWith("registration-1", "attendee-token");
+    expect(store.myRegistrations).toEqual([]);
   });
 });

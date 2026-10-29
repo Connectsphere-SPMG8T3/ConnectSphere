@@ -5,7 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { authApi, registrationsApi } = vi.hoisted(() => ({
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  registrationsApi: { directory: vi.fn(), event: vi.fn(), register: vi.fn(), withdraw: vi.fn(), myRegistrations: vi.fn() },
+  registrationsApi: {
+    directory: vi.fn(),
+    event: vi.fn(),
+    register: vi.fn(),
+    withdraw: vi.fn(),
+    myRegistrations: vi.fn(),
+    acceptInvitation: vi.fn(),
+    leaveWaitlist: vi.fn(),
+  },
 }));
 
 vi.mock("@/services/api", async (importOriginal) => ({
@@ -38,9 +46,9 @@ async function mountAt(path) {
   return { el, router };
 }
 
-const registration = (eventId, eventOverrides = {}) => ({
+const registration = (eventId, eventOverrides = {}, status = "registered") => ({
   id: `registration-${eventId}`,
-  status: "registered",
+  status,
   event: {
     id: eventId,
     name: "Completed Design Forum",
@@ -220,5 +228,83 @@ describe("Attendee registered event details", () => {
     expect(router.currentRoute.value.name).toBe("attendee-registered-event");
     await vi.waitFor(() => expect(el.textContent).toContain("Unable to load registrations."));
     expect(el.textContent).not.toContain("Event not found");
+  });
+
+  it("lets an invited Attendee accept their reserved place", async () => {
+    registrationsApi.myRegistrations.mockResolvedValue({
+      registrations: [registration("event-1", {
+        name: "Upcoming Design Forum",
+        starts_at: "2026-11-20T01:00:00Z",
+        ends_at: "2026-11-20T04:00:00Z",
+        status: "confirmed",
+      }, "invited")],
+    });
+    registrationsApi.acceptInvitation.mockResolvedValue({
+      registration_id: "registration-event-1",
+      status: "registered",
+    });
+
+    const { el } = await mountAt("/dashboard/attendee/events/event-1");
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Accept invitation"));
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Accept invitation").click();
+
+    await vi.waitFor(() =>
+      expect(registrationsApi.acceptInvitation).toHaveBeenCalledWith(
+        "registration-event-1",
+        "attendee-token",
+      ),
+    );
+  });
+
+  it("lets an invited Attendee decline and release their reserved place", async () => {
+    registrationsApi.myRegistrations.mockResolvedValue({
+      registrations: [registration("event-1", {
+        name: "Upcoming Design Forum",
+        starts_at: "2026-11-20T01:00:00Z",
+        ends_at: "2026-11-20T04:00:00Z",
+        status: "confirmed",
+      }, "invited")],
+    });
+    registrationsApi.leaveWaitlist.mockResolvedValue(null);
+
+    const { el, router } = await mountAt("/dashboard/attendee/events/event-1");
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Decline invitation"));
+    [...el.querySelectorAll("button")]
+      .find((button) => button.textContent.trim() === "Decline invitation")
+      .click();
+
+    await vi.waitFor(() =>
+      expect(registrationsApi.leaveWaitlist).toHaveBeenCalledWith(
+        "registration-event-1",
+        "attendee-token",
+      ),
+    );
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-attendee"));
+  });
+
+  it("lets a waitlisted Attendee leave the queue", async () => {
+    registrationsApi.myRegistrations.mockResolvedValue({
+      registrations: [registration("event-1", {
+        name: "Upcoming Design Forum",
+        starts_at: "2026-11-20T01:00:00Z",
+        ends_at: "2026-11-20T04:00:00Z",
+        status: "confirmed",
+      }, "waitlisted")],
+    });
+    registrationsApi.leaveWaitlist.mockResolvedValue(null);
+
+    const { el } = await mountAt("/dashboard/attendee/events/event-1");
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Waitlisted"));
+    [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Leave waitlist").click();
+
+    await vi.waitFor(() =>
+      expect(registrationsApi.leaveWaitlist).toHaveBeenCalledWith(
+        "registration-event-1",
+        "attendee-token",
+      ),
+    );
   });
 });

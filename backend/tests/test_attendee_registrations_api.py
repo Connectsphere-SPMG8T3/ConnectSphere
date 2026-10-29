@@ -89,6 +89,21 @@ def test_attendee_reads_only_their_registered_events(client, authenticate_as, au
                 ],
             },
         },
+        {
+            "id": "r0000000-0000-4000-8000-000000000059",
+            "status": "invited",
+            "registered_at": "2031-05-03T01:00:00Z",
+            "event": {
+                "id": "e0000000-0000-4000-8000-000000000059",
+                "name": "Design in Practice",
+                "description": None,
+                "starts_at": "2031-05-03T09:00:00Z",
+                "ends_at": "2031-05-03T12:00:00Z",
+                "event_timezone": "Asia/Singapore",
+                "status": "confirmed",
+                "event_space_requests": [],
+            },
+        },
     ]
     received_attendee_ids = []
     monkeypatch.setattr(
@@ -103,7 +118,7 @@ def test_attendee_reads_only_their_registered_events(client, authenticate_as, au
     assert response.status_code == 200
     assert received_attendee_ids == [attendee["id"]]
     results = response.json()["registrations"]
-    assert [item["status"] for item in results] == ["registered", "waitlisted"]
+    assert [item["status"] for item in results] == ["registered", "waitlisted", "invited"]
     assert results[0]["event"]["name"] == "Community Design Forum"
     assert results[0]["event"]["withdrawal_closes_at"] == "2031-05-01T01:30:00Z"
     assert [venue["name"] for venue in results[0]["event"]["venues"]] == ["Central Hall"]

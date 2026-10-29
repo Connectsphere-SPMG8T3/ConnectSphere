@@ -10,7 +10,7 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  registrationsApi: { directory: vi.fn(), event: vi.fn(), register: vi.fn() },
+  registrationsApi: { directory: vi.fn(), event: vi.fn(), register: vi.fn(), myRegistrations: vi.fn() },
 }));
 
 const event = (overrides = {}) => ({
@@ -266,13 +266,21 @@ describe("public event pages", () => {
     expect(toastState.value).toMatchObject({ tone: "success" });
   });
 
-  it("shows Join waitlist only as a non-enrolling CTA when enabled", async () => {
-    registrationsApi.event.mockResolvedValue(event({ availability: "full" }));
-    const { el } = await mountAt("/attendee/events/event-1");
+  it("lets an active Attendee join an enabled waitlist", async () => {
+    registrationsApi.event.mockResolvedValue(event({ availability: "full", registered_count: 80 }));
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations: [] });
+    registrationsApi.register.mockResolvedValue({ registration_id: "registration-1", status: "waitlisted" });
+    const { el } = await mountAt("/attendee/events/event-1", {
+      signedInAs: { id: "attendee-1", full_name: "Avery Attendee", role: "attendee", roles: ["attendee"] },
+    });
 
     await vi.waitFor(() => expect(el.textContent).toContain("Join waitlist"));
-    expect([...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Join waitlist").disabled).toBe(true);
-    expect(registrationsApi.register).not.toHaveBeenCalled();
+    const joinButton = [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Join waitlist");
+    expect(joinButton.disabled).toBe(false);
+    joinButton.click();
+
+    await vi.waitFor(() => expect(registrationsApi.register).toHaveBeenCalledWith("event-1", "access"));
+    await vi.waitFor(() => expect(el.textContent).toContain("Waitlisted"));
   });
 
   it("does not offer a waitlist action when waitlisting is disabled", async () => {

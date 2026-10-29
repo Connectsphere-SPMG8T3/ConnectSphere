@@ -16,7 +16,7 @@ export function splitRegistrationsByEndTime(registrations, now = Date.now()) {
 
 export function summarizeAttendeeDashboard(registrations, publicEvents, now = Date.now()) {
   const currentRegistrations = registrations.filter(({ status }) =>
-    ["registered", "waitlisted"].includes(status),
+    ["registered", "waitlisted", "invited"].includes(status),
   );
   const groups = splitRegistrationsByEndTime(currentRegistrations, now);
   const uniqueEventCount = (items) => {
@@ -42,6 +42,7 @@ export function registrationStatusLabel(status) {
   const labels = {
     registered: "Registered",
     waitlisted: "Waitlisted",
+    invited: "Invitation pending",
   };
   return labels[status] ?? status;
 }
@@ -65,7 +66,7 @@ export function filterAndSortRegistrations(
   registrations,
   { search = "", statuses = [], period = "all", sortBy = "date", direction = "asc", now = Date.now() } = {},
 ) {
-  if (!Array.isArray(statuses) || statuses.some((status) => !["registered", "waitlisted"].includes(status))) {
+  if (!Array.isArray(statuses) || statuses.some((status) => !["registered", "waitlisted", "invited"].includes(status))) {
     throw new TypeError("Registration filters contain an unsupported status.");
   }
   if (!["all", "upcoming", "past"].includes(period)) {

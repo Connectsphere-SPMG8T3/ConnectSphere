@@ -319,6 +319,18 @@ export const registrationsApi = {
       token,
     });
   },
+  acceptInvitation(registrationId, token) {
+    return request(`/registrations/${encodeURIComponent(registrationId)}/accept`, {
+      method: "POST",
+      token,
+    });
+  },
+  leaveWaitlist(registrationId, token) {
+    return request(`/registrations/${encodeURIComponent(registrationId)}`, {
+      method: "DELETE",
+      token,
+    });
+  },
 };
 
 export const equipmentApi = {

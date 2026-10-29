@@ -129,6 +129,7 @@ DB_SCRIPTS = [
     ("registration_withdrawal_checks.sql", "TC-REG-018 (SCRUM-55 withdrawal, cutoff, re-registration and grants)"),
     ("change_request_decision_checks.sql", "TC-CHANGE-024 (story 37 database half: decisions, moves, marks, sends, re-review)"),
     ("technical_preparation_checks.sql", "TC-TPREP-001–006 (CR-110 database half: refusals, Preparation, history, notices, RLS)"),
+    ("registration_waitlist_checks.sql", "TC-REG-020, 022–028 (SCRUM-86 database half)"),
 ]
 
 
@@ -167,6 +168,25 @@ def expect_status(response: httpx.Response, status: int) -> None:
 def expect_detail(response: httpx.Response, detail: str) -> None:
     actual = response.json().get("detail")
     expect(actual == detail, f"expected detail {detail!r}, got {actual!r}")
+
+
+def require_waitlist_migration() -> None:
+    rows = db_query(
+        "select to_regprocedure('public.accept_waitlist_invitation(uuid,uuid)') is not null "
+        "and to_regprocedure('public.leave_waitlist(uuid,uuid)') is not null "
+        "and exists (select 1 from information_schema.columns "
+        "where table_schema = 'public' and table_name = 'event_registrations' "
+        "and column_name = 'invitation_expires_at') "
+        "and exists (select 1 from information_schema.columns "
+        "where table_schema = 'public' and table_name = 'event_registrations' "
+        "and column_name = 'waitlist_order') as migration_present"
+    )
+    expect(len(rows) == 1 and isinstance(rows[0].get("migration_present"), bool),
+           "waitlist migration preflight returned an unexpected result")
+    if not rows[0]["migration_present"]:
+        raise CheckBlocked(
+            "SCRUM-86 waitlist migration is not applied; waitlist verification was not run."
+        )
 
 
 @dataclass
@@ -687,7 +707,7 @@ def _(ctx: Context) -> None:
     expect(isinstance(registrations, list), "response does not contain a registrations list")
     for registration in registrations:
         expect(
-            registration.get("status") in {"registered", "waitlisted"},
+            registration.get("status") in {"registered", "waitlisted", "invited"},
             f"unexpected registration status {registration.get('status')!r}",
         )
         event = registration.get("event")
@@ -813,6 +833,62 @@ def _(ctx: Context) -> None:
     )
     expect(final["status"] == "withdrawn" and final["withdrawn_at"] and int(final["registered_count"]) == 0,
            f"disabled re-registration changed the withdrawn registration: {final}")
+
+
+@check(
+    "TC-REG-021",
+    "Two concurrent Attendees competing for the final place produce one registration and one waitlist entry",
+    creates_accounts=True,
+    needs_db=True,
+)
+def _(ctx: Context) -> None:
+    require_waitlist_migration()
+    event_id = throwaway_event(ctx, "021", "2031-06-21 09:00+08", "2031-06-21 12:00+08",
+                               status="confirmed")
+    db_query(
+        "update public.events set registration_enabled = true, registration_capacity = 1, "
+        "registration_opens_at = now() - interval '1 day', "
+        "registration_closes_at = now() + interval '29 days', waitlist_enabled = true "
+        f"where id = '{event_id}' returning id"
+    )
+
+    email = ctx.throwaway_email("REG021")
+    expect_status(
+        ctx.signup(
+            role="attendee",
+            full_name="Waitlist Concurrency Check",
+            email=email,
+            organisation_name=None,
+            phone_number=None,
+        ),
+        201,
+    )
+    attendees = [
+        ctx.shared("attendee"),
+        ctx.login("attendee", email=email, password=THROWAWAY_PASSWORD),
+    ]
+
+    def register(session: Session) -> httpx.Response:
+        return ctx.client.post(
+            f"{ctx.api}/public/events/{event_id}/registrations",
+            headers=session.headers,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(register, attendees))
+    for response in responses:
+        expect_status(response, 201)
+    statuses = [response.json().get("status") for response in responses]
+    expect(sorted(statuses) == ["registered", "waitlisted"],
+           f"concurrent registrations returned {statuses!r}")
+
+    rows = db_query(
+        "select status, count(*)::integer as count from public.event_registrations "
+        f"where event_id = '{event_id}' group by status"
+    )
+    counts = {row["status"]: int(row["count"]) for row in rows}
+    expect(counts == {"registered": 1, "waitlisted": 1},
+           f"stored outcomes were {counts!r}, expected one registered and one waitlisted")
 
 
 # --- Coordinator dashboard (SCRUM-72) --------------------------------------
@@ -4636,6 +4712,17 @@ def run_db_checks(keyword: str | None) -> list[Result]:
                     "Safety-decision migration table/RPC interfaces are missing; "
                     "SQL verification not run. Apply the migration through the authorised workflow first.",
                 ))
+                print_result(results[-1])
+                continue
+        if script == "registration_waitlist_checks.sql":
+            try:
+                require_waitlist_migration()
+            except CheckBlocked as error:
+                results.append(Result(script, title, "blocked", str(error)))
+                print_result(results[-1])
+                continue
+            except Exception as error:
+                results.append(Result(script, title, "fail", str(error)))
                 print_result(results[-1])
                 continue
         if script == "equipment_availability_checks.sql":

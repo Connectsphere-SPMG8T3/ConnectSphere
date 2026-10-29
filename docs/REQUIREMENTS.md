@@ -1095,11 +1095,13 @@ available(type, W) = total_quantity
 - **RG-R3:** A duplicate active registration is not created; the existing status is returned (DB-2). Re-registering after withdrawal is allowed only if the per-event setting permits it (QA-136; default yes).
 - **RG-R4:** When the event is cancelled, registrations are cancelled and attendees notified (QA-114). When the event is rescheduled, attendees **stay registered** and are notified. **[Team decision]** Reconfirmation was left to us (QA-124).
 - **RG-R5 (waitlist; enrollment and invitation behavior belongs to Story 86):**
-  - A registration made when the event is full becomes `waitlisted`, in first-come-first-served order (QA-9, QA-129, QA2-20).
+  - A registration made when the event is full becomes `waitlisted`, in first-come-first-served order (QA-9, QA-129, QA2-20). Queue ordering is authoritative in the database; the attendee does not need a displayed queue position (PO decision, 2026-10-28).
   - The organiser decides whether to **close registration** at capacity or **leave it open** with the waitlist (QA2-20). **[Team decision]** This is the existing `closes_at` setting plus a "waitlist enabled" toggle, default on.
-  - When a place frees up, the **earliest waitlisted attendee is notified and invited** (`invited`, `invited_until = now + 24h`). They are **not registered automatically** (QA-30, QA-40, QA-78).
-  - If they don't accept by `invited_until`, the invitation passes to the next waitlisted attendee. **[Team decision]** The 24-hour window was left to us (QA-121).
-  - While an invitation is open, that place is reserved for the invitee.
+  - Disabling waitlisting prevents new joins, but does not remove existing queue entries or cancel active invitations; those continue to resolve.
+  - When an eligible place frees up, the **earliest waitlisted attendee is invited and notified** (`invited`, `invitation_expires_at = now + 24h`). Reserve the place before sending the notification; do not register the invitee automatically (QA-30, QA-40, QA-78). Apply this in FIFO order for each available place, including a place freed by withdrawal (SCRUM-55).
+  - If the invitee does not accept before `invitation_expires_at`, expire the invitation and pass the place to the next waitlisted attendee. If no one remains, release the place for normal registration. **[Team decision]** The 24-hour window was left to us (QA-121).
+  - An attendee may leave the waitlist at any time. Leaving while invited cancels the invitation and its reservation, then offers the place to the next attendee; the cancelled invitation cannot be accepted.
+  - Registered attendees plus unexpired invitation reservations must never exceed effective capacity, the lower of the event registration limit and applicable venue capacity. Public registered counts exclude invitation reservations.
 
 **Story 43 boundary:** Story 43 exposes the waitlist-enabled setting and shows the **Join waitlist** call to action when full. It does not create waitlist records or implement queue ordering, invitations, acceptance, expiry, or waitlist notifications; those remain Story 86. Attendee withdrawal is SCRUM-55.
 

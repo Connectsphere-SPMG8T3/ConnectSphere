@@ -13,6 +13,7 @@ export const useRegistrationStore = defineStore("registrations", {
     isLoadingMyRegistrations: false,
     isRegistering: false,
     isWithdrawing: false,
+    isUpdatingRegistration: false,
     error: null,
     myRegistrationsError: null,
   }),
@@ -107,6 +108,39 @@ export const useRegistrationStore = defineStore("registrations", {
         throw error;
       } finally {
         this.isWithdrawing = false;
+      }
+    },
+
+    async acceptInvitation(registrationId) {
+      const auth = useAuthStore();
+      this.isUpdatingRegistration = true;
+      this.myRegistrationsError = null;
+      try {
+        const result = await auth.withSession((token) =>
+          registrationsApi.acceptInvitation(registrationId, token),
+        );
+        await this.loadMyRegistrations();
+        return result;
+      } catch (error) {
+        this.myRegistrationsError = error.message || "The invitation could not be accepted.";
+        throw error;
+      } finally {
+        this.isUpdatingRegistration = false;
+      }
+    },
+
+    async leaveWaitlist(registrationId) {
+      const auth = useAuthStore();
+      this.isUpdatingRegistration = true;
+      this.myRegistrationsError = null;
+      try {
+        await auth.withSession((token) => registrationsApi.leaveWaitlist(registrationId, token));
+        await this.loadMyRegistrations();
+      } catch (error) {
+        this.myRegistrationsError = error.message || "You could not leave the waitlist.";
+        throw error;
+      } finally {
+        this.isUpdatingRegistration = false;
       }
     },
   },
