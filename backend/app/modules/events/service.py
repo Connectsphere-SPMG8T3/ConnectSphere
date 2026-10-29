@@ -19,10 +19,14 @@ from app.core.exceptions import (
 # Module imports, not names: `venues.service` imports this module too, and a
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.equipment import service as equipment_service
-from app.modules.events import change_fields, lead_scope, lifecycle, repository
+from app.modules.events import change_fields, change_impact, lead_scope, lifecycle, repository
 from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
+from app.modules.registrations import service as registrations_service
 from app.modules.events.schemas import (
+    BookingImpact,
+    ChangeImpact,
+    EquipmentShortfall,
     SafetyDecision,
     SafetyDecisionSummary,
     SafetyHistoryItem,
@@ -560,6 +564,172 @@ def reject_cancellation(event_id: str, coordinator_id: str, reason: str) -> Even
     return _to_response(row)
 
 
+NO_OPEN_CHANGE_MESSAGE = "There is no open change request for this event."
+CHANGE_STARTED_MESSAGE = "This event has already started, so its change request can't be decided."
+
+
+def _refuse_deciding_change(row: dict) -> None:
+    """Story 37 AC8 and Q5: a change is decided only where it could be requested
+    (CR-R15), and not once the event has started. A missing start fails closed."""
+    if row["status"] not in lifecycle.change_requestable_from():
+        raise EventConflictError(f"A change request can't be decided on an event that is {row['status']}.")
+    if row.get("starts_at") is None or _parse_datetime(row["starts_at"]) <= datetime.now(timezone.utc):
+        raise EventConflictError(CHANGE_STARTED_MESSAGE)
+
+
+def _raise_for_change_outcome(outcome: str) -> None:
+    if outcome == "not_found":
+        raise EventNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome == "no_open_request":
+        raise EventConflictError(NO_OPEN_CHANGE_MESSAGE)
+    if outcome == "started":
+        raise EventConflictError(CHANGE_STARTED_MESSAGE)
+    if outcome != "ok":
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+
+
+CHANGED_SINCE_REQUEST_MESSAGE = "This event has changed since the request was made; reject it and ask for a new one."
+
+
+def _approved_values(row: dict, changes: dict) -> tuple[dict, dict]:
+    """Q8: the request's `after` values, provided every `before` still matches the
+    event as stored. Otherwise approving would overwrite a value nobody reviewed."""
+    spaces = {space["id"]: space for space in row.get("spaces") or []}
+    event_values = {change["field"]: change["after"] for change in changes.get("event") or []}
+    stale = change_fields.diff(row, {change["field"]: change["before"] for change in changes.get("event") or []})
+    space_values = {}
+    for space_change in changes.get("spaces") or []:
+        space = spaces.get(space_change["space_id"])
+        fields = space_change["fields"]
+        if space is None or change_fields.diff(space, {change["field"]: change["before"] for change in fields}):
+            stale = True
+        space_values[space_change["space_id"]] = {change["field"]: change["after"] for change in fields}
+    if stale:
+        raise EventConflictError(CHANGED_SINCE_REQUEST_MESSAGE)
+    return event_values, space_values
+
+
+def _plan_payload(plan: change_impact.BookingPlan) -> dict:
+    period = [moment.isoformat() for moment in plan.period] if plan.period else None
+    return {"booking_id": plan.booking_id, "period": period, "mark": plan.mark,
+            "unsuitable": plan.unsuitable, "clear_unsuitable": plan.clear_unsuitable}
+
+
+def approve_change(event_id: str, coordinator_id: str, version: int) -> EventResponse:
+    """Story 37 AC2, AC4: the assigned coordinator approves the open change request.
+    The values are applied as one transaction by the database."""
+    row = _assigned_event(event_id, coordinator_id)
+    _refuse_deciding_change(row)
+    request = repository.get_open_change_request(event_id)
+    if not request:
+        raise EventConflictError(NO_OPEN_CHANGE_MESSAGE)
+    if version != row["version"]:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
+    event_values, space_values = _approved_values(row, request["changes"])
+    candidate = {**row, **event_values,
+                 "spaces": [{**space, **space_values.get(space["id"], {})} for space in row.get("spaces") or []]}
+    _refuse_new_submission_errors(row, candidate)
+    plans = change_impact.booking_plans(row, event_values, space_values, [
+        change_impact.ChangeBooking(**booking) for booking in venues_service.change_bookings(event_id)])
+    name = row["name"]
+    moved = bool(event_values.keys() & {"starts_at", "ends_at", "event_timezone"})
+    result = repository.approve_event_change(
+        event_id, coordinator_id, version, lifecycle.change_requestable_from(), event_values, space_values,
+        # Approving the request isn't confirming its arrangements: staff may still re-review them.
+        organiser_message=(f'Your requested changes to "{name}" were approved. '
+                           "Your coordinator will confirm the arrangements they affect."),
+        history_reason=f"Change approved: {change_fields.describe(request['changes'])}",
+        officer_message=f'"{name}" returned to planning. {_RETURN_REASONS["approved_details_changed"]}',
+        # RG-R4, Q9: attendees act on a new date or time, not on attendance or layout.
+        attendee_message=(f'The date or time of "{name}" has changed. Check the event page for the new time.'
+                          if moved else None),
+        booking_plans=[_plan_payload(plan) for plan in plans],
+        staff_again_message=(f'"{name}" changed again while under re-review. '
+                             "Check its booking against the new details."),
+    )
+    _raise_for_change_outcome(result["outcome"])
+    return _to_response(result["event"])
+
+
+def change_request_impact(event_id: str, coordinator_id: str) -> ChangeImpact:
+    """Story 37 Q1, CR-R2: what approving the open change would do now: per booking
+    (move, clash, re-review, capacity), the equipment a new time leaves short, and how
+    many registered attendees would be told. Worked out on each read, never stored;
+    the approval re-checks every move under its locks."""
+    row = _assigned_event(event_id, coordinator_id)
+    request = repository.get_open_change_request(event_id)
+    if not request:
+        raise EventConflictError(NO_OPEN_CHANGE_MESSAGE)
+    event_values, space_values = _requested_values(request["changes"])
+    bookings = [change_impact.ChangeBooking(**booking) for booking in venues_service.change_bookings(event_id)]
+    by_id = {booking.id: booking for booking in bookings}
+    labels = {space["id"]: space["label"] for space in row.get("spaces") or []}
+    impact = ChangeImpact()
+    for plan in change_impact.booking_plans(row, event_values, space_values, bookings):
+        booking = by_id[plan.booking_id]
+        messages = []
+        clash = plan.period and venues_service.move_clash(
+            booking.id, booking.venue_id, booking.setup_minutes, booking.turnaround_minutes, *plan.period)
+        if clash:
+            messages.append(f"Clashes with {clash}: it keeps its time and is flagged Conflict.")
+        elif booking.status == "re_review" and plan.mark:
+            # Q22: it is with venue staff already, and stays with them.
+            messages.append(f"Already with venue staff: they are notified that the details changed again ({plan.mark})")
+        else:
+            if plan.period:
+                messages.append("Moves to the new time.")
+            if plan.mark:
+                messages.append(f"Needs re-review by venue staff: {plan.mark}")
+        if plan.unsuitable:
+            messages.append(f"{plan.unsuitable} A replacement venue is needed.")
+        if plan.clear_unsuitable:
+            messages.append("Its Unsuitable flag is cleared: the attendance fits again.")
+        impact.bookings.append(BookingImpact(booking_id=booking.id, venue_name=booking.venue_name,
+                                             space_label=labels.get(booking.space_id), messages=messages))
+    after = {**row, **event_values}
+    moved = (after.get("starts_at"), after.get("ends_at")) != (row.get("starts_at"), row.get("ends_at"))
+    if moved and after.get("starts_at") and after.get("ends_at"):
+        impact.equipment = [EquipmentShortfall(**line) for line in equipment_service.shortfalls(
+            event_id, _parse_datetime(after["starts_at"]), _parse_datetime(after["ends_at"]))]
+    if event_values.keys() & {"starts_at", "ends_at", "event_timezone"}:
+        impact.attendees_notified = registrations_service.registered_count(event_id)
+    return impact
+
+
+def _requested_values(changes: dict) -> tuple[dict, dict]:
+    """The request's `after` values, as approval would apply them."""
+    event_values = {change["field"]: change["after"] for change in changes.get("event") or []}
+    space_values = {space["space_id"]: {change["field"]: change["after"] for change in space["fields"]}
+                    for space in changes.get("spaces") or []}
+    return event_values, space_values
+
+
+def latest_approved_change(event_id: str) -> dict | None:
+    """Story 37 Q21: the changes of the event's most recent approved change request,
+    which venue staff and technical support re-review against, or None."""
+    for request in repository.list_change_requests(event_id):  # newest first
+        if request.get("status") == "approved":
+            return request["changes"]
+    return None
+
+
+def reject_change(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
+    """Story 37 AC2, AC4: the assigned coordinator rejects the open change request with
+    a reason (CR-R3). The event keeps its details, status and arrangements."""
+    row = _assigned_event(event_id, coordinator_id)
+    _refuse_deciding_change(row)
+    if not repository.get_open_change_request(event_id):
+        raise EventConflictError(NO_OPEN_CHANGE_MESSAGE)
+    result = repository.reject_event_change(
+        event_id, coordinator_id, reason, lifecycle.change_requestable_from(),
+        organiser_message=f'Your requested changes to "{row["name"]}" were rejected: {reason}',
+    )
+    _raise_for_change_outcome(result["outcome"])
+    return _to_response(row)
+
+
 def cancel_event(event_id: str, coordinator_id: str, reason: str) -> EventResponse:
     """Story 115 AC3: the assigned coordinator cancels without an organiser request. An
     open request is closed as approved by the same call (Q9)."""
@@ -797,12 +967,23 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
                           reason=row["reason"], changes=row["changes"], at=row["requested_at"])
         for row in changes
     ]
-    # 84 AC4 / CR-R18: a superseded request says when and why it closed. Approvals and
-    # rejections are story 37's.
+    # 84 AC4 / CR-R18: a superseded request says when and why it closed.
     entries += [
         EventHistoryEntry(kind="change_request_closed", id=f"{row['id']}:closed", actor=row["decided_by"],
                           reason=row["decision_reason"], at=row["decided_at"])
         for row in changes if row.get("status") == "superseded"
+    ]
+    # Story 37 Q18: each decision is its own entry, with who made it; a rejection says
+    # why, and an approval repeats what changed.
+    entries += [
+        EventHistoryEntry(kind="change_rejected", id=f"{row['id']}:rejected", actor=row["decided_by"],
+                          reason=row["decision_reason"], at=row["decided_at"])
+        for row in changes if row.get("status") == "rejected"
+    ]
+    entries += [
+        EventHistoryEntry(kind="change_approved", id=f"{row['id']}:approved", actor=row["decided_by"],
+                          changes=row["changes"], at=row["decided_at"])
+        for row in changes if row.get("status") == "approved"
     ]
     # Stable, so entries sharing a time keep the repository's order (the creation row last).
     entries.sort(key=lambda entry: entry.at, reverse=True)

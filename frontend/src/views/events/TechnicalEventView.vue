@@ -6,6 +6,8 @@ import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import EquipmentLineArrangement from "@/components/equipment/EquipmentLineArrangement.vue";
+import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
+import { describeChanges } from "@/features/events/changeRequest";
 import { STATUS_LABELS as EVENT_STATUS_LABELS } from "@/features/events/dashboard";
 import {
   exitConfirmationText,
@@ -61,6 +63,13 @@ watch(() => route.params.id, (id) => { if (id) store.load(id); }, { immediate: t
       <div class="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section aria-labelledby="lines-title" class="min-w-0">
           <h2 id="lines-title" class="mb-4 text-2xl font-bold">Equipment lines</h2>
+          <!-- Story 37 Q21: what an approved change asks technical support to re-review. -->
+          <div v-if="view.re_review_changes" class="mb-4 border-l-4 border-bauhaus-yellow bg-canvas px-4 py-3" data-testid="technical-re-review">
+            <p class="text-xs font-bold">Under re-review</p>
+            <p class="mt-1 text-sm font-bold">What changed</p>
+            <ChangeRequestChanges :rows="describeChanges(view.re_review_changes)" class="mt-2" />
+            <p class="mt-2 text-sm font-medium">Lines under re-review keep their reservation until you reserve them again or mark them not available.</p>
+          </div>
           <BauhausEmptyState v-if="!view.lines.length" title="No equipment requested" detail="Technical status is Not required." />
           <div v-else class="flex flex-col gap-4">
             <EquipmentLineArrangement

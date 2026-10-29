@@ -114,7 +114,7 @@ describe("organiser event page (story 32)", () => {
 });
 
 describe("coordinator event page (story 32)", () => {
-  it("shows who asked, whether it is significant, each change and the comments, read-only", async () => {
+  it("shows who asked, whether it is significant, each change and the comments, with story 37's decisions", async () => {
     const { el } = await mountCoordinator(eventResponse({ open_change_request: OPEN_CHANGE }));
 
     const banner = el.querySelector('[data-testid="change-request-banner"]');
@@ -123,7 +123,9 @@ describe("coordinator event page (story 32)", () => {
     expect(banner.textContent).toContain("Expected attendance: 80 → 120");
     expect(banner.textContent).toContain("Main hall: layout: theatre → banquet");
     expect(banner.querySelector('[data-testid="change-request-comments"]').textContent).toBe(REASON);
-    expect(banner.querySelectorAll("button")).toHaveLength(0);
+    // Story 37 AC2: the banner now carries the coordinator's decision, and nothing else.
+    expect([...banner.querySelectorAll("button")].map((b) => b.textContent.trim()))
+      .toEqual(["Approve changes", "Reject changes"]);
   });
 
   it("labels an ordinary change as ordinary", async () => {

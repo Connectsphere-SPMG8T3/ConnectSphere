@@ -399,6 +399,53 @@ def reject_cancellation_request(event_id: str, actor_id: str, reason: str, organ
     return response.data
 
 
+def approve_event_change(event_id: str, actor_id: str, expected_version: int, from_statuses: list[str],
+                         event_values: dict, space_values: dict, organiser_message: str,
+                         history_reason: str, officer_message: str, attendee_message: str | None,
+                         booking_plans: list[dict], staff_again_message: str) -> dict:
+    """Story 37 AC2: run `public.approve_event_change` under the event's lock. It applies
+    the changed event and space values, bumps the version, closes the request as
+    approved and notifies the organiser. A significant change returns a Confirmed,
+    Preparation or Safety review event to Planning, recorded with `history_reason`,
+    and the Safety Officers hear of it (`officer_message`); registered attendees hear
+    `attendee_message` unless it is None. `booking_plans` says what the change does to
+    each booking (`change_impact.BookingPlan`); each move is re-checked for conflicts
+    under the booking's lock; venue staff hear `staff_again_message` for a booking
+    already under re-review that the change touches (Q22). Answers `{outcome, event}`: ok / not_found /
+    not_assigned / status_changed / started / stale / no_open_request."""
+    response = get_supabase_admin_client().rpc("approve_event_change", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_expected_version": expected_version,
+        "p_from_statuses": from_statuses,
+        "p_event_values": event_values,
+        "p_space_values": space_values,
+        "p_organiser_message": organiser_message,
+        "p_history_reason": history_reason,
+        "p_officer_message": officer_message,
+        "p_attendee_message": attendee_message,
+        "p_bookings": booking_plans,
+        "p_staff_again_message": staff_again_message,
+    }).execute()
+    return response.data
+
+
+def reject_event_change(event_id: str, actor_id: str, reason: str, from_statuses: list[str],
+                        organiser_message: str) -> dict:
+    """Story 37 AC2: run `public.reject_event_change` under the event's lock. It closes
+    the open change request as rejected with the reason and notifies the organiser; the
+    event keeps its details and status. Answers `{outcome}`: ok / not_found /
+    not_assigned / status_changed / started / no_open_request."""
+    response = get_supabase_admin_client().rpc("reject_event_change", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_reason": reason,
+        "p_from_statuses": from_statuses,
+        "p_organiser_message": organiser_message,
+    }).execute()
+    return response.data
+
+
 def list_status_history(event_id: str) -> list[dict]:
     """Newest first. The actor is embedded through the FK named in the migration.
     On a timestamp tie the creation row (no from_status) sorts last, since

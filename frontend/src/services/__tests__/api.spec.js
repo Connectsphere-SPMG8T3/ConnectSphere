@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { authApi, eventsApi, notificationsApi, registrationsApi, venueBookingsApi } from "@/services/api";
+import { authApi, equipmentApi, eventsApi, notificationsApi, registrationsApi, venueBookingsApi } from "@/services/api";
 
 describe("SCRUM-92 profile update API", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -470,3 +470,24 @@ describe("Story 32 change requests", () => {
     ]);
   });
 });
+
+// Story 37: the change decision and re-review requests.
+describe("story 37 change decision and re-review API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it.each([
+    ["eventsApi.changeImpact", () => eventsApi.changeImpact("event/one", "access"), "/events/event%2Fone/change-request/impact", "GET", undefined],
+    ["eventsApi.approveChange", () => eventsApi.approveChange("event/one", 3, "access"), "/events/event%2Fone/change-request/approve", "POST", { version: 3 }],
+    ["eventsApi.rejectChange", () => eventsApi.rejectChange("event/one", "No room", "access"), "/events/event%2Fone/change-request/reject", "POST", { reason: "No room" }],
+    ["venueBookingsApi.sendForReReview", () => venueBookingsApi.sendForReReview("b/1", "Check it", "access"), "/venue-bookings/b%2F1/send-for-re-review", "POST", { note: "Check it" }],
+    ["equipmentApi.sendLineForReReview", () => equipmentApi.sendLineForReReview("l/1", null, "access"), "/equipment/requests/l%2F1/send-for-re-review", "POST", { note: null }],
+  ])("%s sends the documented authenticated request", async (name, call, path, method, body) => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: "result" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(call()).resolves.toEqual({ id: "result" });
+    expect(fetchMock).toHaveBeenCalledWith(`http://localhost:8000/api/v1${path}`, {
+      method, body: body === undefined ? undefined : JSON.stringify(body),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer access" },
+    });
+  });
+});
+

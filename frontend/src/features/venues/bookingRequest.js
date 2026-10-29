@@ -59,16 +59,21 @@ export function criteriaFromSpace(space, event) {
 const REPLACEABLE_EVENT_STATUSES = ["planning", "safety_review", "confirmed"];
 const LIVE_BOOKING_STATUSES = ["held", "approved"];
 
+// Flags that need another venue: the venue became unavailable (CR-95), or an approved
+// change clashes with its new time or outgrows it (story 37, Q16, Q17).
+const NEEDS_ALTERNATIVE_FLAGS = ["affected", "conflict", "unsuitable"];
+
 /**
- * An affected booking (the venue became unavailable, CR-95 AC1) and, if one has
- * been asked for, the replacement standing beside it. A booking that is no
- * longer held or approved needs neither.
+ * A booking that needs another venue and, if one has been asked for, the
+ * replacement standing beside it. A booking that is no longer held or approved
+ * needs neither.
  */
 function affectedPanelState(event, space) {
   const bookings = (event.venue_bookings ?? []).filter(
     (item) => !space || item.event_space_request_id === space.id,
   );
-  const affected = bookings.find((item) => item.flag === "affected" && LIVE_BOOKING_STATUSES.includes(item.status));
+  const affected = bookings.find((item) => NEEDS_ALTERNATIVE_FLAGS.includes(item.flag)
+    && LIVE_BOOKING_STATUSES.includes(item.status));
   if (!affected) return null;
   const replacement = bookings.find(
     (item) => item.replaces_booking_id === affected.id && [...LIVE_BOOKING_STATUSES, "re_review"].includes(item.status),

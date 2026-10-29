@@ -755,7 +755,6 @@ class TestReplacement:
         "override",
         [
             {"flag": None},
-            {"flag": "unsuitable"},
             {"status": "released"},
             {"event_id": "e0000000-0000-4000-8000-000000000999"},
             {"event_space_request_id": "f0000000-0000-4000-8000-0000000000ff"},
@@ -774,6 +773,19 @@ class TestReplacement:
         assert "replacement" in response.json()["detail"].lower()
         # Nothing was changed on the way to refusing: the event stays confirmed.
         assert replacement["order"] == []
+
+    @pytest.mark.parametrize("flag", ["conflict", "unsuitable"])
+    def test_a_booking_an_approved_change_flagged_can_be_replaced(
+        self, client, auth_headers, authenticate_as, replacement, flag
+    ):
+        """Story 37 Q16, Q17: a clash with the new time, or attendance over capacity."""
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+        replacement["replaceable"]["flag"] = flag
+
+        response = post(client, auth_headers, replaces_booking_id=AFFECTED_BOOKING_ID)
+
+        assert response.status_code == 201
+        assert replacement["requests"] == [{"event_id": EVENT_ID, "replaces_booking_id": AFFECTED_BOOKING_ID}]
 
     def test_an_unknown_booking_is_a_404_and_changes_nothing(
         self, client, auth_headers, authenticate_as, replacement
@@ -929,7 +941,8 @@ def test_a_flagged_booking_can_be_replaced(client, auth_headers, authenticate_as
     assert replacement["returned"] == []
 
 
-@pytest.mark.parametrize("flag", [None, "conflict", "unsuitable"])
+# Story 37 Q16, Q17 made Conflict and Unsuitable replaceable; an unflagged booking still isn't.
+@pytest.mark.parametrize("flag", [None])
 def test_other_flags_are_not_replaceable(client, auth_headers, authenticate_as, replacement, flag):
     replacement["replaceable"]["flag"] = flag
     authenticate_as("event_coordinator", user_id=COORDINATOR_ID)

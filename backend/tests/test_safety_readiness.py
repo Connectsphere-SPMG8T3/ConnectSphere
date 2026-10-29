@@ -108,3 +108,9 @@ def test_only_the_rejected_space_is_reported():
     from app.modules.events.schemas import SpaceReadiness
     spaces=[SpaceReadiness(label='Hall A',bookings=[B(status='approved',flags=['safety_rejected'])]),SpaceReadiness(label='Hall B',bookings=[B(status='approved')])]
     assert safety_readiness([],T.ready,spaces).missing==['Hall A: flagged Safety rejected.']
+
+
+def test_a_space_booking_that_needs_re_review_is_named():
+    """Story 37 Q13."""
+    spaces = [S(label="Main hall", bookings=[B(status="approved", needs_re_review=True)])]
+    assert safety_readiness([], T.ready, spaces).missing == ["Main hall: needs re-review."]

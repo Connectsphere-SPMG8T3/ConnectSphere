@@ -204,7 +204,7 @@ REQUESTABLE_EQUIPMENT_STATUSES = ("active", "maintenance")
 # because `equipment_requests` points at both `events` and `profiles`.
 REQUEST_LINE_SELECT = (
     "id, submission_id, event_id, equipment_id, quantity, technical_requirements, status, "
-    "technical_notes, not_available_reason, requested_by, created_at, "
+    "technical_notes, not_available_reason, needs_re_review_reason, requested_by, created_at, "
     "equipment:equipment!equipment_requests_equipment_id_fkey(name, equipment_type), "
     "requester:profiles!equipment_requests_requested_by_fkey(id, full_name), "
     "event:events!equipment_requests_event_id_fkey(name, starts_at, status)"
@@ -291,6 +291,31 @@ def get_line(line_id: str) -> dict | None:
     return (response.data or [None])[0]
 
 
+def line_free_quantity(line_id: str, equipment_id: str, starts_at: datetime, ends_at: datetime) -> int:
+    """Story 37 preview: free units of the line's item over `[starts_at, ends_at)`,
+    leaving the line's own reservation out, as `recheck_event_reservations` judges it."""
+    client = get_supabase_admin_client()
+    reservation = (
+        client.table("equipment_reservations").select("id")
+        .eq("request_line_id", line_id).eq("status", "confirmed").limit(1).execute()
+    )
+    reservation_id = (reservation.data or [{}])[0].get("id")
+    response = client.rpc("equipment_availability", {
+        "p_equipment_ids": [equipment_id], "p_start_at": starts_at.isoformat(), "p_end_at": ends_at.isoformat(),
+        "p_exclude_reservation_id": reservation_id,
+    }).execute()
+    return (response.data or [{}])[0].get("free_quantity", 0)
+
+
+def send_line_for_re_review(line_id: str, actor_id: str, note: str | None, staff_message: str) -> dict:
+    """Story 37 AC6: run `public.send_equipment_line_for_re_review`. Answers `{outcome}`:
+    ok / not_found / not_assigned / status_changed / not_marked."""
+    response = get_supabase_admin_client().rpc("send_equipment_line_for_re_review", {
+        "p_line_id": line_id, "p_actor_id": actor_id, "p_note": note, "p_staff_message": staff_message,
+    }).execute()
+    return response.data
+
+
 def reserve_line(line_id: str, actor_id: str) -> tuple[str, int | None, bool]:
     """`(outcome, free_quantity, left_ready)` from `public.reserve_equipment_line`."""
     row = _rpc_row("reserve_equipment_line", {"p_line_id": line_id, "p_actor_id": actor_id})
@@ -356,14 +381,14 @@ def list_technical_history(event_id: str) -> list[dict]:
 
 
 def list_line_statuses(event_ids: Iterable[str]) -> list[dict]:
-    """`{event_id, status}` for every line on `event_ids`."""
+    """`{event_id, status, needs_re_review_since}` for every line on `event_ids`."""
     ids = sorted({str(i) for i in event_ids})
     if not ids:
         return []
     response = (
         get_supabase_admin_client()
         .table("equipment_requests")
-        .select("event_id, status")
+        .select("event_id, status, needs_re_review_since")
         .in_("event_id", ids)
         .execute()
     )

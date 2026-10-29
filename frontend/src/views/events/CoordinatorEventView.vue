@@ -23,6 +23,7 @@ import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReview
 import { formatDecisionTime } from "@/features/venues/bookingDecision";
 import SafetyRejectedNotice from "@/components/venues/SafetyRejectedNotice.vue";
 import AffectedBookingNotice from "@/components/venues/AffectedBookingNotice.vue";
+import ReReviewNotice from "@/components/events/ReReviewNotice.vue";
 import { BOOKING_STATUS_LABELS, replacementSearchRoute, venuePanelState } from "@/features/venues/bookingRequest";
 import { formatHoldExpiry } from "@/features/venues/dashboard";
 
@@ -39,13 +40,24 @@ const isReturnOpen = ref(false);
 const isApproveCancellationOpen = ref(false);
 const isRejectCancellationOpen = ref(false);
 const isCancelOpen = ref(false);
+// Story 37: deciding the organiser's change request.
+const isApproveChangeOpen = ref(false);
+const isRejectChangeOpen = ref(false);
+// AC7, Q6: a significant change on these events must pass the safety check again.
+const approveChangeMessage = computed(() => {
+  const request = event.value?.open_change_request;
+  const reopens = request?.significant && ["confirmed", "preparation", "safety_review"].includes(event.value.status);
+  return reopens
+    ? "The new details are applied and the organiser is notified. The event goes back to Planning and needs a new safety check."
+    : "The new details are applied and the organiser is notified.";
+});
 
 const event = computed(() => review.event);
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
 const showCancel = computed(() => canCancelEvent(event.value));
-const isReasonOpen = computed(() => isRejectCancellationOpen.value || isCancelOpen.value);
+const isReasonOpen = computed(() => isRejectCancellationOpen.value || isCancelOpen.value || isRejectChangeOpen.value);
 // CR-97: with spaces, each space card shows its own booking; the panel keeps
 // rejections and the reason no venue can be requested yet.
 const venuePanel = computed(() => {
@@ -64,6 +76,15 @@ function findReplacement(panel, space = null) {
 }
 
 const isAffected = (panel) => panel.kind === "affected" || panel.kind === "replacing";
+
+async function sendForReReview(bookingId, note) {
+  try {
+    await review.sendBookingForReReview(bookingId, note);
+    showToast("Sent to venue staff for re-review");
+  } catch {
+    // The store exposes the API refusal in the page alert.
+  }
+}
 
 async function markRevised(bookingId, note) {
   if (review.isActing) return;
@@ -181,6 +202,26 @@ async function confirmRejectCancellation(reason) {
   }
 }
 
+async function confirmApproveChange() {
+  isApproveChangeOpen.value = false;
+  try {
+    await review.approveChange();
+    showToast("Changes approved");
+  } catch {
+    // review.error is shown in the page's alert.
+  }
+}
+
+async function confirmRejectChange(reason) {
+  try {
+    await review.rejectChange(reason);
+    isRejectChangeOpen.value = false;
+    showToast("Change request rejected");
+  } catch {
+    // Kept open so the coordinator sees the error beside their reason.
+  }
+}
+
 async function confirmCancel(reason) {
   try {
     await review.cancelEvent(reason);
@@ -190,6 +231,16 @@ async function confirmCancel(reason) {
     // Kept open so the coordinator sees the error beside their reason.
   }
 }
+
+// Story 37 Q1: the preview follows the open change request shown in the banner.
+watch(
+  () => event.value?.open_change_request?.id,
+  (requestId) => {
+    review.changeImpact = null;
+    if (requestId) review.loadChangeImpact();
+  },
+  { immediate: true },
+);
 
 watch(
   () => route.params.id,
@@ -334,6 +385,29 @@ watch(
         <ChangeRequestChanges :rows="describeChanges(event.open_change_request.changes)" class="mt-4 bg-canvas" />
         <p class="mt-4 text-sm font-bold">Comments:</p>
         <p class="mt-1 whitespace-pre-wrap font-medium" data-testid="change-request-comments">{{ event.open_change_request.reason }}</p>
+        <div v-if="review.changeImpact" class="mt-4 border-2 border-ink bg-canvas p-4" data-testid="change-impact">
+          <p class="text-sm font-bold">If you approve</p>
+          <ul class="mt-2 space-y-1 text-sm font-medium">
+            <li v-for="booking in review.changeImpact.bookings" :key="booking.booking_id">
+              {{ [booking.space_label, booking.venue_name].filter(Boolean).join(", ") }}: {{ booking.messages.join(" ") }}
+            </li>
+            <li v-for="line in review.changeImpact.equipment" :key="line.line_id">
+              {{ line.label }}: {{ line.free }} free at the new time.
+            </li>
+            <li v-if="!review.changeImpact.bookings.length && !review.changeImpact.equipment.length">
+              No venue booking or equipment needs anything from staff.
+            </li>
+            <li v-if="review.changeImpact.attendees_notified">
+              {{ review.changeImpact.attendees_notified }} registered attendees will be notified of the new time.
+            </li>
+          </ul>
+        </div>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <BauhausButton size="sm" variant="secondary" aria-label="Approve changes" :disabled="review.isActing"
+            @click="review.error = null; isApproveChangeOpen = true">Approve changes</BauhausButton>
+          <BauhausButton size="sm" variant="outline" aria-label="Reject changes" :disabled="review.isActing"
+            @click="review.error = null; isRejectChangeOpen = true">Reject changes</BauhausButton>
+        </div>
       </section>
 
       <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
@@ -421,6 +495,13 @@ watch(
                   :replacement="spacePanels[space.id].replacement ?? null"
                   :can-replace="Boolean(spacePanels[space.id].canReplace)"
                   @replace="findReplacement(spacePanels[space.id], space)"
+                />
+                <ReReviewNotice
+                  v-if="spacePanels[space.id].booking?.needs_re_review_reason"
+                  :reason="spacePanels[space.id].booking.needs_re_review_reason"
+                  recipients="venue staff"
+                  :busy="review.isActing"
+                  @send="(note) => sendForReReview(spacePanels[space.id].booking.id, note)"
                 />
                 <p v-if="spacePanels[space.id].kind === 'expired'" class="mt-2 text-sm font-medium" data-testid="hold-expired">
                   The hold expired on {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} before venue staff approved it.
@@ -516,6 +597,13 @@ watch(
             >
               Hold expires {{ formatHoldExpiry(venuePanel.booking.expires_at) }} unless approved.
             </p>
+            <ReReviewNotice
+              v-if="venuePanel.booking.needs_re_review_reason"
+              :reason="venuePanel.booking.needs_re_review_reason"
+              recipients="venue staff"
+              :busy="review.isActing"
+              @send="(note) => sendForReReview(venuePanel.booking.id, note)"
+            />
           </template>
           <template v-else-if="venuePanel.kind === 'expired'">
             <p class="mt-4 text-lg font-bold">
@@ -615,6 +703,26 @@ watch(
       :error="isRejectCancellationOpen ? review.error : null"
       @confirm="confirmRejectCancellation"
       @cancel="isRejectCancellationOpen = false"
+    />
+    <ConfirmModal
+      :open="isApproveChangeOpen"
+      title="Approve the requested changes?"
+      :message="approveChangeMessage"
+      confirm-label="Approve changes"
+      cancel-label="Go back"
+      @confirm="confirmApproveChange"
+      @stay="isApproveChangeOpen = false"
+    />
+    <CancellationReasonModal
+      :open="isRejectChangeOpen"
+      title="Reject the requested changes?"
+      message="The event stays as it is. The organiser will see your reason."
+      confirm-label="Reject request"
+      confirm-aria-label="Reject change request"
+      :busy="review.isActing"
+      :error="isRejectChangeOpen ? review.error : null"
+      @confirm="confirmRejectChange"
+      @cancel="isRejectChangeOpen = false"
     />
     <CancellationReasonModal
       :open="isCancelOpen"

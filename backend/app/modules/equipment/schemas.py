@@ -134,6 +134,8 @@ class EquipmentRequestLine(BaseModel):
     # ever receive a line (AC12).
     technical_notes: str | None = None
     not_available_reason: str | None = None
+    # Story 37: why an approved time change marked it Needs re-review; null once sent.
+    needs_re_review_reason: str | None = None
     requested_by: Requester | None
     created_at: datetime
 
@@ -234,6 +236,8 @@ class TechnicalEventResponse(BaseModel):
     exit_confirmation: ExitConfirmation | None
     lines: list[EquipmentRequestLine]
     history: list[TechnicalHistoryEntry]
+    # Story 37 Q21: the approved change a line under re-review is checked against.
+    re_review_changes: dict | None = None
 
 
 EquipmentRequestLinesResponse.model_rebuild()

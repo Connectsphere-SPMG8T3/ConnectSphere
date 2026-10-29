@@ -271,6 +271,16 @@ class EventVenueBooking(BaseModel):
     flag: str | None = None
     flag_reason: str | None = None
     replaces_booking_id: str | None = None
+    # Story 37: why an approved change marked it Needs re-review. Absent once sent or never
+    # marked, so an unmarked booking keeps the shape it had before.
+    needs_re_review_reason: str | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unmarked(self, handler):
+        data = handler(self)
+        if self.needs_re_review_reason is None:
+            data.pop("needs_re_review_reason", None)
+        return data
 
 
 class EventCoordinator(BaseModel):
@@ -281,6 +291,8 @@ class EventCoordinator(BaseModel):
 class BookingReadiness(BaseModel):
     status: str
     flags: list[str] = []
+    # Story 37: an approved change touched it, and the coordinator hasn't sent it yet.
+    needs_re_review: bool = False
 
 
 class SpaceReadiness(BaseModel):
@@ -489,6 +501,50 @@ class EventListResponse(BaseModel):
 REJECT_REASON_MAX_LENGTH = 1000  # [Assumption] REQUIREMENTS §9; no customer limit given
 
 
+class BookingImpact(BaseModel):
+    """Story 37 Q1: what approving the open change would do to one venue booking."""
+
+    booking_id: str
+    venue_name: str
+    space_label: str | None = None
+    messages: list[str]
+
+
+class EquipmentShortfall(BaseModel):
+    line_id: str
+    label: str | None = None
+    needed: int
+    free: int
+
+
+class ChangeImpact(BaseModel):
+    """Story 37 Q1, CR-R2: worked out from the event as it is now, never stored."""
+
+    bookings: list[BookingImpact] = []
+    equipment: list[EquipmentShortfall] = []
+    attendees_notified: int = 0
+
+
+class ReReviewSendRequest(BaseModel):
+    """Story 37 Q20: the coordinator's optional note to staff when sending an arrangement
+    for re-review. Trimmed; blank is no note."""
+
+    note: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def blank_is_none(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+
+class ChangeApproveRequest(BaseModel):
+    """Story 37: the event version the coordinator saw when they approved (Q8)."""
+
+    version: int
+
+
 class EventRejectRequest(BaseModel):
     reason: str = Field(max_length=REJECT_REASON_MAX_LENGTH)
 
@@ -559,9 +615,9 @@ class EventHistoryEntry(BaseModel):
 
     @model_serializer(mode="wrap")
     def _omit_changes_outside_change_requests(self, handler):
-        # Only change-request entries have proposed changes; the others keep their shape.
+        # Only change-request entries and approvals (story 37) have changes; the others keep their shape.
         data = handler(self)
-        if not self.kind.startswith("change_request"):
+        if not (self.kind.startswith("change_request") or self.kind == "change_approved"):
             data.pop("changes", None)
         return data
 

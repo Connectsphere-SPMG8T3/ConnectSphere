@@ -158,7 +158,8 @@ describe("BookingRequestView (SCRUM-38)", () => {
     expect(el.querySelector('[data-testid="booking-history"]').textContent).toContain("No decisions yet.");
   });
 
-  it.each(["approved", "re_review", "rejected", "cancelled", "released", "expired"])(
+  // Story 37 Q12: a re_review booking is decided too (see "re-review (story 37)" below).
+  it.each(["approved", "rejected", "cancelled", "released", "expired"])(
     "AC9 offers no Reject on a %s booking",
     async (status) => {
       await mountView(booking({ status }));
@@ -312,7 +313,8 @@ describe("BookingRequestView approve (SCRUM-36)", () => {
     expect(button("Reject request")).not.toBeNull();
   });
 
-  it.each(["approved", "re_review", "rejected", "cancelled", "released", "expired"])(
+  // Story 37 Q12: a re_review booking is decided too (see "re-review (story 37)" below).
+  it.each(["approved", "rejected", "cancelled", "released", "expired"])(
     "AC6 offers no Approve on a %s booking",
     async (status) => {
       await mountView(booking({ status }));
@@ -382,3 +384,46 @@ describe("BookingRequestView, an affected booking (CR-95 AC9)", () => {
     expect(button("Restore original booking")).toBeNull();
   });
 });
+
+describe("BookingRequestView re-review (story 37)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  const UNDER_RE_REVIEW = booking({
+    status: "re_review",
+    re_review: {
+      changes: { event: [{ field: "layout_preference", before: "classroom", after: "banquet" }], spaces: [] },
+      note: "Banquet for 40, please check the room",
+      moved_from: { starts_at: "2031-03-10T02:00:00Z", ends_at: "2031-03-10T05:00:00Z" },
+      moved_to: { starts_at: "2031-03-10T06:00:00Z", ends_at: "2031-03-10T09:00:00Z" },
+    },
+  });
+
+  it("shows venue staff what changed, where it moved and the coordinator's note", async () => {
+    const { el } = await mountView(UNDER_RE_REVIEW);
+
+    const panel = el.querySelector('[data-testid="booking-re-review"]');
+    expect(panel.textContent).toContain("What changed");
+    expect(panel.textContent).toContain("Preferred layout: classroom → banquet");
+    expect(panel.textContent).toContain("Moved from");
+    expect(panel.textContent).toContain("Banquet for 40, please check the room");
+  });
+
+  it("offers venue staff Approve and Reject on a booking under re-review", async () => {
+    await mountView(UNDER_RE_REVIEW);
+
+    expect(button("Approve request")).not.toBeNull();
+    expect(button("Reject request")).not.toBeNull();
+  });
+
+  it("shows no re-review panel on a held booking", async () => {
+    const { el } = await mountView(booking());
+
+    expect(el.querySelector('[data-testid="booking-re-review"]')).toBeNull();
+  });
+});
+

@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  equipmentApi: { catalogue: vi.fn(), eventRequests: vi.fn(), submitRequest: vi.fn() },
+  equipmentApi: { catalogue: vi.fn(), eventRequests: vi.fn(), submitRequest: vi.fn(), sendLineForReReview: vi.fn() },
 }));
 
 const PROJECTOR = { equipment_id: "p1", name: "Projector", equipment_type: "AV", total_quantity: 20 };
@@ -227,3 +227,48 @@ describe("EquipmentRequestPanel (SCRUM-45)", () => {
     expect(document.body.textContent).not.toContain("Exits and walkways clear");
   });
 });
+
+describe("EquipmentRequestPanel re-review (story 37)", () => {
+  const MARKED = { ...LINE, status: "reserved", needs_re_review_reason: "Event time changed; 2 free for 4." };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    equipmentApi.catalogue.mockResolvedValue({ items: [PROJECTOR, MIC] });
+    equipmentApi.eventRequests.mockResolvedValue({ lines: [MARKED] });
+  });
+
+  afterEach(() => {
+    mounted.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  it("shows why a line needs re-review and sends it to technical support", async () => {
+    await mountPanel();
+    expect(document.querySelector('[data-testid="needs-re-review"]').textContent)
+      .toContain("Event time changed; 2 free for 4.");
+    equipmentApi.sendLineForReReview.mockResolvedValue(null);
+    equipmentApi.eventRequests.mockClear();
+
+    [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Send for re-review").click();
+    await nextTick();
+    const form = document.querySelector('[role="dialog"][aria-label="Send for re-review"]');
+    [...form.querySelectorAll("button")].find((b) => b.textContent.trim() === "Send to technical support").click();
+
+    await vi.waitFor(() => expect(equipmentApi.sendLineForReReview).toHaveBeenCalledWith("l1", null, "access"));
+    await vi.waitFor(() => expect(equipmentApi.eventRequests).toHaveBeenCalled());
+  });
+
+  it("keeps the lines and shows why when sending is refused", async () => {
+    await mountPanel();
+    equipmentApi.sendLineForReReview.mockRejectedValue(new Error("This equipment line doesn't need re-review."));
+
+    [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Send for re-review").click();
+    await nextTick();
+    [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Send to technical support").click();
+
+    await vi.waitFor(() => expect(document.querySelector('[role="alert"]').textContent)
+      .toContain("This equipment line doesn't need re-review."));
+    expect(document.body.textContent).toContain("Projector");
+  });
+});
+

@@ -255,7 +255,8 @@ begin
     end if;
 
     -- AC6: every other status is refused and left as it is.
-    foreach v_status in array array['approved', 're_review', 'rejected', 'cancelled', 'released', 'expired']::public.venue_booking_status[] loop
+    -- Story 37 Q12: a re_review booking is decided too (change_request_decision_checks.sql).
+    foreach v_status in array array['approved', 'rejected', 'cancelled', 'released', 'expired']::public.venue_booking_status[] loop
         select * into v_result from public.approve_venue_booking(
             (select id from public.venue_bookings
               where event_id in ('e0000000-0000-4000-8000-0000000036a8', 'e0000000-0000-4000-8000-0000000036a9')

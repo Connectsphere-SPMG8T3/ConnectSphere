@@ -63,6 +63,8 @@ const tiles = computed(() => [
     label: "In re-review",
     value: show(counts.value.reReview),
     detail: "Changed after approval",
+    // Story 37: the same list, opened on the bookings an approved change sent back.
+    href: "/dashboard/venue-staff/requests?status=re_review",
     background: "blue",
     accent: "square",
     accentColor: "bauhaus-yellow",

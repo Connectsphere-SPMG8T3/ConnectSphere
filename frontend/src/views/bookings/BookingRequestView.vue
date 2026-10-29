@@ -14,6 +14,8 @@ import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import RejectBookingModal from "@/components/venues/RejectBookingModal.vue";
+import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
+import { describeChanges } from "@/features/events/changeRequest";
 import { showToast } from "@/composables/useToast";
 import {
   canApproveBooking,
@@ -140,6 +142,19 @@ async function reject(form) {
           <p class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold shadow-hard">
             {{ bookingStatusLabel(booking.status) }}
           </p>
+        </div>
+        <!-- Story 37 Q21: what an approved change asks venue staff to re-review. -->
+        <div v-if="booking.re_review" class="mt-6 border-l-4 border-bauhaus-yellow bg-canvas px-4 py-3" data-testid="booking-re-review">
+          <p class="text-xs font-bold">Under re-review</p>
+          <p class="mt-1 text-sm font-bold">What changed</p>
+          <ChangeRequestChanges v-if="booking.re_review.changes" :rows="describeChanges(booking.re_review.changes)" class="mt-2" />
+          <p v-if="booking.re_review.moved_from && booking.re_review.moved_to" class="mt-2 text-sm font-medium">
+            Moved from {{ formatBookingPeriod(booking.re_review.moved_from) }} to {{ formatBookingPeriod(booking.re_review.moved_to) }}.
+          </p>
+          <p v-if="booking.re_review.note" class="mt-2 whitespace-pre-wrap text-sm font-medium">
+            <span class="font-bold">Coordinator's note:</span> {{ booking.re_review.note }}
+          </p>
+          <p class="mt-2 text-sm font-medium">The booking keeps the venue until you approve or reject it.</p>
         </div>
         <div v-if="booking.flag === 'safety_rejected'" class="mt-6 border-l-4 border-bauhaus-red bg-canvas px-4 py-3" data-testid="booking-safety-rejected">
           <p class="text-xs font-bold text-bauhaus-red">Safety rejected</p>
