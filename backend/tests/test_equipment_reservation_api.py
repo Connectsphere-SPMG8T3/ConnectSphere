@@ -299,9 +299,10 @@ class TestTechnicalView:
         assert body["exit_confirmation"] == {"confirmed_by_name": "Tan Wei", "confirmed_at": "2026-10-19T03:00:00Z"}
         assert body["lines"][0]["technical_notes"] == "Ask vendor"
         assert body["lines"][0]["not_available_reason"] == "Only 2 in stock"
+        # D70: each entry names its line, so a re-review line can say why it is under re-review.
         assert body["history"] == [{
-            "action": "not_available", "line_label": "3 × 4K Projector", "from_status": "pending",
-            "to_status": "rejected", "detail": "Only 2 in stock", "actor_name": "Tan Wei",
+            "action": "not_available", "request_id": LINE_ID, "line_label": "3 × 4K Projector",
+            "from_status": "pending", "to_status": "rejected", "detail": "Only 2 in stock", "actor_name": "Tan Wei",
             "created_at": "2026-10-19T03:00:00Z",
         }]
 
@@ -317,6 +318,7 @@ class TestTechnicalView:
         assert body["exit_confirmation"] is None
         assert body["history"][0]["actor_name"] is None
         assert body["history"][0]["line_label"] is None
+        assert body["history"][0]["request_id"] is None
 
     @pytest.mark.parametrize("status", ["draft"])
     def test_a_draft_is_not_found(self, client, auth_headers, store, tech, status):

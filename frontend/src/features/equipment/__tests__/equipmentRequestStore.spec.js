@@ -15,6 +15,9 @@ vi.mock("@/services/api", async (importOriginal) => ({
     submitRequest: vi.fn(),
     requestList: vi.fn(),
     sendLineForReReview: vi.fn(),
+    updateLine: vi.fn(),
+    removeLine: vi.fn(),
+    eventHistory: vi.fn(),
   },
 }));
 
@@ -209,3 +212,123 @@ describe("useEquipmentRequestStore send for re-review (story 37)", () => {
   });
 });
 
+
+describe("useEquipmentRequestStore changes and removals (SCRUM-44)", () => {
+  const ENTRY = { action: "removed", line_label: "4 × Projector", detail: "Removed 4 × Projector.", created_at: "2026-10-26T02:00:00Z" };
+  const DRAFT = { equipmentId: "p1", quantity: "6", technicalRequirements: "" };
+
+  async function loaded() {
+    equipmentApi.catalogue.mockResolvedValue({ items: [PROJECTOR] });
+    equipmentApi.eventRequests.mockResolvedValue({ lines: [LINE] });
+    equipmentApi.eventHistory.mockResolvedValue({ history: [ENTRY] });
+    const store = useEquipmentRequestStore();
+    await store.load("event-1");
+    return store;
+  }
+
+  it("loads the event's equipment history on its own (AC8)", async () => {
+    const store = await loaded();
+
+    await store.loadHistory("event-1");
+
+    expect(equipmentApi.eventHistory).toHaveBeenCalledWith("event-1", "access");
+    expect(store.history).toEqual([ENTRY]);
+    expect(store.historyError).toBeNull();
+  });
+
+  it("keeps the lines when the history can't be read", async () => {
+    const store = await loaded();
+    equipmentApi.eventHistory.mockRejectedValue(new Error("down"));
+
+    await store.loadHistory("event-1");
+
+    expect(store.history).toEqual([]);
+    expect(store.historyError).toBe("down");
+    expect(store.lines).toEqual([LINE]);
+  });
+
+  it("drops a history answer for an event the panel has since left", async () => {
+    const store = await loaded();
+    const pending = deferred();
+    equipmentApi.eventHistory.mockReturnValue(pending.promise);
+
+    const reading = store.loadHistory("event-1");
+    equipmentApi.eventRequests.mockResolvedValue({ lines: [] });
+    await store.load("event-2");
+    pending.resolve({ history: [ENTRY] });
+    await reading;
+
+    expect(store.history).toEqual([]);
+  });
+
+  it("saves a change with the status it was seen in, then reloads the lines and history (AC2, AC6)", async () => {
+    const store = await loaded();
+    equipmentApi.updateLine.mockResolvedValue({ line_id: "l1", status: "pending" });
+    equipmentApi.eventRequests.mockClear();
+
+    expect(await store.updateLine(LINE, DRAFT)).toBe(true);
+
+    expect(equipmentApi.updateLine).toHaveBeenCalledWith("l1", {
+      equipment_id: "p1", quantity: 6, technical_requirements: null, expected_status: "pending",
+    }, "access");
+    expect(equipmentApi.eventRequests).toHaveBeenCalled();
+    expect(equipmentApi.eventHistory).toHaveBeenCalled();
+    expect(store.busyLineId).toBeNull();
+  });
+
+  it("removes a line with the status it was seen in, then reloads (AC1, AC6)", async () => {
+    const store = await loaded();
+    equipmentApi.removeLine.mockResolvedValue({ line_id: "l1", status: "released" });
+    equipmentApi.eventRequests.mockClear();
+
+    expect(await store.removeLine({ ...LINE, status: "reserved" })).toBe(true);
+
+    expect(equipmentApi.removeLine).toHaveBeenCalledWith("l1", "reserved", "access");
+    expect(equipmentApi.eventRequests).toHaveBeenCalled();
+  });
+
+  it("shows a refusal and reloads, so a line that moved shows its new status (AC4, AC6)", async () => {
+    const store = await loaded();
+    equipmentApi.updateLine.mockRejectedValue(new Error("This line changed while you were editing it. Reload to see its current status."));
+    equipmentApi.eventRequests.mockClear();
+
+    expect(await store.updateLine(LINE, DRAFT)).toBe(false);
+
+    expect(store.actionError).toBe("This line changed while you were editing it. Reload to see its current status.");
+    expect(equipmentApi.eventRequests).toHaveBeenCalled();
+    expect(store.actionError).not.toBeNull();
+  });
+
+  it("keeps a removal's refusal on screen", async () => {
+    const store = await loaded();
+    equipmentApi.removeLine.mockRejectedValue(new Error("Equipment can only be changed while the event is in Planning."));
+
+    expect(await store.removeLine(LINE)).toBe(false);
+    expect(store.actionError).toBe("Equipment can only be changed while the event is in Planning.");
+  });
+
+  it("doesn't save an invalid draft or act while another line is busy", async () => {
+    const store = await loaded();
+
+    expect(await store.updateLine(LINE, { ...DRAFT, quantity: "0" })).toBe(false);
+    store.busyLineId = "l9";
+    expect(await store.updateLine(LINE, DRAFT)).toBe(false);
+    expect(await store.removeLine(LINE)).toBe(false);
+    expect(equipmentApi.updateLine).not.toHaveBeenCalled();
+    expect(equipmentApi.removeLine).not.toHaveBeenCalled();
+  });
+
+  it("drops the answer for an event the panel has since left", async () => {
+    const store = await loaded();
+    let reject;
+    equipmentApi.removeLine.mockReturnValue(new Promise((_, r) => { reject = r; }));
+
+    const removing = store.removeLine(LINE);
+    await store.load("event-2");
+    reject(new Error("refused"));
+
+    expect(await removing).toBe(false);
+    expect(store.actionError).toBeNull();
+    expect(store.busyLineId).toBeNull();
+  });
+});

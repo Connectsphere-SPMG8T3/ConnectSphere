@@ -8,7 +8,10 @@ import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
-  equipmentApi: { catalogue: vi.fn(), eventRequests: vi.fn(), submitRequest: vi.fn(), sendLineForReReview: vi.fn() },
+  equipmentApi: {
+    catalogue: vi.fn(), eventRequests: vi.fn(), submitRequest: vi.fn(), sendLineForReReview: vi.fn(),
+    updateLine: vi.fn(), removeLine: vi.fn(), eventHistory: vi.fn(),
+  },
 }));
 
 const PROJECTOR = { equipment_id: "p1", name: "Projector", equipment_type: "AV", total_quantity: 20 };
@@ -272,3 +275,134 @@ describe("EquipmentRequestPanel re-review (story 37)", () => {
   });
 });
 
+
+describe("EquipmentRequestPanel changes and removals (SCRUM-44)", () => {
+  const RESERVED = { ...LINE, status: "reserved" };
+  const ENTRY = {
+    action: "removed", line_label: "2 × Wireless microphone", from_status: "pending", to_status: "released",
+    detail: "Removed 2 × Wireless microphone.", actor_name: "Marcus Lim", created_at: "2026-10-26T02:00:00Z",
+  };
+  const byLabel = (label) => document.querySelector(`button[aria-label="${label}"]`);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    equipmentApi.catalogue.mockResolvedValue({ items: [PROJECTOR, MIC] });
+    equipmentApi.eventRequests.mockResolvedValue({ lines: [RESERVED] });
+    equipmentApi.eventHistory.mockResolvedValue({ history: [ENTRY] });
+  });
+
+  afterEach(() => {
+    mounted.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  it("offers Edit and Remove on each line while the event is in planning (AC1, AC2)", async () => {
+    await mountPanel();
+
+    expect(byLabel("Edit Projector")).not.toBeNull();
+    expect(byLabel("Remove Projector from the request")).not.toBeNull();
+  });
+
+  it.each(["safety_review", "confirmed", "returned"])("offers neither outside planning (%s) (AC4)", async (status) => {
+    await mountPanel({ status });
+
+    expect(byLabel("Edit Projector")).toBeNull();
+    expect(byLabel("Remove Projector from the request")).toBeNull();
+    expect(document.body.textContent).toContain("Equipment can only be changed while the event is in Planning.");
+  });
+
+  it("changes a line and shows it as the API now has it (AC2, AC3)", async () => {
+    await mountPanel();
+    equipmentApi.updateLine.mockResolvedValue({ line_id: "l1", status: "re_review" });
+    equipmentApi.eventRequests.mockResolvedValue({ lines: [{ ...RESERVED, quantity: 6, status: "re_review" }] });
+
+    byLabel("Edit Projector").click();
+    await nextTick();
+    expect(document.body.textContent).toContain("Its reservation is kept until they re-approve or reject it.");
+    await setValue(quantities()[0], "6");
+    byLabel("Save changes to Projector").click();
+
+    await vi.waitFor(() => expect(equipmentApi.updateLine).toHaveBeenCalledWith("l1", {
+      equipment_id: "p1", quantity: 6, technical_requirements: "HDMI to the lectern", expected_status: "reserved",
+    }, "access"));
+    await vi.waitFor(() => expect(document.body.textContent).toContain("× 6"));
+    expect(byLabel("Save changes to Projector")).toBeNull();
+    expect(document.body.textContent).toContain("Re-review");
+  });
+
+  it("closes the form on Cancel without saving", async () => {
+    await mountPanel();
+
+    byLabel("Edit Projector").click();
+    await nextTick();
+    byLabel("Cancel").click();
+    await nextTick();
+
+    expect(byLabel("Save changes to Projector")).toBeNull();
+    expect(equipmentApi.updateLine).not.toHaveBeenCalled();
+  });
+
+  it("asks before removing, saying what removal does (AC1)", async () => {
+    await mountPanel();
+    equipmentApi.removeLine.mockResolvedValue({ line_id: "l1", status: "released" });
+
+    byLabel("Remove Projector from the request").click();
+    await nextTick();
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog.textContent).toContain("Remove 4 × Projector?");
+    expect(dialog.textContent).toContain("Its reservation is released and Technical Support are told.");
+    equipmentApi.eventRequests.mockResolvedValue({ lines: [{ ...RESERVED, status: "released" }] });
+    byLabel("Remove line").click();
+
+    await vi.waitFor(() => expect(equipmentApi.removeLine).toHaveBeenCalledWith("l1", "reserved", "access"));
+    await vi.waitFor(() => expect(document.body.textContent).toContain("No equipment requested yet"));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("keeps the line when removal is called off", async () => {
+    await mountPanel();
+
+    byLabel("Remove Projector from the request").click();
+    await nextTick();
+    byLabel("Keep line").click();
+    await nextTick();
+
+    expect(equipmentApi.removeLine).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("shows a refusal above the lines (AC4, AC6)", async () => {
+    await mountPanel();
+    equipmentApi.removeLine.mockRejectedValue(new Error("This line changed while you were editing it. Reload to see its current status."));
+
+    byLabel("Remove Projector from the request").click();
+    await nextTick();
+    byLabel("Remove line").click();
+
+    await vi.waitFor(() => expect(document.querySelector('[role="alert"]').textContent)
+      .toContain("This line changed while you were editing it."));
+  });
+
+  it("shows the equipment history, where a removed line stays (AC8)", async () => {
+    await mountPanel();
+
+    await vi.waitFor(() => expect(document.body.textContent).toContain("Removed by the coordinator · 2 × Wireless microphone"));
+    expect(document.body.textContent).toContain("Equipment history");
+  });
+
+  it("says so, without an alert, when the history can't be read", async () => {
+    equipmentApi.eventHistory.mockRejectedValue(new Error("down"));
+    await mountPanel();
+
+    await vi.waitFor(() => expect(document.body.textContent).toContain("The equipment history couldn't be loaded."));
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("says a line under re-review is being re-checked, whatever sent it there", async () => {
+    equipmentApi.eventRequests.mockResolvedValue({ lines: [{ ...LINE, status: "re_review" }] });
+    await mountPanel();
+
+    expect(document.body.textContent).toContain("Technical Support are re-checking this line. Its reservation is kept meanwhile.");
+    expect(document.body.textContent).not.toContain("The event's time changed");
+  });
+});

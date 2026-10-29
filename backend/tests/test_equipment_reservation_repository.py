@@ -101,6 +101,31 @@ class TestStaffActions:
         assert repository.recheck_event("e1", None) == ("no_schedule", 0, False)
 
 
+class TestCoordinatorLineChanges:
+    """SCRUM-44: the coordinator's edit and removal, each one database function."""
+
+    def test_update_sends_the_new_values_and_reads_the_new_status(self, client):
+        answer(client, [{"outcome": "ok", "line_status": "re_review"}])
+
+        assert repository.update_line("l1", "c1", "q1", 4, None, "reserved") == ("ok", "re_review")
+        client.rpc.assert_called_once_with("update_equipment_line", {
+            "p_line_id": "l1", "p_actor_id": "c1", "p_equipment_id": "q1", "p_quantity": 4,
+            "p_requirements": None, "p_expected_status": "reserved",
+        })
+
+    def test_an_empty_update_answer_is_no_outcome(self, client):
+        answer(client, [])
+
+        assert repository.update_line("l1", "c1", "q1", 1, "x", "pending") == ("", None)
+
+    def test_remove_sends_the_status_the_coordinator_saw(self, client):
+        answer(client, "ok")
+
+        assert repository.remove_line("l1", "c1", "pending") == "ok"
+        client.rpc.assert_called_once_with(
+            "remove_equipment_line", {"p_line_id": "l1", "p_actor_id": "c1", "p_expected_status": "pending"})
+
+
 class TestReads:
     def test_get_line_reads_one_line_or_none(self, client):
         answer(client, [{"id": "l1", "event_id": "e1", "status": "pending"}])

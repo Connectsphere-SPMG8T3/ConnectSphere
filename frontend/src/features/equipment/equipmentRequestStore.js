@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 
-import { canSubmit, toPayload } from "@/features/equipment/equipmentRequest";
+import { canSaveLine, canSubmit, toLineUpdate, toPayload } from "@/features/equipment/equipmentRequest";
 import { equipmentApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
@@ -24,6 +24,11 @@ export const useEquipmentRequestStore = defineStore("equipmentRequest", {
     // Story 37: a refused Send for re-review, shown above the lines rather than instead of them.
     actionError: null,
     submitError: null,
+    // SCRUM-44: the line being changed or removed, and the event's equipment
+    // history (AC8), read on its own so a failed read never hides the lines.
+    busyLineId: null,
+    history: [],
+    historyError: null,
   }),
 
   actions: {
@@ -36,6 +41,9 @@ export const useEquipmentRequestStore = defineStore("equipmentRequest", {
         this.isSubmitting = false;
         this.submitError = null;
         this.actionError = null;
+        this.busyLineId = null;
+        this.history = [];
+        this.historyError = null;
       }
       this.eventId = eventId;
       this.isLoading = true;
@@ -76,6 +84,52 @@ export const useEquipmentRequestStore = defineStore("equipmentRequest", {
       } finally {
         if (this.eventId === eventId) this.isSubmitting = false;
       }
+    },
+
+    async loadHistory(eventId) {
+      const auth = useAuthStore();
+      try {
+        const answer = await auth.withSession((token) => equipmentApi.eventHistory(eventId, token));
+        if (this.eventId !== eventId) return;
+        this.history = answer?.history ?? [];
+        this.historyError = null;
+      } catch (error) {
+        if (this.eventId !== eventId) return;
+        this.history = [];
+        this.historyError = error.message;
+      }
+    },
+
+    // SCRUM-44 AC2/AC3: change a line, naming the status it was seen in (AC6).
+    // Success or refusal, the lines are reloaded so a line that moved shows its
+    // real status.
+    updateLine(line, draft) {
+      if (!canSaveLine(draft)) return Promise.resolve(false);
+      return this.changeLine(line, (token) => equipmentApi.updateLine(line.id, toLineUpdate(draft, line.status), token));
+    },
+
+    // SCRUM-44 AC1: remove a line, naming the status it was seen in (AC6).
+    removeLine(line) {
+      return this.changeLine(line, (token) => equipmentApi.removeLine(line.id, line.status, token));
+    },
+
+    async changeLine(line, call) {
+      const eventId = this.eventId;
+      if (!eventId || this.busyLineId) return false;
+      const auth = useAuthStore();
+      this.busyLineId = line.id;
+      this.actionError = null;
+      let saved = false;
+      try {
+        await auth.withSession(call);
+        saved = true;
+      } catch (error) {
+        if (this.eventId === eventId) this.actionError = error.message;
+      }
+      if (this.eventId !== eventId) return false;
+      await Promise.all([this.load(eventId), this.loadHistory(eventId)]);
+      if (this.eventId === eventId) this.busyLineId = null;
+      return saved;
     },
 
     // Story 37 AC6: a line an approved time change left short goes to technical support.

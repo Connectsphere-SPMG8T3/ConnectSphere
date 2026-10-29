@@ -1,15 +1,22 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canChangeLine,
   canRequestEquipment,
+  canSaveLine,
   canSubmit,
+  changeNotice,
   duplicateEquipmentIds,
   emptyLine,
   inventoryWarning,
+  lineToDraft,
+  liveLines,
   quantityError,
+  removeNotice,
   REQUEST_STATUS_LABELS,
   TECHNICAL_REQUIREMENTS_MAX_LENGTH,
   technicalRequirementsError,
+  toLineUpdate,
   toPayload,
 } from "@/features/equipment/equipmentRequest";
 
@@ -115,5 +122,69 @@ describe("canRequestEquipment (AC7)", () => {
 describe("REQUEST_STATUS_LABELS (AC6)", () => {
   it("reads a pending line as Pending", () => {
     expect(REQUEST_STATUS_LABELS.pending).toBe("Pending");
+  });
+});
+
+describe("SCRUM-44 changing or removing a recorded line", () => {
+  const LINE = {
+    id: "l1", equipment_id: "p1", equipment_name: "Projector", quantity: 4,
+    technical_requirements: "HDMI", status: "reserved",
+  };
+
+  it.each([
+    ["planning", "pending", true],
+    ["planning", "reserved", true],
+    ["planning", "re_review", true],
+    ["planning", "rejected", true],
+    ["planning", "released", false],
+    ["safety_review", "pending", false],
+    ["confirmed", "reserved", false],
+    ["returned", "pending", false],
+  ])("an event in %s offers a %s line for change: %s (AC1, AC2, AC4)", (eventStatus, lineStatus, expected) => {
+    expect(canChangeLine(eventStatus, lineStatus)).toBe(expected);
+  });
+
+  it("starts the edit form from the line as recorded", () => {
+    expect(lineToDraft(LINE)).toEqual({ equipmentId: "p1", quantity: "4", technicalRequirements: "HDMI" });
+    expect(lineToDraft({ ...LINE, technical_requirements: null }).technicalRequirements).toBe("");
+  });
+
+  it("saves only a complete, valid line (AC2)", () => {
+    expect(canSaveLine(lineToDraft(LINE))).toBe(true);
+    expect(canSaveLine({ ...lineToDraft(LINE), equipmentId: "" })).toBe(false);
+    expect(canSaveLine({ ...lineToDraft(LINE), quantity: "0" })).toBe(false);
+    expect(canSaveLine({ ...lineToDraft(LINE), quantity: "1.5" })).toBe(false);
+    expect(canSaveLine({ ...lineToDraft(LINE), technicalRequirements: "x".repeat(1001) })).toBe(false);
+    expect(canSaveLine({ ...lineToDraft(LINE), quantity: "500" })).toBe(true);
+  });
+
+  it("sends the new values with the status the coordinator saw (AC6)", () => {
+    expect(toLineUpdate({ equipmentId: "m1", quantity: " 6 ", technicalRequirements: "  " }, "reserved")).toEqual({
+      equipment_id: "m1", quantity: 6, technical_requirements: null, expected_status: "reserved",
+    });
+    expect(toLineUpdate({ equipmentId: "m1", quantity: "2", technicalRequirements: " VGA " }, "pending")
+      .technical_requirements).toBe("VGA");
+  });
+
+  it.each([
+    ["pending", ""],
+    ["reserved", "Technical Support will re-check this line. Its reservation is kept until they re-approve or reject it."],
+    ["re_review", "Technical Support will re-check this line. Its reservation is kept until they re-approve or reject it."],
+    ["rejected", "The line goes back to Pending and Technical Support are told."],
+  ])("says what saving a %s line does (AC3)", (status, expected) => {
+    expect(changeNotice(status)).toBe(expected);
+  });
+
+  it.each([
+    ["pending", "It leaves the request. Technical Support haven't acted on it yet."],
+    ["reserved", "Its reservation is released and Technical Support are told."],
+    ["re_review", "Its reservation is released and Technical Support are told."],
+    ["rejected", "It leaves the request. It was marked Not available, so nothing is held."],
+  ])("says what removing a %s line does (AC1)", (status, expected) => {
+    expect(removeNotice(status)).toBe(expected);
+  });
+
+  it("lists only lines still on the request; removed ones stay in the history (AC8)", () => {
+    expect(liveLines([LINE, { ...LINE, id: "l2", status: "released" }]).map((l) => l.id)).toEqual(["l1"]);
   });
 });

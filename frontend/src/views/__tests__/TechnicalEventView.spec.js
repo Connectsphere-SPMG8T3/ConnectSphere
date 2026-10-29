@@ -231,3 +231,48 @@ describe("TechnicalEventView re-review (story 37)", () => {
   });
 });
 
+
+describe("TechnicalEventView re-review after a coordinator's edit (D70)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  afterEach(() => {
+    apps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  const EDITED = {
+    action: "edited", request_id: "l1", line_label: "4 × 4K Projector", from_status: "reserved",
+    to_status: "re_review", detail: "Quantity: 3 → 4.", actor_name: "Marcus Lim", created_at: "2026-10-26T03:00:00Z",
+  };
+
+  it("says the coordinator changed the line, not that the event's time changed", async () => {
+    equipmentApi.technicalView.mockResolvedValue(view({ lines: [{ ...LINE, status: "re_review" }], history: [EDITED] }));
+    await mountView();
+
+    const card = document.querySelector("article");
+    expect(card.textContent).toContain("The coordinator changed this line. Quantity: 3 → 4.");
+    expect(card.textContent).not.toContain("time changed");
+  });
+
+  it("doesn't show an older change request as what changed", async () => {
+    equipmentApi.technicalView.mockResolvedValue(view({
+      lines: [{ ...LINE, status: "re_review" }],
+      re_review_changes: { event: [{ field: "expected_attendance", before: 80, after: 120 }], spaces: [] },
+      history: [EDITED],
+    }));
+    await mountView();
+
+    expect(document.querySelector('[data-testid="technical-re-review"]')).toBeNull();
+  });
+
+  it("still shows the change request for a line it sent", async () => {
+    equipmentApi.technicalView.mockResolvedValue(view({
+      lines: [{ ...LINE, status: "re_review" }, { ...LINE, id: "l2", status: "re_review" }],
+      re_review_changes: { event: [{ field: "expected_attendance", before: 80, after: 120 }], spaces: [] },
+      history: [EDITED, { ...EDITED, action: "sent_for_re_review", request_id: "l2", detail: null }],
+    }));
+    await mountView();
+
+    expect(document.querySelector('[data-testid="technical-re-review"]')).not.toBeNull();
+  });
+});

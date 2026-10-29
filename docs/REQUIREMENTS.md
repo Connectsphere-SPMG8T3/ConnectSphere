@@ -1000,7 +1000,7 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - **EQ-R1:** A quantity above the type's **total** inventory shows an immediate warning ("Only 20 exist") but can still be submitted. Window-specific availability is checked by tech support (§6.16).
 - **EQ-R2:** **All or nothing:** a line is fully reserved or rejected, never partially filled (QA-125).
 - **EQ-R3:** Rejection requires a reason and notifies the coordinator. What happens next is manual negotiation (QA-83): the coordinator may edit the line (for example, lower the quantity, which returns it to `pending`), remove it, or reject the event if essential requirements can't be met (§5).
-- **EQ-R4:** The coordinator can edit or delete `pending` lines. Editing a `reserved` line **doesn't release it automatically**; the line goes to `re_review` and keeps its reservation until tech support re-reserve or reject it (QA-2 principle: no automatic un-booking).
+- **EQ-R4:** The coordinator can edit or remove any line still on the request while the event is in `planning` (SCRUM-44). Editing a `reserved` line **doesn't release it automatically**; the line goes to `re_review` and keeps its reservation until tech support re-reserve or reject it (QA-2 principle: no automatic un-booking). Editing a `rejected` (Not available) line returns it to `pending`. Removing a line releases any reservation it holds. Outside `planning`, equipment changes go through a change request (story 37).
 - **EQ-R5:** No lead-time restriction applies to requests (QA-105).
 
 **Acceptance criteria**
@@ -1016,6 +1016,13 @@ This is a pure function, `evaluate(event, venue) -> [RuleResult]`, with one clas
 - Out of scope this sprint: notifying tech support (asked for by the first acceptance criterion above), editing or deleting pending lines (EQ-R4), and tech support's sortable queue. Tech support get a read-only list of pending lines on their dashboard.
 - AC1 and AC7 ("assigned to the event") are revisited next sprint, when the Event Coordinator Lead's assignment queue (§6.5) is built.
 - Assumptions: §9 item 21.
+
+**SCRUM-44 (Sprint 4) lets the coordinator change or remove recorded lines** (backlog row 44, AC1–AC8):
+- Only the assigned coordinator, acting as coordinator, while the event is in `planning`; otherwise 409 "Equipment can only be changed while the event is in Planning." Item, quantity and technical requirements follow SCRUM-45's rules, including EQ-R1's warning.
+- After a change: `pending` stays `pending`; `reserved` becomes `re_review` with its reservation unchanged; `rejected` becomes `pending`. Technical Support are told when the line was `reserved`, `re_review` or `rejected`. Removing a `reserved` or `re_review` line releases its reservation and tells them. Changing an item or quantity, or removing a line, clears the exit tick; the technical status is re-derived.
+- Each request names the status the coordinator saw; a line whose status has moved (a reservation landed first) is refused with "This line changed while you were editing it. Reload to see its current status." (AC6).
+- **[Team decision]** A removed line is kept with status `released`, not deleted, so the technical history and safety decisions that name it still do (AC8).
+- Assumptions: §9 items 104–107.
 
 ### 6.16 Equipment availability checking *(SCRUM-23)*
 
@@ -1609,6 +1616,10 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 101. **[Assumption, story 37]** The coordinator can't return a change request for modification, only reject it with a reason (CR-R26). Ask whether QA2-9's "return it for modification" is wanted.
 102. **[Assumption, story 37]** A significant change approved while the event is in Safety review returns it to Planning and tells the Safety Officers (CR-R29), extending AC7.
 103. **[Assumption, story 37]** After an approved time change, a reserved equipment line that still has the stock stays Reserved without technical support (CR-R27), as attendance within capacity doesn't involve venue staff; only a short line is marked.
+104. **[Assumption, SCRUM-44]** Changing a line that is already under re-review keeps it `re_review` and tells Technical Support again; AC3 names only Pending, Reserved and Not available lines.
+105. **[Assumption, SCRUM-44]** Changing a Not available line clears its reason (the history keeps it), since the reason belonged to what was asked for before.
+106. **[Assumption, SCRUM-44]** Technical Support are not told of changes to, or removal of, a `pending` line, or removal of a Not available line: AC1 and AC3 ask for alerts only where they had already acted, and a pending line is in their queue either way.
+107. **[Assumption, SCRUM-44]** Changing a line to an item another line on the event already names is allowed; SCRUM-45 refuses duplicates only within one submission.
 
 ## 10. Non-functional requirements
 

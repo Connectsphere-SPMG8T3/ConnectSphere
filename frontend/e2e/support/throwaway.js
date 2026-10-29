@@ -248,6 +248,11 @@ export function createThrowawayLine(event, equipment, quantity) {
   return row;
 }
 
+/** Sets a throwaway line's status directly, as if tech support had acted on it (D70). */
+export function setThrowawayLineStatus(line, status) {
+  query(`update public.equipment_requests set status = '${status}' where id = '${line.id}'`);
+}
+
 // Same "live-check venue " prefix as backend/scripts/verify_live.py (SCRUM-64).
 const VENUE_PREFIX = "live-check venue ";
 

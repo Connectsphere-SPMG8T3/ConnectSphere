@@ -5,13 +5,19 @@ import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
+import ConfirmModal from "@/components/common/ConfirmModal.vue";
+import EquipmentLineEditForm from "@/components/equipment/EquipmentLineEditForm.vue";
+import TechnicalHistoryList from "@/components/equipment/TechnicalHistoryList.vue";
 import ReReviewNotice from "@/components/events/ReReviewNotice.vue";
 import {
+  canChangeLine,
   canRequestEquipment,
   canSubmit,
   emptyLine,
   inventoryWarning,
+  liveLines,
   quantityError,
+  removeNotice,
   REQUEST_STATUS_LABELS,
   TECHNICAL_REQUIREMENTS_MAX_LENGTH,
   technicalRequirementsError,
@@ -27,6 +33,8 @@ import {
 // SCRUM-45: the assigned coordinator's equipment request for one event.
 // SCRUM-24 AC9: with each line's status, Technical Support's reason and notes,
 // the event's technical status and the exit check.
+// SCRUM-44: while the event is in planning each line can be changed or removed;
+// removed lines leave the list and stay in the equipment history (AC8).
 const props = defineProps({
   eventId: { type: String, required: true },
   status: { type: String, required: true },
@@ -36,6 +44,9 @@ const store = useEquipmentRequestStore();
 const draft = ref([emptyLine()]);
 const isOpen = computed(() => canRequestEquipment(props.status));
 const ready = computed(() => canSubmit(draft.value) && !store.isSubmitting);
+const shownLines = computed(() => liveLines(store.lines));
+const editingLineId = ref(null);
+const removing = ref(null);
 
 const catalogueById = computed(() => Object.fromEntries(store.catalogue.map((item) => [item.equipment_id, item])));
 const options = computed(() =>
@@ -70,7 +81,10 @@ watch(
   () => props.eventId,
   (eventId) => {
     draft.value = [emptyLine()];
+    editingLineId.value = null;
+    removing.value = null;
     store.load(eventId);
+    store.loadHistory(eventId);
   },
   { immediate: true },
 );
@@ -86,6 +100,16 @@ function addLine() {
 function removeLine(index) {
   draft.value.splice(index, 1);
   if (!draft.value.length) draft.value.push(emptyLine());
+}
+
+async function saveLine(line, lineDraft) {
+  if (await store.updateLine(line, lineDraft)) editingLineId.value = null;
+}
+
+async function confirmRemove() {
+  const line = removing.value;
+  removing.value = null;
+  if (line) await store.removeLine(line);
 }
 
 async function submit() {
@@ -124,12 +148,12 @@ async function submit() {
       {{ store.error }}
     </p>
     <BauhausEmptyState
-      v-else-if="!store.lines.length"
+      v-else-if="!shownLines.length"
       title="No equipment requested yet"
       :detail="isOpen ? 'Add items from the catalogue below.' : ''"
     />
     <ul v-else class="space-y-3">
-      <li v-for="line in store.lines" :key="line.id" class="border-2 border-ink p-4">
+      <li v-for="line in shownLines" :key="line.id" data-testid="equipment-line" class="border-2 border-ink p-4">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
           <span class="font-bold">{{ line.equipment_name }} <span class="font-bold">× {{ line.quantity }}</span></span>
           <span class="border-2 border-ink px-3 py-1 text-xs font-bold" :class="STATUS_BADGE_CLASSES[line.status]">
@@ -147,15 +171,52 @@ async function submit() {
           :busy="store.isSubmitting"
           @send="(note) => store.sendForReReview(line.id, note)"
         />
-        <p v-if="line.status === 're_review'" class="mt-2 text-sm font-bold">The event's time changed; Technical Support are re-checking this line. Its reservation is kept meanwhile.</p>
+        <p v-if="line.status === 're_review'" class="mt-2 text-sm font-bold">Technical Support are re-checking this line. Its reservation is kept meanwhile.</p>
         <p v-if="line.technical_notes" class="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere] border-l-4 border-bauhaus-blue pl-2 text-sm">
           <span class="font-bold">Technical Support notes:</span> {{ line.technical_notes }}
         </p>
         <p class="mt-2 text-xs font-bold text-ink/60">
           {{ line.requested_by?.full_name ?? "Unknown user" }} · {{ formatter.format(new Date(line.created_at)) }}
         </p>
+        <EquipmentLineEditForm
+          v-if="editingLineId === line.id"
+          :line="line"
+          :catalogue="store.catalogue"
+          :busy="store.busyLineId === line.id"
+          @save="(lineDraft) => saveLine(line, lineDraft)"
+          @cancel="editingLineId = null"
+        />
+        <div v-else-if="canChangeLine(status, line.status)" class="mt-4 flex flex-wrap gap-3">
+          <BauhausButton
+            variant="outline"
+            :aria-label="`Edit ${line.equipment_name}`"
+            :disabled="!!store.busyLineId"
+            @click="editingLineId = line.id"
+          >
+            Edit
+          </BauhausButton>
+          <BauhausButton
+            variant="outline"
+            :aria-label="`Remove ${line.equipment_name} from the request`"
+            :disabled="!!store.busyLineId"
+            @click="removing = line"
+          >
+            {{ store.busyLineId === line.id ? "Removing…" : "Remove" }}
+          </BauhausButton>
+        </div>
       </li>
     </ul>
+    <p v-if="!isOpen && shownLines.length" class="mt-4 text-sm font-medium text-ink/70">Equipment can only be changed while the event is in Planning.</p>
+
+    <ConfirmModal
+      :open="!!removing"
+      :title="removing ? `Remove ${removing.quantity} × ${removing.equipment_name}?` : ''"
+      :message="removing ? removeNotice(removing.status) : ''"
+      confirm-label="Remove line"
+      cancel-label="Keep line"
+      @confirm="confirmRemove"
+      @stay="removing = null"
+    />
 
     <form v-if="isOpen" class="mt-8 space-y-6" novalidate @submit.prevent="submit">
       <h3 class="text-sm font-bold">Add items</h3>
@@ -225,5 +286,11 @@ async function submit() {
       </div>
     </form>
     <p v-else class="mt-6 text-sm font-medium text-ink/70">New equipment can only be requested while the event is in planning.</p>
+
+    <section v-if="store.history.length || store.historyError" class="mt-8" aria-labelledby="equipment-history-title">
+      <h3 id="equipment-history-title" class="text-sm font-bold">Equipment history</h3>
+      <p v-if="store.historyError" role="status" class="mt-4 text-sm font-medium">The equipment history couldn't be loaded.</p>
+      <TechnicalHistoryList v-else :entries="store.history" />
+    </section>
   </section>
 </template>

@@ -32,6 +32,9 @@ export const HISTORY_ACTION_LABELS = {
   re_review: "Flagged for re-review",
   needs_re_review: "Needs re-review after an approved change",
   sent_for_re_review: "Sent for re-review",
+  // SCRUM-44 AC8.
+  edited: "Changed by the coordinator",
+  removed: "Removed by the coordinator",
   exit_ticked: "Exit check ticked",
   exit_unticked: "Exit check unticked",
   exit_cleared: "Exit check cleared",
@@ -93,15 +96,45 @@ export function exitConfirmationText(exit) {
   return `Confirmed by ${exit.confirmed_by_name ?? "a former staff member"} · ${formatTechnicalTime(exit.confirmed_at)}`;
 }
 
+// SCRUM-44: a line the coordinator removed is kept as released; it reads "Removed".
+function toWord(entry) {
+  if (entry.action === "removed") return "Removed";
+  return STATUS_WORDS[entry.to_status] ?? entry.to_status;
+}
+
 export function historyEntryText(entry) {
   const action = HISTORY_ACTION_LABELS[entry.action] ?? entry.action;
   const subject = entry.line_label ? ` · ${entry.line_label}` : "";
   const change = entry.from_status && entry.to_status && entry.from_status !== entry.to_status
-    ? ` · ${STATUS_WORDS[entry.from_status] ?? entry.from_status} → ${STATUS_WORDS[entry.to_status] ?? entry.to_status}`
+    ? ` · ${STATUS_WORDS[entry.from_status] ?? entry.from_status} → ${toWord(entry)}`
     : "";
   return `${action}${subject}${change}`;
 }
 
 export function historyActor(entry) {
   return entry.actor_name ?? "System";
+}
+
+// D70: a line reaches re-review by a coordinator's edit (SCRUM-44), a change
+// request they sent (story 37), or an old time-change recheck. The newest of
+// this line's history entries that put it there says which; history is newest first.
+const RE_REVIEW_CAUSES = new Set(["edited", "sent_for_re_review", "re_review"]);
+
+export function reReviewCause(lineId, history) {
+  const entry = history.find(
+    (e) => e.request_id === lineId && e.to_status === "re_review" && RE_REVIEW_CAUSES.has(e.action),
+  );
+  return entry ? { action: entry.action, detail: entry.detail ?? null } : null;
+}
+
+export function reReviewText(cause) {
+  if (cause?.action === "edited") {
+    return cause.detail ? `The coordinator changed this line. ${cause.detail}` : "The coordinator changed this line.";
+  }
+  if (cause?.action === "sent_for_re_review") {
+    const sent = "The coordinator sent this line for re-review after an approved change to the event.";
+    return cause.detail ? `${sent} Note: ${cause.detail}` : sent;
+  }
+  if (cause?.action === "re_review") return "The event's time changed and this no longer fits.";
+  return "This line needs re-review.";
 }

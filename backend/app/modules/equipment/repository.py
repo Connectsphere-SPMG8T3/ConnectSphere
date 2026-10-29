@@ -344,6 +344,22 @@ def recheck_event(event_id: str, actor_id: str | None) -> tuple[str, int, bool]:
     return row.get("outcome", ""), row.get("flagged") or 0, bool(row.get("left_ready"))
 
 
+def update_line(line_id: str, actor_id: str, equipment_id: str, quantity: int,
+                requirements: str | None, expected_status: str) -> tuple[str, str | None]:
+    """SCRUM-44: `(outcome, the line's status afterwards)` from `public.update_equipment_line`."""
+    row = _rpc_row("update_equipment_line", {
+        "p_line_id": line_id, "p_actor_id": actor_id, "p_equipment_id": equipment_id,
+        "p_quantity": quantity, "p_requirements": requirements, "p_expected_status": expected_status,
+    })
+    return row.get("outcome", ""), row.get("line_status")
+
+
+def remove_line(line_id: str, actor_id: str, expected_status: str) -> str:
+    """SCRUM-44: the outcome of `public.remove_equipment_line`."""
+    return _rpc_row("remove_equipment_line",
+                    {"p_line_id": line_id, "p_actor_id": actor_id, "p_expected_status": expected_status}).get("outcome", "")
+
+
 def get_event_technical(event_id: str) -> dict | None:
     """The event fields the technical screens show, with the coordinator's and
     the exit-tick confirmer's names."""
