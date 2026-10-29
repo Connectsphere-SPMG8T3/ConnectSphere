@@ -53,6 +53,35 @@ describe("registered event presentation", () => {
     expect(registrationStatusLabel("cancelled")).toBe("cancelled");
   });
 
+  it("allows withdrawal only for registered events before the configured cutoff or event start", () => {
+    const canWithdraw = registrationPresentation.canWithdrawRegistration;
+    expect(canWithdraw).toBeTypeOf("function");
+    if (typeof canWithdraw !== "function") return;
+
+    const now = Date.parse("2026-10-24T08:00:00Z");
+    const registration = {
+      status: "registered",
+      event: {
+        starts_at: "2026-10-24T09:00:00Z",
+        withdrawal_closes_at: null,
+      },
+    };
+
+    expect(canWithdraw(registration, now)).toBe(true);
+    expect(canWithdraw({
+      ...registration,
+      event: { ...registration.event, withdrawal_closes_at: "2026-10-24T08:00:00Z" },
+    }, now)).toBe(false);
+    expect(canWithdraw({
+      ...registration,
+      status: "waitlisted",
+    }, now)).toBe(false);
+    expect(canWithdraw({
+      ...registration,
+      event: { ...registration.event, withdrawal_closes_at: "2026-10-24T07:59:59Z" },
+    }, now)).toBe(false);
+  });
+
   it("filters registrations by name, status, and period, then sorts by event name or date", () => {
     const filter = registrationPresentation.filterAndSortRegistrations;
     expect(filter).toBeTypeOf("function");

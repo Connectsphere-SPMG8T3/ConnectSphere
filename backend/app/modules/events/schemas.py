@@ -161,6 +161,7 @@ class EventFields(BaseModel):
     registration_capacity: int | None = Field(default=None, ge=1)
     registration_opens_at: datetime | None = None
     registration_closes_at: datetime | None = None
+    withdrawal_closes_at: datetime | None = None
     re_registration_allowed: bool = True
     waitlist_enabled: bool = True
 
@@ -194,6 +195,7 @@ class EventUpdateRequest(BaseModel):
     registration_capacity: int | None = Field(default=None, ge=1)
     registration_opens_at: datetime | None = None
     registration_closes_at: datetime | None = None
+    withdrawal_closes_at: datetime | None = None
     re_registration_allowed: bool | None = None
     waitlist_enabled: bool | None = None
 
@@ -228,6 +230,7 @@ class EventField(str, Enum):
     registration_capacity = "registration_capacity"
     registration_opens_at = "registration_opens_at"
     registration_closes_at = "registration_closes_at"
+    withdrawal_closes_at = "withdrawal_closes_at"
     re_registration_allowed = "re_registration_allowed"
     waitlist_enabled = "waitlist_enabled"
 
@@ -670,6 +673,12 @@ class ChangeRequestCreate(CancellationRequestCreate):
         if not isinstance(value, str) or not value.strip():
             raise ValueError("A reason for the change is required.")
         return value.strip()
+
+    @model_validator(mode="after")
+    def withdrawal_cutoff_is_not_changeable(self):
+        if "withdrawal_closes_at" in self.event.model_fields_set:
+            raise ValueError("Withdrawal cutoff cannot be changed through an event change request.")
+        return self
 
 
 # SCRUM-72: the Event Coordinator dashboard. The SPA's store

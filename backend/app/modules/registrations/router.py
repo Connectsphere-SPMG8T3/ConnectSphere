@@ -11,6 +11,7 @@ from app.modules.registrations.schemas import (
     PublicEvent,
     PublicEventDirectory,
     RegistrationResult,
+    WithdrawalResult,
 )
 
 router = APIRouter(prefix="/public", tags=["public events"])
@@ -38,6 +39,11 @@ def register_for_event(event_id: UUID, response: Response, current_user: Attende
     if result.status == "already_registered":
         response.status_code = status.HTTP_200_OK
     return result
+
+
+@attendee_router.post("/{event_id}/withdraw", response_model=WithdrawalResult)
+def withdraw_from_event(event_id: UUID, current_user: Attendee) -> WithdrawalResult:
+    return service.withdraw_attendee(str(event_id), current_user.id)
 
 
 @attendee_router.get("/me", response_model=AttendeeRegistrationList)

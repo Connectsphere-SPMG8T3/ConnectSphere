@@ -35,6 +35,7 @@ describe("event store", () => {
       expectedAttendance: "150",
       layoutPreference: "theatre",
       facilitiesRequired: ["projector"],
+      withdrawalClosesAt: "2026-10-10T12:30",
       registrationOpensAt: "2026-09-20T09:00",
       registrationClosesAt: "2026-10-09T18:00",
     };
@@ -49,6 +50,7 @@ describe("event store", () => {
       registration_enabled: false,
       re_registration_allowed: true,
       waitlist_enabled: true,
+      withdrawal_closes_at: "2026-10-10T05:30:00.000Z",
       registration_opens_at: "2026-09-20T02:00:00.000Z",
       registration_closes_at: "2026-10-09T11:00:00.000Z",
     });
@@ -68,11 +70,27 @@ describe("event store", () => {
       registration_capacity: null,
       registration_opens_at: null,
       registration_closes_at: null,
+      withdrawal_closes_at: null,
     });
     // The pair is constrained to be both set or both empty, and required to submit,
     // so an incomplete time is left out rather than half-cleared.
     expect(payload).not.toHaveProperty("starts_at");
     expect(payload).not.toHaveProperty("ends_at");
+  });
+
+  it("serializes the withdrawal cutoff when registration closing time is still blank", () => {
+    const event = {
+      ...emptyEvent(),
+      name: "Planning workshop",
+      eventTimezone: "Asia/Bangkok",
+      date: "2031-10-10",
+      startTime: "14:00",
+      withdrawalClosesAt: "2031-10-10T12:30",
+    };
+
+    expect(eventToPayload(event)).toMatchObject({
+      withdrawal_closes_at: "2031-10-10T05:30:00.000Z",
+    });
   });
 
   it("creates a draft through the authenticated session", async () => {

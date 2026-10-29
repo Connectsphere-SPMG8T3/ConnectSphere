@@ -10,7 +10,8 @@ describe("amendment field labels (SCRUM-33)", () => {
       "name", "purpose", "description", "starts_at", "event_timezone", "ends_at",
       "expected_attendance", "layout_preference", "facilities_required", "accessibility_needs",
       "preliminary_equipment_needs", "registration_enabled", "registration_capacity",
-      "registration_opens_at", "registration_closes_at", "re_registration_allowed", "waitlist_enabled",
+      "registration_opens_at", "registration_closes_at", "withdrawal_closes_at",
+      "re_registration_allowed", "waitlist_enabled",
     ]);
     expect(new Set(values).size).toBe(values.length);
   });
@@ -27,6 +28,7 @@ describe("amendment field labels (SCRUM-33)", () => {
   it("maps a flagged date/time field onto every input that edits it", () => {
     expect([...flaggedFormKeys(["starts_at"])]).toEqual(["date", "startTime"]);
     expect([...flaggedFormKeys(["ends_at", "expected_attendance"])]).toEqual(["endTime", "expectedAttendance"]);
+    expect([...flaggedFormKeys(["withdrawal_closes_at"])]).toEqual(["withdrawalClosesAt"]);
   });
 
   it("ignores unknown or missing flags rather than failing", () => {

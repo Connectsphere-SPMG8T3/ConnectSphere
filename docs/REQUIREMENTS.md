@@ -1062,7 +1062,9 @@ available(type, W) = total_quantity
 
 ### 6.18 Attendee registration *(SCRUM-25: 43, 55, 56, 35, 59; waitlist 86)*
 
-**Settings** (organiser, per event, QA-89, QA-108, QA-136, QA2-2): registration enabled, capacity, opens-at, closes-at, withdrawal allowed until (default: event start), re-registration allowed (default: yes). **[Team decision]** Withdrawal and re-registration were left "at the organiser's discretion", so they are per-event settings.
+**Settings** (organiser, per event, QA-89, QA-108, QA-110, QA-136, QA2-2): registration enabled, capacity, opens-at, closes-at, withdrawal allowed until (default: event start), re-registration allowed (default: yes). **[Team decision]** Withdrawal and re-registration were left "at the organiser's discretion", so they are per-event settings. The organiser may set an earlier withdrawal cutoff, but not one later than the event start.
+
+**[Team decision, SCRUM-55]** Organisers can configure the withdrawal cutoff while creating or editing a draft or returned event request. It is not offered through post-submission event change requests; changing that path would require extending the coordinator's separate change-approval database contract.
 
 **Registration fields** are a team choice (QA-84). We collect name, email, and phone from the profile, plus optional accessibility and dietary notes. Registration is a web form behind login; QR codes and shareable links are P3 (QA-64, QA-85).
 
@@ -1077,7 +1079,7 @@ available(type, W) = total_quantity
 - **My events** lists the attendee's current `registered` and `waitlisted` event registrations. Its "Find my event" panel supports name search, a multi-select registration-status filter, All/Upcoming/Past periods, sorting by event date or name in either direction, and Clear. The default shows all statuses and periods, sorted by date ascending. **[Team decision, SCRUM-56]** These defaults and the compact filter/card treatment follow the organiser Events view. Cards distinguish Registered (green accent) from Waitlisted (grey accent) and show the event name, event-timezone schedule, registration status, and attendee-facing venue information (the primary venue when designated, otherwise all confirmed venues). Opening a card uses the same detail-page layout as Explore, with a "Your registration" panel instead of public registration controls. The detail route requires the active Attendee role and displays an event only when it appears in that caller's current registrations; it does not require the event to remain publicly confirmed, so completed past events still open. Events whose end time is at or before now appear under **Past**; the others, including events in progress, appear under **Upcoming**. **[Assumption, SCRUM-56 AC3]** The event end time is the boundary between Upcoming and Past.
 - **Explore events** in the Attendee dashboard shows the same public event records and attendee-safe fields as `/`, with event-name search and sorting by event date or name. It only reads the public directory (`confirmed` and `preparation` events); the public `/` page remains available to visitors.
 - **[Team decision, SCRUM-56, 2026-10-25]** Event schedules use one event-timezone date range: full weekday and long month on detail pages (for example, `Thursday 26 November 2026 6:30pm - 9:00pm`), and a compact weekday-free, short-month form on cards when space is limited (for example, `26 Nov 2026 6:30pm - 9:00pm`). Both dates are shown if an event crosses local midnight. Public and Attendee event cards/detail headers omit lifecycle status labels; registration availability and the caller's registration status remain visible. A signed-in user acting as Attendee sees the Attendee sidebar on both Explore and registered-event details, without the event-detail header or its navigation links. Signed-out public event details retain the ConnectSphere header; registered-event details opened from My events omit the entire header bar, including its back link. Public event details remain accessible without a session and do not show the Attendee sidebar to other active roles.
-- **Withdraw** is allowed until the withdrawal cutoff.
+- **Withdraw (SCRUM-55):** only the active Attendee who owns a current `registered` row can withdraw. Withdrawal is unavailable at or after the configured cutoff and at or after the event start; a null cutoff means the event start. A successful withdrawal changes the row to `withdrawn` once, removes it from My events, releases its place immediately, and confirms the withdrawal. A failed or repeated request does not release another place. The event-row lock serializes withdrawal with registration.
 - Organisers (own events) and assigned coordinators see registered, waitlisted, and withdrawn counts, remaining places, and the attendee list.
 
 **Rules**
@@ -1092,12 +1094,15 @@ available(type, W) = total_quantity
   - If they don't accept by `invited_until`, the invitation passes to the next waitlisted attendee. **[Team decision]** The 24-hour window was left to us (QA-121).
   - While an invitation is open, that place is reserved for the invitee.
 
-**Story 43 boundary:** Story 43 exposes the waitlist-enabled setting and shows the **Join waitlist** call to action when full. It does not create waitlist records or implement queue ordering, invitations, acceptance, expiry, withdrawal, or notifications; those remain Story 86.
+**Story 43 boundary:** Story 43 exposes the waitlist-enabled setting and shows the **Join waitlist** call to action when full. It does not create waitlist records or implement queue ordering, invitations, acceptance, expiry, or waitlist notifications; those remain Story 86. Attendee withdrawal is SCRUM-55.
 
 **Broader registration and waitlist acceptance criteria** (SCRUM-55/56/86; not Story 43's scope)
 - **Given** capacity 50 with 49 registered, **when** two attendees register simultaneously, **then** exactly one is `registered` and the other is `waitlisted`.
 - **Given** registration opens tomorrow, **when** I try to register, **then** I see "Registration opens on <date>."
-- **Given** I'm registered, **when** I withdraw before the cutoff, **then** a place frees up and I see a withdrawal confirmation. If someone is waitlisted, they're invited and notified, and not registered automatically.
+- **SCRUM-55 AC1:** Given I'm acting as an Attendee and have my own current registered event, when I open My registered events before the configured cutoff, then I can withdraw from it. Other roles and attendees cannot withdraw that registration, and withdrawal is unavailable at or after the event start.
+- **SCRUM-55 AC2:** Given I'm eligible to withdraw, when my withdrawal succeeds, then my registration is marked withdrawn and removed from My registered events, the available-place count updates immediately, and I receive a withdrawal confirmation. A failed or repeated request does not release another place.
+- **SCRUM-55 AC3:** Given I withdrew from an event, when I try to register again, then I can register if the event allows re-registration and normal registration and capacity rules are met; otherwise, re-registration is refused.
+- **Story 86 boundary:** A freed place may be offered to a waitlisted attendee by Story 86; SCRUM-55 does not invite or automatically register anyone.
 - **Given** an organiser of event X, **when** they open event Y's registrations, **then** they receive `404`.
 
 ### 6.19 Event change requests *(SCRUM-26: 32, 37; cancellation 84)*

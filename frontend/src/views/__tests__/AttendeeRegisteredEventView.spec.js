@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { authApi, registrationsApi } = vi.hoisted(() => ({
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  registrationsApi: { directory: vi.fn(), event: vi.fn(), register: vi.fn(), myRegistrations: vi.fn() },
+  registrationsApi: { directory: vi.fn(), event: vi.fn(), register: vi.fn(), withdraw: vi.fn(), myRegistrations: vi.fn() },
 }));
 
 vi.mock("@/services/api", async (importOriginal) => ({
@@ -84,6 +84,121 @@ describe("Attendee registered event details", () => {
     expect(el.textContent).not.toContain("Event status");
     expect(el.textContent).not.toContain("completed");
     expect(registrationsApi.myRegistrations).toHaveBeenCalledWith("attendee-token");
+  });
+
+  it("confirms withdrawal before the configured cutoff and returns to My events", async () => {
+    const upcoming = registration("event-1", {
+      starts_at: "2099-10-24T09:00:00Z",
+      ends_at: "2099-10-24T12:00:00Z",
+      withdrawal_closes_at: "2099-10-24T08:00:00Z",
+    });
+    registrationsApi.myRegistrations
+      .mockResolvedValueOnce({ registrations: [upcoming] })
+      .mockResolvedValue({ registrations: [] });
+    registrationsApi.withdraw.mockResolvedValue({ status: "withdrawn" });
+    registrationsApi.directory.mockResolvedValue({ events: [] });
+
+    const { el, router } = await mountAt("/dashboard/attendee/events/event-1");
+
+    await vi.waitFor(() =>
+      expect(
+        [...el.querySelectorAll("button")].find((button) => button.textContent.trim() === "Withdraw registration"),
+      ).toBeTruthy(),
+    );
+    const withdrawButton = [...el.querySelectorAll("button")]
+      .find((button) => button.textContent.trim() === "Withdraw registration");
+    expect(withdrawButton).toBeTruthy();
+    withdrawButton.click();
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeTruthy());
+
+    const keepButton = [...document.querySelectorAll('[role="dialog"] button')]
+      .find((button) => button.textContent.trim() === "Keep registration");
+    keepButton.click();
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
+    expect(registrationsApi.withdraw).not.toHaveBeenCalled();
+
+    withdrawButton.click();
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeTruthy());
+    const confirmButton = [...document.querySelectorAll('[role="dialog"] button')]
+      .find((button) => button.textContent.trim() === "Confirm withdrawal");
+    confirmButton.click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-attendee"));
+    expect(registrationsApi.withdraw).toHaveBeenCalledWith("event-1", "attendee-token");
+  });
+
+  it("shows the API error when withdrawal is refused", async () => {
+    const upcoming = registration("event-1", {
+      starts_at: "2099-10-24T09:00:00Z",
+      ends_at: "2099-10-24T12:00:00Z",
+      withdrawal_closes_at: "2099-10-24T08:00:00Z",
+    });
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations: [upcoming] });
+    registrationsApi.withdraw.mockRejectedValue(new Error("The withdrawal cutoff has passed."));
+
+    const { el } = await mountAt("/dashboard/attendee/events/event-1");
+    await vi.waitFor(() => expect(el.textContent).toContain("Withdraw registration"));
+
+    [...el.querySelectorAll("button")]
+      .find((button) => button.textContent.trim() === "Withdraw registration")
+      .click();
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeTruthy());
+    [...document.querySelectorAll('[role="dialog"] button')]
+      .find((button) => button.textContent.trim() === "Confirm withdrawal")
+      .click();
+
+    await vi.waitFor(() => expect(el.textContent).toContain("The withdrawal cutoff has passed."));
+    expect(registrationsApi.withdraw).toHaveBeenCalledWith("event-1", "attendee-token");
+  });
+
+  it("shows a fallback error when withdrawal fails without a message", async () => {
+    const upcoming = registration("event-1", {
+      starts_at: "2099-10-24T09:00:00Z",
+      ends_at: "2099-10-24T12:00:00Z",
+      withdrawal_closes_at: "2099-10-24T08:00:00Z",
+    });
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations: [upcoming] });
+    registrationsApi.withdraw.mockRejectedValue(new Error(""));
+
+    const { el } = await mountAt("/dashboard/attendee/events/event-1");
+    await vi.waitFor(() => expect(el.textContent).toContain("Withdraw registration"));
+    [...el.querySelectorAll("button")]
+      .find((button) => button.textContent.trim() === "Withdraw registration")
+      .click();
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeTruthy());
+    [...document.querySelectorAll('[role="dialog"] button')]
+      .find((button) => button.textContent.trim() === "Confirm withdrawal")
+      .click();
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Registration could not be withdrawn."));
+    expect(registrationsApi.withdraw).toHaveBeenCalledWith("event-1", "attendee-token");
+  });
+
+  it.each([
+    ["the registration disappears", (store) => { store.myRegistrations = []; }],
+    ["the cutoff passes", (store) => { store.myRegistrations[0].event.withdrawal_closes_at = "2000-01-01T00:00:00Z"; }],
+    ["another withdrawal starts", (store) => { store.isWithdrawing = true; }],
+  ])("does not withdraw when %s while confirmation is open", async (_scenario, makeIneligible) => {
+    const upcoming = registration("event-1", {
+      starts_at: "2099-10-24T09:00:00Z",
+      ends_at: "2099-10-24T12:00:00Z",
+      withdrawal_closes_at: "2099-10-24T08:00:00Z",
+    });
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations: [upcoming] });
+    const { el } = await mountAt("/dashboard/attendee/events/event-1");
+    await vi.waitFor(() => expect(el.textContent).toContain("Withdraw registration"));
+    [...el.querySelectorAll("button")]
+      .find((button) => button.textContent.trim() === "Withdraw registration")
+      .click();
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeTruthy());
+    const { useRegistrationStore } = await import("@/features/registrations/store");
+    makeIneligible(useRegistrationStore());
+
+    [...document.querySelectorAll('[role="dialog"] button')]
+      .find((button) => button.textContent.trim() === "Confirm withdrawal")
+      .click();
+
+    expect(registrationsApi.withdraw).not.toHaveBeenCalled();
   });
 
   it("does not show an event that is absent from the attendee's current registrations", async () => {

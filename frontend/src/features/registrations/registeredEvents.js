@@ -46,6 +46,13 @@ export function registrationStatusLabel(status) {
   return labels[status] ?? status;
 }
 
+export function canWithdrawRegistration(registration, now = Date.now()) {
+  if (registration?.status !== "registered" || !registration.event) return false;
+  const cutoff = registration.event.withdrawal_closes_at ?? registration.event.starts_at;
+  const cutoffTime = Date.parse(cutoff);
+  return Number.isFinite(cutoffTime) && now < cutoffTime;
+}
+
 function registrationStartTime(registration) {
   const startsAt = Date.parse(registration.event.starts_at);
   if (!Number.isFinite(startsAt)) {

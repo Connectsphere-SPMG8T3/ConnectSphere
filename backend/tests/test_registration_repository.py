@@ -87,6 +87,18 @@ def test_register_for_event_returns_rpc_result(monkeypatch):
     )
 
 
+def test_withdraw_registration_calls_the_atomic_rpc_with_event_and_attendee(monkeypatch):
+    client = Mock()
+    client.rpc.return_value.execute.return_value = SimpleNamespace(data={"outcome": "withdrawn"})
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.withdraw_registration("event-1", "attendee-1") == {"outcome": "withdrawn"}
+    client.rpc.assert_called_once_with(
+        "withdraw_registration",
+        {"p_event_id": "event-1", "p_attendee_id": "attendee-1"},
+    )
+
+
 def test_list_attendee_registration_rows_scopes_to_attendee_and_active_statuses(monkeypatch):
     client, query = _client_with_query()
     rows = [{"id": "registration-1", "status": "registered"}]

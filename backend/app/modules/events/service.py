@@ -751,6 +751,7 @@ def _validate_submission(row: dict) -> None:
 
 def _submission_errors(row: dict) -> list[dict]:
     errors = []
+    errors.extend(_withdrawal_cutoff_errors(row))
     has_space_requests = bool(row.get("spaces"))
     required_fields = ("purpose", "starts_at", "ends_at")
     if not has_space_requests:
@@ -809,6 +810,32 @@ def _parse_datetime(value: datetime | str) -> datetime:
     return parsed
 
 
+def _withdrawal_cutoff_errors(row: dict) -> list[dict]:
+    cutoff = row.get("withdrawal_closes_at")
+    if cutoff is None:
+        return []
+    starts_at = row.get("starts_at")
+    if starts_at is None:
+        return [{
+            "loc": ["body", "withdrawal_closes_at"],
+            "msg": "Withdrawal cutoff requires an event start time.",
+            "type": "value_error",
+        }]
+    if _parse_datetime(cutoff) > _parse_datetime(starts_at):
+        return [{
+            "loc": ["body", "withdrawal_closes_at"],
+            "msg": "Withdrawal cutoff cannot be after the event start time.",
+            "type": "value_error",
+        }]
+    return []
+
+
+def _validate_withdrawal_cutoff(row: dict) -> None:
+    errors = _withdrawal_cutoff_errors(row)
+    if errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
+
+
 def _space_schedule_errors(space: dict, event: dict, index: int) -> list[dict]:
     starts_at = space.get("starts_at")
     ends_at = space.get("ends_at")
@@ -846,6 +873,7 @@ def _space_schedule_errors(space: dict, event: dict, index: int) -> list[dict]:
 
 def create(organiser_id: str, body: EventCreateRequest) -> EventResponse:
     values = body.model_dump(mode="json", exclude_unset=True)
+    _validate_withdrawal_cutoff(values)
     return _to_response(repository.create_event(organiser_id, values))
 
 
@@ -968,6 +996,7 @@ def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventR
         raise EventConflictError("Only draft or returned events can be edited.")
     values = body.model_dump(mode="json", exclude_unset=True)
     candidate = {**row, **values}
+    _validate_withdrawal_cutoff(candidate)
     errors = [
         error
         for index, space in enumerate(candidate.get("spaces") or [])

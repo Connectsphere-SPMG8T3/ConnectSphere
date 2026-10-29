@@ -7,7 +7,7 @@ _EVENT_COLUMNS = (
     "id, organiser_id, coordinator_id, status, name, event_timezone, purpose, description, starts_at, ends_at, "
     "expected_attendance, layout_preference, facilities_required, accessibility_needs, "
     "preliminary_equipment_needs, registration_enabled, registration_capacity, "
-    "registration_opens_at, registration_closes_at, technical_readiness, submitted_at, "
+    "registration_opens_at, registration_closes_at, withdrawal_closes_at, technical_readiness, submitted_at, "
     "version, created_at, updated_at"
 )
 _SPACE_COLUMNS = "id, event_id, label, expected_pax, layout_preference, facilities_required, starts_at, ends_at, version, is_primary"

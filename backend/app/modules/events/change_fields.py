@@ -26,7 +26,9 @@ FIELD_LABELS = {
     "label": "name",
 }
 
-_TIME_FIELDS = frozenset({"starts_at", "ends_at", "registration_opens_at", "registration_closes_at"})
+_TIME_FIELDS = frozenset({
+    "starts_at", "ends_at", "registration_opens_at", "registration_closes_at",
+})
 
 
 def _comparable(field: str, value):

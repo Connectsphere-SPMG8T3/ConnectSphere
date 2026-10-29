@@ -10,7 +10,7 @@ _PUBLIC_EVENT_COLUMNS = (
 _ATTENDEE_REGISTRATION_COLUMNS = (
     "id, status, registered_at, "
     "event:events!event_registrations_event_id_fkey("
-    "id, name, description, starts_at, ends_at, event_timezone, status, "
+    "id, name, description, starts_at, ends_at, event_timezone, status, withdrawal_closes_at, "
     "event_space_requests(id, is_primary, "
     "venue_bookings!venue_bookings_event_space_request_id_fkey("
     "status, venue:venues!venue_bookings_venue_id_fkey(id, name, location, capacity)))"
@@ -71,6 +71,14 @@ def registered_count(event_id: str) -> int:
 def register_for_event(event_id: str, attendee_id: str) -> dict:
     response = get_supabase_admin_client().rpc(
         "register_for_event",
+        {"p_event_id": event_id, "p_attendee_id": attendee_id},
+    ).execute()
+    return response.data
+
+
+def withdraw_registration(event_id: str, attendee_id: str) -> dict:
+    response = get_supabase_admin_client().rpc(
+        "withdraw_registration",
         {"p_event_id": event_id, "p_attendee_id": attendee_id},
     ).execute()
     return response.data
