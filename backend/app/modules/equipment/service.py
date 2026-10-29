@@ -35,6 +35,9 @@ from app.modules.equipment.schemas import (
     TechnicalEventResponse,
     TechnicalHistoryEntry,
     TechnicalHistoryResponse,
+    TechnicalPreparation,
+    TechnicalPreparationStage,
+    TechnicalPreparationUpdated,
     PendingEquipmentLine,
     PendingEquipmentLinesResponse,
     EquipmentAvailabilityResponse,
@@ -461,6 +464,35 @@ def set_exit_confirmation(event_id: str, actor_id: str, confirmed: bool) -> None
     _after(event_id, left_ready)
 
 
+_PREPARATION_LOCKED = "Technical preparation opens once the Safety Officer has confirmed the event."
+
+
+@_equipment_service_available
+def set_technical_preparation(event_id: str, actor_id: str, stage: str, note: str | None) -> TechnicalPreparationUpdated:
+    """CR-110 AC1-AC3, AC5: only while Confirmed or in Preparation. The database
+    moves a Confirmed event to Preparation (68 AC1), records the update and
+    notifies the coordinator and organiser in the same transaction."""
+    row = repository.set_technical_preparation(event_id, actor_id, stage, note)
+    outcome = row.get("outcome", "")
+    if outcome == "not_confirmed":
+        raise EquipmentArrangementConflictError(_PREPARATION_LOCKED)
+    _raise_for(outcome, "")
+    return TechnicalPreparationUpdated(stage=stage, note=note, event_status=row["event_status"])
+
+
+def technical_preparation(row: dict, *, internal: bool) -> TechnicalPreparation | TechnicalPreparationStage:
+    """CR-110 AC4 from an event row read with `repository.TECHNICAL_PREPARATION_COLUMNS`.
+    `internal` adds the note and who set it: Technical Support and the assigned
+    coordinator only. No row yet reads as Not started."""
+    recorded = _one(row.get("preparation_record")) or {}
+    stage = TechnicalPreparationStage(stage=recorded.get("stage") or "not_started",
+                                      updated_at=recorded.get("updated_at"))
+    if not internal:
+        return stage
+    return TechnicalPreparation(**stage.model_dump(), note=recorded.get("note"),
+                                updated_by_name=(_one(recorded.get("updater")) or {}).get("full_name"))
+
+
 @_equipment_service_available
 def recheck_event(event_id: str, actor_id: str | None = None) -> int:
     """AC7: re-check the event's reservations after its date or time changes.
@@ -589,6 +621,7 @@ def technical_view(event_id: str) -> TechnicalEventResponse:
         ),
         technical_status=row["technical_readiness"],
         exit_confirmation=exit_confirmation(event_id, row),
+        technical_preparation=technical_preparation(row, internal=True),
         lines=lines,
         history=[_history_entry(entry) for entry in repository.list_technical_history(event_id)],
         re_review_changes=(events_service.latest_approved_change(event_id)

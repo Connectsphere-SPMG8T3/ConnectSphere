@@ -78,7 +78,8 @@ class TestScope:
 
         coordinator_id, statuses = data.calls["events"]
         assert coordinator_id == COORDINATOR_ID
-        assert statuses == {"under_review", "returned", "planning", "safety_review", "confirmed", "rejected"}
+        assert statuses == {"under_review", "returned", "planning", "safety_review", "confirmed", "preparation",
+                            "rejected"}
         # Drafts are private to their organiser (DR-R2); terminal statuses aren't active.
         assert "draft" not in ACTIVE_COORDINATOR_STATUSES
 
@@ -459,3 +460,30 @@ def test_safety_review_remains_active_and_reports_technical_issues(data):
     dashboard = service.coordinator_dashboard(COORDINATOR_ID)
     assert dashboard.active_events[0].status.value == "safety_review"
     assert items_by_kind(dashboard) == {"arrangement_issue": ["e-safe"]}
+
+
+class TestPreparation:
+    """D73: once CR-110 moves an event to Preparation, the coordinator still has it,
+    and its alerts still fire (QA3-3: Preparation follows Confirmed)."""
+
+    def test_an_event_in_preparation_stays_on_the_dashboard(self, data):
+        data.events = [event_row("e-p1", "preparation")]
+
+        dashboard = service.coordinator_dashboard(COORDINATOR_ID)
+
+        assert [e.status.value for e in dashboard.active_events] == ["preparation"]
+
+    def test_a_technical_issue_in_preparation_is_an_arrangement_issue(self, data):
+        data.events = [event_row("e-p2", "preparation", technical_readiness="issue")]
+
+        dashboard = service.coordinator_dashboard(COORDINATOR_ID)
+
+        assert items_by_kind(dashboard) == {"arrangement_issue": ["e-p2"]}
+
+    def test_an_affected_venue_in_preparation_needs_an_alternative_venue(self, data):
+        data.events = [event_row("e-p3", "preparation")]
+        data.affected = {"e-p3"}
+
+        dashboard = service.coordinator_dashboard(COORDINATOR_ID)
+
+        assert items_by_kind(dashboard) == {"needs_alternative_venue": ["e-p3"]}

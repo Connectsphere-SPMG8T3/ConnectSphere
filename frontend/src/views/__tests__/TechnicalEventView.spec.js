@@ -15,6 +15,7 @@ vi.mock("@/services/api", async (importOriginal) => ({
     markNotAvailable: vi.fn(),
     setLineNote: vi.fn(),
     setExitConfirmation: vi.fn(),
+    setTechnicalPreparation: vi.fn(),
   },
 }));
 
@@ -274,5 +275,115 @@ describe("TechnicalEventView re-review after a coordinator's edit (D70)", () => 
     await mountView();
 
     expect(document.querySelector('[data-testid="technical-re-review"]')).not.toBeNull();
+  });
+});
+
+describe("TechnicalEventView technical preparation (CR-110)", () => {
+  const preparation = (overrides = {}) => ({ stage: "in_progress", note: "Cables run", updated_at: "2026-10-26T03:00:00Z", updated_by_name: "Tan Wei", ...overrides });
+  const confirmed = (overrides = {}) => view({ event: { ...view().event, status: "confirmed" }, technical_preparation: preparation(), ...overrides });
+  const stageSelect = () => document.querySelector('[data-testid="technical-preparation"] select');
+  const noteBox = () => document.querySelector('[data-testid="technical-preparation"] textarea');
+
+  it("shows the stage, the internal note and who last set it (AC2)", async () => {
+    equipmentApi.technicalView.mockResolvedValue(confirmed());
+    await mountView();
+
+    const card = document.querySelector('[data-testid="technical-preparation"]').textContent;
+    expect(stageSelect().value).toBe("in_progress");
+    expect(noteBox().value).toBe("Cables run");
+    expect(card).toContain("Tan Wei");
+    expect(card).toContain("internal");
+  });
+
+  it("offers the four stages", async () => {
+    equipmentApi.technicalView.mockResolvedValue(confirmed());
+    await mountView();
+
+    expect([...stageSelect().options].map((o) => o.textContent.trim())).toEqual(["Not started", "In preparation", "In progress", "Completed"]);
+  });
+
+  it("saving sends the stage and the trimmed note, then reloads (AC2, AC3)", async () => {
+    equipmentApi.technicalView.mockResolvedValue(confirmed({ technical_preparation: preparation({ stage: "not_started", note: null, updated_at: null, updated_by_name: null }) }));
+    equipmentApi.setTechnicalPreparation.mockResolvedValue({ stage: "completed", note: "Done", event_status: "preparation" });
+    await mountView();
+
+    stageSelect().value = "completed";
+    stageSelect().dispatchEvent(new Event("change"));
+    noteBox().value = "  Done  ";
+    noteBox().dispatchEvent(new Event("input"));
+    await nextTick();
+    button("Save preparation").click();
+
+    await vi.waitFor(() => expect(equipmentApi.setTechnicalPreparation).toHaveBeenCalledWith("e1", { stage: "completed", note: "Done" }, "access"));
+    await vi.waitFor(() => expect(equipmentApi.technicalView).toHaveBeenCalledTimes(2));
+  });
+
+  it("a blank note is sent as cleared", async () => {
+    equipmentApi.technicalView.mockResolvedValue(confirmed());
+    equipmentApi.setTechnicalPreparation.mockResolvedValue({});
+    await mountView();
+
+    noteBox().value = "   ";
+    noteBox().dispatchEvent(new Event("input"));
+    await nextTick();
+    button("Save preparation").click();
+
+    await vi.waitFor(() => expect(equipmentApi.setTechnicalPreparation).toHaveBeenCalledWith("e1", { stage: "in_progress", note: null }, "access"));
+  });
+
+  it("Save is disabled until something changes", async () => {
+    equipmentApi.technicalView.mockResolvedValue(confirmed());
+    await mountView();
+
+    expect(button("Save preparation").disabled).toBe(true);
+  });
+
+  it("a refusal shows why beside the card", async () => {
+    equipmentApi.technicalView.mockResolvedValue(confirmed());
+    equipmentApi.setTechnicalPreparation.mockRejectedValue(new ApiError("Technical preparation opens once the Safety Officer has confirmed the event.", 409));
+    await mountView();
+
+    stageSelect().value = "completed";
+    stageSelect().dispatchEvent(new Event("change"));
+    await nextTick();
+    button("Save preparation").click();
+
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="technical-preparation"] [role="alert"]')?.textContent)
+      .toContain("opens once the Safety Officer has confirmed"));
+  });
+
+  it.each(["planning", "safety_review", "cancelled"])("is locked with the reason while the event is %s (AC1)", async (status) => {
+    equipmentApi.technicalView.mockResolvedValue(confirmed({ event: { ...view().event, status } }));
+    await mountView();
+
+    expect(stageSelect().disabled).toBe(true);
+    expect(noteBox().disabled).toBe(true);
+    expect(button("Save preparation")).toBeUndefined();
+    expect(document.querySelector('[data-testid="technical-preparation"]').textContent)
+      .toContain("Technical preparation opens once the Safety Officer has confirmed the event.");
+  });
+
+  it("is open in Preparation", async () => {
+    equipmentApi.technicalView.mockResolvedValue(confirmed({ event: { ...view().event, status: "preparation" } }));
+    await mountView();
+
+    expect(stageSelect().disabled).toBe(false);
+  });
+
+  it("an event without a recorded stage reads Not started", async () => {
+    await mountView();
+
+    expect(document.querySelector('[data-testid="technical-preparation"]').textContent).toContain("Not started");
+  });
+
+  it("stage changes read in words in the history (AC5)", async () => {
+    equipmentApi.technicalView.mockResolvedValue(confirmed({ history: [
+      { action: "preparation", line_label: null, from_status: "not_started", to_status: "in_progress", detail: null, actor_name: "Tan Wei", created_at: "2026-10-26T03:00:00Z" },
+      { action: "preparation_note_updated", line_label: null, from_status: null, to_status: null, detail: null, actor_name: "Tan Wei", created_at: "2026-10-26T03:00:00Z" },
+    ] }));
+    await mountView();
+
+    expect(document.body.textContent).toContain("Preparation stage changed · Not started → In progress");
+    expect(document.body.textContent).toContain("Preparation notes updated");
   });
 });

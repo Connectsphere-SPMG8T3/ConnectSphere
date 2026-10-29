@@ -339,6 +339,12 @@ def set_exit_confirmation(event_id: str, actor_id: str, confirmed: bool) -> tupl
     return row.get("outcome", ""), bool(row.get("left_ready"))
 
 
+def set_technical_preparation(event_id: str, actor_id: str, stage: str, note: str | None) -> dict:
+    """CR-110: `{outcome, event_status}` from `set_technical_preparation`."""
+    return _rpc_row("set_technical_preparation",
+                    {"p_event_id": event_id, "p_actor_id": actor_id, "p_stage": stage, "p_note": note})
+
+
 def recheck_event(event_id: str, actor_id: str | None) -> tuple[str, int, bool]:
     row = _rpc_row("recheck_event_reservations", {"p_event_id": event_id, "p_actor_id": actor_id})
     return row.get("outcome", ""), row.get("flagged") or 0, bool(row.get("left_ready"))
@@ -360,6 +366,16 @@ def remove_line(line_id: str, actor_id: str, expected_status: str) -> str:
                     {"p_line_id": line_id, "p_actor_id": actor_id, "p_expected_status": expected_status}).get("outcome", "")
 
 
+# CR-110: the event's technical preparation row (one per event, null before the
+# first change), with who last set it. events.repository embeds the same shape.
+# Not aliased `technical_preparation`: EventResponse(**row) would copy the raw
+# row into that field for every role and status.
+TECHNICAL_PREPARATION_COLUMNS = (
+    "preparation_record:event_technical_preparation(stage, note, updated_at, "
+    "updater:profiles!event_technical_preparation_updated_by_fkey(full_name))"
+)
+
+
 def get_event_technical(event_id: str) -> dict | None:
     """The event fields the technical screens show, with the coordinator's and
     the exit-tick confirmer's names."""
@@ -368,6 +384,7 @@ def get_event_technical(event_id: str) -> dict | None:
         .table("events")
         .select(
             "id, name, status, coordinator_id, starts_at, ends_at, technical_readiness, exit_confirmed_at, "
+            f"{TECHNICAL_PREPARATION_COLUMNS}, "
             "coordinator:profiles!events_coordinator_id_fkey(full_name), "
             "exit_confirmer:profiles!events_exit_confirmed_by_fkey(full_name)"
         )

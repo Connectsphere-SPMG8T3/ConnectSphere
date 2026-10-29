@@ -81,6 +81,7 @@ describe("LEAD_STATUS_OPTIONS", () => {
       "planning",
       "safety_review",
       "confirmed",
+      "preparation",
     ]);
     expect(LEAD_STATUS_OPTIONS.every((o) => o.label)).toBe(true);
   });

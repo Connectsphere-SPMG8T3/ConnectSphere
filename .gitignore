@@ -12,9 +12,11 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 
-# Supabase CLI local state (.temp/ can contain generated local secrets)
-supabase/.temp/
-supabase/.branches/
+# Supabase CLI local state, in any folder the CLI was run from. `supabase start`
+# writes the local stack's service-role key and JWT secret under
+# .temp/start-secrets/, which GitGuardian flagged in PR #4.
+**/supabase/.temp/
+**/supabase/.branches/
 
 # Editors / OS
 .vscode/

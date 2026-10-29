@@ -620,3 +620,25 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
   });
 });
 
+
+describe("CoordinatorEventView technical preparation (CR-110 AC4)", () => {
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  it("shows the stage, the internal note and who set it", async () => {
+    const el = await mountView(eventResponse({ status: "preparation",
+      technical_preparation: { stage: "completed", note: "Cables run", updated_at: "2026-10-26T03:00:00Z", updated_by_name: "Tan Wei" } }));
+
+    const card = el.querySelector('[data-testid="technical-preparation-summary"]').textContent;
+    expect(card).toContain("Completed");
+    expect(card).toContain("Cables run");
+    expect(card).toContain("Tan Wei");
+  });
+
+  it("shows nothing when the API sends no stage", async () => {
+    const el = await mountView(eventResponse({ status: "planning" }));
+
+    expect(el.querySelector('[data-testid="technical-preparation-summary"]')).toBeNull();
+  });
+});

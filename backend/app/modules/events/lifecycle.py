@@ -29,7 +29,10 @@ TRANSITIONS: dict[str, tuple[frozenset[EventStatus], EventStatus]] = {
     # Safety rejected. Both return the event to planning (CR-104 AC2/AC3).
     "safety_request_changes": (frozenset({EventStatus.safety_review}), EventStatus.planning),
     "safety_reject": (frozenset({EventStatus.safety_review}), EventStatus.planning),
-    # Story 68 owns the transition into Preparation (CR-104 AC6, QA3-16).
+    # The first venue or technical preparation update on a Confirmed event (68 AC1,
+    # CR-109, CR-110, QA3-3). The system makes it inside the update's transaction.
+    "start_preparation": (frozenset({EventStatus.confirmed}), EventStatus.preparation),
+    # An approved change returns a confirmed event to planning (CR-104 AC6, QA3-16).
     "approved_change": (frozenset({EventStatus.confirmed}), EventStatus.planning),
     # An arrangement stopped being ready during review (CR-104 AC10).
     "safety_withdraw": (frozenset({EventStatus.safety_review}), EventStatus.planning),

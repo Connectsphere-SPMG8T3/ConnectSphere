@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -208,6 +209,43 @@ class ExitConfirmationRequest(BaseModel):
     confirmed: StrictBool
 
 
+class PreparationStage(str, Enum):
+    """CR-110 AC2, RD-R2: the stages named in the M3 meeting, shared with venue
+    preparation (CR-109). Any stage can follow any other [Assumption]."""
+
+    not_started = "not_started"
+    in_preparation = "in_preparation"
+    in_progress = "in_progress"
+    completed = "completed"
+
+
+class TechnicalPreparationRequest(LineNoteRequest):
+    """CR-110 AC2: the event's stage, with the same internal note rules as a line (24 AC12)."""
+
+    stage: PreparationStage
+
+
+class TechnicalPreparationUpdated(BaseModel):
+    stage: PreparationStage
+    note: str | None
+    # Preparation after the first update on a Confirmed event (AC3).
+    event_status: str
+
+
+class TechnicalPreparationStage(BaseModel):
+    """CR-110 AC4: what the organiser sees; never the note (AUTH-R2)."""
+
+    stage: PreparationStage
+    updated_at: datetime | None
+
+
+class TechnicalPreparation(TechnicalPreparationStage):
+    """CR-110 AC2, AC4: Technical Support's and the assigned coordinator's view."""
+
+    note: str | None
+    updated_by_name: str | None
+
+
 class LineActionResponse(BaseModel):
     line_id: UUID
     status: str
@@ -257,6 +295,7 @@ class TechnicalEventResponse(BaseModel):
     event: TechnicalEvent
     technical_status: str
     exit_confirmation: ExitConfirmation | None
+    technical_preparation: TechnicalPreparation
     lines: list[EquipmentRequestLine]
     history: list[TechnicalHistoryEntry]
     # Story 37 Q21: the approved change a line under re-review is checked against.

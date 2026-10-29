@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
-from app.modules.equipment.schemas import ExitConfirmation
+from app.modules.equipment.schemas import ExitConfirmation, TechnicalPreparation, TechnicalPreparationStage
 from app.modules.venues.schemas import Facility, VenueLayout
 
 
@@ -483,6 +483,11 @@ class EventResponse(EventFields):
     # the event is confirmed (SCRUM-82 AC8); null otherwise. Before then the
     # organiser doesn't get it: booking state is internal planning detail (AUTH-R2).
     venue_booking: EventVenueBooking | None = None
+    # CR-110 AC4 on the single-event read: the assigned coordinator gets the stage
+    # and note once the event is Confirmed (and keeps them after a return to
+    # Planning); the organiser gets the stage only, while Confirmed or in
+    # Preparation. Null otherwise and on list responses.
+    technical_preparation: TechnicalPreparation | TechnicalPreparationStage | None = None
     # Bookings venue staff rejected, with their reason and suggestion, on the
     # assigned coordinator's single-event read only (SCRUM-38 AC6, AC7).
     rejected_bookings: list[EventRejectedBooking] = []

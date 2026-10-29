@@ -13,6 +13,7 @@ import { canRequestCancellation } from "@/features/events/cancellation";
 import { canRequestChange, describeChanges } from "@/features/events/changeRequest";
 import { hasThread } from "@/features/events/comments";
 import { BOOKING_STATUS_LABELS } from "@/features/venues/bookingRequest";
+import { preparationStageLabel } from "@/features/equipment/preparation";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { useEventReviewStore } from "@/features/events/eventReviewStore";
 import { useEventsStore } from "@/stores/events";
@@ -137,11 +138,13 @@ onMounted(async () => {
 
       <p v-if="['planning', 'safety_review', 'confirmed'].includes(event.status) && event.latest_safety_decision?.reason_label" class="mb-8 font-medium">{{ event.latest_safety_decision.reason_label }}</p>
       <p v-if="event.status === 'safety_review'" class="mb-8 font-medium">Your event is with the Safety Officer for its operational safety check.</p>
-      <BauhausCard v-if="event.status === 'confirmed'" background="white" accent="none" class="mb-8">
+      <BauhausCard v-if="['confirmed', 'preparation'].includes(event.status)" background="white" accent="none" class="mb-8">
         <h2 class="text-2xl font-bold">Arrangements</h2>
         <p class="mt-4">Venue: {{ event.venue_booking?.venue_name ?? 'Not provided' }}</p>
         <p>Booking: {{ BOOKING_STATUS_LABELS[event.venue_booking?.status] ?? 'Not provided' }}</p>
         <p>Technical status: {{ ({ready: 'Ready', not_required: 'Not required', pending: 'Pending', issue: 'Issue'})[event.technical_readiness] ?? 'Not provided' }}</p>
+        <!-- CR-110 AC4: the stage only; the API never sends the organiser a note. -->
+        <p v-if="event.technical_preparation">Technical preparation: {{ preparationStageLabel(event.technical_preparation.stage) }}</p>
       </BauhausCard>
       <AmendmentBanner v-if="event.status === 'returned' && event.amendment" :amendment="event.amendment" class="mb-8">
         <BauhausButton variant="primary" @click="router.push({ name: 'event-new', query: { id: event.id } })">Amend and resubmit</BauhausButton>
