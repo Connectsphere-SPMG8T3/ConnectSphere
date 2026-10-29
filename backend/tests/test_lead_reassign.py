@@ -56,7 +56,8 @@ def test_assigns_an_unassigned_event_and_passes_the_row_version(data):
     assert result.coordinator_id == NEW
     (args, kwargs), = data.rpc_calls
     assert args == (EVENT, LEAD, NEW, 3)
-    assert set(kwargs["active_statuses"]) == {"under_review", "returned", "planning", "safety_review", "confirmed"}
+    assert set(kwargs["active_statuses"]) == {"under_review", "returned", "planning", "safety_review", "confirmed",
+                                              "preparation"}
     # A reassignment is not a status change: it must not ask for a status-history row,
     # which would reorder the Safety Officer's queue and show the organiser a fake transition.
     assert "reason" not in kwargs
@@ -156,3 +157,12 @@ class TestEndpoint:
         response = client.post(self.URL, json={"coordinator_id": NEW, "expected_version": 3}, headers={"Authorization": "Bearer t"})
         assert response.status_code == 403
         assert data.rpc_calls == []
+
+
+def test_an_event_in_preparation_can_be_reassigned(data):
+    """D73: Preparation is still coordinator work, so the Lead can hand it over."""
+    data.event = lead_row(status="preparation")
+
+    service.reassign(EVENT, LEAD, NEW, 3)
+
+    assert len(data.rpc_calls) == 1

@@ -88,9 +88,14 @@ def _safety_service_available(function):
 
 DEFAULT_EVENT_TIMEZONE = "Asia/Singapore"
 
-# The statuses an assigned coordinator still has work in (SCRUM-72 AC2). Drafts
-# are private to their organiser (DR-R2) and terminal statuses aren't active.
-ACTIVE_COORDINATOR_STATUSES = ("under_review", "returned", "planning", "safety_review", "confirmed")
+# The statuses an assigned coordinator still has work in (SCRUM-72 AC2), in
+# lifecycle order; Preparation follows Confirmed (QA3-3, D73). Drafts are private
+# to their organiser (DR-R2) and terminal statuses aren't active.
+ACTIVE_COORDINATOR_STATUSES = ("under_review", "returned", "planning", "safety_review", "confirmed", "preparation")
+
+# Where a coordinator alert can still lead to action: the arrangements are being
+# made or have been made (CR-95 AC3, §6.21.1, D73).
+_ARRANGED_STATUSES = ("planning", "safety_review", "confirmed", "preparation")
 
 
 CLONE_FIELDS = (
@@ -904,6 +909,11 @@ def _for_role(booking: dict, role: str) -> dict:
     return {**booking, "flag": None, "flag_reason": None, "replaces_booking_id": None}
 
 
+# SCRUM-82 AC8, CR-110 Q10: the organiser sees the confirmed arrangements, and
+# keeps seeing them once preparation starts.
+_ORGANISER_ARRANGEMENT_STATUSES = ("confirmed", "preparation")
+
+
 @_safety_service_available
 def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventResponse:
     row = _visible_event(event_id, user_id, role)
@@ -916,7 +926,7 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
         response.open_change_request = EventChangeRequest(**open_change)
     if role == "event_coordinator" and row["status"] == "planning":
         response.safety_readiness = _safety_readiness_for(row)
-    if role == "event_coordinator" or row["status"] == "confirmed":
+    if role == "event_coordinator" or row["status"] in _ORGANISER_ARRANGEMENT_STATUSES:
         booking = venues_service.active_booking_for_event(event_id)
         if booking:
             response.venue_booking = EventVenueBooking(**_for_role(booking, role))
@@ -924,6 +934,11 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
             EventSpaceVenueBooking(**_for_role(booking, role))
             for booking in venues_service.active_bookings_for_event(event_id)
         ]
+    if role == "event_coordinator" and (row["status"] in _ORGANISER_ARRANGEMENT_STATUSES
+                                        or row.get("preparation_record")):
+        response.technical_preparation = equipment_service.technical_preparation(row, internal=True)
+    elif role == "event_organiser" and row["status"] in _ORGANISER_ARRANGEMENT_STATUSES:
+        response.technical_preparation = equipment_service.technical_preparation(row, internal=False)
     if role == "event_coordinator":
         # SCRUM-38 AC6: why venue staff said no, for the coordinator only.
         response.rejected_bookings = [
@@ -1057,7 +1072,7 @@ def _action_kind(row: dict, resubmitted_at: str | None, venue_affected: bool = F
     status = row["status"]
     # CR-95 AC3: a venue that became unavailable is the most urgent thing a
     # coordinator can have; the event's status is not changed by it (AC7).
-    if venue_affected and status in ("planning", "safety_review", "confirmed"):
+    if venue_affected and status in _ARRANGED_STATUSES:
         return CoordinatorActionKind.needs_alternative_venue
     if status == "under_review":
         # A resubmission is the organiser's answer to a return (QA-22, QA-77):
@@ -1065,7 +1080,7 @@ def _action_kind(row: dict, resubmitted_at: str | None, venue_affected: bool = F
         return CoordinatorActionKind.resubmitted if resubmitted_at else CoordinatorActionKind.awaiting_review
     # REQUIREMENTS §6.21.1: technical status is Issue when tech support marked a
     # line Not available (SCRUM-24 AC11).
-    if status in ("planning", "safety_review", "confirmed") and technical_status(row) == ReadinessState.issue:
+    if status in _ARRANGED_STATUSES and technical_status(row) == ReadinessState.issue:
         return CoordinatorActionKind.arrangement_issue
     # `returned` is waiting on the organiser, not the coordinator.
     return None

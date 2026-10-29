@@ -23,6 +23,7 @@ export const STATUS_LABELS = {
   planning: "Planning",
   safety_review: "Safety review",
   confirmed: "Confirmed",
+  preparation: "Preparation",
   rejected: "Rejected",
   cancelled: "Cancelled",
   completed: "Completed",
@@ -34,6 +35,7 @@ export const STATUS_DESCRIPTIONS = {
   planning: "Passed initial review — venue and equipment being arranged.",
   safety_review: "Waiting on the Safety Officer's operational safety check.",
   confirmed: "All blocking arrangements are in place.",
+  preparation: "Venue and technical teams are preparing for the event.",
 };
 
 /**
@@ -44,7 +46,7 @@ export const STATUS_DESCRIPTIONS = {
  * assignment has moved it to `under_review` (§6.5); unassigned events surface
  * through the separate awaiting-assignment alert (AS-R5).
  */
-export const ACTIVE_COORDINATOR_STATUSES = ["under_review", "returned", "planning", "safety_review", "confirmed"];
+export const ACTIVE_COORDINATOR_STATUSES = ["under_review", "returned", "planning", "safety_review", "confirmed", "preparation"];
 
 /**
  * How the dashboard ranks the things a coordinator could act on, most urgent
@@ -349,7 +351,7 @@ export function readinessGaps(events = [], { now = new Date(), days = 14 } = {})
   const until = from + days * 24 * 60 * 60 * 1000;
 
   return events
-    .filter((event) => ["planning", "safety_review", "confirmed"].includes(event.status))
+    .filter((event) => ["planning", "safety_review", "confirmed", "preparation"].includes(event.status))
     .filter((event) => {
       const startsAt = timestamp(event.starts_at);
       return startsAt >= from && startsAt <= until;

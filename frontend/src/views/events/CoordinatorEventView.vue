@@ -6,6 +6,7 @@ import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import EquipmentRequestPanel from "@/components/equipment/EquipmentRequestPanel.vue";
+import TechnicalPreparationSummary from "@/components/equipment/TechnicalPreparationSummary.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import CancellationReasonModal from "@/components/events/CancellationReasonModal.vue";
 import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
@@ -512,6 +513,9 @@ watch(
           </section>
           <div class="mt-6 border-t-4 border-ink pt-6">
             <EquipmentRequestPanel :event-id="event.id" :status="event.status" />
+          </div>
+          <div v-if="event.technical_preparation" class="mt-6 border-t-4 border-ink pt-6">
+            <TechnicalPreparationSummary :preparation="event.technical_preparation" />
           </div>
         </BauhausCard>
 

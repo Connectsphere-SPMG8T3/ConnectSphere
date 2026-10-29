@@ -1,3 +1,5 @@
+import { PREPARATION_STAGE_LABELS } from "@/features/equipment/preparation";
+
 // SCRUM-24 equipment reservation (REQUIREMENTS §6.15–6.17). The API and the
 // database functions decide everything; these only choose which actions to
 // offer and how statuses, the exit tick and history read on screen.
@@ -39,10 +41,14 @@ export const HISTORY_ACTION_LABELS = {
   exit_unticked: "Exit check unticked",
   exit_cleared: "Exit check cleared",
   technical_status: "Technical status changed",
+  // CR-110 AC5.
+  preparation: "Preparation stage changed",
+  preparation_note_updated: "Preparation notes updated",
 };
 
 const STATUS_WORDS = {
   ...TECHNICAL_STATUS_LABELS,
+  ...PREPARATION_STAGE_LABELS,
   reserved: "Reserved",
   rejected: "Not available",
   re_review: "Re-review",

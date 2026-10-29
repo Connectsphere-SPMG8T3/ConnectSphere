@@ -199,6 +199,16 @@ describe("active event status overview (SCRUM-72 AC2)", () => {
     expect(groups.find((group) => group.status === "confirmed").events).toEqual([]);
   });
 
+  it("keeps an event in Preparation on the dashboard, after Confirmed (D73, QA3-3)", () => {
+    const groups = groupActiveEventsByStatus([activeEvent({ status: "preparation" })]);
+
+    expect(ACTIVE_COORDINATOR_STATUSES.slice(-2)).toEqual(["confirmed", "preparation"]);
+    const preparation = groups.find((group) => group.status === "preparation");
+    expect(preparation.events).toHaveLength(1);
+    expect(preparation.label).toBe("Preparation");
+    expect(preparation.description).toBeTruthy();
+  });
+
   it("excludes drafts, which never appear in a staff queue or count (DR-R2)", () => {
     const events = [activeEvent({ event_id: "d", status: "draft" }), activeEvent({ event_id: "p" })];
 
@@ -236,6 +246,10 @@ describe("active event status overview (SCRUM-72 AC2)", () => {
   it("labels the safety review status in plain language (SCRUM-82, W7 CR-06)", () => {
     expect(STATUS_LABELS.safety_review).toBe("Safety review");
     expect(STATUS_DESCRIPTIONS.safety_review).toBe("Waiting on the Safety Officer's operational safety check.");
+  });
+
+  it("labels Preparation in words, as CR-110 moves events there (QA3-3)", () => {
+    expect(STATUS_LABELS.preparation).toBe("Preparation");
   });
 
   it("calls planning 'Planning', not 'Approved' (QA-18, QA2-8)", () => {
@@ -298,6 +312,19 @@ describe("readiness gaps (schedule overview)", () => {
     expect(readinessGaps(events, { now: NOW, days: 14 }).map((event) => event.event_id)).toEqual([
       "soon-gap",
     ]);
+  });
+
+  it("still shows a gap on an event in Preparation (D73)", () => {
+    const events = [
+      activeEvent({
+        event_id: "preparing",
+        status: "preparation",
+        starts_at: "2026-10-10T02:00:00Z",
+        readiness: { venue: "pending", equipment: "ready", technical: "ready" },
+      }),
+    ];
+
+    expect(readinessGaps(events, { now: NOW, days: 14 }).map((event) => event.event_id)).toEqual(["preparing"]);
   });
 
   it("ignores events that have already started", () => {

@@ -220,7 +220,10 @@ def list_planning_context(event_ids: Iterable[str]) -> list[dict]:
 # page. The FK is named because `events` references `profiles` twice, and a bare
 # `profiles(...)` embed fails the whole query with PGRST201.
 _EVENT_READ_COLUMNS = (_EVENT_COLUMNS + ", coordinator:profiles!events_coordinator_id_fkey(id, full_name)"
-                       + ", organiser:profiles!events_organiser_id_fkey(full_name)")
+                       + ", organiser:profiles!events_organiser_id_fkey(full_name)"
+                       # CR-110 AC4: the shape equipment.service.technical_preparation reads.
+                       + ", preparation_record:event_technical_preparation(stage, note, updated_at, "
+                       "updater:profiles!event_technical_preparation_updated_by_fkey(full_name))")
 
 
 def get_event(event_id: str) -> dict | None:

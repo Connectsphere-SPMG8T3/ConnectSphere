@@ -14,7 +14,7 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD
 | [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment, SCRUM-61 comments, CR-98 event-space requirements, Story 43 public event discovery and registration, SCRUM-55 withdrawal, SCRUM-56 registered events, 84 cancellation requests, 115 cancel an event, 32 change requests, 37 deciding change requests and re-review | TC-EVENT, TC-REV, TC-AMD, TC-CMT, TC-SAFE, TC-SPACE, TC-REG, TC-CANCEL, TC-CHANGE |
 | [dashboards.md](dashboards.md) | SCRUM-72 coordinator, SCRUM-70 venue staff, SCRUM-71 organiser, SCRUM-73 technical support, CR-101 Event Coordinator Lead, SCRUM-12 Coordinator assignment | TC-DASH, TC-VSD, TC-ORG, TC-TSD, TC-LEAD, TC-ASSIGN |
 | [safety-decisions.md](safety-decisions.md) | CR-103 queue/review (AC1–4, AC6), CR-104 safety decisions | TC-SDEC |
-| [equipment.md](equipment.md) | SCRUM-45 equipment request | TC-EQR |
+| [equipment.md](equipment.md) | SCRUM-45 equipment request, SCRUM-24 reservation, 23-R availability, CR-110 technical preparation | TC-EQR, TC-TPREP |
 | [notifications.md](notifications.md) | SCRUM-113 in-app notifications, SCRUM-53 attendee notices, SCRUM-90 reminders | TC-NOTIF |
 
 ## Environment

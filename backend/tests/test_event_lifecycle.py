@@ -146,3 +146,23 @@ def test_only_safety_approval_reaches_confirmed():
     confirming = [action for action, (_, destination) in lifecycle.TRANSITIONS.items() if destination == EventStatus.confirmed]
 
     assert confirming == ["safety_approve"]
+
+
+def test_start_preparation_moves_confirmed_to_preparation():
+    """68 AC1, CR-110 AC3: the first preparation update on a Confirmed event."""
+    assert lifecycle.target("start_preparation", "confirmed") == EventStatus.preparation
+    assert lifecycle.allowed_from("start_preparation") == ["confirmed"]
+
+
+@pytest.mark.parametrize("status", [s for s in ALL_STATUSES if s != "confirmed"])
+def test_start_preparation_is_blocked_from_every_other_status(status):
+    with pytest.raises(EventTransitionError):
+        lifecycle.target("start_preparation", status)
+
+
+def test_only_starting_preparation_reaches_preparation():
+    """68 AC1: no other action moves an event to Preparation."""
+    preparing = [action for action, (_, destination) in lifecycle.TRANSITIONS.items()
+                 if destination == EventStatus.preparation]
+
+    assert preparing == ["start_preparation"]

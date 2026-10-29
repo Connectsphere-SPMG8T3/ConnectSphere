@@ -23,6 +23,7 @@ export const useTechnicalEventStore = defineStore("technicalEvent", {
     busy: null,
     lineErrors: {},
     exitError: null,
+    preparationError: null,
   }),
 
   actions: {
@@ -32,6 +33,7 @@ export const useTechnicalEventStore = defineStore("technicalEvent", {
         this.view = null;
         this.lineErrors = {};
         this.exitError = null;
+        this.preparationError = null;
         this.busy = null;
       }
       this.eventId = eventId;
@@ -77,6 +79,28 @@ export const useTechnicalEventStore = defineStore("technicalEvent", {
 
     saveNote(lineId, note) {
       return this._lineAction(lineId, (token) => equipmentApi.setLineNote(lineId, note.trim() || null, token));
+    },
+
+    // CR-110: the event's stage and internal note. A blank note clears it.
+    async savePreparation(stage, note) {
+      const eventId = this.eventId;
+      if (!eventId || this.busy) return false;
+      const auth = useAuthStore();
+      this.busy = "preparation";
+      this.preparationError = null;
+      const body = { stage, note: String(note ?? "").trim() || null };
+      try {
+        await auth.withSession((token) => equipmentApi.setTechnicalPreparation(eventId, body, token));
+        return true;
+      } catch (error) {
+        if (this.eventId === eventId) this.preparationError = error.message;
+        return false;
+      } finally {
+        if (this.eventId === eventId) {
+          this.busy = null;
+          await this.load(eventId);
+        }
+      }
     },
 
     async setExitConfirmation(confirmed) {

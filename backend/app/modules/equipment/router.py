@@ -24,6 +24,8 @@ from app.modules.equipment.schemas import (
     NotAvailableRequest,
     TechnicalEventResponse,
     TechnicalHistoryResponse,
+    TechnicalPreparationRequest,
+    TechnicalPreparationUpdated,
 )
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
@@ -119,6 +121,15 @@ def set_note(line_id: UUID, body: LineNoteRequest, current_user: EquipmentArrang
 @router.put("/events/{event_id}/exit-confirmation", status_code=status.HTTP_204_NO_CONTENT)
 def set_exit_confirmation(event_id: UUID, body: ExitConfirmationRequest, current_user: EquipmentArranger) -> None:
     service.set_exit_confirmation(str(event_id), current_user.id, body.confirmed)
+
+
+@router.put("/events/{event_id}/preparation", response_model=TechnicalPreparationUpdated,
+            status_code=status.HTTP_200_OK)
+def set_technical_preparation(
+    event_id: UUID, body: TechnicalPreparationRequest, current_user: EquipmentArranger
+) -> TechnicalPreparationUpdated:
+    """CR-110: only Technical Support record technical preparation (AC6)."""
+    return service.set_technical_preparation(str(event_id), current_user.id, body.stage.value, body.note)
 
 
 @router.get("/events/{event_id}/technical", response_model=TechnicalEventResponse, status_code=status.HTTP_200_OK)

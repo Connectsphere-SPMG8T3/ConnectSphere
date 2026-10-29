@@ -388,6 +388,10 @@ export const equipmentApi = {
       method: "PUT", body: { confirmed }, token,
     });
   },
+  // CR-110: `{ stage, note }`; the first change on a Confirmed event moves it to Preparation.
+  setTechnicalPreparation(eventId, body, token) {
+    return request(`/equipment/events/${encodeURIComponent(eventId)}/preparation`, { method: "PUT", body, token });
+  },
 };
 
 export { ApiError };

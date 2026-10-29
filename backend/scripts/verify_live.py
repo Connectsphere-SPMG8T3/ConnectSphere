@@ -128,6 +128,7 @@ DB_SCRIPTS = [
     ("event_change_request_checks.sql", "TC-CHANGE-007 (story 32 database half: one open per event, closing, RLS)"),
     ("registration_withdrawal_checks.sql", "TC-REG-018 (SCRUM-55 withdrawal, cutoff, re-registration and grants)"),
     ("change_request_decision_checks.sql", "TC-CHANGE-024 (story 37 database half: decisions, moves, marks, sends, re-review)"),
+    ("technical_preparation_checks.sql", "TC-TPREP-001–006 (CR-110 database half: refusals, Preparation, history, notices, RLS)"),
 ]
 
 
@@ -909,7 +910,8 @@ def _(ctx: Context) -> None:
 # changes shared data and stays manual (TC-LEAD-011).
 
 LEAD_DASHBOARD = "/events/dashboard/lead"
-LEAD_ACTIVE_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed"}
+# Preparation follows Confirmed and is still the coordinator's work (D73).
+LEAD_ACTIVE_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed", "preparation"}
 # The Lead's queue also holds events waiting for a coordinator (SCRUM-12).
 LEAD_DASHBOARD_STATUSES = LEAD_ACTIVE_STATUSES | {"submitted"}
 UNKNOWN_EVENT = "e0000000-0000-4000-8000-0000000009ff"
@@ -4485,6 +4487,100 @@ def _(ctx: Context) -> None:
     told = notices_of(event_id, "venue_booking_re_review")
     expect(any(n["role"] == "venue_staff" and "changed again" in n["message"] for n in told), f"notices: {told}")
 
+
+# --- CR-110 technical preparation ----------------------------------------------
+
+def preparation(ctx: Context, event_id: str, stage: str, note: str | None = None,
+                session: Session | None = None) -> httpx.Response:
+    session = session or ctx.shared("tech_support")
+    return ctx.client.put(f"{ctx.api}/equipment/events/{event_id}/preparation", headers=session.headers,
+                          json={"stage": stage, "note": note})
+
+
+@check("TC-TPREP-007", "Tech support's first update on a Confirmed event moves it to Preparation and tells "
+       "the organiser and coordinator", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "TPREP007", "2031-12-01 09:00+08", "2031-12-01 12:00+08", status="confirmed")
+    response = preparation(ctx, event_id, "in_preparation", "  Cables ordered  ")
+    expect_status(response, 200)
+    expect(response.json() == {"stage": "in_preparation", "note": "Cables ordered", "event_status": "preparation"},
+           f"response: {response.json()}")
+    [event] = db_query(f"select status::text from public.events where id = '{event_id}'")
+    expect(event["status"] == "preparation", f"the event is {event['status']}")
+    notices = db_query("select recipient_role::text as role from public.notifications "
+                       f"where event_id = '{event_id}' and type = 'preparation_started'")
+    roles = sorted(n["role"] for n in notices)
+    expect(roles == ["event_coordinator", "event_organiser"], f"notified roles: {roles}")
+    expect_status(preparation(ctx, event_id, "completed"), 200)
+    [moves] = db_query("select count(*) as n from public.event_status_history "
+                       f"where event_id = '{event_id}' and to_status = 'preparation'")
+    expect(int(moves["n"]) == 1, f"{moves['n']} moves to Preparation, expected 1")
+    # D73: the coordinator still has the event once it is in Preparation.
+    dashboard = ctx.client.get(f"{ctx.api}/events/dashboard/coordinator",
+                               headers=ctx.shared("event_coordinator").headers).json()
+    active = {e["event_id"]: e["status"] for e in dashboard["active_events"]}
+    expect(active.get(event_id) == "preparation", f"the coordinator's dashboard has {active.get(event_id)}")
+
+
+@check("TC-TPREP-008", "Technical preparation is refused before the Safety Officer confirms the event",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    for status in ("planning", "safety_review"):
+        event_id = throwaway_event(ctx, f"TPREP008-{status}", "2031-12-02 09:00+08", "2031-12-02 12:00+08",
+                                   status=status)
+        response = preparation(ctx, event_id, "in_progress")
+        expect_status(response, 409)
+        expect_detail(response, "Technical preparation opens once the Safety Officer has confirmed the event.")
+        [event] = db_query(f"select status::text from public.events where id = '{event_id}'")
+        expect(event["status"] == status, f"a refused update moved the event to {event['status']}")
+
+
+@check("TC-TPREP-009", "Two tech staff updating a Confirmed event at once move it to Preparation once",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "TPREP009", "2031-12-03 09:00+08", "2031-12-03 12:00+08", status="confirmed")
+    sessions = [ctx.login("tech_support"), ctx.login("tech_support")]
+
+    # Separate clients and sessions, so the two updates really are in flight together.
+    def fire(pair) -> int:
+        stage, session = pair
+        with httpx.Client(timeout=30) as client:
+            return client.put(f"{ctx.api}/equipment/events/{event_id}/preparation", headers=session.headers,
+                              json={"stage": stage}).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes = sorted(pool.map(fire, zip(["in_preparation", "in_progress"], sessions)))
+    expect(codes == [200, 200], f"expected two 200s, got {codes}")
+    [moves] = db_query("select count(*) as n from public.event_status_history "
+                       f"where event_id = '{event_id}' and to_status = 'preparation'")
+    expect(int(moves["n"]) == 1, f"{moves['n']} moves to Preparation, expected 1")
+    [notices] = db_query("select count(*) as n from public.notifications "
+                         f"where event_id = '{event_id}' and type = 'preparation_started'")
+    expect(int(notices["n"]) == 2, f"{notices['n']} preparation_started notices, expected 2")
+
+
+@check("TC-TPREP-010", "The coordinator sees the stage and note; the organiser sees the stage only", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "TPREP010", "2031-12-04 09:00+08", "2031-12-04 12:00+08", status="confirmed")
+    expect_status(preparation(ctx, event_id, "in_progress", "Internal cabling note"), 200)
+    coordinator = ctx.client.get(f"{ctx.api}/events/{event_id}",
+                                 headers=ctx.shared("event_coordinator").headers).json()["technical_preparation"]
+    expect(coordinator and coordinator["stage"] == "in_progress" and coordinator["note"] == "Internal cabling note",
+           f"coordinator sees {coordinator}")
+    organiser = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=ctx.shared("event_organiser").headers)
+    expect_status(organiser, 200)
+    seen = organiser.json()["technical_preparation"]
+    expect(seen and seen["stage"] == "in_progress" and "note" not in seen, f"organiser sees {seen}")
+    expect("Internal cabling note" not in organiser.text, "the note reached the organiser's response")
+
+
+@check("TC-TPREP-011", "Only Technical Support can record technical preparation", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "TPREP011", "2031-12-05 09:00+08", "2031-12-05 12:00+08", status="confirmed")
+    for role in ("event_organiser", "event_coordinator", "venue_staff", "safety_officer"):
+        expect_status(preparation(ctx, event_id, "completed", session=ctx.shared(role)), 403)
+    [event] = db_query(f"select status::text from public.events where id = '{event_id}'")
+    expect(event["status"] == "confirmed", f"a refused update moved the event to {event['status']}")
 
 def db_query(sql: str) -> list[dict]:
     completed = _supabase_query(sql)

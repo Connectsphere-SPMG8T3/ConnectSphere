@@ -7,6 +7,7 @@ import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import EquipmentLineArrangement from "@/components/equipment/EquipmentLineArrangement.vue";
 import TechnicalHistoryList from "@/components/equipment/TechnicalHistoryList.vue";
+import TechnicalPreparationCard from "@/components/equipment/TechnicalPreparationCard.vue";
 import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
 import { describeChanges } from "@/features/events/changeRequest";
 import { STATUS_LABELS as EVENT_STATUS_LABELS } from "@/features/events/dashboard";
@@ -20,6 +21,7 @@ import {
   TECHNICAL_STATUS_BADGE_CLASSES,
   TECHNICAL_STATUS_LABELS,
 } from "@/features/equipment/technical";
+import { isOpenForPreparation } from "@/features/equipment/preparation";
 import { useTechnicalEventStore } from "@/features/equipment/technicalEventStore";
 
 // SCRUM-24: Technical Support arrange one event's equipment. Thin by design:
@@ -30,6 +32,7 @@ const store = useTechnicalEventStore();
 
 const view = computed(() => (store.view?.event.id === route.params.id ? store.view : null));
 const open = computed(() => !!view.value && isOpenForArrangements(view.value.event.status));
+const preparationOpen = computed(() => !!view.value && isOpenForPreparation(view.value.event.status));
 const showExit = computed(() => !!view.value && hasLiveLines(view.value.lines));
 // D70: story 37's "What changed" is only for lines a change request sent; a line
 // the coordinator edited says what they changed on its own card.
@@ -95,6 +98,15 @@ watch(() => route.params.id, (id) => { if (id) store.load(id); }, { immediate: t
         </section>
 
         <div class="flex min-w-0 flex-col gap-8">
+          <TechnicalPreparationCard
+            :preparation="view.technical_preparation ?? null"
+            :open="preparationOpen"
+            :busy="store.busy === 'preparation'"
+            :locked="!!store.busy && store.busy !== 'preparation'"
+            :error="store.preparationError"
+            @save="({ stage, note }) => store.savePreparation(stage, note)"
+          />
+
           <BauhausCard v-if="showExit" background="white" accent="none">
             <h2 class="text-2xl font-bold">Exit check</h2>
             <label class="mt-4 flex cursor-pointer items-start gap-3 border-2 border-ink p-3 font-bold" :class="view.exit_confirmation ? 'bg-bauhaus-yellow' : 'bg-canvas'">

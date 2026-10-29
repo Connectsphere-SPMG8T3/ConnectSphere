@@ -47,6 +47,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
   // A request to review this field (SCRUM-33), not a validation failure.
   flag: {
     type: String,
@@ -114,6 +118,7 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
         :aria-invalid="hasError || undefined"
         :aria-describedby="describedBy"
         :data-flagged="hasFlag || undefined"
+        :disabled="disabled"
         class="focus-tint flex w-full items-center justify-between border-2 border-ink px-4 py-3 text-left text-base font-medium text-ink outline-none transition-colors hover:bg-muted"
         :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasError ? 'border-bauhaus-red' : 'border-ink', hasFlag ? 'bg-bauhaus-yellow/30' : 'bg-canvas']"
         @focus="$event.currentTarget.style.backgroundColor = 'rgb(250, 239, 211)'"
@@ -161,6 +166,7 @@ onBeforeUnmount(() => document.removeEventListener("click", closeOnOutsideClick)
       :aria-invalid="hasError"
       :aria-describedby="describedBy"
       :data-flagged="hasFlag || undefined"
+      :disabled="disabled"
       class="focus-tint border-2 border-ink px-4 py-3 text-base font-medium text-ink outline-none transition-colors"
       :class="[compact ? 'h-[50px] shadow-none' : 'shadow-hard sm:border-4', hasError ? 'border-bauhaus-red' : 'border-ink', hasFlag ? 'bg-bauhaus-yellow/30' : 'bg-canvas']"
       @focus="$event.currentTarget.style.backgroundColor = 'rgb(250, 239, 211)'"

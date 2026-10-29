@@ -186,3 +186,17 @@ class TestReads:
         assert "equipment_type" in repository.REQUEST_LINE_SELECT
         assert "technical_notes" in repository.REQUEST_LINE_SELECT
         assert "not_available_reason" in repository.REQUEST_LINE_SELECT
+
+
+class TestTechnicalPreparation:
+    """CR-110: what set_technical_preparation sends and how it reads the answer."""
+
+    def test_sends_the_event_actor_stage_and_note(self, client):
+        answer(client, [{"outcome": "ok", "event_status": "preparation"}])
+
+        row = repository.set_technical_preparation("e1", "t1", "in_progress", None)
+
+        assert row == {"outcome": "ok", "event_status": "preparation"}
+        client.rpc.assert_called_once_with("set_technical_preparation", {
+            "p_event_id": "e1", "p_actor_id": "t1", "p_stage": "in_progress", "p_note": None,
+        })

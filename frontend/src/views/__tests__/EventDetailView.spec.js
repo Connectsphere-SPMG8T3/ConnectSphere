@@ -274,3 +274,25 @@ describe("EventDetailView sidebar (D23, D24)", () => {
     expect(el.textContent).toContain("Coordinator: Unassigned");
   });
 });
+
+describe("EventDetailView technical preparation (CR-110 AC4)", () => {
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  it.each(["confirmed", "preparation"])("shows the stage, never a note, in %s", async (status) => {
+    const el = await mountDetail(eventResponse({ status, venue_booking: { venue_name: "Main Hall", status: "approved" }, technical_readiness: "ready",
+      technical_preparation: { stage: "in_progress", updated_at: "2026-10-26T03:00:00Z", note: "PRIVATE-PREP-NOTE" } }));
+
+    expect(el.textContent).toContain("Arrangements");
+    expect(el.textContent).toContain("Main Hall");
+    expect(el.textContent).toContain("Technical preparation: In progress");
+    expect(el.textContent).not.toContain("PRIVATE-PREP-NOTE");
+  });
+
+  it("shows nothing about technical preparation before confirmation", async () => {
+    const el = await mountDetail(eventResponse({ status: "planning", technical_preparation: null }));
+
+    expect(el.textContent).not.toContain("Technical preparation");
+  });
+});
