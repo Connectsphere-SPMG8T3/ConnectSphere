@@ -45,7 +45,7 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 | TC-DASH-030 | The API lists the caller's rejected events apart from active ones | As TC-DASH-013 | Send `GET /events/dashboard/coordinator` as the coordinator; read each `rejected_events` entry back with `GET /events/{id}` | — | 200 with `rejected_events` (`event_id`, `event_name`, `starts_at`). No id is also in `active_events`. Each one reads back as the coordinator with status `rejected`. Automated in `verify_live.py`. | 🔴 |
 | TC-DASH-031 | An event page belongs to Events | As TC-DASH-001 | Open any event from the board or the Events view; look at the sidebar, then press the back button | — | On the event page the sidebar's **Events** link is highlighted yellow (not Overview). The button reads **Back to events** and opens the Events view (`?tab=events`). | 🟠 |
 
-### Traceability — SCRUM-72
+### Traceability — SCRUM-72 and 72-R
 
 | Acceptance criterion / rule | Covered by |
 |---|---|
@@ -64,6 +64,9 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 | NFR-U1 (desktop and mobile friendly) | TC-DASH-005 |
 | DEFECTS D8 (fabricated metrics) | TC-DASH-002 |
 | Reliability (an outage is not rendered as "nothing to do") | TC-DASH-004 |
+| 72-R AC1 [W7 CR-05] only events assigned to me; unassigned and other coordinators' events are not shown | TC-DASH-013, TC-DASH-015; pytest `TestScope`, `TestRepositoryQueries::test_coordinator_events_filter_by_caller_and_status_and_name_the_organiser_fk`, `TestUnassignedEvents` |
+| 72-R AC2 [W7 CR-02] a booking marked Affected shows "Needs alternative venue" (CR-95 AC1) | TC-BOOK-048 (browser, real data), TC-DASH-026 (red card with the badge); pytest `TestActionItems::test_an_event_whose_venue_booking_is_affected_needs_an_alternative_venue`, `…::test_an_affected_booking_is_a_venue_issue_even_when_it_was_approved`, `…::test_the_alternative_venue_alert_outranks_a_technical_issue_and_both_flags_show` |
+| 72-R AC3 the original 72 AC1–AC2 still pass | The 72 AC1 and AC2 rows above (TC-DASH-006, 008–014, 019, 020, 022, 023, 026, 030), plus the full suites re-run for 72-R (BUILD_LOG §4.101) |
 
 Automated equivalents:
 
@@ -72,6 +75,8 @@ Automated equivalents:
 - **Live checks:** TC-DASH-013–018 in `backend/scripts/verify_live.py`, and TC-DASH-001, 019 and 022 in `frontend/e2e/dashboards.e2e.js`.
 
 TC-DASH-002, 003, 005 and 024 are visual and stay manual. So does TC-DASH-020, because it changes shared data.
+
+**Known gap (72-R).** That another coordinator's or an unassigned event, or another coordinator's Affected booking, never reaches this dashboard is proven by the query's `coordinator_id` filter in pytest, not by a live check on real data. Seeded data has no such events, and the team chose not to add one for 72-R.
 
 ## Venue Staff dashboard (SCRUM-70)
 
