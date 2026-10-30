@@ -51,7 +51,7 @@ const summaryCards = computed(() => [
       ? "Loading your registrations"
       : registrationStore.myRegistrationsError
         ? "Registration count unavailable"
-        : "Registered or waitlisted events still in progress or upcoming",
+        : "Registered, waitlisted or invited events still in progress or upcoming",
     background: "blue",
     accent: "circle",
     accentColor: "bauhaus-yellow",
@@ -119,6 +119,7 @@ const eventGroups = computed(() => {
 const registrationStatusOptions = [
   { value: "registered", label: "Registered" },
   { value: "waitlisted", label: "Waitlisted" },
+  { value: "invited", label: "Invitation pending" },
 ];
 const publicEventSortOptions = [
   { value: "date", label: "Event date" },
@@ -158,11 +159,11 @@ function clearRegistrationFilters() {
 }
 
 function registrationCardTone(status) {
-  return status === "registered" ? "done" : "waiting";
+  return status === "registered" ? "done" : status === "invited" ? "invited" : "waiting";
 }
 
 function registrationCardBackground(status) {
-  return status === "registered" ? "green" : "white";
+  return status === "registered" ? "green" : status === "invited" ? "yellow" : "white";
 }
 
 onMounted(() => {

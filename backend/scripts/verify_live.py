@@ -129,6 +129,7 @@ DB_SCRIPTS = [
     ("registration_withdrawal_checks.sql", "TC-REG-018 (SCRUM-55 withdrawal, cutoff, re-registration and grants)"),
     ("change_request_decision_checks.sql", "TC-CHANGE-024 (story 37 database half: decisions, moves, marks, sends, re-review)"),
     ("technical_preparation_checks.sql", "TC-TPREP-001–006 (CR-110 database half: refusals, Preparation, history, notices, RLS)"),
+    ("registration_waitlist_checks.sql", "TC-REG-020, 022–028 (SCRUM-86 database half)"),
 ]
 
 
@@ -167,6 +168,25 @@ def expect_status(response: httpx.Response, status: int) -> None:
 def expect_detail(response: httpx.Response, detail: str) -> None:
     actual = response.json().get("detail")
     expect(actual == detail, f"expected detail {detail!r}, got {actual!r}")
+
+
+def require_waitlist_migration() -> None:
+    rows = db_query(
+        "select to_regprocedure('public.accept_waitlist_invitation(uuid,uuid)') is not null "
+        "and to_regprocedure('public.leave_waitlist(uuid,uuid)') is not null "
+        "and exists (select 1 from information_schema.columns "
+        "where table_schema = 'public' and table_name = 'event_registrations' "
+        "and column_name = 'invitation_expires_at') "
+        "and exists (select 1 from information_schema.columns "
+        "where table_schema = 'public' and table_name = 'event_registrations' "
+        "and column_name = 'waitlist_order') as migration_present"
+    )
+    expect(len(rows) == 1 and isinstance(rows[0].get("migration_present"), bool),
+           "waitlist migration preflight returned an unexpected result")
+    if not rows[0]["migration_present"]:
+        raise CheckBlocked(
+            "SCRUM-86 waitlist migration is not applied; waitlist verification was not run."
+        )
 
 
 @dataclass
@@ -687,7 +707,7 @@ def _(ctx: Context) -> None:
     expect(isinstance(registrations, list), "response does not contain a registrations list")
     for registration in registrations:
         expect(
-            registration.get("status") in {"registered", "waitlisted"},
+            registration.get("status") in {"registered", "waitlisted", "invited"},
             f"unexpected registration status {registration.get('status')!r}",
         )
         event = registration.get("event")
@@ -813,6 +833,162 @@ def _(ctx: Context) -> None:
     )
     expect(final["status"] == "withdrawn" and final["withdrawn_at"] and int(final["registered_count"]) == 0,
            f"disabled re-registration changed the withdrawn registration: {final}")
+
+
+@check(
+    "TC-REG-021",
+    "Two concurrent Attendees competing for the final place produce one registration and one waitlist entry",
+    creates_accounts=True,
+    needs_db=True,
+)
+def _(ctx: Context) -> None:
+    require_waitlist_migration()
+    event_id = throwaway_event(ctx, "021", "2031-06-21 09:00+08", "2031-06-21 12:00+08",
+                               status="confirmed")
+    db_query(
+        "update public.events set registration_enabled = true, registration_capacity = 1, "
+        "registration_opens_at = now() - interval '1 day', "
+        "registration_closes_at = now() + interval '29 days', waitlist_enabled = true "
+        f"where id = '{event_id}' returning id"
+    )
+
+    email = ctx.throwaway_email("REG021")
+    expect_status(
+        ctx.signup(
+            role="attendee",
+            full_name="Waitlist Concurrency Check",
+            email=email,
+            organisation_name=None,
+            phone_number=None,
+        ),
+        201,
+    )
+    attendees = [
+        ctx.shared("attendee"),
+        ctx.login("attendee", email=email, password=THROWAWAY_PASSWORD),
+    ]
+
+    def register(session: Session) -> httpx.Response:
+        return ctx.client.post(
+            f"{ctx.api}/public/events/{event_id}/registrations",
+            headers=session.headers,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(register, attendees))
+    for response in responses:
+        expect_status(response, 201)
+    statuses = [response.json().get("status") for response in responses]
+    expect(sorted(statuses) == ["registered", "waitlisted"],
+           f"concurrent registrations returned {statuses!r}")
+
+    rows = db_query(
+        "select status, count(*)::integer as count from public.event_registrations "
+        f"where event_id = '{event_id}' group by status"
+    )
+    counts = {row["status"]: int(row["count"]) for row in rows}
+    expect(counts == {"registered": 1, "waitlisted": 1},
+           f"stored outcomes were {counts!r}, expected one registered and one waitlisted")
+
+
+@check(
+    "TC-REG-023",
+    "SCRUM-55 withdrawals invite the earliest waitlisted Attendees in FIFO order",
+    creates_accounts=True,
+    needs_db=True,
+)
+def _(ctx: Context) -> None:
+    require_waitlist_migration()
+    starts_at = "2031-06-22 09:00+08"
+    event_id = throwaway_event(ctx, "023", starts_at, "2031-06-22 12:00+08",
+                               status="confirmed", assigned=False)
+    db_query(
+        "update public.events set registration_enabled = true, registration_capacity = 2, "
+        "registration_opens_at = now() - interval '1 day', "
+        f"registration_closes_at = '{starts_at}', withdrawal_closes_at = '{starts_at}', "
+        f"waitlist_enabled = true where id = '{event_id}'"
+    )
+
+    def attendee(case: str, full_name: str) -> Session:
+        email = ctx.throwaway_email(f"REG023-{case}")
+        expect_status(
+            ctx.signup(
+                role="attendee",
+                full_name=full_name,
+                email=email,
+                organisation_name=None,
+                phone_number=None,
+            ),
+            201,
+        )
+        return ctx.login("attendee", email=email, password=THROWAWAY_PASSWORD)
+
+    occupants = [
+        attendee("occupant-1", "Waitlist Withdrawal Occupant 1"),
+        attendee("occupant-2", "Waitlist Withdrawal Occupant 2"),
+    ]
+    queued = [
+        attendee("queued-1", "Waitlist Withdrawal Queue 1"),
+        attendee("queued-2", "Waitlist Withdrawal Queue 2"),
+        attendee("queued-3", "Waitlist Withdrawal Queue 3"),
+    ]
+    registration_url = f"{ctx.api}/public/events/{event_id}/registrations"
+    for session, expected in [
+        (occupants[0], "registered"),
+        (occupants[1], "registered"),
+        (queued[0], "waitlisted"),
+        (queued[1], "waitlisted"),
+        (queued[2], "waitlisted"),
+    ]:
+        response = ctx.client.post(registration_url, headers=session.headers)
+        expect_status(response, 201)
+        expect(response.json()["status"] == expected,
+               f"{session.body['profile']['email']} was {response.json()['status']}, expected {expected}")
+
+    withdrawal_url = f"{ctx.api}/registrations/{event_id}/withdraw"
+    for session in occupants:
+        response = ctx.client.post(withdrawal_url, headers=session.headers)
+        expect_status(response, 200)
+        expect(response.json()["status"] == "withdrawn", f"unexpected withdrawal: {response.json()}")
+
+    registrations = db_query(
+        "select attendee_id::text as attendee_id, status::text as status, "
+        "(invited_at is not null and invitation_expires_at = invited_at + interval '24 hours') "
+        "as has_24_hour_invitation "
+        f"from public.event_registrations where event_id = '{event_id}'"
+    )
+    expected_statuses = {
+        session.body["profile"]["id"]: status
+        for session, status in [
+            (occupants[0], "withdrawn"),
+            (occupants[1], "withdrawn"),
+            (queued[0], "invited"),
+            (queued[1], "invited"),
+            (queued[2], "waitlisted"),
+        ]
+    }
+    actual_statuses = {row["attendee_id"]: row["status"] for row in registrations}
+    expect(actual_statuses == expected_statuses, f"withdrawal did not preserve FIFO invitation order: {actual_statuses}")
+    for session in queued[:2]:
+        row = next(item for item in registrations if item["attendee_id"] == session.body["profile"]["id"])
+        expect(row["has_24_hour_invitation"], f"invitation reservation is missing its 24-hour deadline: {row}")
+
+    notices = db_query(
+        "select recipient_id::text as recipient_id, recipient_role::text as recipient_role, type::text as type "
+        f"from public.notifications where event_id = '{event_id}' and type = 'attendee_waitlist_invitation'"
+    )
+    expected_recipients = {session.body["profile"]["id"] for session in queued[:2]}
+    expect(
+        {(row["recipient_id"], row["recipient_role"], row["type"]) for row in notices}
+        == {(recipient, "attendee", "attendee_waitlist_invitation") for recipient in expected_recipients},
+        f"withdrawal invitations or their notifications were not delivered to the FIFO attendees: {notices}",
+    )
+    [occupied] = db_query(f"select public.registration_occupied_count('{event_id}')::integer as count")
+    public_event = ctx.client.get(f"{ctx.api}/public/events/{event_id}")
+    expect_status(public_event, 200)
+    expect(int(occupied["count"]) == 2, f"registered attendees plus reservations exceed capacity: {occupied}")
+    expect(public_event.json()["registered_count"] == 0,
+           "invitation reservations were reported as registered attendees")
 
 
 # --- Coordinator dashboard (SCRUM-72) --------------------------------------
@@ -4607,6 +4783,14 @@ def delete_throwaway_accounts(run_id: str) -> int:
     return len(db_query(f"delete from auth.users where {accounts} returning email"))
 
 
+def cleanup_throwaway_data(run_id: str) -> dict[str, int]:
+    """Delete owned events before accounts whose registrations reference them."""
+    bookings = delete_throwaway_bookings(run_id)
+    venues = delete_throwaway_venues(run_id)
+    accounts = delete_throwaway_accounts(run_id)
+    return {"accounts": accounts, "bookings": bookings, "venues": venues}
+
+
 def run_db_checks(keyword: str | None) -> list[Result]:
     results = []
     for script, cases in DB_SCRIPTS:
@@ -4636,6 +4820,17 @@ def run_db_checks(keyword: str | None) -> list[Result]:
                     "Safety-decision migration table/RPC interfaces are missing; "
                     "SQL verification not run. Apply the migration through the authorised workflow first.",
                 ))
+                print_result(results[-1])
+                continue
+        if script == "registration_waitlist_checks.sql":
+            try:
+                require_waitlist_migration()
+            except CheckBlocked as error:
+                results.append(Result(script, title, "blocked", str(error)))
+                print_result(results[-1])
+                continue
+            except Exception as error:
+                results.append(Result(script, title, "fail", str(error)))
                 print_result(results[-1])
                 continue
         if script == "equipment_availability_checks.sql":
@@ -4757,22 +4952,19 @@ def main() -> int:
             print(f"API checks against {args.api}")
             try:
                 if not args.skip_db:
-                    left_over = delete_throwaway_accounts(ctx.run_id)
-                    if left_over:
-                        print(f"  (deleted {left_over} sign-up check account(s) left by an earlier run)")
-                    left_over = delete_throwaway_bookings(ctx.run_id)
-                    if left_over:
-                        print(f"  (deleted {left_over} booking check event(s) left by an earlier run)")
-                    left_over = delete_throwaway_venues(ctx.run_id)
-                    if left_over:
-                        print(f"  (deleted {left_over} deactivation check venue(s) left by an earlier run)")
+                    left_over = cleanup_throwaway_data(ctx.run_id)
+                    for kind, label in (
+                        ("accounts", "sign-up check account"),
+                        ("bookings", "booking check event"),
+                        ("venues", "deactivation check venue"),
+                    ):
+                        if left_over[kind]:
+                            print(f"  (deleted {left_over[kind]} {label}(s) left by an earlier run)")
                 results += run_api_checks(ctx, args.keyword, skip_accounts=args.skip_db)
             finally:
                 ctx.logout_all()
                 if not args.skip_db:
-                    delete_throwaway_accounts(ctx.run_id)
-                    delete_throwaway_bookings(ctx.run_id)
-                    delete_throwaway_venues(ctx.run_id)
+                    cleanup_throwaway_data(ctx.run_id)
 
     if not args.skip_db:
         print(f"Database checks (rolled back) on Supabase project {PROJECT_REF}")

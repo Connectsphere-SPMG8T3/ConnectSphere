@@ -91,6 +91,41 @@ describe("SCRUM-55 attendee withdrawal API", () => {
   });
 });
 
+describe("SCRUM-86 waitlist API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("accepts an invitation and leaves the waitlist with the attendee session", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ registration_id: "registration-1", status: "registered" }),
+      })
+      .mockResolvedValueOnce({ status: 204, ok: true, json: async () => null });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(registrationsApi.acceptInvitation("registration-1", "attendee-token")).resolves.toEqual({
+      registration_id: "registration-1",
+      status: "registered",
+    });
+    await expect(registrationsApi.leaveWaitlist("registration-1", "attendee-token")).resolves.toBeNull();
+
+    expect(fetchMock.mock.calls.map(([, options]) =>
+      options.headers.Authorization?.endsWith("attendee-token"),
+    )).toEqual([true, true]);
+    expect(fetchMock.mock.calls.map(([, options]) =>
+      options.headers.Authorization === "Bearer attendee-token",
+    )).toEqual([true, true]);
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.method])).toEqual([
+      ["http://localhost:8000/api/v1/registrations/registration-1/accept", "POST"],
+      ["http://localhost:8000/api/v1/registrations/registration-1", "DELETE"],
+    ]);
+    expect(fetchMock.mock.calls.every(([, options]) =>
+      options.headers.Authorization?.endsWith("attendee-token"),
+    )).toBe(true);
+  });
+});
+
 describe("eventsApi.clone", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -490,8 +525,6 @@ describe("story 37 change decision and re-review API", () => {
     });
   });
 });
-
-
 // SCRUM-44: the coordinator changes or removes an equipment line and reads its history.
 describe("SCRUM-44 equipment line change API", () => {
   afterEach(() => vi.unstubAllGlobals());

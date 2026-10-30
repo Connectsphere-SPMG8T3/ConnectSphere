@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
-import { useRoute } from "vue-router";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
@@ -35,6 +34,26 @@ async function withdrawRegistration() {
     withdrawalError.value = error.message || "Registration could not be withdrawn.";
   }
 }
+
+async function acceptInvitation() {
+  try {
+    await registrationStore.acceptInvitation(registration.value.id);
+    showToast("You are registered for this event.");
+  } catch {
+    return;
+  }
+}
+
+async function leaveWaitlist() {
+  const wasInvited = registration.value.status === "invited";
+  try {
+    await registrationStore.leaveWaitlist(registration.value.id);
+    showToast(wasInvited ? "You declined the invitation." : "You left the waitlist.");
+    await router.push({ name: "dashboard-attendee", query: { tab: "events" } });
+  } catch {
+    return;
+  }
+}
 </script>
 
 <template>
@@ -64,6 +83,43 @@ async function withdrawRegistration() {
         :disabled="registrationStore.isWithdrawing"
         @click="isWithdrawalConfirmationOpen = true"
       >Withdraw registration</BauhausButton>
+      <p v-if="registration.status === 'invited' && registration.invitation_expires_at" class="mt-3 text-sm font-medium">
+        Accept by {{ new Intl.DateTimeFormat("en-SG", {
+          dateStyle: "medium",
+          timeStyle: "short",
+          timeZone: event.event_timezone,
+        }).format(new Date(registration.invitation_expires_at)) }}.
+      </p>
+      <p v-if="registrationStore.myRegistrationsError" role="alert" class="mt-4 text-sm font-bold">
+        {{ registrationStore.myRegistrationsError }}
+      </p>
+      <BauhausButton
+        v-if="registration.status === 'invited'"
+        class="mt-5 w-full"
+        variant="primary"
+        :disabled="registrationStore.isUpdatingRegistration"
+        @click="acceptInvitation"
+      >
+        {{ registrationStore.isUpdatingRegistration ? "Accepting…" : "Accept invitation" }}
+      </BauhausButton>
+      <BauhausButton
+        v-if="registration.status === 'invited'"
+        class="mt-3 w-full"
+        variant="secondary"
+        :disabled="registrationStore.isUpdatingRegistration"
+        @click="leaveWaitlist"
+      >
+        {{ registrationStore.isUpdatingRegistration ? "Declining…" : "Decline invitation" }}
+      </BauhausButton>
+      <BauhausButton
+        v-else-if="registration.status === 'waitlisted'"
+        class="mt-5 w-full"
+        variant="secondary"
+        :disabled="registrationStore.isUpdatingRegistration"
+        @click="leaveWaitlist"
+      >
+        {{ registrationStore.isUpdatingRegistration ? "Leaving…" : "Leave waitlist" }}
+      </BauhausButton>
     </template>
   </EventDetailPage>
   <ConfirmModal

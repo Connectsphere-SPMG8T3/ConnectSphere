@@ -56,6 +56,7 @@ def test_public_directory_limits_venue_and_capacity_to_primary_space(monkeypatch
     }
     monkeypatch.setattr(service.repository, "list_public_event_rows", lambda: [row])
     monkeypatch.setattr(service.repository, "registered_count", lambda event_id: 9)
+    monkeypatch.setattr(service.repository, "registration_occupied_count", lambda event_id: 9)
 
     [event] = service.public_directory()
 
@@ -127,6 +128,7 @@ def test_public_directory_uses_all_confirmed_venues_when_no_primary_is_set(monke
     }
     monkeypatch.setattr(service.repository, "list_public_event_rows", lambda: [row])
     monkeypatch.setattr(service.repository, "registered_count", lambda event_id: 0)
+    monkeypatch.setattr(service.repository, "registration_occupied_count", lambda event_id: 0)
 
     [event] = service.public_directory()
 
@@ -146,6 +148,7 @@ def test_public_directory_without_spaces_has_no_venue_capacity(monkeypatch):
     }
     monkeypatch.setattr(service.repository, "list_public_event_rows", lambda: [row])
     monkeypatch.setattr(service.repository, "registered_count", lambda event_id: 0)
+    monkeypatch.setattr(service.repository, "registration_occupied_count", lambda event_id: 0)
 
     [event] = service.public_directory()
 
@@ -173,6 +176,7 @@ def test_public_event_returns_the_public_detail(monkeypatch):
     }
     monkeypatch.setattr(service.repository, "get_public_event_row", lambda event_id: row)
     monkeypatch.setattr(service.repository, "registered_count", lambda event_id: 0)
+    monkeypatch.setattr(service.repository, "registration_occupied_count", lambda event_id: 0)
 
     event = service.public_event(row["id"])
 
@@ -186,7 +190,7 @@ def test_public_event_returns_the_public_detail(monkeypatch):
         ("unavailable", 404, "Event not found."),
         ("not_open", 409, "Registration is not open yet."),
         ("closed", 409, "Registration is closed."),
-        ("full", 409, "Event is full."),
+        ("full", 409, "Registration is full."),
         ("reregistration_disabled", 409, "Re-registration is not allowed for this event."),
     ],
 )
@@ -224,3 +228,101 @@ def test_register_attendee_returns_registration_result(monkeypatch, outcome, exp
     assert result.registration_id == "registration-1"
     assert result.registered_at == NOW
     assert result.status == expected_status
+
+
+def test_register_attendee_returns_waitlisted_when_repository_queues_attendee(monkeypatch):
+    monkeypatch.setattr(
+        service.repository,
+        "register_for_event",
+        lambda event_id, attendee_id: {
+            "outcome": "waitlisted",
+            "registration_id": "registration-1",
+            "registered_at": "2031-05-01T01:00:00Z",
+        },
+    )
+
+    result = service.register_attendee("event-1", "attendee-1")
+
+    assert result.registration_id == "registration-1"
+    assert result.registered_at == NOW
+    assert result.status == "waitlisted"
+
+
+def test_register_attendee_reports_full_when_waitlisting_is_disabled(monkeypatch):
+    monkeypatch.setattr(
+        service.repository,
+        "register_for_event",
+        lambda event_id, attendee_id: {"outcome": "full"},
+    )
+
+    with pytest.raises(HTTPException) as error:
+        service.register_attendee("event-1", "attendee-1")
+
+    assert error.value.status_code == 409
+    assert error.value.detail == "Registration is full."
+
+
+def test_public_event_is_full_when_an_invitation_reserves_the_last_place(monkeypatch):
+    row = {
+        "id": "e0000000-0000-4000-8000-000000000043",
+        "name": "Community Design Forum",
+        "event_timezone": "Asia/Singapore",
+        "status": "confirmed",
+        "registration_enabled": True,
+        "registration_capacity": 50,
+        "registration_opens_at": "2020-05-01T08:00:00+08:00",
+    }
+    monkeypatch.setattr(service.repository, "get_public_event_row", lambda event_id: row)
+    monkeypatch.setattr(service.repository, "registered_count", lambda event_id: 49)
+    monkeypatch.setattr(service.repository, "registration_occupied_count", lambda event_id: 50)
+
+    event = service.public_event(row["id"])
+
+    assert event.registered_count == 49
+    assert event.availability is RegistrationAvailability.full
+
+
+def test_accept_invitation_returns_registered_result(monkeypatch):
+    monkeypatch.setattr(
+        service.repository,
+        "accept_waitlist_invitation",
+        lambda registration_id, attendee_id: {
+            "outcome": "registered",
+            "registration_id": registration_id,
+            "registered_at": "2031-05-01T01:00:00Z",
+        },
+    )
+
+    result = service.accept_invitation("registration-1", "attendee-1")
+
+    assert result.registration_id == "registration-1"
+    assert result.status == "registered"
+    assert result.registered_at == NOW
+
+
+def test_accept_invitation_reports_expiry(monkeypatch):
+    monkeypatch.setattr(
+        service.repository,
+        "accept_waitlist_invitation",
+        lambda registration_id, attendee_id: {"outcome": "expired"},
+    )
+
+    with pytest.raises(HTTPException) as error:
+        service.accept_invitation("registration-1", "attendee-1")
+
+    assert error.value.status_code == 409
+    assert error.value.detail == "This invitation has expired."
+
+
+def test_leaving_another_attendees_waitlist_entry_is_not_found(monkeypatch):
+    monkeypatch.setattr(
+        service.repository,
+        "leave_waitlist",
+        lambda registration_id, attendee_id: {"outcome": "not_found"},
+    )
+
+    with pytest.raises(HTTPException) as error:
+        service.leave_waitlist("registration-1", "attendee-1")
+
+    assert error.value.status_code == 404
+    assert error.value.detail == "Waitlist entry not found."

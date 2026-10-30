@@ -50,6 +50,7 @@ def _to_public_event(row: dict, now: datetime) -> PublicEvent:
     capacities = [value for value in (organiser_capacity, venue_capacity) if value is not None]
     effective_capacity = min(capacities) if capacities else None
     count = repository.registered_count(row["id"])
+    occupied_count = repository.registration_occupied_count(row["id"])
     return PublicEvent(
         id=row["id"],
         name=row["name"],
@@ -58,7 +59,7 @@ def _to_public_event(row: dict, now: datetime) -> PublicEvent:
         ends_at=row.get("ends_at"),
         event_timezone=row["event_timezone"],
         status=row["status"],
-        availability=_availability(row, count, effective_capacity, now),
+        availability=_availability(row, occupied_count, effective_capacity, now),
         effective_capacity=effective_capacity,
         registered_count=count,
         waitlist_enabled=row.get("waitlist_enabled", True),
@@ -105,6 +106,7 @@ def attendee_registrations(attendee_id: str) -> AttendeeRegistrationList:
                 id=row["id"],
                 status=row["status"],
                 registered_at=row["registered_at"],
+                invitation_expires_at=row.get("invitation_expires_at"),
                 event=event,
             )
         )
@@ -128,13 +130,18 @@ def register_attendee(event_id: str, attendee_id: str) -> RegistrationResult:
     if outcome == "closed":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Registration is closed.")
     if outcome == "full":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Event is full.")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Registration is full.")
     if outcome == "reregistration_disabled":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Re-registration is not allowed for this event.")
+    if outcome not in {
+        "registered", "already_registered", "waitlisted", "already_waitlisted", "invited"
+    }:
+        raise RuntimeError(f"Unexpected registration outcome: {outcome!r}")
     return RegistrationResult(
         registration_id=result.get("registration_id"),
-        status="already_registered" if outcome == "already_registered" else "registered",
+        status=outcome,
         registered_at=result.get("registered_at"),
+        invitation_expires_at=result.get("invitation_expires_at"),
     )
 
 
@@ -157,3 +164,33 @@ def withdraw_attendee(event_id: str, attendee_id: str) -> WithdrawalResult:
     if outcome != "withdrawn":
         raise RuntimeError(f"Unexpected withdrawal outcome: {outcome!r}")
     return WithdrawalResult(registration_id=result["registration_id"], status="withdrawn")
+
+
+def accept_invitation(registration_id: str, attendee_id: str) -> RegistrationResult:
+    result = repository.accept_waitlist_invitation(registration_id, attendee_id)
+    outcome = result["outcome"]
+    if outcome == "not_found":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found.")
+    if outcome == "expired":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This invitation has expired.")
+    if outcome == "not_invited":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This registration has no active invitation.",
+        )
+    if outcome != "registered":
+        raise RuntimeError(f"Unexpected invitation-acceptance outcome: {outcome!r}")
+    return RegistrationResult(
+        registration_id=result["registration_id"],
+        status="registered",
+        registered_at=result.get("registered_at"),
+    )
+
+
+def leave_waitlist(registration_id: str, attendee_id: str) -> None:
+    result = repository.leave_waitlist(registration_id, attendee_id)
+    outcome = result["outcome"]
+    if outcome in {"not_found", "not_active"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Waitlist entry not found.")
+    if outcome != "removed":
+        raise RuntimeError(f"Unexpected waitlist-removal outcome: {outcome!r}")

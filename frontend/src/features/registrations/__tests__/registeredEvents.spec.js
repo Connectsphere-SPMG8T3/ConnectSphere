@@ -50,6 +50,7 @@ describe("registered event presentation", () => {
   it("labels supported statuses and preserves an unfamiliar status", () => {
     expect(registrationStatusLabel("registered")).toBe("Registered");
     expect(registrationStatusLabel("waitlisted")).toBe("Waitlisted");
+    expect(registrationStatusLabel("invited")).toBe("Invitation pending");
     expect(registrationStatusLabel("cancelled")).toBe("cancelled");
   });
 
@@ -109,6 +110,16 @@ describe("registered event presentation", () => {
         },
       },
       {
+        id: "registration-invited",
+        status: "invited",
+        event: {
+          id: "event-invited",
+          name: "Invitation Forum",
+          starts_at: "2026-10-25T10:00:00Z",
+          ends_at: "2026-10-25T11:00:00Z",
+        },
+      },
+      {
         id: "registration-past",
         status: "registered",
         event: {
@@ -128,6 +139,11 @@ describe("registered event presentation", () => {
       now,
     })).toEqual([registrations[0]]);
     expect(filter(registrations, {
+      statuses: ["invited"],
+      period: "upcoming",
+      now,
+    })).toEqual([registrations[2]]);
+    expect(filter(registrations, {
       sortBy: "name",
       direction: "asc",
       period: "all",
@@ -135,6 +151,7 @@ describe("registered event presentation", () => {
     }).map(({ id }) => id)).toEqual([
       "registration-a",
       "registration-b",
+      "registration-invited",
       "registration-past",
     ]);
     expect(filter(registrations, {
@@ -144,6 +161,7 @@ describe("registered event presentation", () => {
       now,
     }).map(({ id }) => id)).toEqual([
       "registration-b",
+      "registration-invited",
       "registration-a",
       "registration-past",
     ]);
@@ -182,6 +200,7 @@ describe("registered event presentation", () => {
       { id: "past-waitlist", status: "waitlisted", event: { id: "past-waitlist", ends_at: "2026-10-23T08:00:00Z" } },
       { id: "upcoming-1", status: "registered", event: { id: "upcoming", ends_at: "2026-10-24T08:00:01Z" } },
       { id: "upcoming-2", status: "waitlisted", event: { id: "in-progress", ends_at: "2026-10-24T09:00:00Z" } },
+      { id: "upcoming-invited", status: "invited", event: { id: "invited", ends_at: "2026-10-24T10:00:00Z" } },
     ];
 
     expect(summarize(registrations, [
@@ -189,7 +208,7 @@ describe("registered event presentation", () => {
       { id: "full", availability: "full" },
       { id: "closed", availability: "closed" },
     ], now)).toEqual({
-      upcomingRegistrations: 2,
+      upcomingRegistrations: 3,
       openEvents: 1,
       pastRegistrations: 1,
     });

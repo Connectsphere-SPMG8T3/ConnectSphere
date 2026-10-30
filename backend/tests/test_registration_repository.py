@@ -75,6 +75,18 @@ def test_registered_count_returns_exact_count(monkeypatch):
     assert repository.registered_count("event-1") == 7
 
 
+def test_registration_occupied_count_uses_the_capacity_rpc(monkeypatch):
+    client = Mock()
+    client.rpc.return_value.execute.return_value = SimpleNamespace(data=7)
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.registration_occupied_count("event-1") == 7
+    client.rpc.assert_called_once_with(
+        "registration_occupied_count",
+        {"p_event_id": "event-1"},
+    )
+
+
 def test_register_for_event_returns_rpc_result(monkeypatch):
     client = Mock()
     client.rpc.return_value.execute.return_value = SimpleNamespace(data={"outcome": "registered"})
@@ -110,5 +122,31 @@ def test_list_attendee_registration_rows_scopes_to_attendee_and_active_statuses(
     assert result == rows
     client.table.assert_called_once_with("event_registrations")
     query.eq.assert_called_once_with("attendee_id", "attendee-1")
-    query.in_.assert_called_once_with("status", ["registered", "waitlisted"])
+    query.in_.assert_called_once_with("status", ["registered", "waitlisted", "invited"])
     query.order.assert_called_once_with("registered_at", desc=True)
+
+
+def test_accept_waitlist_invitation_calls_rpc_with_verified_attendee(monkeypatch):
+    client = Mock()
+    result = {"outcome": "registered"}
+    client.rpc.return_value.execute.return_value = SimpleNamespace(data=result)
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.accept_waitlist_invitation("registration-1", "attendee-1") == result
+    client.rpc.assert_called_once_with(
+        "accept_waitlist_invitation",
+        {"p_registration_id": "registration-1", "p_attendee_id": "attendee-1"},
+    )
+
+
+def test_leave_waitlist_calls_rpc_with_verified_attendee(monkeypatch):
+    client = Mock()
+    result = {"outcome": "removed"}
+    client.rpc.return_value.execute.return_value = SimpleNamespace(data=result)
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.leave_waitlist("registration-1", "attendee-1") == result
+    client.rpc.assert_called_once_with(
+        "leave_waitlist",
+        {"p_registration_id": "registration-1", "p_attendee_id": "attendee-1"},
+    )

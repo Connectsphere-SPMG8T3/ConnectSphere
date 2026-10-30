@@ -36,7 +36,7 @@ def read_public_event(event_id: UUID) -> PublicEvent:
 )
 def register_for_event(event_id: UUID, response: Response, current_user: Attendee) -> RegistrationResult:
     result = service.register_attendee(str(event_id), current_user.id)
-    if result.status == "already_registered":
+    if result.status in {"already_registered", "already_waitlisted", "invited"}:
         response.status_code = status.HTTP_200_OK
     return result
 
@@ -44,6 +44,17 @@ def register_for_event(event_id: UUID, response: Response, current_user: Attende
 @attendee_router.post("/{event_id}/withdraw", response_model=WithdrawalResult)
 def withdraw_from_event(event_id: UUID, current_user: Attendee) -> WithdrawalResult:
     return service.withdraw_attendee(str(event_id), current_user.id)
+
+
+@attendee_router.post("/{registration_id}/accept", response_model=RegistrationResult)
+def accept_invitation(registration_id: UUID, current_user: Attendee) -> RegistrationResult:
+    return service.accept_invitation(str(registration_id), current_user.id)
+
+
+@attendee_router.delete("/{registration_id}", status_code=status.HTTP_204_NO_CONTENT)
+def leave_waitlist(registration_id: UUID, current_user: Attendee) -> Response:
+    service.leave_waitlist(str(registration_id), current_user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @attendee_router.get("/me", response_model=AttendeeRegistrationList)
