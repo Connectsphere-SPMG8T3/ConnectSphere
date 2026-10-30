@@ -3658,3 +3658,21 @@ Implemented on `feature/cr-110-technical-preparation`, branched from `main` whil
 - The full backend suite passed (2,358 tests) and the full frontend unit suite passed (1,795 tests).
 
 **Broader recorded-suite results.** The API/database run passed 223/225 checks. `equipment_availability_checks.sql` is the known D67 verification failure, and `venue_block_create_checks.sql` is D74. Neither check covers SCRUM-86. The browser run passed 101/106 checks with one blocked; the four failures are the already documented D68 checks. TC-REG-011 was blocked because no in-progress registration was available. These outcomes remain in the run records; none is a failure of the SCRUM-86 checks above.
+
+### 4.109. Bug fix D71 — a Preparation event that stops being ready returns to Planning
+
+On `fix/d71-preparation-returns-to-planning`, 2026-10-30. Defect: DEFECTS D71 (Medium). Affects CR-104 AC10, with CR-109/CR-110 (which move events into Preparation). Migration `20261030140000`; no API contract change.
+
+**Symptom.** If an arrangement stopped being ready after an event entered Preparation (an equipment line marked Not available, a cleared exit check, a flagged booking), the event stayed in Preparation. CR-104 AC10 and REQUIREMENTS §6.7 send it back to Planning.
+
+**Reproduction.** `events.service.return_to_planning` returned `None` for a Preparation event without calling the database: the extended `test_return_to_planning.py` contract failed 4 times, one per reason (`'NoneType' object has no attribute 'status'`). On the live project, `safety_decision_checks.sql` extended with a Preparation source failed with `22023 Invalid safety withdrawal source status`.
+
+**Root cause.** Three layers each listed only Safety review and Confirmed: the service's status filter, lifecycle `approved_change` (marked `TODO(68 AC8)`), and the database function's source check. The service also passed `lifecycle.allowed_from(action)[0]` as the source, which only works while an action has exactly one source.
+
+**Why tests missed it.** Two tests in `test_safety_contracts.py` pinned `approved_change` to Confirmed only, as a placeholder "until 68 lands". When CR-110 started moving events into Preparation, nothing linked it back to those placeholders.
+
+**Fix.** `approved_change` now runs from confirmed or preparation, matching §6.7. `return_to_planning` accepts `preparation` and passes the event's own status to the database. Migration `20261030140000` re-creates `return_event_to_planning` to accept `preparation`, with the same signature, grants and notifications: the coordinator is told, and Safety Officers only on a withdrawal from Safety review. The two placeholder tests now assert the documented rule.
+
+**Blast radius.** The callers in `equipment.service._after` and in venue edit and deactivation have no status filter of their own, so they now return Preparation events too, as AC10 intends. The CR-95 replacement path (`venues/service.py`, asking for a replacement venue) still checks `safety_review`/`confirmed` itself. It's left alone: a Preparation event whose booking is flagged now returns to Planning when it's flagged, before a replacement can be asked for. Data: on the live project, both Preparation events were `not_required` with no flagged bookings, so no event was stuck.
+
+**Verified.** Tests failed first, as above. Backend suite 2,501/2,501; the changed lines in `events/service.py` are covered. The migration and the extended `safety_decision_checks.sql` passed together in one rolled-back transaction on the live project (TC-SDEC-036), and the live function was unchanged afterwards. Pending: applying the migration, re-running the check after the push, and the browser pass TC-SDEC-037.
