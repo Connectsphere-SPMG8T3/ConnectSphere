@@ -402,7 +402,7 @@ def list_technical_history(event_id: str) -> list[dict]:
         .table("event_technical_history")
         .select(
             "id, request_id, action, from_status, to_status, detail, created_at, "
-            "actor:profiles!event_technical_history_actor_id_fkey(full_name), "
+            "actor:profiles!event_technical_history_actor_id_fkey(id, full_name), "
             "line:equipment_requests!event_technical_history_request_id_fkey("
             "quantity, equipment:equipment!equipment_requests_equipment_id_fkey(name))"
         )

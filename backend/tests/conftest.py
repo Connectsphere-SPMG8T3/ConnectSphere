@@ -144,6 +144,20 @@ def safety_decisions_offline(monkeypatch, request):
 
 
 @pytest.fixture(autouse=True)
+def change_history_offline(monkeypatch, request):
+    """Event history reads predate story 62; default to no recorded edits.
+
+    Story 62's tests set their own, and the repository's own test needs the real
+    function. No other test may reach the real table through a history read.
+    """
+    if request.node.path.name != "test_events_repository.py":
+        monkeypatch.setattr("app.modules.events.repository.list_edit_history", lambda event_id: [])
+        monkeypatch.setattr("app.modules.venues.service.event_booking_history", lambda event_id: [])
+        monkeypatch.setattr("app.modules.equipment.service.event_technical_history", lambda event_id: [])
+        monkeypatch.setattr("app.modules.venues.service.event_venue_edits", lambda event_id: [])
+
+
+@pytest.fixture(autouse=True)
 def cancellation_requests_offline(monkeypatch, request):
     """Event reads predate stories 84 and 32; default to no cancellation or change requests.
 
