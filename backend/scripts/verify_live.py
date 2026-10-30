@@ -995,7 +995,7 @@ def _(ctx: Context) -> None:
 # --- Coordinator dashboard (SCRUM-72) --------------------------------------
 
 COORDINATOR_DASHBOARD = "/events/dashboard/coordinator"
-ACTIVE_COORDINATOR_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed"}
+ACTIVE_COORDINATOR_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed", "preparation"}
 # supabase/seed.sql: review fixtures assigned to coordinator@connectsphere.dev.
 REVIEW_FIXTURES = {"e0000000-0000-4000-8000-000000000201", "e0000000-0000-4000-8000-000000000202"}
 
