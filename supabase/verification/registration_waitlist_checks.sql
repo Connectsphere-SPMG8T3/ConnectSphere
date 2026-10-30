@@ -5,11 +5,21 @@
 
 begin;
 
+insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values
+    ('c8600000-0000-4000-8000-000000000001', 'waitlist-check+8601@example.invalid',
+     '{"full_name":"Waitlist check attendee 1","role":"attendee"}', '{}'),
+    ('c8600000-0000-4000-8000-000000000002', 'waitlist-check+8602@example.invalid',
+     '{"full_name":"Waitlist check attendee 2","role":"attendee"}', '{}'),
+    ('c8600000-0000-4000-8000-000000000003', 'waitlist-check+8603@example.invalid',
+     '{"full_name":"Waitlist check attendee 3","role":"attendee"}', '{}'),
+    ('c8600000-0000-4000-8000-000000000004', 'waitlist-check+8604@example.invalid',
+     '{"full_name":"Waitlist check attendee 4","role":"attendee"}', '{}');
+
 insert into public.user_roles (profile_id, role) values
-    ('a0000000-0000-4000-8000-000000000006', 'attendee'),
-    ('a0000000-0000-4000-8000-000000000007', 'attendee'),
-    ('a0000000-0000-4000-8000-000000000008', 'attendee'),
-    ('a0000000-0000-4000-8000-000000000009', 'attendee')
+    ('c8600000-0000-4000-8000-000000000001', 'attendee'),
+    ('c8600000-0000-4000-8000-000000000002', 'attendee'),
+    ('c8600000-0000-4000-8000-000000000003', 'attendee'),
+    ('c8600000-0000-4000-8000-000000000004', 'attendee')
 on conflict (profile_id, role) do nothing;
 
 insert into public.events (
@@ -95,10 +105,10 @@ declare
     v_event uuid := 'e0000000-0000-4000-8000-000000000860';
     v_capacity_event uuid := 'e0000000-0000-4000-8000-000000000861';
     v_first uuid := 'a0000000-0000-4000-8000-000000000005';
-    v_second uuid := 'a0000000-0000-4000-8000-000000000006';
-    v_third uuid := 'a0000000-0000-4000-8000-000000000007';
-    v_fourth uuid := 'a0000000-0000-4000-8000-000000000008';
-    v_fifth uuid := 'a0000000-0000-4000-8000-000000000009';
+    v_second uuid := 'c8600000-0000-4000-8000-000000000001';
+    v_third uuid := 'c8600000-0000-4000-8000-000000000002';
+    v_fourth uuid := 'c8600000-0000-4000-8000-000000000003';
+    v_fifth uuid := 'c8600000-0000-4000-8000-000000000004';
     v_first_registration uuid;
     v_second_registration uuid;
     v_third_registration uuid;

@@ -3595,3 +3595,66 @@ Implemented on `feature/cr-110-technical-preparation`, branched from `main` whil
 **Shared project (2026-10-29).** After the developer applied `20261029130000` (`supabase db query --linked -f`, then `migration repair`), the objects, ledger entry and grants were confirmed and the advisors showed nothing new (INFO "unused index" on the new table only). Recorded runs: API and database [230/235](test-cases/runs/2026-10-29-1625-api-db-29f685c.md), with every CR-110 check passing; TC-LEAD-001/015 failed on the check's own stale status list (fixed, [re-run 5/5](test-cases/runs/2026-10-29-1658-api-db-29f685c.md)), TC-EQR-051 on a CLI login error ([re-run](test-cases/runs/2026-10-29-1659-api-db-29f685c.md)), `equipment_availability_checks.sql` is D67 and `venue_block_create_checks.sql` is D74. Playwright [103/110](test-cases/runs/2026-10-29-1659-e2e-29f685c.md): TC-TPREP-012 hit a connection reset at login ([re-run 2/2](test-cases/runs/2026-10-29-1709-e2e-29f685c.md), and again after the Requests-page fix, [2/2](test-cases/runs/2026-10-29-1735-e2e-29f685c.md)); the other five failures fail the same way on `main`'s last full run. Manual pass TC-TPREP-014–017 [passed](test-cases/runs/2026-10-29-1730-manual-29f685c.md) on the local stack; it surfaced D75 (Technical Support can't find events to prepare: the Requests page hides Reserved lines by default, and events with no lines have no link).
 
 **Not verified.** A full Playwright rerun after the Requests-page fix and the heading rename: the recorded TC-TPREP run covers the first, Vitest the second. Comments in Preparation (D73, still open) and returning a Preparation event to Planning (D71).
+### 4.107. SCRUM-86 — Join the waiting list and accept a freed place
+
+| Field | Value |
+|---|---|
+| ID | `SCRUM-86` |
+| Title | Join the waiting list and accept a freed place |
+| Type | US: Core feature |
+| Status | Implemented on `feature/scrum-86-join-waitlist`; verification recorded, team workflow pending |
+| Epic | Attendee registration |
+| Persona | Attendee |
+| Sprint | Not supplied in the developer-provided Product Backlog row |
+| Estimate | Not supplied in the developer-provided Product Backlog row |
+| Priority | Not supplied in the developer-provided Product Backlog row |
+| Customer clarification | Not supplied in the developer-provided Product Backlog row |
+
+**User story (verbatim):**
+
+> Join a waiting list when an event is full and be invited when a place frees up
+
+**Benefit (verbatim):**
+
+> I still have a chance to attend
+
+**Acceptance criteria (verbatim):**
+
+> AC1. Given registration is open, the event is at effective capacity, and waitlisting is enabled, when an active Attendee chooses Join waitlist, then their registration is recorded as Waitlisted in first-come-first-served order.
+>
+> AC2. Given effective capacity is 50, 49 places are occupied, and waitlisting is enabled, when two eligible Attendees submit registration concurrently, then exactly one becomes Registered and the other becomes Waitlisted. Neither the registration limit nor venue capacity is exceeded.
+>
+> AC3. Given the event is at effective capacity and waitlisting is disabled, when an Attendee tries to register, then the registration is refused with “Registration is full.” Disabling waitlisting prevents new joins but does not remove existing queue entries or cancel active invitations; those continue to resolve.
+>
+> AC4. Given a place becomes available while the event remains eligible for registration and at least one Attendee is Waitlisted, then the earliest Waitlisted Attendee is invited and notified; the place is reserved for them before the invitation is sent. They are not registered automatically. Apply this to each available place in FIFO order. This includes a place freed by SCRUM-55 withdrawal.
+>
+> AC5. Given an Attendee has an unexpired invitation, when that Attendee accepts before the 24-hour deadline, then their status becomes Registered and the reserved place is consumed without exceeding effective capacity. Another Attendee cannot accept their invitation.
+>
+> AC6. Given an invitation is not accepted within 24 hours, then it expires, the reservation passes to the next Waitlisted Attendee, and that Attendee is invited and notified. If nobody remains Waitlisted, the place is released for normal registration.
+>
+> AC7. Given an Attendee is Waitlisted, when they leave the waitlist, then their entry is removed and queue positions update. If they leave while invited, the invitation is cancelled, its reserved place passes to the next Waitlisted Attendee, and their former invitation can no longer be accepted. At all times, Registered attendees plus active invitation reservations must not exceed effective capacity—the lower of the event registration limit and venue capacity.
+
+#### How the implementation maps to the ticket
+
+1. **Database:** `20261028100000_registration_waitlist.sql` adds the waitlist and invitation states, FIFO ordering, 24-hour reservations, capacity accounting, the invitation/accept/leave/expiry RPCs, the registration-withdrawal trigger and notification type, and the expiry job. The migration is applied to linked Supabase.
+2. **API:** `modules/registrations` allows eligible active Attendees to join, accept their own unexpired invitation, or leave a waitlist/invitation. Registration identity comes from the verified session; effective capacity counts Registered attendees and unexpired invitations.
+3. **Frontend:** public event detail offers Join waitlist when eligible and full; Attendee My events and registered-event detail show waitlisted/invited states and provide Accept, Decline invitation and Leave waitlist actions. No queue position is displayed.
+4. **Verification automation:** `backend/scripts/verify_live.py` exercises final-place concurrency and the SCRUM-55 withdrawal-to-invitation path; `frontend/e2e/waitlist.e2e.js` covers TC-REG-027 using disposable events and accounts.
+
+| Acceptance criterion | Verification |
+|---|---|
+| AC1 | TC-REG-020, TC-REG-027 |
+| AC2 | TC-REG-021 |
+| AC3 | TC-REG-022 |
+| AC4 | TC-REG-023 |
+| AC5 | TC-REG-024, TC-REG-027 |
+| AC6 | TC-REG-025, TC-REG-026 |
+| AC7 | TC-REG-021, TC-REG-023, TC-REG-026 |
+
+**Verification.**
+- TC-REG-023 passed against the live system using the merged SCRUM-55 withdrawal endpoint; the check verifies FIFO invitations, expiry deadlines, notifications and capacity with disposable data. [Recorded API/database run](test-cases/runs/2026-10-29-1534-api-db-472d3ba.md).
+- TC-REG-027 passed in Playwright, covering waitlist join, invitation notification navigation, acceptance, leaving the queue and declining an invitation with disposable data. [Recorded browser run](test-cases/runs/2026-10-29-1616-e2e-472d3ba.md).
+- The developer reported the manual TC-REG-028 pass; [manual run](test-cases/runs/2026-10-29-1448-manual-472d3ba.md).
+- The full backend suite passed (2,358 tests) and the full frontend unit suite passed (1,795 tests).
+
+**Broader recorded-suite results.** The API/database run passed 223/225 checks. `equipment_availability_checks.sql` is the known D67 verification failure, and `venue_block_create_checks.sql` is D74. Neither check covers SCRUM-86. The browser run passed 101/106 checks with one blocked; the four failures are the already documented D68 checks. TC-REG-011 was blocked because no in-progress registration was available. These outcomes remain in the run records; none is a failure of the SCRUM-86 checks above.

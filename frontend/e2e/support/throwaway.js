@@ -83,6 +83,17 @@ export function createThrowawayEvent(tag, startsAt, endsAt) {
   return row;
 }
 
+/** A confirmed, full event for attendee registration and waitlist browser checks. */
+export function createThrowawayRegistrationEvent(tag, startsAt, endsAt) {
+  const event = createThrowawayEvent(tag, startsAt, endsAt);
+  query(
+    `update public.events set status = 'confirmed', registration_enabled = true, registration_capacity = 1, ` +
+      `registration_opens_at = now() - interval '1 day', registration_closes_at = '${startsAt}', ` +
+      `withdrawal_closes_at = '${startsAt}', waitlist_enabled = true where id = '${event.id}'`,
+  );
+  return event;
+}
+
 /** A notification for `recipientId` about a throwaway event (SCRUM-113). It is deleted with the event
  * when the run ends (notifications cascade). Needs migration 20261021100000. */
 export function createThrowawayNotification(event, recipientId, type, message) {

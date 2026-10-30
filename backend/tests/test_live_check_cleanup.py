@@ -30,9 +30,7 @@ def deletes(statements):
 
 
 def run_all_cleanups(run_id):
-    verify_live.delete_throwaway_accounts(run_id)
-    verify_live.delete_throwaway_bookings(run_id)
-    verify_live.delete_throwaway_venues(run_id)
+    verify_live.cleanup_throwaway_data(run_id)
     verify_live.delete_live_check_lines(run_id)
 
 
@@ -65,6 +63,17 @@ def test_a_runs_venue_blocks_carry_its_id(sql):
     assert RUN_ID in verify_live.block_note(ctx)
     assert verify_live.block_note(ctx) != verify_live.block_note(
         verify_live.Context("http://api", client=None, run_id=OTHER_RUN_ID))
+
+
+def test_throwaway_events_are_deleted_before_attendee_accounts(sql):
+    verify_live.cleanup_throwaway_data(RUN_ID)
+
+    statements = [statement.lower() for statement in sql]
+    event_delete = next(i for i, statement in enumerate(statements)
+                        if statement.startswith("delete from public.events"))
+    account_delete = next(i for i, statement in enumerate(statements)
+                          if statement.startswith("delete from auth.users"))
+    assert event_delete < account_delete
 
 
 def like_patterns(statement, table):

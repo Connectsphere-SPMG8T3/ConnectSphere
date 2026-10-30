@@ -27,17 +27,17 @@ export default async function globalSetup(config) {
     }
   }
 
-  // Sign-up specs create live-check+… accounts; clear any an interrupted
-  // run left behind, and clear this run's when it finishes.
-  // The booking spec creates "live-check …" events; same treatment.
-  deleteThrowawayAccounts();
+  // Remove events before accounts because registration rows reference attendees.
   deleteThrowawayBlocks();
   deleteThrowawayEvents();
   deleteThrowawayVenues();
+  // Sign-up specs create live-check+… accounts; clear any an interrupted
+  // run left behind, and clear this run's when it finishes.
+  deleteThrowawayAccounts();
   return () => {
-    deleteThrowawayAccounts();
     deleteThrowawayBlocks();
     deleteThrowawayEvents();
     deleteThrowawayVenues();
+    deleteThrowawayAccounts();
   };
 }
