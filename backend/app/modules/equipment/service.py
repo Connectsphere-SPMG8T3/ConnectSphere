@@ -580,6 +580,23 @@ def event_history(event_id: str, coordinator_id: str) -> TechnicalHistoryRespons
     )
 
 
+def event_technical_history(event_id: str) -> list[dict]:
+    """Story 62 AC5: the same entries, for the event's change history. The caller
+    has already checked who may see them. Notes never appear (SCRUM-24 AC12)."""
+    rows = repository.list_technical_history(event_id)
+    return [
+        {
+            "id": row["id"],
+            "action": entry.action,
+            "line_label": entry.line_label,
+            "detail": entry.detail,
+            "actor": _one(row.get("actor")) if (_one(row.get("actor")) or {}).get("id") else None,
+            "at": entry.created_at,
+        }
+        for row, entry in ((row, _history_entry(row)) for row in rows)
+    ]
+
+
 def exit_confirmation(event_id: str, row: dict | None = None) -> ExitConfirmation | None:
     """Who ticked the exit box and when, or None (AC10, shown on CR-103's page)."""
     row = row if row is not None else repository.get_event_technical(event_id)

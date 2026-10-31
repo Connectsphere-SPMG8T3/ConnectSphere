@@ -763,6 +763,48 @@ def list_booking_history(booking_id: str) -> list[dict]:
     ]
 
 
+def list_event_booking_history(event_id: str) -> list[dict]:
+    """Story 62 AC5: the history of every booking the event has had, with the venue
+    and who acted. A null actor is the system (the expiry job)."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_booking_history")
+        .select("id, action, reason, created_at, "
+                "actor:profiles!venue_booking_history_actor_id_fkey(id, full_name), "
+                "booking:venue_bookings!venue_booking_history_booking_id_fkey!inner("
+                "event_id, venue:venues!venue_bookings_venue_id_fkey(name))")
+        .eq("booking.event_id", event_id)
+        .execute()
+    )
+    return [
+        {
+            "id": row["id"],
+            "action": row["action"],
+            "venue_name": ((row.get("booking") or {}).get("venue") or {}).get("name"),
+            "reason": row.get("reason"),
+            "actor": row.get("actor"),
+            "at": row["created_at"],
+        }
+        for row in response.data or []
+    ]
+
+
+def list_event_bookings_for_history(event_id: str) -> list[dict]:
+    """Story 62 AC5: every booking the event has had, any status, with its venue and
+    when it was made and last changed."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_bookings")
+        .select("venue_id, status, created_at, updated_at, venues!venue_bookings_venue_id_fkey(name)")
+        .eq("event_id", event_id)
+        .execute()
+    )
+    return [
+        {**{k: v for k, v in row.items() if k != "venues"}, "venue_name": _embedded_name(row, "venues", "name")}
+        for row in response.data or []
+    ]
+
+
 def reject_booking(booking_id: str, actor_id: str, reason: str, suggestion: str | None, *,
                    notify_message: str) -> dict:
     """Run `public.reject_venue_booking` (SCRUM-38): the decision, its history

@@ -39,6 +39,10 @@
 
 begin;
 
+-- History is append-only (story 62 AC6). This switch lets this transaction,
+-- and only this one, remove the fixtures' drifted history rows.
+set local connectsphere.history_maintenance = 'on';
+
 -- A leftover open amendment would make the next real return fail the
 -- one-open-amendment-per-event index (SCRUM-33).
 delete from public.amendment_requests

@@ -377,7 +377,8 @@ def resubmit(event_id: str, organiser_id: str, body: EventResubmitRequest) -> Ev
     values = body.model_dump(mode="json", exclude_unset=True, exclude={"resubmission_note"})
     _validate_submission({**row, **values})
     if values:
-        updated = repository.update_event(event_id, values, row["version"])
+        updated = repository.edit_event(event_id, organiser_id, values, row["version"],
+                                        lifecycle.allowed_from("resubmit"))
         if not updated:
             raise EventConflictError(STALE_EVENT_MESSAGE)
         row = updated
@@ -978,6 +979,24 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
     _visible_event(event_id, user_id, role)
     entries = [EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
     entries += [EventHistoryEntry(kind="reassignment", **row) for row in repository.list_assignment_history(event_id)]
+    entries += [EventHistoryEntry(kind="edit", **row) for row in repository.list_edit_history(event_id)]
+    # SF-R2, D76: the comment may hold the officer's private notes, so the organiser
+    # sees only the outcome, who and when.
+    entries += [
+        EventHistoryEntry(
+            kind="safety_decision", id=row["id"], decision=row["decision"], at=row["decided_at"],
+            reason=row.get("comment") if role == "event_coordinator" else None,
+            actor=({"id": row["decided_by"], "full_name": row["decided_by_name"]}
+                   if row.get("decided_by") and row.get("decided_by_name") else None),
+        )
+        for row in repository.list_safety_decisions(event_id)
+    ]
+    if role == "event_coordinator":
+        # AC3, AC4: booking steps are staff-only; venue staff see them on the booking page.
+        entries += [EventHistoryEntry(kind="booking", **row) for row in venues_service.event_booking_history(event_id)]
+        entries += [EventHistoryEntry(kind="technical", **row)
+                    for row in equipment_service.event_technical_history(event_id)]
+        entries += [EventHistoryEntry(kind="venue_edit", **row) for row in venues_service.event_venue_edits(event_id)]
     requests = repository.list_cancellation_requests(event_id)
     entries += [
         EventHistoryEntry(kind="cancellation_requested", id=row["id"], actor=row["requested_by"],
@@ -1034,7 +1053,11 @@ def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventR
     ]
     if errors:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
-    updated = repository.update_event(event_id, values, row["version"])
+    if row["status"] == "returned":
+        # Story 62 AC1: once submitted, every edit is recorded; a draft's are not.
+        updated = repository.edit_event(event_id, organiser_id, values, row["version"], ["returned"])
+    else:
+        updated = repository.update_event(event_id, values, row["version"])
     if not updated:
         raise EventConflictError()
     return _with_amendment(updated)
