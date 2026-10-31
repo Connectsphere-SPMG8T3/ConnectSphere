@@ -61,6 +61,23 @@ class AttendeeRegistrationList(BaseModel):
     registrations: list[AttendeeRegistration]
 
 
+class ManagedRegistration(BaseModel):
+    id: str
+    full_name: str
+    status: str
+    email: str | None = None
+    phone_number: str | None = None
+
+
+class ManagedRegistrationReport(BaseModel):
+    event_id: str
+    effective_capacity: int | None = None
+    registered_count: int
+    remaining_places: int | None = None
+    waitlist_count: int
+    registrations: list[ManagedRegistration]
+
+
 class RegistrationResult(BaseModel):
     registration_id: str | None = None
     status: str

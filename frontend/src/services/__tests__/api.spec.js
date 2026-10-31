@@ -126,6 +126,26 @@ describe("SCRUM-86 waitlist API", () => {
   });
 });
 
+describe("SCRUM-35 managed registrations API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("loads an event registration report with the active manager session", async () => {
+    const report = { registered_count: 2, registrations: [] };
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => report,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(registrationsApi.managedEvent("event/one", "manager-token")).resolves.toEqual(report);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/events/event%2Fone/registrations");
+    expect(options.method).toBe("GET");
+    expect(options.headers.Authorization.endsWith("manager-token")).toBe(true);
+  });
+});
+
 describe("eventsApi.clone", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

@@ -43,6 +43,18 @@ def get_public_event_row(event_id: str) -> dict | None:
     return response.data if response else None
 
 
+def get_registration_event_row(event_id: str) -> dict | None:
+    response = (
+        get_supabase_admin_client()
+        .table("events")
+        .select(_PUBLIC_EVENT_COLUMNS)
+        .eq("id", event_id)
+        .maybe_single()
+        .execute()
+    )
+    return response.data if response else None
+
+
 def list_attendee_registration_rows(attendee_id: str) -> list[dict]:
     response = (
         get_supabase_admin_client()
@@ -50,6 +62,22 @@ def list_attendee_registration_rows(attendee_id: str) -> list[dict]:
         .select(_ATTENDEE_REGISTRATION_COLUMNS)
         .eq("attendee_id", attendee_id)
         .in_("status", ["registered", "waitlisted", "invited"])
+        .order("registered_at", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
+def list_event_registration_rows(event_id: str) -> list[dict]:
+    response = (
+        get_supabase_admin_client()
+        .table("event_registrations")
+        .select(
+            "id, status, registered_at, invitation_expires_at, "
+            "attendee:profiles!event_registrations_attendee_id_fkey(full_name, email, phone_number)"
+        )
+        .eq("event_id", event_id)
+        .in_("status", ["registered", "waitlisted", "invited", "withdrawn"])
         .order("registered_at", desc=True)
         .execute()
     )

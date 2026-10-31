@@ -2,12 +2,13 @@ import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { eventsApi } from "@/services/api";
+import { eventsApi, registrationsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
+  registrationsApi: { managedEvent: vi.fn() },
   eventsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), submit: vi.fn(), history: vi.fn(), listComments: vi.fn(), addComment: vi.fn() },
 }));
 
@@ -57,6 +58,7 @@ async function mountDetail(response, historyResponse = { entries: [] }) {
 describe("EventDetailView status", () => {
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.unstubAllGlobals();
   });
 
   it.each(["planning", "safety_review", "confirmed"])("CR-104 shows only the organiser summary in %s, ignoring a leaked comment", async (status) => {
@@ -127,6 +129,14 @@ describe("EventDetailView status", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     vi.clearAllMocks();
+    registrationsApi.managedEvent.mockResolvedValue({
+      event_id: "event-1",
+      effective_capacity: null,
+      registered_count: 0,
+      remaining_places: null,
+      waitlist_count: 0,
+      registrations: [],
+    });
   });
 
   it("shows the same plain-language status label as the dashboard, not the raw status (LC-R3)", async () => {
@@ -141,6 +151,160 @@ describe("EventDetailView status", () => {
 
     expect(el.textContent).toContain("Planning");
     expect(el.textContent).not.toMatch(/\bapproved\b/i);
+  });
+
+  it("shows an organiser-safe registrations report and filters by status and name (SCRUM-35)", async () => {
+    registrationsApi.managedEvent.mockResolvedValue({
+      effective_capacity: 6,
+      registered_count: 1,
+      remaining_places: 4,
+      waitlist_count: 1,
+      registrations: [
+        { id: "registration-1", full_name: "Priya Nair", status: "registered", email: "private@example.test", phone_number: "+65 8000 0001" },
+        { id: "registration-2", full_name: "Alex Tan", status: "waitlisted", email: "private2@example.test", phone_number: "+65 8000 0002" },
+      ],
+    });
+    const el = await mountDetail(eventResponse({ status: "confirmed", registration_enabled: true }));
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Priya Nair"));
+    expect(registrationsApi.managedEvent).toHaveBeenCalledWith("event-1", "access");
+    expect(el.textContent).toContain("Remaining places");
+    expect(el.textContent).toContain("4");
+    expect(el.textContent).not.toContain("private@example.test");
+    expect(el.textContent).not.toContain("+65 8000");
+
+    const search = el.querySelector('input[aria-label="Search attendee name"]');
+    search.value = "ALEX";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    const status = el.querySelector('select[aria-label="Filter registration status"]');
+    status.value = "waitlisted";
+    status.dispatchEvent(new Event("change", { bubbles: true }));
+    await nextTick();
+
+    expect(el.textContent).toContain("Alex Tan");
+    expect(el.textContent).not.toContain("Priya Nair");
+  });
+
+  it("keeps historical registrations visible after registration is disabled (SCRUM-35)", async () => {
+    registrationsApi.managedEvent.mockResolvedValue({
+      effective_capacity: 6,
+      registered_count: 0,
+      remaining_places: 6,
+      waitlist_count: 0,
+      registrations: [{ id: "registration-1", full_name: "Priya Nair", status: "withdrawn" }],
+    });
+    const el = await mountDetail(eventResponse({ status: "confirmed", registration_enabled: false }));
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Priya Nair"));
+    expect(el.textContent).toContain("Withdrawn");
+  });
+
+  it("shows only manager-facing statuses and keeps phone summaries compact", async () => {
+    registrationsApi.managedEvent.mockResolvedValue({
+      effective_capacity: 6,
+      registered_count: 0,
+      remaining_places: 6,
+      waitlist_count: 0,
+      registrations: [{ id: "registration-1", full_name: "Priya Nair", status: "waitlisted" }],
+    });
+    const el = await mountDetail(eventResponse({ status: "confirmed", registration_enabled: false }));
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Priya Nair"));
+    expect(el.querySelector('[data-testid="managed-registrations"] dl').classList.contains("grid-cols-3")).toBe(true);
+    expect(
+      el.querySelector('select[aria-label="Filter registration status"]').parentElement.parentElement.classList.contains("grid-cols-2"),
+    ).toBe(true);
+    expect(
+      el.querySelector('[data-testid="managed-registrations"] li').classList.contains("grid-cols-[minmax(0,1fr)_auto]"),
+    ).toBe(true);
+    const options = [...el.querySelectorAll('select[aria-label="Filter registration status"] option')];
+    expect(options.map((option) => option.value)).toEqual(["", "registered", "waitlisted", "invited", "withdrawn"]);
+    expect(el.textContent).toContain("Waitlisted");
+    expect(el.textContent).not.toContain("Invitation expired");
+    expect(el.textContent).not.toContain("Left waitlist");
+  });
+
+  it("downloads a CSV for the loaded report", async () => {
+    registrationsApi.managedEvent.mockResolvedValue({
+      effective_capacity: 6,
+      registered_count: 1,
+      remaining_places: 5,
+      waitlist_count: 1,
+      registrations: [
+        { id: "registration-1", full_name: "Priya Nair", status: "registered" },
+        { id: "registration-2", full_name: "Alex Tan", status: "waitlisted" },
+      ],
+    });
+    const el = await mountDetail(eventResponse({ status: "confirmed", registration_enabled: true }));
+    const createObjectURL = vi.fn().mockReturnValue("blob:registrations");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function () {
+      expect(this.download).toBe("event-event-1-registrations.csv");
+    });
+
+    [...el.querySelectorAll('[data-testid="managed-registrations"] button')]
+      .find((button) => button.textContent.trim() === "Export CSV")
+      .click();
+
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(createObjectURL.mock.calls[0][0].type).toBe("text/csv;charset=utf-8");
+    expect(anchorClick).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith("blob:registrations"));
+  });
+
+  it("refreshes the registrations report from the latest stored response (SCRUM-35 AC6)", async () => {
+    registrationsApi.managedEvent
+      .mockResolvedValueOnce({
+        effective_capacity: 6,
+        registered_count: 1,
+        remaining_places: 5,
+        waitlist_count: 0,
+        registrations: [{ id: "registration-1", full_name: "Priya Nair", status: "registered" }],
+      })
+      .mockResolvedValueOnce({
+        effective_capacity: 6,
+        registered_count: 2,
+        remaining_places: 4,
+        waitlist_count: 1,
+        registrations: [
+          { id: "registration-1", full_name: "Priya Nair", status: "registered" },
+          { id: "registration-2", full_name: "Alex Tan", status: "waitlisted" },
+        ],
+      });
+    const el = await mountDetail(eventResponse({ status: "confirmed", registration_enabled: true }));
+    await vi.waitFor(() => expect(el.textContent).toContain("Registered"));
+    expect(el.textContent).not.toContain("Alex Tan");
+
+    [...el.querySelectorAll("button")].find((node) => node.textContent.trim() === "Refresh").click();
+    await vi.waitFor(() => expect(el.textContent).toContain("Alex Tan"));
+
+    expect(registrationsApi.managedEvent).toHaveBeenCalledTimes(2);
+    expect(el.textContent).toContain("Remaining places");
+    expect(el.textContent).toContain("4");
+    expect(el.textContent).toContain("Waitlisted");
+    expect(el.textContent).toContain("1");
+  });
+
+  it("shows a helpful error and retries an empty registrations report", async () => {
+    registrationsApi.managedEvent
+      .mockRejectedValueOnce(new Error(""))
+      .mockResolvedValueOnce({
+        effective_capacity: null,
+        registered_count: 0,
+        remaining_places: null,
+        waitlist_count: 0,
+        registrations: [],
+      });
+    const el = await mountDetail(eventResponse({ status: "confirmed", registration_enabled: true }));
+
+    await vi.waitFor(() =>
+      expect(el.querySelector('[role="alert"]')?.textContent).toContain("Unable to load registrations. Please try again."),
+    );
+    el.querySelector('[role="alert"] button').click();
+    await vi.waitFor(() => expect(el.textContent).toContain("No registrations have been recorded yet."));
+
+    expect(registrationsApi.managedEvent).toHaveBeenCalledTimes(2);
   });
 });
 

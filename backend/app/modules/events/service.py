@@ -23,6 +23,7 @@ from app.modules.events import change_fields, change_impact, lead_scope, lifecyc
 from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
 from app.modules.registrations import service as registrations_service
+from app.modules.registrations.schemas import ManagedRegistrationReport
 from app.modules.events.schemas import (
     BookingImpact,
     ChangeImpact,
@@ -899,6 +900,20 @@ def _visible_event(event_id: str, user_id: str, role: str) -> dict:
     if role == "event_coordinator":
         return _assigned_event(event_id, user_id)
     return _owned_event(event_id, user_id)
+
+
+def managed_registrations(event_id: str, user_id: str, role: str) -> ManagedRegistrationReport:
+    if role == "event_coordinator":
+        _assigned_event(event_id, user_id)
+    elif role == "event_organiser":
+        row = repository.get_event(event_id)
+        if not row:
+            raise EventNotFoundError()
+        if row.get("organiser_id") != user_id:
+            raise HTTPException(status_code=403, detail="You are not authorised to view this event.")
+    else:
+        raise HTTPException(status_code=403, detail="You are not authorised to view this event.")
+    return registrations_service.managed_event_registrations(event_id, role)
 
 
 def _for_role(booking: dict, role: str) -> dict:

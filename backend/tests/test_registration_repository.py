@@ -126,6 +126,38 @@ def test_list_attendee_registration_rows_scopes_to_attendee_and_active_statuses(
     query.order.assert_called_once_with("registered_at", desc=True)
 
 
+def test_get_registration_event_row_reads_capacity_and_approved_venue_context(monkeypatch):
+    client, query = _client_with_query()
+    row = {"id": "event-1", "registration_capacity": 12, "event_space_requests": []}
+    query.execute.return_value = SimpleNamespace(data=row)
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.get_registration_event_row("event-1") == row
+    client.table.assert_called_once_with("events")
+    query.eq.assert_called_once_with("id", "event-1")
+    query.maybe_single.assert_called_once_with()
+    selected = query.select.call_args.args[0]
+    assert "registration_capacity" in selected
+    assert "venue_bookings!venue_bookings_event_space_request_id_fkey" in selected
+
+
+def test_list_event_registration_rows_filters_to_manager_statuses_and_includes_contacts(monkeypatch):
+    client, query = _client_with_query()
+    rows = [{"id": "registration-1", "status": "cancelled"}]
+    query.execute.return_value = SimpleNamespace(data=rows)
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.list_event_registration_rows("event-1") == rows
+    client.table.assert_called_once_with("event_registrations")
+    query.eq.assert_called_once_with("event_id", "event-1")
+    query.in_.assert_called_once_with("status", ["registered", "waitlisted", "invited", "withdrawn"])
+    query.order.assert_called_once_with("registered_at", desc=True)
+    selected = query.select.call_args.args[0]
+    assert "attendee:profiles!event_registrations_attendee_id_fkey" in selected
+    assert "email" in selected
+    assert "phone_number" in selected
+
+
 def test_accept_waitlist_invitation_calls_rpc_with_verified_attendee(monkeypatch):
     client = Mock()
     result = {"outcome": "registered"}

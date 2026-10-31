@@ -304,6 +304,9 @@ export const registrationsApi = {
   myRegistrations(token) {
     return request("/registrations/me", { token });
   },
+  managedEvent(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/registrations`, { token });
+  },
   event(eventId) {
     return request(`/public/events/${encodeURIComponent(eventId)}`);
   },
