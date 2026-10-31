@@ -3680,3 +3680,22 @@ Implemented on `feature/scrum-62-change-history`, branched from `main` at `f848a
 **Manual pass (developer, 2026-10-30, shared project).** TC-HIST-012–014 passed ([run](test-cases/runs/2026-10-30-2007-manual-f848a03.md)); review fixture `…0201` was returned, edited and resubmitted for it, so its edit entries stay.
 
 **Not verified.** The full API run on the shared project (about 30 minutes; the local full run covers it).
+### 4.108. Bug fix D67 — stale database verification scripts after story 37
+
+On `fix/d67-verification-scripts`, 2026-10-30. Defect: DEFECTS D67 (Medium, verification). No product code, migration or API contract changed; one verification script changed.
+
+**Symptom.** On 2026-10-25 at main `02dc0e3`, four SQL checks failed: `venue_booking_approve_checks.sql` and `venue_booking_reject_checks.sql` ("a re_review booking was not refused"), `equipment_reservation_checks.sql` ("the line that no longer fits is reserved") and `equipment_availability_checks.sql` (D57, "time change must flag retired stock for re-review while retaining the hold").
+
+**Reproduction.** On 2026-10-30, each script was run alone with `supabase db query --linked -f` against the live project, at main `54c6cb9`. Approve, reject and reservation passed. Availability still raised the D57 error.
+
+**Root cause.** The product was right; the scripts were stale. Story 37's migration `20261025120000` was pushed live before its PR merged. It changed `recheck_event_reservations`: a line the new window leaves short now stays `reserved` and is marked Needs re-review (`needs_re_review_since`/`_reason`), where it used to become `re_review` (CR-R23, CR-R27, Q14). It also let venue staff decide a `re_review` booking (Q12). The 22:43 run paired main's older scripts with that newer database. Story 37's branch had updated the approve, reject and reservation scripts (`432adfc`, `5382599`, `0dc31e8`), so they passed once it merged. `equipment_availability_checks.sql` was written on 23-R's branch (`15d9243`) at the same time, still expecting `re_review`, and nobody updated it. REQUIREMENTS AV-R4 already records the new behaviour for retired stock.
+
+**Why tests missed it.** The SQL scripts only run against the live project, through `verify_live.py`, not in CI. Two branches changed and checked the same function in parallel, and neither branch's run included the other's change.
+
+**Fix.** `equipment_availability_checks.sql` now expects the short line to stay `reserved`, with reason `Event time changed; 0 free for 3.`. It then sends the line to technical support with `send_equipment_line_for_re_review`, the coordinator's step since story 37 (AC6), before checking that retired stock can't be re-reserved (`insufficient`, 0 free). Without that step, the line is still Reserved and the re-reserve check would test the wrong refusal (`not_reservable`).
+
+**Blast radius.** Every other caller of `recheck_event_reservations` and `send_equipment_line_for_re_review` in `supabase/verification/` is the reservation script, already updated by 37. All 37 scripts listed in `verify_live.py` pass alone against the live project. Not data: the scripts roll back.
+
+**Verified.** The availability script failed on the D57 assertion before the change, then on the re-reserve step (`not_reservable`) after the first edit, and passes after the second. All 37 SQL verification scripts pass live (2026-10-30). The API and browser suites were not re-run, since nothing they exercise changed.
+
+**Noticed, not changed.** `supabase migration list --linked` shows two live migrations not on `main`: `20261029120000` and `20261030120000`, presumably from open branches. This is the same pattern that caused D67.
