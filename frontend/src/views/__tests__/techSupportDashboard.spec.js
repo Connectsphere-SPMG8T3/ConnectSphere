@@ -193,7 +193,7 @@ describe("TechSupportDashboard active requests tile (SCRUM-24)", () => {
 
 describe("TechSupportDashboard inventory window (D46)", () => {
   const ITEM = { equipment_id: "e1", name: "4K Projector", total_quantity: 14, reserved_quantity: 0, maintenance_quantity: 0, net_available: 14 };
-  const iso = (local) => new Date(local).toISOString();
+  const iso = (local) => `${local}:00+08:00`;
   const field = (el, label) => [...el.querySelectorAll("label")].find((l) => l.textContent.includes(label))?.querySelector("input");
   const windowText = (el) => el.querySelector("[data-testid=inventory-window]")?.textContent ?? "";
 
@@ -219,7 +219,7 @@ describe("TechSupportDashboard inventory window (D46)", () => {
 
   it("opens on today 9 am to 5 pm and says which window the table counts", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(2026, 9, 19, 22, 30));
+    vi.setSystemTime(new Date("2026-10-19T22:30:00+08:00"));
     const { el } = await mountDashboard();
     await vi.waitFor(() => expect(el.textContent).toContain("4K Projector"));
 
@@ -427,7 +427,81 @@ describe("TechSupportDashboard availability results (23-R)", () => {
     const [payload] = equipmentApi.checkEquipmentAvailability.mock.calls[0];
     expect(Object.keys(payload).sort()).toEqual(["end_at", "items", "start_at"]);
     const fields = el.querySelectorAll('input[type="datetime-local"]');
-    expect(payload.start_at).toBe(new Date(fields[0].value).toISOString());
-    expect(payload.end_at).toBe(new Date(fields[1].value).toISOString());
+    expect(payload.start_at).toBe(`${fields[0].value}:00+08:00`);
+    expect(payload.end_at).toBe(`${fields[1].value}:00+08:00`);
+  });
+});
+
+describe("TechSupportDashboard Singapore times (D61)", () => {
+  beforeEach(() => {
+    vi.stubEnv("TZ", "UTC");
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+    equipmentApi.inventory.mockResolvedValue({ items: [] });
+    equipmentApi.maintenance.mockResolvedValue({ items: [] });
+    equipmentApi.requestList.mockResolvedValue({ lines: [] });
+    equipmentApi.catalogue.mockResolvedValue({ items: [
+      { equipment_id: "p1", name: "Projector", equipment_type: "projector", total_quantity: 7 },
+    ] });
+    equipmentApi.checkEquipmentAvailability.mockResolvedValue({ sufficient: true, items: [] });
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  async function enterWindow(el) {
+    const inputs = el.querySelectorAll('input[type="datetime-local"]');
+    for (const [index, value] of ["2031-12-10T09:00", "2031-12-10T17:00"].entries()) {
+      inputs[index].value = value;
+      inputs[index].dispatchEvent(new Event("input"));
+    }
+    await settle();
+  }
+
+  it("renders maintenance across the UTC date boundary in Singapore time", async () => {
+    equipmentApi.maintenance.mockResolvedValue({ items: [{
+      maintenance_id: "m1", equipment_id: "p1", equipment_name: "Projector",
+      start_at: "2026-10-24T16:00:00Z", end_at: "2026-10-24T17:00:00Z",
+      status: "SCHEDULED", reason: "Demo outage",
+    }] });
+    const { el } = await mountDashboard();
+    await vi.waitFor(() => expect(el.textContent).toContain("Demo outage"));
+    const card = el.querySelector('[aria-labelledby="maintenance-heading"] li');
+    expect(card.textContent).toContain("25 Oct 2026, 12:00 am – 25 Oct 2026, 1:00 am");
+    expect(card.textContent).not.toContain("24 Oct 2026");
+  });
+
+  it("sends availability input as Singapore time outside Singapore", async () => {
+    const { el } = await mountDashboard({ tab: "availability" });
+    await vi.waitFor(() => expect(el.querySelector("select").options).toHaveLength(1));
+    await enterWindow(el);
+    [...el.querySelectorAll("button")].find((b) => b.textContent.includes("Check real-time availability")).click();
+    await vi.waitFor(() => expect(equipmentApi.checkEquipmentAvailability).toHaveBeenCalled());
+    const [payload, token] = equipmentApi.checkEquipmentAvailability.mock.calls[0];
+    expect(new Date(payload.start_at).toISOString()).toBe("2031-12-10T01:00:00.000Z");
+    expect(new Date(payload.end_at).toISOString()).toBe("2031-12-10T09:00:00.000Z");
+    expect(payload.items).toEqual([{ equipment_id: "p1", quantity_needed: 1 }]);
+    expect(token).toBe("access");
+  });
+
+  it("loads the inventory for the Singapore window named on screen", async () => {
+    const { el } = await mountDashboard();
+    await enterWindow(el);
+    await vi.waitFor(() => expect(el.textContent).toContain("Showing stock for 10 Dec 2031, 9:00 am – 5:00 pm"));
+    const [start, end] = equipmentApi.inventory.mock.lastCall;
+    expect(new Date(start).toISOString()).toBe("2031-12-10T01:00:00.000Z");
+    expect(new Date(end).toISOString()).toBe("2031-12-10T09:00:00.000Z");
+  });
+
+  it.each(["inventory", "availability"])("defaults %s inputs to today's Singapore date", async (tab) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-24T16:30:00Z"));
+    const { el } = await mountDashboard({ tab });
+    expect([...el.querySelectorAll('input[type="datetime-local"]')].map((input) => input.value)).toEqual([
+      "2026-10-25T09:00", "2026-10-25T17:00",
+    ]);
   });
 });
