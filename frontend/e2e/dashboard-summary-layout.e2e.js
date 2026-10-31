@@ -18,10 +18,9 @@ for (const dashboard of dashboards) {
     const label = page.getByText(dashboard.label, { exact: true });
     await expect(label).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
-    // A summary label lives inside the card's slot container. Select the
-    // grid around that card; this also catches an unintended extra wrapper.
-    const grid = label.locator("..").locator("..").locator("..");
-    const cards = grid.locator(":scope > div");
+    // Summary cards may sit directly in the grid or inside a link/div wrapper.
+    const grid = label.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' grid ')][1]");
+    const cards = grid.locator(":scope > *");
     await expect(cards).toHaveCount(dashboard.count);
 
     for (const width of [1440, 1280, 1100, 768, 640, 375, 320]) {
@@ -33,8 +32,12 @@ for (const dashboard of dashboards) {
       const boxes = await cards.evaluateAll((elements) => elements.map((card) => {
         const rect = card.getBoundingClientRect();
         const paragraphs = [...card.querySelectorAll("p")];
+        // The label's slot container belongs to BauhausCard. Measure that
+        // surface too so equal grid wrappers cannot hide a card that shrinks.
+        const innerRect = paragraphs[0].parentElement.parentElement.getBoundingClientRect();
         return {
           top: rect.top, height: rect.height,
+          innerHeight: innerRect.height,
           valueTop: paragraphs[1].getBoundingClientRect().top,
           detailTop: paragraphs[2]?.getBoundingClientRect().top,
           clipped: paragraphs.some((paragraph) => {
@@ -44,6 +47,7 @@ for (const dashboard of dashboards) {
         };
       }));
       for (const card of boxes) {
+        expect(Math.abs(card.innerHeight - card.height), `card fills grid child at ${width}px`).toBeLessThan(1);
         expect(card.clipped, `content fits at ${width}px`).toBe(false);
         for (const sibling of boxes.filter((other) => Math.abs(other.top - card.top) < 1)) {
           expect(Math.abs(card.height - sibling.height), `card heights at ${width}px`).toBeLessThan(1);

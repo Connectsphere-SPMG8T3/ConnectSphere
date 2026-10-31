@@ -3769,3 +3769,20 @@ What was actually built:
 - Live TC-REG-029/030 API/database checks and TC-REG-031/033/034 browser checks passed against the revised four-status report and are recorded in [the API/database run](test-cases/runs/2026-10-31-1030-api-db-54c6cb9.md) and [the browser run](test-cases/runs/2026-10-31-1055-e2e-54c6cb9.md).
 - Manual TC-REG-032 passed after the final status-scope change. The developer confirmed both organiser and coordinator pages at desktop width and 375px, including the four-status report/CSV scope.
 
+
+### 4.111. Bug fix D68 — four stale browser checks
+
+On `fix/d68-stale-browser-checks`, 2026-10-31. Defect: DEFECTS D68 (Low, verification). Test-only: three Playwright specs and the TC-RBAC-005 case; no product change. Claude triaged each case; Codex wrote the spec changes; Claude reviewed and re-ran them. (§4.110 is D61, on its own branch.)
+
+**Symptom.** Four checks failed in every full browser run since 2026-10-24 and hid real failures among them: TC-RBAC-005 (`/login` expected, `/` received), TC-TSD-017 (4 cards expected, 1 found), and TC-AUTH-037/038 and TC-AUTH-046 (strict-mode violations: two "Create organiser account" links).
+
+**Root cause, per case: the product changed on purpose and the checks didn't follow.**
+- TC-RBAC-005: the catch-all `/:pathMatch(.*)*` → `/` is unchanged since SCRUM-48, but story 43 (`957cdbd`, 2026-10-22) made `/` the public event directory, so an unknown path no longer bounces to `/login`. The developer confirmed the new destination is intended (2026-10-31).
+- TC-AUTH-037/038, TC-AUTH-046: `PublicFooter.vue` also carries the sign-up links, so the page-wide locators matched two.
+- TC-TSD-017: the tech support tiles are now wrapped in a `RouterLink`/`div` so they open their lists, which frontend/AGENTS.md allows. The check found the grid by walking exactly three parents up from the label, so it landed on one wrapper.
+
+**Why it lasted.** Each failure was recorded as "known" in later runs rather than triaged; a failing check that always fails stops being read.
+
+**Fix.** TC-RBAC-005 expects `/` and the directory's "What are you up to?" heading; its case in `roles-and-access.md` now says so. The sign-up link lookups are scoped to `getByRole("main")`, with every href assertion and click kept. The summary-layout check finds the nearest `grid` ancestor, counts its direct children (any tag), keeps all its measurements at the seven widths, and adds an assertion that each card fills its grid child, so a wrapper that doesn't stretch its card is still caught. TC-ATT-001 shares that check and still passes. Three existing tests changed, each because the behaviour it checked deliberately changed (story 43's public `/`, `PublicFooter`'s links, the clickable tiles), as AGENTS.md's test rule requires.
+
+**Verified.** The three specs: 4 failed and 15 passed before; 19/19 after, on Codex's run and on Claude's re-run. Recorded runs on this branch (main at `e242d76`, with D67 and D71 merged) are the first fully green pair since 2026-10-24: [browser](test-cases/runs/2026-10-31-2154-e2e-e242d76.md) 115 passed, 0 failed (TC-REG-011 is blocked by design: no registration is in progress in the data); [API and database](test-cases/runs/2026-10-31-2123-api-db-e242d76.md) 245/245. The ECONNRESET knock-on D68 described did not occur.

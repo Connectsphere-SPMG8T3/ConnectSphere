@@ -9,7 +9,7 @@ This file describes the **current state** of the codebase, so a developer (or AI
 
 **Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current"). 
 
-_Last updated: 2026-10-31 — SCRUM-35 manager reports and CSV include only the four acceptance-criteria statuses; terminal states remain stored but are not returned. Full backend suite: 2,508 passed; full frontend suite: 1,905 passed (97.99% coverage); frontend build passed. Live TC-REG-029/030 API and TC-REG-031/033/034 browser checks passed; developer-reported manual TC-REG-032 passed on both roles and widths._
+_Last updated: 2026-10-31 — D68 fix (`fix/d68-stale-browser-checks`): four stale browser checks updated, no product change. An unknown path lands on `/`, the public event directory (TC-RBAC-005). Scope e2e link lookups to `getByRole("main")`, since `PublicFooter` repeats the sign-up links._
 
 **Migration status last checked 2026-10-29:** the linked ledger has `20261028100000_registration_waitlist` applied. It also contains remote-only `20261026180000_equipment_line_edit_and_removal` (SCRUM-44), which was fetched locally as an untracked migration file so Supabase CLI could proceed; reconcile this migration into its appropriate branch rather than repairing its applied status as reverted. SCRUM-35 adds no schema changes. Its focused API checks passed against live Supabase on 2026-10-30; the migration ledger was not rechecked. The local Supabase database remains unchecked because Docker is not running.
 
