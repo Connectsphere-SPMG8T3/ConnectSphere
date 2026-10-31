@@ -17,7 +17,7 @@ Every item is tagged with who owns it:
 
 Agents never push, open PRs, or edit the team's Google Sheets unless the developer asks (root `AGENTS.md`, "Git workflow"). An agent's work ends after §3. The PBI is not Done until a person finishes §4 and §5.
 
-_Last updated: 2026-11-01 — §3: the PR description replaces a BUILD_LOG entry; the map has no status table or "Last updated" line (`chore/freeze-build-log-trim-map`). 2026-10-21 — AC ticks and notes for Sprint 3 onwards move to the **AC ticks** tab, matched by story ID and AC number (`chore/dod-ticks-tab`). 2026-10-16 — §2 and End of sprint: when to run mutation testing (`chore/mutation-testing`). 2026-10-13 — the DoD (Sprint N) tabs are tracked in the sheet and checked before the PR (§4) and before the merge (§5); "Editing the backlog sheet" lists the Notes column (T) and explains the DoD tabs (`chore/backlog-notes-column`)._
+_Last updated: 2026-11-01 — §3: the PR description replaces a BUILD_LOG entry and follows the PR template; the map has no status table or "Last updated" line (`chore/freeze-build-log-trim-map`). 2026-10-21 — AC ticks and notes for Sprint 3 onwards move to the **AC ticks** tab, matched by story ID and AC number (`chore/dod-ticks-tab`). 2026-10-16 — §2 and End of sprint: when to run mutation testing (`chore/mutation-testing`). 2026-10-13 — the DoD (Sprint N) tabs are tracked in the sheet and checked before the PR (§4) and before the merge (§5); "Editing the backlog sheet" lists the Notes column (T) and explains the DoD tabs (`chore/backlog-notes-column`)._
 
 ---
 
@@ -96,7 +96,7 @@ An agent with the Google Sheets connector can read and write the sheet directly.
 ## 3. Paper trail, before opening the PR
 
 - [ ] **[A]** `docs/IMPLEMENTATION_MAP.md` is updated **in place** on the same branch for any new or changed endpoint, reusable piece, table or contract, and the "know before you build" notes. Add rows next to related rows, not at the end of a table.
-- [ ] **[A]** The PR description (drafted in the final report) records what was built, each acceptance criterion with its tests and TC IDs, how it was verified, and what wasn't. `docs/BUILD_LOG.md` is frozen: don't add an entry.
+- [ ] **[A]** The PR description (drafted in the final report) follows [`.github/pull_request_template.md`](../.github/pull_request_template.md): each acceptance criterion with the test or TC ID that proves it, the normal, boundary, conflict and failure scenarios covered, the recorded runs as full blob URLs, and what wasn't verified. `docs/BUILD_LOG.md` is frozen: don't add an entry.
 - [ ] **[A]** `docs/test-cases/<area>.md` has cases for the new user-facing behaviour, traced to the PBI ID and its acceptance criteria, with the Type, Created and Last run columns filled in ([`test-cases/README.md`](test-cases/README.md)).
 - [ ] **[A]** This PBI's run logs, automated and manual, are committed on the branch in `docs/test-cases/runs/`.
 - [ ] **[A]** `docs/REQUIREMENTS.md` is updated if a rule, assumption or design decision changed, citing the `QA-<row>` behind it.

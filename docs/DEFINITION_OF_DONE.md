@@ -61,7 +61,7 @@ Coverage shows the tests *ran* the code, not that they would catch it breaking. 
 
 - [ ] [`REQUIREMENTS.md`](REQUIREMENTS.md) matches the behaviour, or the deviation is recorded as **[Assumption]** or **[Team decision]**, citing the `QA-<row>` behind it.
 - [ ] [`IMPLEMENTATION_MAP.md`](IMPLEMENTATION_MAP.md) is updated in place for any new or changed endpoint, reusable piece, table or contract.
-- [ ] The PR description records what was built, each acceptance criterion with its evidence, how it was verified and what wasn't. ([`BUILD_LOG.md`](BUILD_LOG.md) is frozen: no new entries.)
+- [ ] The PR description follows [`.github/pull_request_template.md`](../.github/pull_request_template.md) and records what was built, each acceptance criterion with its evidence, how it was verified and what wasn't. ([`BUILD_LOG.md`](BUILD_LOG.md) is frozen: no new entries.)
 - [ ] [`DEFECTS.md`](DEFECTS.md) is updated for any defect found or fixed.
 - [ ] New test cases are in `test-cases/<area>.md` with their Type, Created and Last run columns, and the run logs are committed on the branch.
 - [ ] Any customer clarification found during the work is recorded in the Product backlog's **Customer clarification** column, with its session and date.
