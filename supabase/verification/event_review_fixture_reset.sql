@@ -100,7 +100,7 @@ delete from public.venue_bookings
 -- The expiry matches supabase/seed.sql (held until its event starts, CR-99).
 -- Without it a hold already past its expiry is re-expired by the minute job.
 update public.venue_bookings
-   set status = 'held', expires_at = '2026-11-13 10:00+08'
+   set status = 'held', expires_at = '2037-11-13 10:00+08'
  where id = 'd0000000-0000-4000-8000-000000000201';
 
 -- Resulting statuses and counts, so the operator can confirm the reset
