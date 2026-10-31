@@ -4,6 +4,7 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import ManagedRegistrationsPanel from "@/components/registrations/ManagedRegistrationsPanel.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import EquipmentRequestPanel from "@/components/equipment/EquipmentRequestPanel.vue";
 import TechnicalPreparationSummary from "@/components/equipment/TechnicalPreparationSummary.vue";
@@ -663,6 +664,10 @@ watch(
           </BauhausCard>
         </div>
       </div>
+      <ManagedRegistrationsPanel
+        :event-id="event.id"
+        class="mt-8"
+      />
     </template>
 
     <p v-else-if="review.isLoading" class="text-sm font-bold text-ink/70">Loading request…</p>

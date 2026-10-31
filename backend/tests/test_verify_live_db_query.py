@@ -70,6 +70,24 @@ def test_supabase_cli_output_is_decoded_as_utf8(monkeypatch):
     verify_live._supabase_query("select 1")
 
     assert options["encoding"] == "utf-8"
+    assert options["encoding"] == "utf-8"
+
+def test_api_check_filter_accepts_multiple_comma_separated_case_ids(monkeypatch):
+    executed = []
+    monkeypatch.setattr(
+        verify_live,
+        "API_CHECKS",
+        [
+            verify_live.Check("TC-REG-029", "Report summary", lambda ctx: executed.append("029")),
+            verify_live.Check("TC-REG-030", "Relationship checks", lambda ctx: executed.append("030")),
+            verify_live.Check("TC-REG-031", "Browser filters", lambda ctx: executed.append("031")),
+        ],
+    )
+
+    results = verify_live.run_api_checks(object(), "TC-REG-029, TC-REG-030", skip_accounts=False)
+
+    assert [result.case_id for result in results] == ["TC-REG-029", "TC-REG-030"]
+    assert executed == ["029", "030"]
 
 
 def test_failed_rows_reads_the_bare_list_form():

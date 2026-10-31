@@ -23,6 +23,7 @@ from app.modules.events import change_fields, change_impact, lead_scope, lifecyc
 from app.modules.events.readiness import safety_readiness
 from app.modules.venues import service as venues_service
 from app.modules.registrations import service as registrations_service
+from app.modules.registrations.schemas import ManagedRegistrationReport
 from app.modules.events.schemas import (
     BookingImpact,
     ChangeImpact,
@@ -376,7 +377,8 @@ def resubmit(event_id: str, organiser_id: str, body: EventResubmitRequest) -> Ev
     values = body.model_dump(mode="json", exclude_unset=True, exclude={"resubmission_note"})
     _validate_submission({**row, **values})
     if values:
-        updated = repository.update_event(event_id, values, row["version"])
+        updated = repository.edit_event(event_id, organiser_id, values, row["version"],
+                                        lifecycle.allowed_from("resubmit"))
         if not updated:
             raise EventConflictError(STALE_EVENT_MESSAGE)
         row = updated
@@ -901,6 +903,20 @@ def _visible_event(event_id: str, user_id: str, role: str) -> dict:
     return _owned_event(event_id, user_id)
 
 
+def managed_registrations(event_id: str, user_id: str, role: str) -> ManagedRegistrationReport:
+    if role == "event_coordinator":
+        _assigned_event(event_id, user_id)
+    elif role == "event_organiser":
+        row = repository.get_event(event_id)
+        if not row:
+            raise EventNotFoundError()
+        if row.get("organiser_id") != user_id:
+            raise HTTPException(status_code=403, detail="You are not authorised to view this event.")
+    else:
+        raise HTTPException(status_code=403, detail="You are not authorised to view this event.")
+    return registrations_service.managed_event_registrations(event_id, role)
+
+
 def _for_role(booking: dict, role: str) -> dict:
     """The flag and the replacement link are the coordinator's follow-up (CR-95);
     an organiser sees a confirmed event's venue, not what is wrong with it."""
@@ -963,6 +979,24 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
     _visible_event(event_id, user_id, role)
     entries = [EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
     entries += [EventHistoryEntry(kind="reassignment", **row) for row in repository.list_assignment_history(event_id)]
+    entries += [EventHistoryEntry(kind="edit", **row) for row in repository.list_edit_history(event_id)]
+    # SF-R2, D76: the comment may hold the officer's private notes, so the organiser
+    # sees only the outcome, who and when.
+    entries += [
+        EventHistoryEntry(
+            kind="safety_decision", id=row["id"], decision=row["decision"], at=row["decided_at"],
+            reason=row.get("comment") if role == "event_coordinator" else None,
+            actor=({"id": row["decided_by"], "full_name": row["decided_by_name"]}
+                   if row.get("decided_by") and row.get("decided_by_name") else None),
+        )
+        for row in repository.list_safety_decisions(event_id)
+    ]
+    if role == "event_coordinator":
+        # AC3, AC4: booking steps are staff-only; venue staff see them on the booking page.
+        entries += [EventHistoryEntry(kind="booking", **row) for row in venues_service.event_booking_history(event_id)]
+        entries += [EventHistoryEntry(kind="technical", **row)
+                    for row in equipment_service.event_technical_history(event_id)]
+        entries += [EventHistoryEntry(kind="venue_edit", **row) for row in venues_service.event_venue_edits(event_id)]
     requests = repository.list_cancellation_requests(event_id)
     entries += [
         EventHistoryEntry(kind="cancellation_requested", id=row["id"], actor=row["requested_by"],
@@ -1019,7 +1053,11 @@ def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventR
     ]
     if errors:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=errors)
-    updated = repository.update_event(event_id, values, row["version"])
+    if row["status"] == "returned":
+        # Story 62 AC1: once submitted, every edit is recorded; a draft's are not.
+        updated = repository.edit_event(event_id, organiser_id, values, row["version"], ["returned"])
+    else:
+        updated = repository.update_event(event_id, values, row["version"])
     if not updated:
         raise EventConflictError()
     return _with_amendment(updated)
@@ -1333,14 +1371,14 @@ def return_to_planning(event_id: str, *, reason_code: ReturnReason, message: str
     No callers are wired until their owning stories land (CR-104 AC6/AC10).
     """
     row = repository.get_event(event_id)
-    if not row or row["status"] not in ("safety_review", "confirmed"):
+    if not row or row["status"] not in ("safety_review", "confirmed", "preparation"):
         return None
     action = "safety_withdraw" if row["status"] == "safety_review" else "approved_change"
     lifecycle.target(action, row["status"])
     reason = ReturnReason(reason_code)
     fixed = f'"{row["name"]}" returned to planning. {_RETURN_REASONS[reason]}'
     updated = repository.return_to_planning(
-        event_id, row["version"], from_status=lifecycle.allowed_from(action)[0], reason_code=reason.value,
+        event_id, row["version"], from_status=row["status"], reason_code=reason.value,
         coordinator_message=fixed, officer_message=fixed if action == "safety_withdraw" else None,
     )
     return _to_response(updated) if updated else None

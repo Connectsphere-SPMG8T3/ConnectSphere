@@ -37,6 +37,7 @@ from app.modules.events.schemas import (
     EventSpaceRequestUpdate,
     EventUpdateRequest,
 )
+from app.modules.registrations.schemas import ManagedRegistrationReport
 
 router = APIRouter(prefix="/events", tags=["events"])
 SafetyOfficer = Annotated[CurrentUser, Depends(require_roles(["safety_officer"]))]
@@ -119,6 +120,15 @@ def clone_event(event_id: UUID, current_user: EventOrganiser) -> EventResponse:
 @router.get("/{event_id}", response_model=EventResponse)
 def read_event(event_id: UUID, current_user: EventParticipant) -> EventResponse:
     return service.read(str(event_id), current_user.id, current_user.role)
+
+
+@router.get(
+    "/{event_id}/registrations",
+    response_model=ManagedRegistrationReport,
+    response_model_exclude_none=True,
+)
+def read_managed_registrations(event_id: UUID, current_user: EventParticipant) -> ManagedRegistrationReport:
+    return service.managed_registrations(str(event_id), current_user.id, current_user.role)
 
 
 @router.get("/{event_id}/history", response_model=EventHistoryResponse)

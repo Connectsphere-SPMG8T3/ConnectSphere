@@ -89,8 +89,18 @@ def events(monkeypatch):
         row.update(values, version=version + 1)
         return deepcopy(row)
 
+    def edit_event(event_id, actor_id, values, version, from_statuses):
+        # Story 62 AC1: a returned request's edits go through the recorded edit_event.
+        row = state["store"].get(event_id)
+        if row is None or row["status"] not in from_statuses:
+            return None
+        state["edits"].append({"actor_id": actor_id, "values": values, "from_statuses": from_statuses})
+        return update_event(event_id, values, version)
+
+    state["edits"] = []
     monkeypatch.setattr(repository, "get_event", get_event)
     monkeypatch.setattr(repository, "return_event", return_event)
+    monkeypatch.setattr(repository, "edit_event", edit_event)
     monkeypatch.setattr(repository, "resubmit_event", resubmit_event)
     monkeypatch.setattr(repository, "update_event", update_event)
     monkeypatch.setattr(repository, "get_open_amendment", lambda event_id: deepcopy(state["amendment"]))
