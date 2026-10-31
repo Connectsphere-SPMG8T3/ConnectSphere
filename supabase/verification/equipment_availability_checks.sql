@@ -75,11 +75,18 @@ begin
     update public.events set starts_at = '2034-01-01 09:30+08', ends_at = '2034-01-01 12:30+08'
     where id = v_event;
     select * into v_row from public.recheck_event_reservations(v_event, 'a0000000-0000-4000-8000-000000000002');
+    -- Story 37 Q14 (AV-R4): the short line stays Reserved and is marked Needs re-review.
     if v_row.outcome is distinct from 'ok' or v_row.flagged is distinct from 1
-        or (select status::text from public.equipment_requests where id = v_line) is distinct from 're_review'
+        or (select status::text from public.equipment_requests where id = v_line) is distinct from 'reserved'
+        or (select needs_re_review_reason from public.equipment_requests where id = v_line)
+           is distinct from 'Event time changed; 0 free for 3.'
         or not exists (select 1 from public.equipment_reservations where id = v_reservation
                        and status = 'confirmed' and quantity = 3 and start_at = '2034-01-01 09:30+08') then
         raise exception 'D57 FAIL: time change must flag retired stock for re-review while retaining the hold';
+    end if;
+    if (public.send_equipment_line_for_re_review(v_line, 'a0000000-0000-4000-8000-000000000002', null, 'sent'))->>'outcome'
+       is distinct from 'ok' then
+        raise exception 'D57 FAIL: the coordinator could not send the marked line to technical support';
     end if;
     select * into v_row from public.reserve_equipment_line(v_line, 'a0000000-0000-4000-8000-000000000004');
     if v_row.outcome is distinct from 'insufficient' or v_row.free_quantity is distinct from 0 then

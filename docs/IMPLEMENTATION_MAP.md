@@ -9,7 +9,7 @@ This file describes the **current state** of the codebase, so a developer (or AI
 
 **Update this file after implementing anything that changes what exists** (see root `AGENTS.md`, "Keep the paper trail current"). 
 
-_Last updated: 2026-10-30 — rebased `feature/scrum-86-join-waitlist` onto `origin/main` at `f848a03`, preserving the SCRUM-44 and CR-110 entries. SCRUM-86's live TC-REG-023, browser TC-REG-027 and developer-reported manual TC-REG-028 pass; the broader recorded failures are tracked under D67, D68 and D74._
+_Last updated: 2026-10-30 — D67 fix (`fix/d67-verification-scripts`): `equipment_availability_checks.sql` now expects story 37's marked-Reserved short line (AV-R4). No product code changed; all 37 SQL verification scripts pass live. A database change that alters a function's contract must update every verification script that calls it, including ones on open branches._
 
 **Migration status last checked 2026-10-29:** the linked ledger has `20261028100000_registration_waitlist` applied. It also contains remote-only `20261026180000_equipment_line_edit_and_removal` (SCRUM-44), which was fetched locally as an untracked migration file so Supabase CLI could proceed; reconcile this migration into its appropriate branch rather than repairing its applied status as reverted. The local Supabase database remains unchecked because Docker is not running.
 
