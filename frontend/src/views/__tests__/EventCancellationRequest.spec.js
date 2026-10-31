@@ -1,8 +1,8 @@
 import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, eventsApi } from "@/services/api";
+import { ApiError, eventsApi, registrationsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 // Story 84: the organiser asks to cancel their event from its page.
@@ -10,6 +10,7 @@ vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
   eventsApi: { get: vi.fn(), history: vi.fn(), listComments: vi.fn(), addComment: vi.fn(), requestCancellation: vi.fn() },
+  registrationsApi: { managedEvent: vi.fn() },
 }));
 
 const REASON = "Our keynote speaker has withdrawn";
@@ -28,6 +29,18 @@ function eventResponse(overrides = {}) {
 }
 
 const mountedApps = [];
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  registrationsApi.managedEvent.mockResolvedValue({
+    event_id: "event-1",
+    effective_capacity: null,
+    registered_count: 0,
+    remaining_places: null,
+    waitlist_count: 0,
+    registrations: [],
+  });
+});
 
 async function mountDetail(response, historyResponse = { entries: [] }) {
   eventsApi.history.mockResolvedValue(historyResponse);
