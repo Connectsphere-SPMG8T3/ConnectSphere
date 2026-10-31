@@ -599,10 +599,10 @@ insert into public.events (
 values
     ('e0000000-0000-4000-8000-000000000201', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000000002', 'under_review', 'Review Fixture: Partner Summit',
-     'Approve/reject fixture', '2026-11-12 10:00+08', '2026-11-12 12:00+08', 12, 'boardroom', now()),
+     'Approve/reject fixture', '2037-11-12 10:00+08', '2037-11-12 12:00+08', 12, 'boardroom', now()),
     ('e0000000-0000-4000-8000-000000000202', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000000002', 'planning', 'Review Fixture: Year-End Dinner',
-     'Approve/reject fixture', '2026-11-13 10:00+08', '2026-11-13 12:00+08', 12, 'boardroom', now())
+     'Approve/reject fixture', '2037-11-13 10:00+08', '2037-11-13 12:00+08', 12, 'boardroom', now())
 on conflict (id) do nothing;
 
 -- CR-99: holds expire. This one is held until its event starts, not the 7-day
@@ -611,6 +611,6 @@ on conflict (id) do nothing;
 insert into public.venue_bookings (id, event_id, venue_id, occupied_period, status, created_at, expires_at)
 values
     ('d0000000-0000-4000-8000-000000000201', 'e0000000-0000-4000-8000-000000000202',
-     'b0000000-0000-4000-8000-000000000004', tstzrange('2026-11-13 10:00+08', '2026-11-13 12:00+08', '[)'),
-     'held', now(), '2026-11-13 10:00+08')
+     'b0000000-0000-4000-8000-000000000004', tstzrange('2037-11-13 10:00+08', '2037-11-13 12:00+08', '[)'),
+     'held', now(), '2037-11-13 10:00+08')
 on conflict (id) do nothing;

@@ -38,7 +38,9 @@ def event_row(status="planning", coordinator_id=COORDINATOR_ID):
         "id": EVENT_ID, "organiser_id": ORGANISER_ID, "coordinator_id": coordinator_id,
         "status": status, "event_timezone": "Asia/Singapore", "name": "Partner Summit",
         "purpose": "Quarterly partner meeting", "description": None,
-        "starts_at": "2026-11-12T10:00:00+08:00", "ends_at": "2026-11-12T12:00:00+08:00",
+        # Far in the future so the event never starts while the suite is still in use (D78).
+        # 2099 shares 2026's calendar, so weekdays match the original fixtures.
+        "starts_at": "2099-11-12T10:00:00+08:00", "ends_at": "2099-11-12T12:00:00+08:00",
         "expected_attendance": 80, "layout_preference": "theatre", "facilities_required": ["projector"],
         "accessibility_needs": None, "preliminary_equipment_needs": None,
         "registration_enabled": False, "registration_capacity": None,
@@ -152,7 +154,7 @@ class TestRequestChange:
         response = request_change(
             client,
             auth_headers,
-            event={"withdrawal_closes_at": "2026-11-12T09:00:00+08:00"},
+            event={"withdrawal_closes_at": "2099-11-12T09:00:00+08:00"},
         )
 
         assert response.status_code == 422
@@ -314,7 +316,7 @@ class TestProposedChanges:
         ("expected_attendance", 120), ("layout_preference", "banquet"),
         ("facilities_required", ["projector", "microphone"]),
         ("preliminary_equipment_needs", "Two wireless microphones"),
-        ("event_timezone", "Asia/Tokyo"), ("ends_at", "2026-11-12T13:00:00+08:00"),
+        ("event_timezone", "Asia/Tokyo"), ("ends_at", "2099-11-12T13:00:00+08:00"),
     ])
     def test_date_time_attendance_venue_and_equipment_fields_are_significant(
             self, client, auth_headers, act_as, events, field, value):
@@ -340,7 +342,7 @@ class TestProposedChanges:
         response = request_change(
             client, auth_headers,
             event={"facilities_required": ["microphone", "projector"], "description": "   ",
-                   "starts_at": "2026-11-12T02:00:00Z", "name": "Partner Summit",
+                   "starts_at": "2099-11-12T02:00:00Z", "name": "Partner Summit",
                    "purpose": "Annual partner meeting"},
             spaces=[{"id": SPACE_ID, "facilities_required": ["microphone", "projector"], "label": "Main hall"}],
         )
@@ -372,9 +374,9 @@ class TestProposedChanges:
 
     @pytest.mark.parametrize("event, spaces, field", [
         ({"starts_at": "2020-01-01T10:00:00+08:00"}, [], "starts_at"),
-        ({"ends_at": "2026-11-12T09:00:00+08:00"}, [], "ends_at"),
-        ({}, [{"id": SPACE_ID, "starts_at": "2026-11-12T09:00:00+08:00",
-               "ends_at": "2026-11-12T11:00:00+08:00"}], "starts_at"),
+        ({"ends_at": "2099-11-12T09:00:00+08:00"}, [], "ends_at"),
+        ({}, [{"id": SPACE_ID, "starts_at": "2099-11-12T09:00:00+08:00",
+               "ends_at": "2099-11-12T11:00:00+08:00"}], "starts_at"),
     ])
     def test_a_change_that_breaks_a_submission_rule_is_rejected(self, client, auth_headers, act_as, events,
                                                                 event, spaces, field):
@@ -393,7 +395,7 @@ class TestProposedChanges:
         yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
         events["store"][EVENT_ID].update(registration_enabled=True, registration_capacity=80,
                                          registration_opens_at=yesterday,
-                                         registration_closes_at="2026-11-11T18:00:00+08:00")
+                                         registration_closes_at="2099-11-11T18:00:00+08:00")
         act_as()
 
         response = request_change(client, auth_headers, event={"description": "Two keynotes"})
@@ -589,7 +591,7 @@ class TestCoordinatorDashboardListsTheRequest:
     def dashboard_data(self, monkeypatch):
         rows = [
             {"id": EVENT_ID, "name": "Partner Summit", "status": "confirmed",
-             "starts_at": "2026-11-12T10:00:00+08:00", "submitted_at": "2026-09-20T09:00:00+08:00",
+             "starts_at": "2099-11-12T10:00:00+08:00", "submitted_at": "2026-09-20T09:00:00+08:00",
              "technical_readiness": "not_required", "preliminary_equipment_needs": None,
              "organiser": {"full_name": "Olivia Organiser"}},
         ]
@@ -611,6 +613,6 @@ class TestCoordinatorDashboardListsTheRequest:
         items = [item for item in response.json()["action_items"] if item["kind"] == "change_request"]
         assert items == [{
             "event_id": EVENT_ID, "event_name": "Partner Summit", "kind": "change_request",
-            "starts_at": "2026-11-12T10:00:00+08:00", "occurred_at": "2026-10-24T09:00:00Z",
+            "starts_at": "2099-11-12T10:00:00+08:00", "occurred_at": "2026-10-24T09:00:00Z",
             "organiser_name": "Olivia Organiser",
         }]
