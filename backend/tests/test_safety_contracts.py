@@ -7,11 +7,12 @@ from app.core.exceptions import EventTransitionError
 from tests.test_events_repository import RpcClient
 
 @pytest.mark.parametrize('status', list(schemas.EventStatus))
-def test_approved_change_only_from_confirmed(status):
+def test_approved_change_only_from_confirmed_or_preparation(status):
+    # D71: REQUIREMENTS §6.7 returns a Preparation event to planning like a Confirmed one.
     assert 'approved_change' in lifecycle.TRANSITIONS
-    if status == schemas.EventStatus.confirmed:
+    if status in (schemas.EventStatus.confirmed, schemas.EventStatus.preparation):
         assert lifecycle.target('approved_change', status).value == 'planning'
-        assert lifecycle.allowed_from('approved_change') == ['confirmed']
+        assert lifecycle.allowed_from('approved_change') == ['confirmed', 'preparation']
     else:
         with pytest.raises(EventTransitionError): lifecycle.target('approved_change', status)
 
@@ -128,7 +129,6 @@ def test_reject_text_trimmed_and_legacy_arrays_ignored():
     assert result.reason=='private' and result.booking_id==UUID(uid)
     assert result.model_dump().keys()=={'reason','booking_id'}
 
-def test_approved_change_sources_until_68_lands():
-    # Story 43 adds the enum for registration; Story 68 owns this transition.
-    assert lifecycle.allowed_from('approved_change') == ['confirmed']
+def test_approved_change_sources_include_preparation():
+    assert lifecycle.allowed_from('approved_change') == ['confirmed', 'preparation']
     assert 'preparation' in {s.value for s in schemas.EventStatus}

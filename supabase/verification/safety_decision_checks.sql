@@ -22,7 +22,7 @@ create temporary table safety_fixture (key text primary key, id uuid not null) o
 insert into safety_fixture select key, gen_random_uuid() from unnest(array[
     'organiser','coordinator','officer','other_coordinator','staff','equipment',
     'replace_event','booking_replace_old','booking_replace_new','replace_venue_new','booking_plain',
-    'approve','held','empty','stale','changes','reject','invalid','withdraw_review','withdraw_confirmed',
+    'approve','held','empty','stale','changes','reject','invalid','withdraw_review','withdraw_confirmed','withdraw_preparation',
     'booking_approve','booking_held','booking_stale','booking_changes','booking_unticked',
     'booking_reject','reject_multi','reject_held','reject_flagged','booking_multi_a','booking_multi_b','booking_reject_held','booking_reject_flagged','booking_invalid','booking_inactive','booking_withdraw_review','booking_withdraw_confirmed','line_changes','line_unticked','line_reject','line_foreign','line_inactive','line_withdraw_review','line_withdraw_confirmed'
 ]) key;
@@ -47,11 +47,11 @@ from safety_fixture f join (values
 insert into public.equipment (id,name,equipment_type,total_quantity)
 select id,'Safety fixture','Verification',10 from safety_fixture where key='equipment';
 insert into public.events (id,organiser_id,coordinator_id,status,name,starts_at,ends_at)
-select f.id,o.id,c.id,case when f.key='withdraw_confirmed' then 'confirmed' else 'safety_review' end::public.event_status,
+select f.id,o.id,c.id,case f.key when 'withdraw_confirmed' then 'confirmed' when 'withdraw_preparation' then 'preparation' else 'safety_review' end::public.event_status,
        'Safety fixture ' || f.key, '2099-01-01 10:00+00','2099-01-01 12:00+00'
 from safety_fixture f cross join safety_fixture o cross join safety_fixture c
 where o.key='organiser' and c.key='coordinator'
-  and f.key in ('replace_event','approve','held','empty','stale','changes','reject','reject_multi','reject_held','reject_flagged','invalid','withdraw_review','withdraw_confirmed');
+  and f.key in ('replace_event','approve','held','empty','stale','changes','reject','reject_multi','reject_held','reject_flagged','invalid','withdraw_review','withdraw_confirmed','withdraw_preparation');
 -- Each booking gets its own venue and explicit space; all periods match the event.
 -- Requires the live event_space_requests migrations (20261008100000/20261009100000).
 do $$
@@ -246,8 +246,9 @@ begin
     perform pg_temp.assert(public.mark_safety_revision(b,coordinator,'Moved the barriers')='not_safety_rejected','revision twice refused');
     perform pg_temp.assert(pg_temp.snapshot(e)=before_state,'second revision unchanged');
 
-    foreach source in array array['safety_review','confirmed'] loop
-        e := (select id from safety_fixture where key=case when source='safety_review' then 'withdraw_review' else 'withdraw_confirmed' end);
+    -- D71: an event in Preparation returns too, like a Confirmed one (§6.7 approved_change).
+    foreach source in array array['safety_review','confirmed','preparation'] loop
+        e := (select id from safety_fixture where key=case source when 'safety_review' then 'withdraw_review' when 'confirmed' then 'withdraw_confirmed' else 'withdraw_preparation' end);
         select version into v from public.events where id=e;
         select count(*) into h from public.event_status_history where event_id=e;
         before_state := pg_temp.snapshot(e);
@@ -264,7 +265,7 @@ begin
         if source='safety_review' then
             perform pg_temp.assert(not exists(select 1 from public.user_roles ur where role='safety_officer' and not exists(select 1 from public.notifications where event_id=e and recipient_id=ur.profile_id and message='Fixed officer')),'withdraw all officers');
         else
-            perform pg_temp.assert((select count(*) from public.notifications where event_id=e)=1,'confirmed: no officers');
+            perform pg_temp.assert((select count(*) from public.notifications where event_id=e)=1,source||': no officers');
         end if;
         before_state := pg_temp.snapshot(e);
         select count(*) into n from public.return_event_to_planning(e,result.version,source,'booking_cancelled','Fixed coordinator','Fixed officer');

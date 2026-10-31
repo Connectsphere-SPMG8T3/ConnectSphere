@@ -1371,14 +1371,14 @@ def return_to_planning(event_id: str, *, reason_code: ReturnReason, message: str
     No callers are wired until their owning stories land (CR-104 AC6/AC10).
     """
     row = repository.get_event(event_id)
-    if not row or row["status"] not in ("safety_review", "confirmed"):
+    if not row or row["status"] not in ("safety_review", "confirmed", "preparation"):
         return None
     action = "safety_withdraw" if row["status"] == "safety_review" else "approved_change"
     lifecycle.target(action, row["status"])
     reason = ReturnReason(reason_code)
     fixed = f'"{row["name"]}" returned to planning. {_RETURN_REASONS[reason]}'
     updated = repository.return_to_planning(
-        event_id, row["version"], from_status=lifecycle.allowed_from(action)[0], reason_code=reason.value,
+        event_id, row["version"], from_status=row["status"], reason_code=reason.value,
         coordinator_message=fixed, officer_message=fixed if action == "safety_withdraw" else None,
     )
     return _to_response(updated) if updated else None
