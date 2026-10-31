@@ -2,7 +2,7 @@
 
 **Every known defect, its evidence, and whether it is fixed.** Edited in place: when a defect is fixed or accepted, update its row.
 
-- Add a new defect as the next unused number (check the entire table first), with the date and branch it was found on. A fix branch updates the defect's row and adds a [`BUILD_LOG.md`](BUILD_LOG.md) entry with the reproduction, root cause and verification. A defect the team will fix also gets a **Bug fix** PBI in the Product backlog sheet, which cites the `D<n>` and is linked to the affected PBI (playbook §4.1, §9.4).
+- Add a new defect as the next unused number (check the entire table first), with the date and branch it was found on. A fix branch updates the defect's row, and its PR description records the reproduction, root cause and verification ([`BUILD_LOG.md`](BUILD_LOG.md) holds those for fixes before 1 Nov 2026). A defect the team will fix also gets a **Bug fix** PBI in the Product backlog sheet, which cites the `D<n>` and is linked to the affected PBI (playbook §4.1, §9.4).
 - Cite a defect as "DEFECTS D<n>". D1–D16 were first recorded in `docs/PROJECT_REVIEW.md` §A2 (split out on 2026-09-28), so "PROJECT_REVIEW D<n>" in older commits, Jira comments and log entries is the same defect.
 
 > **Numbering note:** two different defects were both filed as **D8** (migration drift, and fabricated dashboard metrics). Both are kept as written rather than renumbered, since they are cited by those names elsewhere in the docs; tell them apart by name ("D8, migration drift" / "D8, fabricated metrics").

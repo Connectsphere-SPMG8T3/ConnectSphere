@@ -41,7 +41,7 @@ Everything else is run without `--record`, as often as you like: while writing c
 
 Changing the heading of a log you are about to commit is finishing it, not editing a past run.
 
-**Keep a log to its tables.** The header table, the case table, and a few lines on what was not run. How the story or fix was built belongs in its [`BUILD_LOG.md`](../../BUILD_LOG.md) entry, not here.
+**Keep a log to its tables.** The header table, the case table, and a few lines on what was not run. How the story or fix was built belongs in its PR description, not here.
 
 ## Running the automated checks
 

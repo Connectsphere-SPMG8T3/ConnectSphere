@@ -6,7 +6,7 @@ The team agreed this DoD in the [Team A-HA! Scrum Playbook](https://docs.google.
 
 This file says *what* to check. *How* to get there (branching, TDD, the live checks, who does each step) is in [`DEVELOPMENT_WORKFLOW.md`](DEVELOPMENT_WORKFLOW.md).
 
-_Last updated: 2026-10-16 — Testing notes that mutation testing is recommended for logic changes but is not a DoD item (`chore/mutation-testing`). 2026-10-13 — Done also needs the PBI's row in the sprint's DoD tab to show ✅ Done, with its ticks updated before the PR and the merge (`chore/backlog-notes-column`)._
+_Last updated: 2026-11-01 — Paper trail: the PR description replaces a BUILD_LOG entry, and the map is updated only for what other stories reuse (`chore/freeze-build-log-trim-map`). 2026-10-16 — Testing notes that mutation testing is recommended for logic changes but is not a DoD item (`chore/mutation-testing`). 2026-10-13 — Done also needs the PBI's row in the sprint's DoD tab to show ✅ Done, with its ticks updated before the PR and the merge (`chore/backlog-notes-column`)._
 
 ---
 
@@ -60,8 +60,8 @@ Coverage shows the tests *ran* the code, not that they would catch it breaking. 
 **Paper trail** (graded evidence)
 
 - [ ] [`REQUIREMENTS.md`](REQUIREMENTS.md) matches the behaviour, or the deviation is recorded as **[Assumption]** or **[Team decision]**, citing the `QA-<row>` behind it.
-- [ ] [`IMPLEMENTATION_MAP.md`](IMPLEMENTATION_MAP.md) is updated in place.
-- [ ] A [`BUILD_LOG.md`](BUILD_LOG.md) §4 entry is appended.
+- [ ] [`IMPLEMENTATION_MAP.md`](IMPLEMENTATION_MAP.md) is updated in place for any new or changed endpoint, reusable piece, table or contract.
+- [ ] The PR description records what was built, each acceptance criterion with its evidence, how it was verified and what wasn't. ([`BUILD_LOG.md`](BUILD_LOG.md) is frozen: no new entries.)
 - [ ] [`DEFECTS.md`](DEFECTS.md) is updated for any defect found or fixed.
 - [ ] New test cases are in `test-cases/<area>.md` with their Type, Created and Last run columns, and the run logs are committed on the branch.
 - [ ] Any customer clarification found during the work is recorded in the Product backlog's **Customer clarification** column, with its session and date.

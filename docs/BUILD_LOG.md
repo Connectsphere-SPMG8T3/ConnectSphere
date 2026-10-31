@@ -1,5 +1,5 @@
 # ConnectSphere — Build Log
-**What each story, fix and enabler actually built, in the order it landed.** Append-only.
+**What each story, fix and enabler actually built, in the order it landed, up to 1 Nov 2026.** Frozen: no new entries.
 
 This is the requirement → code → test trail the course rubric rewards. Each entry quotes its backlog record verbatim (the Jira issue until Sprint 2, the Product backlog sheet row from Sprint 3) and records how the ticket was interpreted, what was built, and how it was verified.
 
@@ -7,46 +7,17 @@ This is the requirement → code → test trail the course rubric rewards. Each 
 - Inside entries, a bare "§1"–"§3" or "§5"–"§7" means [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md); a bare "§4.N" means this file.
 - For what exists *now*, see [`IMPLEMENTATION_MAP.md`](IMPLEMENTATION_MAP.md); for what the system *should* do, [`REQUIREMENTS.md`](REQUIREMENTS.md).
 
-## How to add an entry
+## Frozen on 2026-11-01
 
-When a story is completed, copy the template below, fill it in from the PBI's row in the Product backlog sheet (Jira for stories before Sprint 3) (don't paraphrase the user story or acceptance criteria — quote them verbatim, the same way SCRUM-48's entry does), and add it as a new `###` subsection *after* the most recent entry, so the log reads chronologically. Do not delete or rewrite prior entries when requirements change later — instead, add a new entry for the story that changes them, and note in that new entry which earlier entry/behaviour it supersedes. This keeps the log an honest history of what was built and when, which is exactly the kind of requirement → code traceability the course rubric ([`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) §1) rewards.
+No new entries are added. Every branch appended the next number, so open PRs kept conflicting here, and five numbers were used twice (4.9, 4.31, 4.44, 4.51 and 4.108; cite those by title as well as number).
 
-<details>
-<summary><strong>Template for a new entry (click to expand)</strong></summary>
+From 2026-11-01 a story or fix is recorded in:
 
-```markdown
-### 4.N. SCRUM-XX / CR-XX — <title> (exact backlog record)
+- **its PR description**: what was built, each acceptance criterion with its tests and TC IDs, how it was verified, and what wasn't;
+- **[`REQUIREMENTS.md`](REQUIREMENTS.md)**: how a story was interpreted, as **[Assumption]** or **[Team decision]** citing the `QA-<row>`;
+- **the Product backlog sheet**: the same interpretation in the story's Customer clarification or Notes column.
 
-| Field | Value |
-|---|---|
-| ID | `SCRUM-XX` or `CR-XX` |
-| Title | <copy from the Product backlog> |
-| Type | US: Core feature / US: Non-core feature / Bug fix / Enhancement |
-| Status | <status at time of writing this entry> |
-| Epic | <epic name> |
-| Sprint | <sprint number> |
-| Estimate | <n> story points |
-| Priority | P1–P5 |
-| Customer clarification | <session and date, or "none"> |
-
-**User story (verbatim):**
-
-> <paste exactly as written in the Product backlog>
-
-**Acceptance criteria (verbatim from the Product backlog):**
-
-> <paste exactly as written, including any typos — note them rather than silently fixing them>
-
-#### How the implementation maps to the ticket
-
-<Explain anything the ticket left implicit that you had to interpret, and what NFRs or prior log entries justified that interpretation. Be explicit about assumptions vs. literal ticket text — an instructor may ask "where did requirement X come from?" and the answer should be findable here.>
-
-What was actually built:
-
-1. <bullet per behaviour, naming the actual file/endpoint/component that implements it>
-```
-
-</details>
+The entries below stay as they are and keep their numbers, so citations such as "BUILD_LOG §4.17" still work.
 
 ## Entries
 
