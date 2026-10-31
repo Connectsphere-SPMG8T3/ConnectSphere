@@ -24,7 +24,9 @@ BOOKING_ID = "d0000000-0000-4000-8000-000000000371"
 VENUE_ID = "b0000000-0000-4000-8000-000000000001"
 REQUEST_REASON = "More guests confirmed"
 REJECTION_REASON = "The venue can't take more people"
-FUTURE_START = "2026-11-12T10:00:00+08:00"
+# Far in the future so the event never starts while the suite is still in use (D78).
+# 2099 shares 2026's calendar, so weekdays match the original fixtures.
+FUTURE_START = "2099-11-12T10:00:00+08:00"
 
 
 def event_row(status="confirmed", starts_at=FUTURE_START):
@@ -33,7 +35,7 @@ def event_row(status="confirmed", starts_at=FUTURE_START):
         "id": EVENT_ID, "organiser_id": ORGANISER_ID, "coordinator_id": COORDINATOR_ID,
         "status": status, "event_timezone": "Asia/Singapore", "name": "Partner Summit",
         "purpose": "Quarterly partner meeting", "description": None,
-        "starts_at": starts_at, "ends_at": "2026-11-12T12:00:00+08:00",
+        "starts_at": starts_at, "ends_at": "2099-11-12T12:00:00+08:00",
         "expected_attendance": 80, "layout_preference": "theatre", "facilities_required": [],
         "accessibility_needs": None, "preliminary_equipment_needs": None,
         "registration_enabled": False, "registration_capacity": None,
@@ -395,8 +397,8 @@ class TestApproveSignificantChange:
         assert approvals["calls"][0]["attendee_message"] is None
 
     @pytest.mark.parametrize(("field", "after"), [
-        ("starts_at", "2026-11-12T11:00:00+08:00"),
-        ("ends_at", "2026-11-12T13:00:00+08:00"),
+        ("starts_at", "2099-11-12T11:00:00+08:00"),
+        ("ends_at", "2099-11-12T13:00:00+08:00"),
         ("event_timezone", "Asia/Tokyo"),
     ])
     def test_attendees_are_told_of_a_new_date_or_time(self, client, auth_headers, act_as, events, approvals,
@@ -425,15 +427,15 @@ class TestApprovalPlansTheBookings:
 
     def test_a_new_time_moves_and_marks_the_booking(self, client, auth_headers, act_as, events, approvals):
         events["request"]["value"]["changes"] = {"event": [
-            {"field": "starts_at", "before": FUTURE_START, "after": "2026-11-12T14:00:00+08:00"},
-            {"field": "ends_at", "before": "2026-11-12T12:00:00+08:00", "after": "2026-11-12T16:00:00+08:00"},
+            {"field": "starts_at", "before": FUTURE_START, "after": "2099-11-12T14:00:00+08:00"},
+            {"field": "ends_at", "before": "2099-11-12T12:00:00+08:00", "after": "2099-11-12T16:00:00+08:00"},
         ], "spaces": []}
         act_as()
 
         approve(client, auth_headers)
 
         assert approvals["calls"][0]["booking_plans"] == [{
-            "booking_id": BOOKING_ID, "period": ["2026-11-12T14:00:00+08:00", "2026-11-12T16:00:00+08:00"],
+            "booking_id": BOOKING_ID, "period": ["2099-11-12T14:00:00+08:00", "2099-11-12T16:00:00+08:00"],
             "mark": "Date or time changed.", "unsuitable": None, "clear_unsuitable": False,
         }]
 
@@ -557,8 +559,8 @@ class TestImpactPreview:
     """Q1, CR-R2: what approving would do, worked out from the event as it is now."""
 
     TIME_CHANGE = {"event": [
-        {"field": "starts_at", "before": FUTURE_START, "after": "2026-11-12T14:00:00+08:00"},
-        {"field": "ends_at", "before": "2026-11-12T12:00:00+08:00", "after": "2026-11-12T16:00:00+08:00"},
+        {"field": "starts_at", "before": FUTURE_START, "after": "2099-11-12T14:00:00+08:00"},
+        {"field": "ends_at", "before": "2099-11-12T12:00:00+08:00", "after": "2099-11-12T16:00:00+08:00"},
     ], "spaces": []}
 
     @pytest.fixture()
@@ -612,7 +614,7 @@ class TestImpactPreview:
 
         [(period, venue_id, excluded)] = impact["conflict_calls"]
         assert (period.starts_at.isoformat(), period.ends_at.isoformat()) == (
-            "2026-11-12T13:30:00+08:00", "2026-11-12T16:00:00+08:00")
+            "2099-11-12T13:30:00+08:00", "2099-11-12T16:00:00+08:00")
         assert (venue_id, excluded) == (VENUE_ID, BOOKING_ID)
 
     @pytest.mark.parametrize(("conflict", "message"), [

@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
@@ -75,10 +75,21 @@ async function type(input, value) {
   await nextTick();
 }
 
+// The form refuses dates that aren't after today in Singapore, so the fixtures'
+// dates only stay valid with the clock fixed before them (D78). Only Date is faked:
+// the form's async loads still run on real timers.
+const TODAY = new Date("2026-10-20T02:00:00Z");
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(TODAY);
+});
+
 afterEach(() => {
   mountedApps.splice(0).forEach((app) => app.unmount());
   document.body.innerHTML = "";
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("EventRequestView change mode (story 32)", () => {
