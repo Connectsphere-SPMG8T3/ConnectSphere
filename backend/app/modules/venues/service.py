@@ -1157,6 +1157,34 @@ def send_booking_for_re_review(booking_id: str, coordinator_id: str, note: str |
         raise BookingDecisionConflictError("This booking doesn't need re-review.")
 
 
+def event_booking_history(event_id: str) -> list[dict]:
+    """Story 62 AC5: every booking's history on the event, for its change history."""
+    return repository.list_event_booking_history(event_id)
+
+
+# A booking in one of these still holds or has booked its venue.
+_ACTIVE_BOOKING_STATUSES = {"held", "approved", "re_review"}
+
+
+def event_venue_edits(event_id: str) -> list[dict]:
+    """Story 62 AC5, REQUIREMENTS §9 item 113 [Assumption]: the edits to each venue the
+    event held or booked, made while it did: from the booking's creation until it ended
+    (its last change, for a booking no longer active), or until now."""
+    edits = {}
+    for booking in repository.list_event_bookings_for_history(event_id):
+        start = datetime.fromisoformat(booking["created_at"])
+        end = (None if booking["status"] in _ACTIVE_BOOKING_STATUSES
+               else datetime.fromisoformat(booking["updated_at"]))
+        for row in repository.list_edit_history(booking["venue_id"]):
+            at = datetime.fromisoformat(row["created_at"])
+            if at >= start and (end is None or at <= end):
+                # Two bookings of the same venue can share an edit; it appears once.
+                edits[row["id"]] = {"id": row["id"], "venue_name": booking["venue_name"],
+                                    "old_value": row["before"], "new_value": row["after"],
+                                    "actor": row.get("actor"), "at": row["created_at"]}
+    return list(edits.values())
+
+
 def booking_venue_names(booking_ids: list[str]) -> dict[str, str | None]:
     return repository.booking_venue_names(booking_ids)
 

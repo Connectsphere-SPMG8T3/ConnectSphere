@@ -182,3 +182,104 @@ describe("EventStatusHistory change decisions (story 37)", () => {
     expect(item.textContent).toContain("The venue can't take more people");
   });
 });
+
+describe("EventStatusHistory change history (story 62)", () => {
+  const olivia = { id: "o1", full_name: "Olivia Tan" };
+
+  afterEach(() => {
+    mounted.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  it("heads an edit with the field, then what it changed from and to", async () => {
+    const el = await mountHistory([
+      { id: "e1", kind: "edit", field: "description", old_value: null, new_value: "Now with a keynote",
+        at: "2026-09-24T06:05:00Z", actor: olivia },
+    ]);
+
+    const item = el.querySelector("li");
+    expect(item.querySelector("p").textContent).toBe("Description changed");
+    expect(item.textContent).toContain("by Olivia Tan");
+    expect(item.textContent).toContain("From: (empty)");
+    expect(item.textContent).toContain("To: Now with a keynote");
+  });
+
+  it("reads numbers, yes/no, lists and times as a person would", async () => {
+    const el = await mountHistory([
+      { id: "e1", kind: "edit", field: "expected_attendance", old_value: 12, new_value: 40,
+        at: "2026-09-24T06:05:00Z", actor: olivia },
+      { id: "e2", kind: "edit", field: "waitlist_enabled", old_value: false, new_value: true,
+        at: "2026-09-24T06:04:00Z", actor: olivia },
+      { id: "e3", kind: "edit", field: "facilities_required", old_value: [], new_value: ["projector", "wifi"],
+        at: "2026-09-24T06:03:00Z", actor: olivia },
+      { id: "e4", kind: "edit", field: "starts_at", old_value: "2026-09-24T06:05:00+00:00",
+        new_value: "2026-09-25T06:05:00+00:00", at: "2026-09-24T06:02:00Z", actor: olivia },
+    ]);
+
+    const [attendance, waitlist, facilities, start] = el.querySelectorAll("li");
+    expect(attendance.textContent).toContain("From: 12");
+    expect(attendance.textContent).toContain("To: 40");
+    expect(waitlist.querySelector("p").textContent).toBe("Waitlist when full changed");
+    expect(waitlist.textContent).toContain("From: No");
+    expect(waitlist.textContent).toContain("To: Yes");
+    expect(facilities.textContent).toContain("From: (empty)");
+    expect(facilities.textContent).toContain("To: projector, wifi");
+    expect(start.textContent).toContain(`From: ${expectedDate}`);
+  });
+
+  it("heads a safety decision with its outcome, and shows a comment only when one is sent", async () => {
+    const el = await mountHistory([
+      { id: "s2", kind: "safety_decision", decision: "changes_requested", reason: "Add a second exit",
+        at: "2026-09-24T06:05:00Z", actor: { id: "s", full_name: "Hafiz Ismail" } },
+      { id: "s1", kind: "safety_decision", decision: "approved", reason: null,
+        at: "2026-09-23T06:05:00Z", actor: { id: "s", full_name: "Hafiz Ismail" } },
+    ]);
+
+    const [requested, approved] = el.querySelectorAll("li");
+    expect(requested.querySelector("p").textContent).toBe("Safety check: Changes requested");
+    expect(requested.textContent).toContain("Add a second exit");
+    expect(approved.querySelector("p").textContent).toBe("Safety check: Approved");
+    expect(approved.querySelectorAll("p")).toHaveLength(2);
+  });
+
+  it("heads a booking step with its venue and what happened, and names the system when no one acted", async () => {
+    const el = await mountHistory([
+      { id: "b1", kind: "booking", action: "approved", venue_name: "Hall A", reason: null,
+        at: "2026-09-24T06:05:00Z", actor: { id: "v", full_name: "Priya Nair" } },
+      { id: "b2", kind: "booking", action: "expired", venue_name: "Hall B", reason: null,
+        at: "2026-09-23T06:05:00Z", actor: null },
+    ]);
+
+    const [approved, expired] = el.querySelectorAll("li");
+    expect(approved.querySelector("p").textContent).toBe("Hall A: Approved");
+    expect(approved.textContent).toContain("by Priya Nair");
+    expect(expired.textContent).toContain("by System");
+  });
+
+  it("heads a technical update with what happened and to which line", async () => {
+    const el = await mountHistory([
+      { id: "t1", kind: "technical", action: "preparation", line_label: null, detail: null,
+        at: "2026-09-24T06:05:00Z", actor: { id: "t", full_name: "Daniel Wong" } },
+      { id: "t2", kind: "technical", action: "reserved", line_label: "2 × Projector", detail: null,
+        at: "2026-09-23T06:05:00Z", actor: { id: "t", full_name: "Daniel Wong" } },
+    ]);
+
+    const [preparation, reserved] = el.querySelectorAll("li");
+    expect(preparation.querySelector("p").textContent).toBe("Equipment: Preparation stage changed");
+    expect(reserved.querySelector("p").textContent).toContain("2 × Projector");
+  });
+
+  it("heads a venue edit with the venue and lists only what changed", async () => {
+    const el = await mountHistory([
+      { id: "v1", kind: "venue_edit", venue_name: "Hall A", old_value: { capacity: 120, name: "Hall A" },
+        new_value: { capacity: 100, name: "Hall A" }, at: "2026-09-24T06:05:00Z",
+        actor: { id: "v", full_name: "Priya Nair" } },
+    ]);
+
+    const item = el.querySelector("li");
+    expect(item.querySelector("p").textContent).toBe("Hall A details changed");
+    expect(item.textContent).toContain("by Priya Nair");
+    expect(item.textContent).toContain("Capacity: 120 → 100");
+    expect(item.textContent).not.toContain("Name:");
+  });
+});

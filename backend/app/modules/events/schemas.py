@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -616,14 +617,42 @@ class EventHistoryEntry(BaseModel):
     actor: HistoryActor | None = None
     reason: str | None = None
     changes: EventChanges | None = None
+    # Story 62: an edit (`edit`) names the field and its old and new value.
+    field: str | None = None
+    old_value: Any = None
+    new_value: Any = None
+    # A safety decision (`safety_decision`) names its outcome.
+    decision: str | None = None
+    # A venue booking's step (`booking`) names what happened and at which venue.
+    action: str | None = None
+    venue_name: str | None = None
+    # A technical update (`technical`) names its action, the equipment line, if any, and its detail.
+    line_label: str | None = None
+    detail: str | None = None
     at: datetime
 
     @model_serializer(mode="wrap")
     def _omit_changes_outside_change_requests(self, handler):
-        # Only change-request entries and approvals (story 37) have changes; the others keep their shape.
+        # Only change-request entries and approvals (story 37) have changes, and only
+        # edits (story 62) have a field; the others keep their shape.
         data = handler(self)
         if not (self.kind.startswith("change_request") or self.kind == "change_approved"):
             data.pop("changes", None)
+        # A venue edit (`venue_edit`) carries the venue's before and after snapshots.
+        if self.kind != "edit":
+            data.pop("field", None)
+        if self.kind not in ("edit", "venue_edit"):
+            data.pop("old_value", None)
+            data.pop("new_value", None)
+        if self.kind != "safety_decision":
+            data.pop("decision", None)
+        if self.kind not in ("booking", "technical"):
+            data.pop("action", None)
+        if self.kind not in ("booking", "venue_edit"):
+            data.pop("venue_name", None)
+        if self.kind != "technical":
+            data.pop("line_label", None)
+            data.pop("detail", None)
         return data
 
 
