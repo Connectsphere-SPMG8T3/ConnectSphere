@@ -22,6 +22,7 @@ import {
   TECHNICAL_REQUIREMENTS_MAX_LENGTH,
   technicalRequirementsError,
 } from "@/features/equipment/equipmentRequest";
+import { formatSingaporeDateTime } from "@/features/venues/singaporeTime";
 import { useEquipmentRequestStore } from "@/features/equipment/equipmentRequestStore";
 import {
   exitConfirmationText,
@@ -74,8 +75,6 @@ const STATUS_BADGE_CLASSES = {
   re_review: "bg-bauhaus-yellow text-ink",
   released: "bg-canvas text-ink",
 };
-
-const formatter = new Intl.DateTimeFormat("en-SG", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Singapore" });
 
 watch(
   () => props.eventId,
@@ -176,7 +175,7 @@ async function submit() {
           <span class="font-bold">Technical Support notes:</span> {{ line.technical_notes }}
         </p>
         <p class="mt-2 text-xs font-bold text-ink/60">
-          {{ line.requested_by?.full_name ?? "Unknown user" }} · {{ formatter.format(new Date(line.created_at)) }}
+          {{ line.requested_by?.full_name ?? "Unknown user" }} · {{ formatSingaporeDateTime(line.created_at) }}
         </p>
         <EquipmentLineEditForm
           v-if="editingLineId === line.id"

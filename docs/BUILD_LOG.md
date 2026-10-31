@@ -3769,3 +3769,22 @@ What was actually built:
 - Live TC-REG-029/030 API/database checks and TC-REG-031/033/034 browser checks passed against the revised four-status report and are recorded in [the API/database run](test-cases/runs/2026-10-31-1030-api-db-54c6cb9.md) and [the browser run](test-cases/runs/2026-10-31-1055-e2e-54c6cb9.md).
 - Manual TC-REG-032 passed after the final status-scope change. The developer confirmed both organiser and coordinator pages at desktop width and 375px, including the four-status report/CSV scope.
 
+### 4.110. Bug fix D61 — Tech Support dashboard times in Singapore time
+
+On `fix/d61-tech-support-times-singapore`, 2026-10-31. Defect: DEFECTS D61 (Medium). Frontend only; no API or database change. Codex wrote the implementation and tests from a requirements brief; Claude reviewed them and verified the fix live.
+
+**Symptom.** The maintenance cards formatted times with `timeZone: "UTC"`, so an outage starting 25 Oct 00:00 in Singapore showed as "24 Oct, 4:00 pm". The availability check and inventory window did the opposite: they read the typed date and time, and picked the default day, in the browser's timezone. Both were wrong for anyone not set to Singapore time.
+
+**Reproduction.** Browser check TC-TSD-018 (`frontend/e2e/tech-support-times.e2e.js`, Singapore-timezone browser, outage on throwaway equipment) failed on the old code: `Received: … 24 Oct 2031, 4:00 pm – 24 Oct 2031, 5:00 pm`. Five unit tests run with `TZ=UTC` also failed on the old code: the maintenance card, the availability payload (`09:00Z` instead of `01:00Z`), the inventory request, and both tabs' default day.
+
+**Root cause.** REQUIREMENTS §4 says times are stored in UTC and displayed in Singapore time. `features/venues/singaporeTime.js` has the helpers, but the dashboard predated them: one formatter hard-coded UTC, and the windows used `new Date(datetimeLocal)`, which reads the value in the browser's zone.
+
+**Why tests missed it.** The existing specs built their expectations the same browser-local way (`new Date(2026, 9, 19, 22, 30)`, `new Date(value).toISOString()`), so they agreed with the code in any timezone. No spec rendered a maintenance card's time.
+
+**Fix.** New `formatSingaporeDateTime(iso)` in `singaporeTime.js`, used by the maintenance cards and by `EquipmentRequestPanel.vue`, which already formatted the same way inline. The availability check and inventory request send `toSingaporeIso(date, time)`. `inventoryWindow.js` takes its default day from `singaporeDayKey` and compares `datetime-local` strings directly. Three existing assertions changed, because the behaviour they checked (browser-local windows) is what D61 replaces with REQUIREMENTS §4: in `inventoryWindow.spec.js` the default-window inputs, and in `techSupportDashboard.spec.js` the `iso` helper, the fake system time and the availability payload expectation. Request and response shapes are unchanged.
+
+**Blast radius.** The other `datetime-local` and formatting code in `src/` already goes through `singaporeTime.js` or sets `timeZone: "Asia/Singapore"`, and `EquipmentRequestPanel` now shares the helper. No stored data is affected, since this was display and input only.
+
+**Verified.** Frontend suite 1,900/1,900, `npm run build` passes, and Codex reports the changed lines at 100% coverage. TC-TSD-018 fails on the old dashboard and passes on the fix, in a real Singapore-timezone browser; before and after card screenshots are in `docs/screenshots/fix-d61-tech-support-times-singapore/`. Recorded runs: [browser](test-cases/runs/2026-10-31-2031-e2e-54c6cb9.md) 107/111, with TC-TSD-018 passing; the four failures are D68's known TC-RBAC-005, TC-TSD-017, TC-AUTH-037/038 and TC-AUTH-046. [API and database](test-cases/runs/2026-10-31-1959-api-db-54c6cb9.md) 236/238, with no backend change on this branch. `equipment_availability_checks.sql` is D67, fixed in PR #121, which this branch predates. TC-CHANGE-003 hit a client `ReadTimeout`: the server log shows Supabase dropped the connection mid-request (`RemoteProtocolError: Server disconnected without sending a response`), the D42 class. The check passed on the same backend code on 2026-10-30 and wasn't re-run.
+
+**Manual pass.** TC-TSD-018 at desktop and phone width is the developer's (not yet done).

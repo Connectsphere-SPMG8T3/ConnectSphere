@@ -44,3 +44,12 @@ export function singaporeDayKey(value) {
 export function startOfSingaporeDayUtc(dayKey) {
   return new Date(`${dayKey}T00:00:00${SINGAPORE_OFFSET}`);
 }
+
+/** Display an instant using the app's Singapore date and time convention. */
+export function formatSingaporeDateTime(iso) {
+  return new Intl.DateTimeFormat("en-SG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Singapore",
+  }).format(new Date(iso));
+}

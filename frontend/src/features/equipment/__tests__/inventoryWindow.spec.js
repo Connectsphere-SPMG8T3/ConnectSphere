@@ -8,11 +8,11 @@ import {
 
 describe("tech support's inventory window (D46)", () => {
   it("defaults to today, 9 am to 5 pm, as datetime-local values", () => {
-    expect(defaultInventoryWindow(new Date(2026, 9, 19, 22, 30))).toEqual({
+    expect(defaultInventoryWindow(new Date("2026-10-19T22:30:00+08:00"))).toEqual({
       startAt: "2026-10-19T09:00",
       endAt: "2026-10-19T17:00",
     });
-    expect(defaultInventoryWindow(new Date(2026, 0, 5, 8))).toEqual({
+    expect(defaultInventoryWindow(new Date("2026-01-05T08:00:00+08:00"))).toEqual({
       startAt: "2026-01-05T09:00",
       endAt: "2026-01-05T17:00",
     });
