@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import ManagedRegistrationsPanel from "@/components/registrations/ManagedRegistrationsPanel.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import EventDiscussion from "@/components/events/EventDiscussion.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
@@ -244,6 +245,10 @@ onMounted(async () => {
           </BauhausCard>
         </aside>
       </div>
+      <ManagedRegistrationsPanel
+        :event-id="event.id"
+        class="mt-8"
+      />
       <RequestCancellationModal
         :open="cancellationOpen"
         :event-name="event.name"

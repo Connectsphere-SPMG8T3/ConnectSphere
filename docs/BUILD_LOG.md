@@ -3699,3 +3699,56 @@ On `fix/d67-verification-scripts`, 2026-10-30. Defect: DEFECTS D67 (Medium, veri
 **Verified.** The availability script failed on the D57 assertion before the change, then on the re-reserve step (`not_reservable`) after the first edit, and passes after the second. All 37 SQL verification scripts pass live (2026-10-30). The API and browser suites were not re-run, since nothing they exercise changed.
 
 **Noticed, not changed.** `supabase migration list --linked` shows two live migrations not on `main`: `20261029120000` and `20261030120000`, presumably from open branches. This is the same pattern that caused D67.
+  
+  ### 4.109. SCRUM-35 — View registrations for events I manage
+
+| Field | Value |
+|---|---|
+| ID | `SCRUM-35` |
+| Title | View registrations for events I manage |
+| Type | US: Core feature |
+| Status | Implemented; developer manual pass pending |
+| Epic | Attendee registration |
+| Sprint | Not included in the story details supplied for implementation |
+| Estimate | Not included in the story details supplied for implementation |
+| Priority | Not included in the story details supplied for implementation |
+| Customer clarification | Revised acceptance criteria supplied by the developer; AC7 CSV export approved 2026-10-31. The disabled-registration display assumption is recorded in REQUIREMENTS §6.18 and open question §9 item 110 |
+
+**User story (verbatim):**
+
+> See registration numbers and attendee details for the events I'm assigned, with the Event Organiser seeing the same for events they own
+
+**Acceptance criteria (verbatim from the revised story; AC7 is the developer-approved extension):**
+
+> AC1. Given a user requests registrations for an event, when they are acting as the active Event Coordinator assigned to that event or the active Event Organiser who owns it, then they can view that event’s registrations only. Anyone else receives 403, including a user who holds a permitted role but is acting in a different active role.
+>
+> AC2. Given an authorised user views an event’s registrations, then the summary shows the number of Registered attendees and remaining places. Remaining places equal effective capacity—the lower of the event registration limit and venue capacity—minus Registered attendees and active invitation reservations. Waitlisted and Withdrawn records do not consume capacity. When waitlist entries exist, the summary shows their count; Invited attendees are not counted as waiting.
+>
+> AC3. Given the active Event Coordinator assigned to the event views its registrations, then each row shows the attendee’s full name, email, phone number when available, and current status: Registered, Waitlisted, Invited, or Withdrawn.
+>
+> AC4. Given the active Event Organiser who owns the event views its registrations, then they see the same counts and attendee names and statuses, but no email or phone information is returned or displayed.
+>
+> AC5. Given an authorised user views the list, when they select a status or enter part of an attendee’s name, then the list shows matching records. Status filtering and name search can be used together; name matching is case-insensitive.
+>
+> AC6. Given an attendee registers, withdraws, joins or leaves the waitlist, or an invitation is issued, accepted, declined, or expires, when an authorised user refreshes the registrations view, then the counts and list reflect the latest stored state.
+>
+> AC7. Given an authorised manager is viewing an event’s registrations, when they choose Export CSV, then a CSV participant list downloads with every stored registration row for that event regardless of the active search or status filters, and with only the contact fields permitted for their active role.
+
+#### How the implementation maps to the ticket
+
+The revised criteria define access by the active role and its relationship to the event, so the API checks the active Event Coordinator assignment or active Event Organiser ownership and returns 403 for other relationships. The report uses effective capacity, subtracts registered attendees and active invitation reservations, and keeps waitlisted/withdrawn rows out of occupancy. After the developer's 2026-10-31 decision, the report and CSV expose only the four acceptance-criteria statuses (Registered, Waitlisted, Invited and Withdrawn); `cancelled`, `invitation_expired` and `left` remain stored but are not returned to managers. Organiser responses omit email and phone at the API boundary. AC7's CSV includes every report row regardless of active filters and preserves role-specific fields. Phone-width layout keeps summary metrics, filter controls, names and statuses in compact rows.
+
+The revised criteria do not specify whether a manager can still review existing records after registration is disabled. The implementation keeps the report visible in that state so historical and terminal records remain accessible; this is an [Assumption], recorded in REQUIREMENTS §6.18 and open question §9 item 110.
+
+What was actually built:
+
+1. `GET /api/v1/events/{event_id}/registrations` authorises only the active assigned coordinator or owning organiser and returns counts, capacity, statuses and role-appropriate contact fields.
+2. `ManagedRegistrationsPanel.vue` is shared by organiser and coordinator event details, with combined case-insensitive name search and status filtering, Refresh, role-specific contact display, a CSV download of all rows, and compact phone layouts. `managedRegistrationsCsv.js` supplies spreadsheet-safe escaping, role-specific columns and accessible status labels.
+3. `backend/scripts/verify_live.py` and `frontend/e2e/manager-registrations.e2e.js` provide disposable-data checks for the API/database and browser flows, including a 375px Playwright regression for long status badges. No schema migration or new dependency was needed.
+
+**Verification.**
+- Full backend suite: 2,508 passed.
+- Full frontend suite: 1,905 passed across 118 files (97.99% overall coverage); the new shared report component and CSV formatter have 100% line coverage. Production frontend build passed.
+- Live TC-REG-029/030 API/database checks and TC-REG-031/033/034 browser checks passed against the revised four-status report and are recorded in [the API/database run](test-cases/runs/2026-10-31-1030-api-db-54c6cb9.md) and [the browser run](test-cases/runs/2026-10-31-1055-e2e-54c6cb9.md).
+- Manual TC-REG-032 passed after the final status-scope change. The developer confirmed both organiser and coordinator pages at desktop width and 375px, including the four-status report/CSV scope.
+
