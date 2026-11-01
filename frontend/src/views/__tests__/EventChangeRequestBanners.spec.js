@@ -1,8 +1,8 @@
 import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { eventsApi } from "@/services/api";
+import { eventsApi, registrationsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 // Story 32: both sides see an open change request. Deciding it is story 37.
@@ -10,6 +10,7 @@ vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
   eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), listComments: vi.fn(), addComment: vi.fn() },
+  registrationsApi: { managedEvent: vi.fn() },
 }));
 
 const REASON = "Our sponsor wants more seats";
@@ -34,6 +35,22 @@ function eventResponse(overrides = {}) {
 }
 
 const mountedApps = [];
+// "Request changes" shows only before the event starts, so the fixtures' dates stay
+// in the future only with the clock fixed before them (D78). Only Date is faked.
+const TODAY = new Date("2026-10-20T02:00:00Z");
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(TODAY);
+  registrationsApi.managedEvent.mockResolvedValue({
+    event_id: "event-32",
+    effective_capacity: null,
+    registered_count: 0,
+    remaining_places: null,
+    waitlist_count: 0,
+    registrations: [],
+  });
+});
 
 async function mount(response, { role, routeName, view }) {
   eventsApi.get.mockResolvedValue(response);
@@ -72,6 +89,7 @@ afterEach(() => {
   mountedApps.splice(0).forEach((app) => app.unmount());
   document.body.innerHTML = "";
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("organiser event page (story 32)", () => {

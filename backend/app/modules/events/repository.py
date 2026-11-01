@@ -266,6 +266,24 @@ def update_event(event_id: str, values: dict, version: int) -> dict:
     return _with_spaces(response.data[0] if isinstance(response.data, list) else response.data)
 
 
+def edit_event(event_id: str, actor_id: str, values: dict, version: int, from_statuses: list[str]) -> dict | None:
+    """Story 62 AC1: saves the edit and records each changed field in one transaction,
+    unless the event is a draft. None when the version or status has moved on."""
+    response = get_supabase_admin_client().rpc("edit_event", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_values": values,
+        "p_expected_version": version,
+        "p_from_statuses": from_statuses,
+    }).execute()
+    rows = (response.data or []) if response else []
+    if not rows:
+        return None
+    # The same shape as update_event's select.
+    columns = [column.strip() for column in _EVENT_COLUMNS.split(",")]
+    return _with_spaces({column: rows[0].get(column) for column in columns})
+
+
 def delete_event(event_id: str) -> None:
     get_supabase_admin_client().table("events").delete().eq("id", event_id).execute()
 
@@ -477,6 +495,19 @@ def list_assignment_history(event_id: str) -> list[dict]:
             "from_coordinator:profiles!event_assignment_history_from_coordinator_id_fkey(id, full_name), "
             "to_coordinator:profiles!event_assignment_history_to_coordinator_id_fkey(id, full_name)"
         )
+        .eq("event_id", event_id)
+        .order("at", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
+def list_edit_history(event_id: str) -> list[dict]:
+    """Story 62 AC1: each recorded field edit, newest first, with who made it."""
+    response = (
+        get_supabase_admin_client()
+        .table("event_edit_history")
+        .select("id, field, old_value, new_value, at, actor:profiles!event_edit_history_actor_id_fkey(id, full_name)")
         .eq("event_id", event_id)
         .order("at", desc=True)
         .execute()

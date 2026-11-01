@@ -4,7 +4,7 @@ import pytest
 from app.modules.events import service, repository, schemas, lifecycle
 from tests.test_event_review_api import event_row, EVENT_ID
 
-@pytest.mark.parametrize('source', ['safety_review','confirmed','draft','submitted','under_review','returned','planning','rejected','cancelled','completed',None])
+@pytest.mark.parametrize('source', ['safety_review','confirmed','preparation','draft','submitted','under_review','returned','planning','rejected','cancelled','completed',None])
 @pytest.mark.parametrize('reason', ['arrangement_flagged','booking_cancelled','technical_not_ready','approved_details_changed'])
 def test_return_contract(monkeypatch,source,reason):
     assert hasattr(service,'return_to_planning')
@@ -22,7 +22,8 @@ def test_return_contract(monkeypatch,source,reason):
         return original(action,status)
     monkeypatch.setattr(lifecycle,'target',target)
     result=service.return_to_planning(EVENT_ID,reason_code=schemas.ReturnReason(reason),message='SECRET-MARKER',actor_id='ignored')
-    if source not in ('safety_review','confirmed'):
+    # D71: Preparation returns like Confirmed (REQUIREMENTS §6.7 approved_change).
+    if source not in ('safety_review','confirmed','preparation'):
         assert result is None and not calls
         return
     assert result.status.value == 'planning'

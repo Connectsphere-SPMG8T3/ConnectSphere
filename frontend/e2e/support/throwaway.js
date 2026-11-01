@@ -163,6 +163,25 @@ export function createThrowawayChangeRequest(event, after, reason) {
   );
 }
 
+/** A recorded edit by the organiser on a throwaway event (story 62). It is deleted with
+ * the event when the run ends (history cascades). */
+export function createThrowawayEdit(event, field, oldValue, newValue) {
+  query(
+    "insert into public.event_edit_history (event_id, actor_id, field, old_value, new_value) values " +
+      `('${event.id}', 'a0000000-0000-4000-8000-000000000001', '${field}', ` +
+      `'${JSON.stringify(oldValue)}', '${JSON.stringify(newValue)}')`,
+  );
+}
+
+/** A technical history entry by tech support on a throwaway event (story 62). It is
+ * deleted with the event when the run ends (history cascades). */
+export function createThrowawayTechnicalEntry(event, action) {
+  query(
+    "insert into public.event_technical_history (event_id, action, actor_id) values " +
+      `('${event.id}', '${action}', 'a0000000-0000-4000-8000-000000000004')`,
+  );
+}
+
 /** Free-text accessibility needs on a throwaway event (SCRUM-18). */
 export function setThrowawayEventAccessibilityNeeds(event, needs) {
   query(`update public.events set accessibility_needs = '${needs}' where id = '${event.id}'`);
@@ -255,6 +274,16 @@ export function createThrowawayLine(event, equipment, quantity) {
   const [row] = query(
     "insert into public.equipment_requests (event_id, equipment_id, submission_id, quantity, requested_by) values " +
       `('${event.id}', '${equipment.id}', gen_random_uuid(), ${quantity}, 'a0000000-0000-4000-8000-000000000002') returning id`,
+  );
+  return row;
+}
+
+/** A maintenance outage on throwaway equipment (D61). Deleted with the equipment,
+ * which cascades to its unavailability rows. */
+export function createThrowawayOutage(equipment, startAt, endAt, reason) {
+  const [row] = query(
+    "insert into public.equipment_unavailability (equipment_id, quantity, start_at, end_at, reason) values " +
+      `('${equipment.id}', 1, '${startAt}', '${endAt}', '${reason}') returning id`,
   );
   return row;
 }

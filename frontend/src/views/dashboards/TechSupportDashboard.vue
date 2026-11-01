@@ -11,6 +11,7 @@ import {
   describeInventoryWindow,
   inventoryWindowError,
 } from "@/features/equipment/inventoryWindow";
+import { formatSingaporeDateTime, toSingaporeIso } from "@/features/venues/singaporeTime";
 import { ApiError, equipmentApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
@@ -22,15 +23,9 @@ const queue = useEquipmentQueueStore();
 // Inventory is the main view, so it is what a tech support login lands on.
 const activeTab = computed(() => (route.query.tab === "availability" ? "availability" : "inventory"));
 
-function localDateTime(hour) {
-  const date = new Date();
-  date.setHours(hour, 0, 0, 0);
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-const startAt = ref(localDateTime(9));
-const endAt = ref(localDateTime(17));
+const initialWindow = defaultInventoryWindow();
+const startAt = ref(initialWindow.startAt);
+const endAt = ref(initialWindow.endAt);
 // D47: the check offers the live catalogue (GET /equipment/catalogue), loaded
 // when the availability view first opens, rather than a fixed list.
 const catalogue = ref([]);
@@ -51,7 +46,6 @@ const inventoryError = ref("");
 const inventoryLoaded = ref(false);
 // D46: the table counts one window, its own rather than the availability
 // check's, and says which. shownWindow is the window the rows were loaded for.
-const initialWindow = defaultInventoryWindow();
 const inventoryStartAt = ref(initialWindow.startAt);
 const inventoryEndAt = ref(initialWindow.endAt);
 const shownWindow = ref(null);
@@ -187,7 +181,7 @@ function removeItem(index) {
 
 function validateForm() {
   validationMessage.value = "";
-  if (!startAt.value || !endAt.value || new Date(endAt.value) <= new Date(startAt.value)) {
+  if (!startAt.value || !endAt.value || endAt.value <= startAt.value) {
     validationMessage.value = "End time must be later than the start time.";
     return false;
   }
@@ -210,8 +204,8 @@ async function checkAvailability() {
   isLoading.value = true;
   try {
     const payload = {
-      start_at: new Date(startAt.value).toISOString(),
-      end_at: new Date(endAt.value).toISOString(),
+      start_at: toSingaporeIso(...startAt.value.split("T")),
+      end_at: toSingaporeIso(...endAt.value.split("T")),
       items: items.value.map((item) => ({
         equipment_id: item.equipmentId,
         quantity_needed: Number(item.quantityNeeded),
@@ -243,8 +237,8 @@ async function loadInventory() {
     const response = await authStore.withSession(async (token) => {
       const [inventory, maintenance] = await Promise.all([
         equipmentApi.inventory(
-          new Date(window.startAt).toISOString(),
-          new Date(window.endAt).toISOString(),
+          toSingaporeIso(...window.startAt.split("T")),
+          toSingaporeIso(...window.endAt.split("T")),
           token,
         ),
         equipmentApi.maintenance(token),
@@ -282,14 +276,6 @@ watch(
   },
   { immediate: true },
 );
-
-function formatDate(value) {
-  return new Intl.DateTimeFormat("en-SG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
-  }).format(new Date(value));
-}
 </script>
 
 <template>
@@ -427,7 +413,7 @@ function formatDate(value) {
                 <span class="shrink-0 border-2 border-ink px-3 py-1 text-xs font-bold" :class="maintenanceStatusClass(item.status)">{{ item.status.replace("_", " ") }}</span>
               </div>
               <span class="text-sm font-medium text-ink/75">{{ item.reason || "No reason provided" }}</span>
-              <span class="text-xs font-bold text-ink/55">{{ formatDate(item.start_at) }} – {{ formatDate(item.end_at) }}</span>
+              <span class="text-xs font-bold text-ink/55">{{ formatSingaporeDateTime(item.start_at) }} – {{ formatSingaporeDateTime(item.end_at) }}</span>
             </li>
           </ul>
           <BauhausEmptyState

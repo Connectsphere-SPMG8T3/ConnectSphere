@@ -130,6 +130,7 @@ DB_SCRIPTS = [
     ("change_request_decision_checks.sql", "TC-CHANGE-024 (story 37 database half: decisions, moves, marks, sends, re-review)"),
     ("technical_preparation_checks.sql", "TC-TPREP-001–006 (CR-110 database half: refusals, Preparation, history, notices, RLS)"),
     ("registration_waitlist_checks.sql", "TC-REG-020, 022–028 (SCRUM-86 database half)"),
+    ("change_history_checks.sql", "TC-HIST-001–007 (story 62 database half: recorded edits, append-only history, RLS)"),
 ]
 
 
@@ -278,6 +279,14 @@ class Check:
 
 
 API_CHECKS: list[Check] = []
+
+
+def _matches_keyword(keyword: str | None, content: str) -> bool:
+    if not keyword:
+        return True
+    terms = [term.strip().lower() for term in keyword.split(",") if term.strip()]
+    content = content.lower()
+    return not terms or any(term in content for term in terms)
 
 
 def check(case_id: str, title: str, creates_accounts: bool = False, needs_db: bool = False):
@@ -721,6 +730,136 @@ def _(ctx: Context) -> None:
     expect_status(denied, 403)
 
 
+def managed_registration_fixture(ctx: Context, case: str) -> tuple[str, dict]:
+    event_id = throwaway_event(
+        ctx,
+        case,
+        "2031-08-14 09:00+08",
+        "2031-08-14 12:00+08",
+        status="confirmed",
+    )
+    db_query(
+        "update public.events set registration_enabled = true, registration_capacity = 5, "
+        "registration_opens_at = '2031-08-13 09:00+08', "
+        "registration_closes_at = '2031-08-14 08:00+08' "
+        f"where id = '{event_id}'"
+    )
+    db_query(
+        "insert into public.event_registrations "
+        "(event_id, attendee_id, status, withdrawn_at, waitlist_order, invited_at, invitation_expires_at) values "
+        f"('{event_id}', '{ATTENDEE_ID}', 'registered', null, null, null, null), "
+        f"('{event_id}', 'a0000000-0000-4000-8000-000000000002', 'invited', null, null, now(), now() + interval '1 day'), "
+        f"('{event_id}', 'a0000000-0000-4000-8000-000000000003', 'waitlisted', null, 1, null, null), "
+        f"('{event_id}', 'a0000000-0000-4000-8000-000000000004', 'withdrawn', now(), null, null, null), "
+        f"('{event_id}', 'a0000000-0000-4000-8000-000000000006', 'cancelled', null, null, null, null), "
+        f"('{event_id}', 'a0000000-0000-4000-8000-000000000007', 'invitation_expired', null, null, now(), null), "
+        f"('{event_id}', 'a0000000-0000-4000-8000-000000000008', 'left', null, null, null, null)"
+    )
+    [attendee] = db_query(
+        "select id::text as id, full_name, email, phone_number "
+        f"from public.profiles where id = '{ATTENDEE_ID}'"
+    )
+    return event_id, attendee
+
+
+@check(
+    "TC-REG-029",
+    "Assigned managers see current counts and role-appropriate registration details",
+    needs_db=True,
+)
+def _(ctx: Context) -> None:
+    event_id, attendee = managed_registration_fixture(ctx, "35-029")
+    url = f"{ctx.api}/events/{event_id}/registrations"
+    coordinator = ctx.shared("event_coordinator")
+    organiser = ctx.shared("event_organiser")
+    coordinator_response = ctx.client.get(url, headers=coordinator.headers)
+    expect_status(coordinator_response, 200)
+    coordinator_report = coordinator_response.json()
+    expect(
+        (coordinator_report.get("effective_capacity"), coordinator_report.get("registered_count"),
+         coordinator_report.get("remaining_places"), coordinator_report.get("waitlist_count"))
+        == (5, 1, 3, 1),
+        f"unexpected coordinator summary: {coordinator_report}",
+    )
+    expect(
+        {row.get("status") for row in coordinator_report["registrations"]}
+        == {"registered", "waitlisted", "invited", "withdrawn"},
+        f"registration report returned unexpected manager-visible statuses: {coordinator_report['registrations']}",
+    )
+    coordinator_row = next(row for row in coordinator_report["registrations"] if row["status"] == "registered")
+    expect(
+        (coordinator_row.get("full_name"), coordinator_row.get("email"))
+        == (attendee["full_name"], attendee["email"]),
+        f"coordinator contact details differ from the attendee profile: {coordinator_row}",
+    )
+    if attendee.get("phone_number"):
+        expect(coordinator_row.get("phone_number") == attendee["phone_number"],
+               "coordinator response omitted the available phone number")
+
+    organiser_response = ctx.client.get(url, headers=organiser.headers)
+    expect_status(organiser_response, 200)
+    organiser_report = organiser_response.json()
+    expect(
+        (organiser_report.get("registered_count"), organiser_report.get("remaining_places"))
+        == (1, 3),
+        f"unexpected organiser summary: {organiser_report}",
+    )
+    organiser_row = next(row for row in organiser_report["registrations"] if row["status"] == "registered")
+    expect(organiser_row.get("full_name") == attendee["full_name"], "organiser did not receive the attendee name")
+    expect(
+        not {"email", "phone_number"} & organiser_row.keys(),
+        f"organiser response included contact fields: {organiser_row}",
+    )
+
+    switch = ctx.client.post(
+        f"{ctx.api}/auth/active-role",
+        json={"role": "venue_staff"},
+        headers=coordinator.headers,
+    )
+    expect_status(switch, 200)
+    expect_status(ctx.client.get(url, headers=coordinator.headers), 403)
+    switch_back = ctx.client.post(
+        f"{ctx.api}/auth/active-role",
+        json={"role": "event_coordinator"},
+        headers=coordinator.headers,
+    )
+    expect_status(switch_back, 200)
+
+
+@check("TC-REG-030", "Event registration reports require ownership or coordinator assignment", needs_db=True)
+def _(ctx: Context) -> None:
+    unassigned_event = throwaway_event(
+        ctx,
+        "35-030-unassigned",
+        "2031-08-14 09:00+08",
+        "2031-08-14 12:00+08",
+        status="confirmed",
+        assigned=False,
+    )
+    other_owner_event = throwaway_event(
+        ctx,
+        "35-030-other-owner",
+        "2031-08-14 09:00+08",
+        "2031-08-14 12:00+08",
+        status="confirmed",
+    )
+    db_query(
+        "update public.events set organiser_id = 'a0000000-0000-4000-8000-000000000008' "
+        f"where id = '{other_owner_event}'"
+    )
+
+    coordinator = ctx.shared("event_coordinator")
+    organiser = ctx.shared("event_organiser")
+    expect_status(
+        ctx.client.get(f"{ctx.api}/events/{unassigned_event}/registrations", headers=coordinator.headers),
+        403,
+    )
+    expect_status(
+        ctx.client.get(f"{ctx.api}/events/{other_owner_event}/registrations", headers=organiser.headers),
+        403,
+    )
+
+
 @check(
     "TC-REG-017",
     "Withdrawal is caller-scoped, releases one place, and follows cutoff and re-registration settings",
@@ -994,7 +1133,7 @@ def _(ctx: Context) -> None:
 # --- Coordinator dashboard (SCRUM-72) --------------------------------------
 
 COORDINATOR_DASHBOARD = "/events/dashboard/coordinator"
-ACTIVE_COORDINATOR_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed"}
+ACTIVE_COORDINATOR_STATUSES = {"under_review", "returned", "planning", "safety_review", "confirmed", "preparation"}
 # supabase/seed.sql: review fixtures assigned to coordinator@connectsphere.dev.
 REVIEW_FIXTURES = {"e0000000-0000-4000-8000-000000000201", "e0000000-0000-4000-8000-000000000202"}
 
@@ -1694,6 +1833,9 @@ def _(ctx: Context) -> None:
 
 @check("TC-BOOK-004", "An event that already holds a venue can't request another")
 def _(ctx: Context) -> None:
+    # Without its held booking the request would succeed and book Heritage Hall for
+    # real (D78), so stop as blocked first. PLANNING_FIXTURE is SAFE_EVENT.
+    safety_fixture(ctx)
     response = request_venue(ctx, ctx.shared("event_coordinator"), PLANNING_FIXTURE, HERITAGE_HALL)
     expect_status(response, 409)
     expect_detail(response, "This event already has a venue booking.")
@@ -3765,7 +3907,7 @@ class Result:
 def run_api_checks(ctx: Context, keyword: str | None, skip_accounts: bool) -> list[Result]:
     results = []
     for item in API_CHECKS:
-        if keyword and keyword.lower() not in f"{item.case_id} {item.title}".lower():
+        if not _matches_keyword(keyword, f"{item.case_id} {item.title}"):
             continue
         if item.creates_accounts and skip_accounts:
             print(f"  SKIP  {item.case_id:<28} {item.title} (creates an account; needs the database)")
@@ -4758,6 +4900,80 @@ def _(ctx: Context) -> None:
     [event] = db_query(f"select status::text from public.events where id = '{event_id}'")
     expect(event["status"] == "confirmed", f"a refused update moved the event to {event['status']}")
 
+
+# --- Story 62: an event's change history -------------------------------------------
+# Needs migration 20261030120000 applied. Each check makes its own throwaway event;
+# its history cascades when the run deletes it.
+def event_history(ctx: Context, event_id: str, role: str) -> httpx.Response:
+    return ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=ctx.shared(role).headers)
+
+
+@check("TC-HIST-008", "An edit to a returned request shows in its history with the old and new value", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "HIST008", "2031-12-10 09:00+08", "2031-12-10 12:00+08", status="returned")
+    edited = ctx.client.patch(f"{ctx.api}/events/{event_id}", json={"description": "Now with a keynote"},
+                              headers=ctx.shared("event_organiser").headers)
+    expect_status(edited, 200)
+    for role in ("event_organiser", "event_coordinator"):
+        response = event_history(ctx, event_id, role)
+        expect_status(response, 200)
+        edits = [entry for entry in response.json()["entries"] if entry["kind"] == "edit"]
+        expect(len(edits) == 1, f"{role} sees {len(edits)} edits, expected 1")
+        [edit] = edits
+        expect(edit["field"] == "description" and edit["old_value"] is None
+               and edit["new_value"] == "Now with a keynote", f"{role} sees {edit}")
+        expect((edit["actor"] or {}).get("id") == "a0000000-0000-4000-8000-000000000001",
+               f"{role} sees the edit made by {edit['actor']}")
+
+
+@check("TC-HIST-009", "The organiser's history has no staff-only entries or safety comments; "
+                      "the coordinator's has them", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "HIST009", "2031-12-11 09:00+08", "2031-12-11 12:00+08", status="planning")
+    db_query(
+        "insert into public.event_safety_decisions (event_id, decision, comment, decided_by) values "
+        f"('{event_id}', 'changes_requested', 'HIST009 officer note', 'a0000000-0000-4000-8000-000000000006');"
+        "insert into public.event_technical_history (event_id, action, actor_id) values "
+        f"('{event_id}', 'preparation', 'a0000000-0000-4000-8000-000000000004')"
+    )
+    organiser = event_history(ctx, event_id, "event_organiser")
+    expect_status(organiser, 200)
+    kinds = [entry["kind"] for entry in organiser.json()["entries"]]
+    expect("safety_decision" in kinds, f"the organiser doesn't see the safety outcome: {kinds}")
+    expect("technical" not in kinds and "booking" not in kinds, f"the organiser sees staff-only entries: {kinds}")
+    expect("HIST009 officer note" not in organiser.text, "the safety comment reached the organiser's response")
+    coordinator = event_history(ctx, event_id, "event_coordinator")
+    expect_status(coordinator, 200)
+    kinds = [entry["kind"] for entry in coordinator.json()["entries"]]
+    expect({"safety_decision", "technical"} <= set(kinds), f"the coordinator misses entries: {kinds}")
+    expect("HIST009 officer note" in coordinator.text, "the coordinator doesn't see the safety comment")
+
+
+@check("TC-HIST-015", "A venue edit made while the event holds the venue shows in the coordinator's history only",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, payload = cr94_venue(ctx, "HIST015")
+    event_id, _ = cr94_booking(ctx, "HIST015", venue_id)
+    body = edit_venue(ctx, venue_id, {**payload, "description": "HIST015 new description"})
+    expect(body["saved"] is True, f"the harmless edit wasn't saved: {body}")
+    coordinator = event_history(ctx, event_id, "event_coordinator")
+    expect_status(coordinator, 200)
+    edits = [entry for entry in coordinator.json()["entries"] if entry["kind"] == "venue_edit"]
+    expect(len(edits) == 1, f"the coordinator sees {len(edits)} venue edits, expected 1")
+    expect(edits[0]["new_value"].get("description") == "HIST015 new description", f"venue edit {edits[0]}")
+    organiser = event_history(ctx, event_id, "event_organiser")
+    expect_status(organiser, 200)
+    expect("venue_edit" not in [entry["kind"] for entry in organiser.json()["entries"]],
+           "the organiser sees a venue edit")
+
+
+@check("TC-HIST-010", "Venue staff, tech support and attendees can't read an event's history", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "HIST010", "2031-12-12 09:00+08", "2031-12-12 12:00+08", status="planning")
+    for role in ("venue_staff", "tech_support", "attendee"):
+        expect_status(event_history(ctx, event_id, role), 403)
+
+
 def db_query(sql: str) -> list[dict]:
     completed = _supabase_query(sql)
     if completed.returncode != 0:
@@ -4794,7 +5010,7 @@ def cleanup_throwaway_data(run_id: str) -> dict[str, int]:
 def run_db_checks(keyword: str | None) -> list[Result]:
     results = []
     for script, cases in DB_SCRIPTS:
-        if keyword and keyword.lower() not in f"{script} {cases}".lower():
+        if not _matches_keyword(keyword, f"{script} {cases}"):
             continue
         title = f"{cases}: supabase/verification/{script}"
         if script == "safety_decision_checks.sql":
@@ -4934,7 +5150,9 @@ def main() -> int:
         "--skip-db", action="store_true", help="skip the supabase/verification scripts and the sign-up checks"
     )
     parser.add_argument("--skip-api", action="store_true", help="skip the API checks")
-    parser.add_argument("-k", dest="keyword", help="only checks whose ID, title or script contains this")
+    parser.add_argument(
+        "-k", dest="keyword", help="only checks containing this keyword; comma-separated keywords are ORed"
+    )
     args = parser.parse_args()
 
     started = dt.datetime.now(SGT)

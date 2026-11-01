@@ -1,5 +1,5 @@
 # ConnectSphere — Build Log
-**What each story, fix and enabler actually built, in the order it landed.** Append-only.
+**What each story, fix and enabler actually built, in the order it landed, up to 1 Nov 2026.** Frozen: no new entries.
 
 This is the requirement → code → test trail the course rubric rewards. Each entry quotes its backlog record verbatim (the Jira issue until Sprint 2, the Product backlog sheet row from Sprint 3) and records how the ticket was interpreted, what was built, and how it was verified.
 
@@ -7,46 +7,17 @@ This is the requirement → code → test trail the course rubric rewards. Each 
 - Inside entries, a bare "§1"–"§3" or "§5"–"§7" means [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md); a bare "§4.N" means this file.
 - For what exists *now*, see [`IMPLEMENTATION_MAP.md`](IMPLEMENTATION_MAP.md); for what the system *should* do, [`REQUIREMENTS.md`](REQUIREMENTS.md).
 
-## How to add an entry
+## Frozen on 2026-11-01
 
-When a story is completed, copy the template below, fill it in from the PBI's row in the Product backlog sheet (Jira for stories before Sprint 3) (don't paraphrase the user story or acceptance criteria — quote them verbatim, the same way SCRUM-48's entry does), and add it as a new `###` subsection *after* the most recent entry, so the log reads chronologically. Do not delete or rewrite prior entries when requirements change later — instead, add a new entry for the story that changes them, and note in that new entry which earlier entry/behaviour it supersedes. This keeps the log an honest history of what was built and when, which is exactly the kind of requirement → code traceability the course rubric ([`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) §1) rewards.
+No new entries are added. Every branch appended the next number, so open PRs kept conflicting here, and five numbers were used twice (4.9, 4.31, 4.44, 4.51 and 4.108; cite those by title as well as number).
 
-<details>
-<summary><strong>Template for a new entry (click to expand)</strong></summary>
+From 2026-11-01 a story or fix is recorded in:
 
-```markdown
-### 4.N. SCRUM-XX / CR-XX — <title> (exact backlog record)
+- **its PR description**: what was built, each acceptance criterion with its tests and TC IDs, how it was verified, and what wasn't;
+- **[`REQUIREMENTS.md`](REQUIREMENTS.md)**: how a story was interpreted, as **[Assumption]** or **[Team decision]** citing the `QA-<row>`;
+- **the Product backlog sheet**: the same interpretation in the story's Customer clarification or Notes column.
 
-| Field | Value |
-|---|---|
-| ID | `SCRUM-XX` or `CR-XX` |
-| Title | <copy from the Product backlog> |
-| Type | US: Core feature / US: Non-core feature / Bug fix / Enhancement |
-| Status | <status at time of writing this entry> |
-| Epic | <epic name> |
-| Sprint | <sprint number> |
-| Estimate | <n> story points |
-| Priority | P1–P5 |
-| Customer clarification | <session and date, or "none"> |
-
-**User story (verbatim):**
-
-> <paste exactly as written in the Product backlog>
-
-**Acceptance criteria (verbatim from the Product backlog):**
-
-> <paste exactly as written, including any typos — note them rather than silently fixing them>
-
-#### How the implementation maps to the ticket
-
-<Explain anything the ticket left implicit that you had to interpret, and what NFRs or prior log entries justified that interpretation. Be explicit about assumptions vs. literal ticket text — an instructor may ask "where did requirement X come from?" and the answer should be findable here.>
-
-What was actually built:
-
-1. <bullet per behaviour, naming the actual file/endpoint/component that implements it>
-```
-
-</details>
+The entries below stay as they are and keep their numbers, so citations such as "BUILD_LOG §4.17" still work.
 
 ## Entries
 
@@ -3658,3 +3629,133 @@ Implemented on `feature/cr-110-technical-preparation`, branched from `main` whil
 - The full backend suite passed (2,358 tests) and the full frontend unit suite passed (1,795 tests).
 
 **Broader recorded-suite results.** The API/database run passed 223/225 checks. `equipment_availability_checks.sql` is the known D67 verification failure, and `venue_block_create_checks.sql` is D74. Neither check covers SCRUM-86. The browser run passed 101/106 checks with one blocked; the four failures are the already documented D68 checks. TC-REG-011 was blocked because no in-progress registration was available. These outcomes remain in the run records; none is a failure of the SCRUM-86 checks above.
+
+### 4.109. Bug fix D71 — a Preparation event that stops being ready returns to Planning
+
+On `fix/d71-preparation-returns-to-planning`, 2026-10-30. Defect: DEFECTS D71 (Medium). Affects CR-104 AC10, with CR-109/CR-110 (which move events into Preparation). Migration `20261030140000`, applied live 2026-10-30; no API contract change.
+
+**Symptom.** When an arrangement stopped being ready after an event entered Preparation, the event stayed in Preparation. CR-104 AC10 and REQUIREMENTS §6.7 send it back to Planning. The reachable case is a venue deactivation or edit flagging the event's booking: `flag_venue_bookings` has no event-status filter. D71 also named an equipment line marked Not available and a cleared exit check, but those functions already refuse a Preparation event (`event_closed`), so they can't cause it.
+
+**Reproduction.** `events.service.return_to_planning` returned `None` for a Preparation event without calling the database: the extended `test_return_to_planning.py` contract failed 4 times, one per reason (`'NoneType' object has no attribute 'status'`). On the live project, `safety_decision_checks.sql` extended with a Preparation source failed with `22023 Invalid safety withdrawal source status`.
+
+**Root cause.** Three layers each listed only Safety review and Confirmed: the service's status filter, lifecycle `approved_change` (marked `TODO(68 AC8)`), and the database function's source check. The service also passed `lifecycle.allowed_from(action)[0]` as the source, which only works while an action has exactly one source.
+
+**Why tests missed it.** Two tests in `test_safety_contracts.py` pinned `approved_change` to Confirmed only, as a placeholder "until 68 lands". When CR-110 started moving events into Preparation, nothing linked it back to those placeholders.
+
+**Fix.** `approved_change` now runs from confirmed or preparation, matching §6.7. `return_to_planning` accepts `preparation` and passes the event's own status to the database. Migration `20261030140000` re-creates `return_event_to_planning` to accept `preparation`, with the same signature, grants and notifications: the coordinator is told, and Safety Officers only on a withdrawal from Safety review. The two placeholder tests now assert the documented rule.
+
+**Blast radius.** The venue edit and deactivation callers (and `equipment.service._after`, unreachable for Preparation for now) have no status filter of their own, so they now return Preparation events too, as AC10 intends. The equipment functions' `planning`/`safety_review`/`confirmed` guard is unchanged; whether technical support should act on lines during Preparation is a product question, not part of this fix. The CR-95 replacement path (`venues/service.py`, asking for a replacement venue) still checks `safety_review`/`confirmed` itself. It's left alone: a Preparation event whose booking is flagged now returns to Planning when it's flagged, before a replacement can be asked for. Data: on the live project, both Preparation events were `not_required` with no flagged bookings, so no event was stuck.
+
+**Verified.** Tests failed first, as above. Backend suite 2,501/2,501; the changed lines in `events/service.py` are covered. The migration and the extended `safety_decision_checks.sql` passed together in one rolled-back transaction on the live project (TC-SDEC-036), and the live function was unchanged afterwards. Applied live 2026-10-30. `supabase db push` was refused because two live migrations from a teammate's unpushed work (`20261029120000`, `20261030120000`) aren't in the repository, so the migration SQL was run as written and recorded in `supabase_migrations.schema_migrations` under its own version, as `db push` does. `migration list` now shows it local = remote. After the push, `safety_decision_checks.sql` passes and the security advisors are unchanged. New browser check **TC-SDEC-037** (`venue-deactivation.e2e.js`): venue staff deactivate the venue of a throwaway Preparation event and the coordinator's page shows Planning. It failed on the old backend (`Expected "planning", Received "preparation"`) and passes on the fix; a screenshot is attached to the PR. Noticed, not changed: the History card shows the system's return as "by Unknown user", as it already did for any system withdrawal. Recorded runs: [API and database](test-cases/runs/2026-10-30-1615-api-db-39a83ed.md) 237/238, where the one failure is `equipment_availability_checks.sql`, D67, fixed on `fix/d67-verification-scripts` (PR #121), which this branch predates. [Browser](test-cases/runs/2026-10-31-1351-e2e-39a83ed.md) 107/111, where the four failures are D68's known TC-RBAC-005, TC-TSD-017, TC-AUTH-037/038 and TC-AUTH-046. A first browser recording on 2026-10-30 was deleted because a local DNS outage mid-run failed 13 checks at sign-in or setup. Screenshot: `docs/screenshots/fix-d71-preparation-returns-to-planning/after-returns-to-planning.png`.
+### 4.108. 62 — View an event's change history
+
+Implemented on `feature/scrum-62-change-history`, branched from `main` at `f848a03`. Planned with the developer in a grilling session; the decisions went into ADR-0008, `docs/REQUIREMENTS.md` IM-R1/IM-R2 and §9 items 110–113, and the terms "change history" and "history entry" into `GLOSSARY.md`.
+
+**Scope decisions.** The history is read when it is asked for from each part's own record (status, assignment, change and cancellation requests, safety decisions, venue bookings, technical history, venue edits), not copied into one log (ADR-0008); the one record nothing kept, field edits, gets its own table. AC2 was reworded in the Product backlog (developer, 2026-10-30): the customer's answer asks for what changed, who and when, accessible from the UI, and never mentions a filter, so "filterable by field and by person" was dropped. The existing History lists on the organiser's and coordinator's event pages show the new entries; no new page. The organiser sees status, assignments, requests and decisions, edits and safety outcomes; the coordinator also sees booking steps, technical updates, venue edits and the safety comment. Venue staff and tech support keep their own pages' history and get 403 on the event's. Edits to a draft are saved but not recorded, and a venue edit counts while the event held or booked that venue **[Assumption]**, §9 items 110–113.
+
+**Changed.** Migration `20261030120000`: table `event_edit_history`; `private.record_event_edits` (one row per changed field; story 112's coordinator edits will call it too); `public.edit_event`, which saves an edit at the expected version and status and records it in the same transaction (ADR-0007); `private.refuse_history_change` with append-only triggers on the 8 tables the history is read from, so a direct UPDATE or DELETE fails with `55000` while foreign-key cascades and set-nulls still work, plus a transaction-local maintenance switch that `event_review_fixture_reset.sql` now sets. Backend: returned-event `PATCH` and `resubmit` save through `events.repository.edit_event`; `events.service.history()` adds the five new kinds and filters them per active role; `EventHistoryEntry` gains the kind-specific fields and drops each outside its kinds; `venues.service.event_booking_history` / `event_venue_edits` and `equipment.service.event_technical_history` give the events module the other modules' entries. Frontend: `EventStatusHistory` renders the new kinds.
+
+**Existing test changed (developer's decision).** `test_event_amendment_api.py`'s `events` fixture gains an `edit_event` fake that records the edit and delegates to its `update_event` fake, because AC1 moves returned-event edits to `edit_event`; no assertion changed.
+
+**Found while building.** The safety decision has one comment and no separate private note, so showing it to the organiser could leak internal reasoning; the organiser sees the outcome only until that is resolved (DEFECTS D76, open).
+
+**Automated verification.** pytest: 2,497 passed (edits recorded and not recorded for drafts, every entry kind, per-role filtering, the SCRUM-76 active-role denials — proved by breaking the role gate on purpose, which failed 6 tests). Vitest: 1,892 passed. Coverage: the 15 uncovered changed backend lines are the Supabase adapters the offline suite stubs (`events.repository.edit_event` / `list_edit_history`, `venues.repository.list_event_booking_history` / `list_event_bookings_for_history`, `venues.service.event_booking_history`, `equipment.service.event_technical_history`); the live checks TC-HIST-008–011 and 015 exercise them (developer's decision, 2026-10-30).
+
+**Local Supabase stack (2026-10-30).** Against the Docker stack with the patched seed (D72), backend on :8010 and SPA on :5180: TC-HIST-001–007 (database), 008, 009, 010, 015 (API) and 011 (browser) pass; the full API and database run was 236/239, the three failures not from this story (TC-DASH-013's own status list lacked `preparation`, fixed in this branch; `event_space_checks.sql`, a gap in the local seed; `equipment_availability_checks.sql`, D67).
+
+**Shared project (2026-10-30).** Migration `20261030120000` applied in one transaction (`supabase db query --linked -f`, then `migration repair`); the table, function and 8 triggers were confirmed. No function on the shared project updates or deletes a protected history row (the seven that update `event_change_requests` only touch open ones). The schema linter shows nothing for the new functions and the advisors nothing new. Recorded runs against a backend (:8010) and SPA (:5180) on this branch: every check that reads a history, story 62's and the other stories' [18/18](test-cases/runs/2026-10-30-1344-api-db-f848a03.md) in 116 s; the returned-edit database half [1/1](test-cases/runs/2026-10-30-1347-api-db-f848a03.md); TC-HIST-011 and the organiser event page [3/3](test-cases/runs/2026-10-30-1347-e2e-f848a03.md). The full API run was not repeated on the shared project (it takes about 30 minutes); the local full run covers the rest. No throwaway records were left behind.
+
+**Manual pass (developer, 2026-10-30, shared project).** TC-HIST-012–014 passed ([run](test-cases/runs/2026-10-30-2007-manual-f848a03.md)); review fixture `…0201` was returned, edited and resubmitted for it, so its edit entries stay.
+
+**Not verified.** The full API run on the shared project (about 30 minutes; the local full run covers it).
+### 4.108. Bug fix D67 — stale database verification scripts after story 37
+
+On `fix/d67-verification-scripts`, 2026-10-30. Defect: DEFECTS D67 (Medium, verification). No product code, migration or API contract changed; one verification script changed.
+
+**Symptom.** On 2026-10-25 at main `02dc0e3`, four SQL checks failed: `venue_booking_approve_checks.sql` and `venue_booking_reject_checks.sql` ("a re_review booking was not refused"), `equipment_reservation_checks.sql` ("the line that no longer fits is reserved") and `equipment_availability_checks.sql` (D57, "time change must flag retired stock for re-review while retaining the hold").
+
+**Reproduction.** On 2026-10-30, each script was run alone with `supabase db query --linked -f` against the live project, at main `54c6cb9`. Approve, reject and reservation passed. Availability still raised the D57 error.
+
+**Root cause.** The product was right; the scripts were stale. Story 37's migration `20261025120000` was pushed live before its PR merged. It changed `recheck_event_reservations`: a line the new window leaves short now stays `reserved` and is marked Needs re-review (`needs_re_review_since`/`_reason`), where it used to become `re_review` (CR-R23, CR-R27, Q14). It also let venue staff decide a `re_review` booking (Q12). The 22:43 run paired main's older scripts with that newer database. Story 37's branch had updated the approve, reject and reservation scripts (`432adfc`, `5382599`, `0dc31e8`), so they passed once it merged. `equipment_availability_checks.sql` was written on 23-R's branch (`15d9243`) at the same time, still expecting `re_review`, and nobody updated it. REQUIREMENTS AV-R4 already records the new behaviour for retired stock.
+
+**Why tests missed it.** The SQL scripts only run against the live project, through `verify_live.py`, not in CI. Two branches changed and checked the same function in parallel, and neither branch's run included the other's change.
+
+**Fix.** `equipment_availability_checks.sql` now expects the short line to stay `reserved`, with reason `Event time changed; 0 free for 3.`. It then sends the line to technical support with `send_equipment_line_for_re_review`, the coordinator's step since story 37 (AC6), before checking that retired stock can't be re-reserved (`insufficient`, 0 free). Without that step, the line is still Reserved and the re-reserve check would test the wrong refusal (`not_reservable`).
+
+**Blast radius.** Every other caller of `recheck_event_reservations` and `send_equipment_line_for_re_review` in `supabase/verification/` is the reservation script, already updated by 37. All 37 scripts listed in `verify_live.py` pass alone against the live project. Not data: the scripts roll back.
+
+**Verified.** The availability script failed on the D57 assertion before the change, then on the re-reserve step (`not_reservable`) after the first edit, and passes after the second. All 37 SQL verification scripts pass live (2026-10-30). The API and browser suites were not re-run, since nothing they exercise changed.
+
+**Noticed, not changed.** `supabase migration list --linked` shows two live migrations not on `main`: `20261029120000` and `20261030120000`, presumably from open branches. This is the same pattern that caused D67.
+  
+  ### 4.109. SCRUM-35 — View registrations for events I manage
+
+| Field | Value |
+|---|---|
+| ID | `SCRUM-35` |
+| Title | View registrations for events I manage |
+| Type | US: Core feature |
+| Status | Implemented; developer manual pass pending |
+| Epic | Attendee registration |
+| Sprint | Not included in the story details supplied for implementation |
+| Estimate | Not included in the story details supplied for implementation |
+| Priority | Not included in the story details supplied for implementation |
+| Customer clarification | Revised acceptance criteria supplied by the developer; AC7 CSV export approved 2026-10-31. The disabled-registration display assumption is recorded in REQUIREMENTS §6.18 and open question §9 item 110 |
+
+**User story (verbatim):**
+
+> See registration numbers and attendee details for the events I'm assigned, with the Event Organiser seeing the same for events they own
+
+**Acceptance criteria (verbatim from the revised story; AC7 is the developer-approved extension):**
+
+> AC1. Given a user requests registrations for an event, when they are acting as the active Event Coordinator assigned to that event or the active Event Organiser who owns it, then they can view that event’s registrations only. Anyone else receives 403, including a user who holds a permitted role but is acting in a different active role.
+>
+> AC2. Given an authorised user views an event’s registrations, then the summary shows the number of Registered attendees and remaining places. Remaining places equal effective capacity—the lower of the event registration limit and venue capacity—minus Registered attendees and active invitation reservations. Waitlisted and Withdrawn records do not consume capacity. When waitlist entries exist, the summary shows their count; Invited attendees are not counted as waiting.
+>
+> AC3. Given the active Event Coordinator assigned to the event views its registrations, then each row shows the attendee’s full name, email, phone number when available, and current status: Registered, Waitlisted, Invited, or Withdrawn.
+>
+> AC4. Given the active Event Organiser who owns the event views its registrations, then they see the same counts and attendee names and statuses, but no email or phone information is returned or displayed.
+>
+> AC5. Given an authorised user views the list, when they select a status or enter part of an attendee’s name, then the list shows matching records. Status filtering and name search can be used together; name matching is case-insensitive.
+>
+> AC6. Given an attendee registers, withdraws, joins or leaves the waitlist, or an invitation is issued, accepted, declined, or expires, when an authorised user refreshes the registrations view, then the counts and list reflect the latest stored state.
+>
+> AC7. Given an authorised manager is viewing an event’s registrations, when they choose Export CSV, then a CSV participant list downloads with every stored registration row for that event regardless of the active search or status filters, and with only the contact fields permitted for their active role.
+
+#### How the implementation maps to the ticket
+
+The revised criteria define access by the active role and its relationship to the event, so the API checks the active Event Coordinator assignment or active Event Organiser ownership and returns 403 for other relationships. The report uses effective capacity, subtracts registered attendees and active invitation reservations, and keeps waitlisted/withdrawn rows out of occupancy. After the developer's 2026-10-31 decision, the report and CSV expose only the four acceptance-criteria statuses (Registered, Waitlisted, Invited and Withdrawn); `cancelled`, `invitation_expired` and `left` remain stored but are not returned to managers. Organiser responses omit email and phone at the API boundary. AC7's CSV includes every report row regardless of active filters and preserves role-specific fields. Phone-width layout keeps summary metrics, filter controls, names and statuses in compact rows.
+
+The revised criteria do not specify whether a manager can still review existing records after registration is disabled. The implementation keeps the report visible in that state so historical and terminal records remain accessible; this is an [Assumption], recorded in REQUIREMENTS §6.18 and open question §9 item 110.
+
+What was actually built:
+
+1. `GET /api/v1/events/{event_id}/registrations` authorises only the active assigned coordinator or owning organiser and returns counts, capacity, statuses and role-appropriate contact fields.
+2. `ManagedRegistrationsPanel.vue` is shared by organiser and coordinator event details, with combined case-insensitive name search and status filtering, Refresh, role-specific contact display, a CSV download of all rows, and compact phone layouts. `managedRegistrationsCsv.js` supplies spreadsheet-safe escaping, role-specific columns and accessible status labels.
+3. `backend/scripts/verify_live.py` and `frontend/e2e/manager-registrations.e2e.js` provide disposable-data checks for the API/database and browser flows, including a 375px Playwright regression for long status badges. No schema migration or new dependency was needed.
+
+**Verification.**
+- Full backend suite: 2,508 passed.
+- Full frontend suite: 1,905 passed across 118 files (97.99% overall coverage); the new shared report component and CSV formatter have 100% line coverage. Production frontend build passed.
+- Live TC-REG-029/030 API/database checks and TC-REG-031/033/034 browser checks passed against the revised four-status report and are recorded in [the API/database run](test-cases/runs/2026-10-31-1030-api-db-54c6cb9.md) and [the browser run](test-cases/runs/2026-10-31-1055-e2e-54c6cb9.md).
+- Manual TC-REG-032 passed after the final status-scope change. The developer confirmed both organiser and coordinator pages at desktop width and 375px, including the four-status report/CSV scope.
+
+### 4.110. Bug fix D61 — Tech Support dashboard times in Singapore time
+
+On `fix/d61-tech-support-times-singapore`, 2026-10-31. Defect: DEFECTS D61 (Medium). Frontend only; no API or database change. Codex wrote the implementation and tests from a requirements brief; Claude reviewed them and verified the fix live.
+
+**Symptom.** The maintenance cards formatted times with `timeZone: "UTC"`, so an outage starting 25 Oct 00:00 in Singapore showed as "24 Oct, 4:00 pm". The availability check and inventory window did the opposite: they read the typed date and time, and picked the default day, in the browser's timezone. Both were wrong for anyone not set to Singapore time.
+
+**Reproduction.** Browser check TC-TSD-018 (`frontend/e2e/tech-support-times.e2e.js`, Singapore-timezone browser, outage on throwaway equipment) failed on the old code: `Received: … 24 Oct 2031, 4:00 pm – 24 Oct 2031, 5:00 pm`. Five unit tests run with `TZ=UTC` also failed on the old code: the maintenance card, the availability payload (`09:00Z` instead of `01:00Z`), the inventory request, and both tabs' default day.
+
+**Root cause.** REQUIREMENTS §4 says times are stored in UTC and displayed in Singapore time. `features/venues/singaporeTime.js` has the helpers, but the dashboard predated them: one formatter hard-coded UTC, and the windows used `new Date(datetimeLocal)`, which reads the value in the browser's zone.
+
+**Why tests missed it.** The existing specs built their expectations the same browser-local way (`new Date(2026, 9, 19, 22, 30)`, `new Date(value).toISOString()`), so they agreed with the code in any timezone. No spec rendered a maintenance card's time.
+
+**Fix.** New `formatSingaporeDateTime(iso)` in `singaporeTime.js`, used by the maintenance cards and by `EquipmentRequestPanel.vue`, which already formatted the same way inline. The availability check and inventory request send `toSingaporeIso(date, time)`. `inventoryWindow.js` takes its default day from `singaporeDayKey` and compares `datetime-local` strings directly. Three existing assertions changed, because the behaviour they checked (browser-local windows) is what D61 replaces with REQUIREMENTS §4: in `inventoryWindow.spec.js` the default-window inputs, and in `techSupportDashboard.spec.js` the `iso` helper, the fake system time and the availability payload expectation. Request and response shapes are unchanged.
+
+**Blast radius.** The other `datetime-local` and formatting code in `src/` already goes through `singaporeTime.js` or sets `timeZone: "Asia/Singapore"`, and `EquipmentRequestPanel` now shares the helper. No stored data is affected, since this was display and input only.
+
+**Verified.** Frontend suite 1,900/1,900, `npm run build` passes, and Codex reports the changed lines at 100% coverage. TC-TSD-018 fails on the old dashboard and passes on the fix, in a real Singapore-timezone browser; before and after card screenshots are in `docs/screenshots/fix-d61-tech-support-times-singapore/`. Recorded runs: [browser](test-cases/runs/2026-10-31-2031-e2e-54c6cb9.md) 107/111, with TC-TSD-018 passing; the four failures are D68's known TC-RBAC-005, TC-TSD-017, TC-AUTH-037/038 and TC-AUTH-046. [API and database](test-cases/runs/2026-10-31-1959-api-db-54c6cb9.md) 236/238, with no backend change on this branch. `equipment_availability_checks.sql` is D67, fixed in PR #121, which this branch predates. TC-CHANGE-003 hit a client `ReadTimeout`: the server log shows Supabase dropped the connection mid-request (`RemoteProtocolError: Server disconnected without sending a response`), the D42 class. The check passed on the same backend code on 2026-10-30 and wasn't re-run.
+
+**Manual pass.** TC-TSD-018 at desktop and phone width is the developer's (not yet done).

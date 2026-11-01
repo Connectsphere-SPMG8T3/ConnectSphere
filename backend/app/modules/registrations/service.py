@@ -5,6 +5,8 @@ from app.modules.registrations import repository
 from app.modules.registrations.schemas import (
     AttendeeRegistration,
     AttendeeRegistrationList,
+    ManagedRegistration,
+    ManagedRegistrationReport,
     PublicEvent,
     PublicVenue,
     RegistrationAvailability,
@@ -45,10 +47,7 @@ def public_directory() -> list[PublicEvent]:
 
 def _to_public_event(row: dict, now: datetime) -> PublicEvent:
     venues = _attendee_facing_venues(row.get("event_space_requests"))
-    venue_capacity = min((venue.capacity for venue in venues), default=None)
-    organiser_capacity = row.get("registration_capacity")
-    capacities = [value for value in (organiser_capacity, venue_capacity) if value is not None]
-    effective_capacity = min(capacities) if capacities else None
+    effective_capacity = _effective_capacity(row, venues)
     count = repository.registered_count(row["id"])
     occupied_count = repository.registration_occupied_count(row["id"])
     return PublicEvent(
@@ -67,6 +66,13 @@ def _to_public_event(row: dict, now: datetime) -> PublicEvent:
     )
 
 
+def _effective_capacity(row: dict, venues: list[PublicVenue] | None = None) -> int | None:
+    venues = venues if venues is not None else _attendee_facing_venues(row.get("event_space_requests"))
+    venue_capacity = min((venue.capacity for venue in venues), default=None)
+    capacities = [value for value in (row.get("registration_capacity"), venue_capacity) if value is not None]
+    return min(capacities) if capacities else None
+
+
 def _attendee_facing_venues(spaces: list[dict] | None) -> list[PublicVenue]:
     confirmed_venues = []
     primary_venues = []
@@ -83,6 +89,54 @@ def _attendee_facing_venues(spaces: list[dict] | None) -> list[PublicVenue]:
             primary_venues.extend(approved)
     selected = primary_venues if primary_is_set else confirmed_venues
     return [PublicVenue(**venue) for venue in selected]
+
+
+def managed_event_registrations(event_id: str, role: str) -> ManagedRegistrationReport:
+    event = repository.get_registration_event_row(event_id)
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found.")
+
+    now = datetime.now(timezone.utc)
+    registrations = repository.list_event_registration_rows(event_id)
+    mapped = []
+    registered_count = 0
+    waitlist_count = 0
+    active_invitation_count = 0
+
+    for row in registrations:
+        row_status = row["status"]
+        attendee = row["attendee"]
+        mapped.append(
+            ManagedRegistration(
+                id=row["id"],
+                full_name=attendee["full_name"],
+                status=row_status,
+                email=attendee.get("email") if role == "event_coordinator" else None,
+                phone_number=attendee.get("phone_number") if role == "event_coordinator" else None,
+            )
+        )
+        if row_status == "registered":
+            registered_count += 1
+        elif row_status == "waitlisted":
+            waitlist_count += 1
+        elif row_status == "invited" and row.get("invitation_expires_at"):
+            if _as_utc(row["invitation_expires_at"]) > now:
+                active_invitation_count += 1
+
+    effective_capacity = _effective_capacity(event)
+    remaining_places = (
+        effective_capacity - registered_count - active_invitation_count
+        if effective_capacity is not None
+        else None
+    )
+    return ManagedRegistrationReport(
+        event_id=event_id,
+        effective_capacity=effective_capacity,
+        registered_count=registered_count,
+        remaining_places=remaining_places,
+        waitlist_count=waitlist_count,
+        registrations=mapped,
+    )
 
 
 def attendee_registrations(attendee_id: str) -> AttendeeRegistrationList:

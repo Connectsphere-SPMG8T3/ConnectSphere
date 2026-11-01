@@ -3,13 +3,14 @@ import { createApp, nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { toastState } from "@/composables/useToast";
-import { ApiError, eventsApi, venueBookingsApi } from "@/services/api";
+import { ApiError, eventsApi, registrationsApi, venueBookingsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   venueBookingsApi: { markRevised: vi.fn() },
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
+  registrationsApi: { managedEvent: vi.fn() },
   eventsApi: { safetyDecisions: vi.fn().mockResolvedValue([]), get: vi.fn(), history: vi.fn(), approve: vi.fn(), reject: vi.fn(), returnForAmendment: vi.fn(), sendForSafetyCheck: vi.fn(), listComments: vi.fn(), addComment: vi.fn(), setPrimarySpace: vi.fn(), clearPrimarySpace: vi.fn() },
 }));
 
@@ -62,6 +63,14 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     vi.clearAllMocks();
+    registrationsApi.managedEvent.mockResolvedValue({
+      event_id: "event-1",
+      effective_capacity: null,
+      registered_count: 0,
+      remaining_places: null,
+      waitlist_count: 0,
+      registrations: [],
+    });
   });
 
   it("goes back to the Events view, not the dashboard Overview", async () => {
@@ -74,6 +83,24 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     const { default: router } = await import("@/router");
     await vi.waitFor(() => expect(router.currentRoute.value.query).toEqual({ tab: "events" }));
     expect(router.currentRoute.value.name).toBe("dashboard-coordinator");
+  });
+
+  it("shows assigned coordinators attendee contacts after registration is disabled (SCRUM-35)", async () => {
+    registrationsApi.managedEvent.mockResolvedValue({
+      effective_capacity: 20,
+      registered_count: 1,
+      remaining_places: 19,
+      waitlist_count: 0,
+      registrations: [
+        { id: "registration-1", full_name: "Attendee Name", status: "registered", email: "attendee@example.test", phone_number: "+65 8000 0001" },
+      ],
+    });
+    const el = await mountView(eventResponse({ registration_enabled: false }));
+
+    await vi.waitFor(() => expect(el.textContent).toContain("attendee@example.test"));
+    expect(registrationsApi.managedEvent).toHaveBeenCalledWith("event-1", "access");
+    expect(el.textContent).toContain("Attendee Name");
+    expect(el.textContent).toContain("+65 8000 0001");
   });
 
   it("labels the return action Ask for amendment, and its dialog to match", async () => {

@@ -1,3 +1,5 @@
+import { singaporeDayKey } from "@/features/venues/singaporeTime";
+
 // The window tech support's Inventory & status table counts (D46). Reserved and
 // maintenance figures are the busiest moment inside it (§6.16 AV-R2), so a
 // reservation for another day only shows once the window covers that day.
@@ -8,7 +10,7 @@ const LOCAL = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
 const pad = (n) => String(n).padStart(2, "0");
 
 function dayAt(now, hour) {
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(hour)}:00`;
+  return `${singaporeDayKey(now)}T${pad(hour)}:00`;
 }
 
 export function defaultInventoryWindow(now = new Date()) {
@@ -17,7 +19,7 @@ export function defaultInventoryWindow(now = new Date()) {
 
 export function inventoryWindowError(startAt, endAt) {
   if (!startAt || !endAt) return "Choose a start and an end for the inventory window.";
-  if (new Date(endAt) <= new Date(startAt)) return "End time must be later than the start time.";
+  if (endAt <= startAt) return "End time must be later than the start time.";
   return null;
 }
 
