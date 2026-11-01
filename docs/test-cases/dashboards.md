@@ -44,6 +44,7 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 | TC-DASH-029 | Rejected requests appear in their own section | At least one event assigned to the coordinator in `rejected` (the seed has two: "Test 1" and "test approve") | Open `/dashboard/coordinator` (Overview), then `?tab=events`; on Events, search for a rejected event's name, then pick any status | — | Both views show a full-width **Rejected events** section below Past events, with its count. Each card is grey, reads "Rejected · <date>", has no action badge and no footer, and opens its review page. Rejected events are never on the board or in the Events columns. On Events, search narrows them by name and any status filter hides them. With none, "No rejected events". | 🟠 |
 | TC-DASH-030 | The API lists the caller's rejected events apart from active ones | As TC-DASH-013 | Send `GET /events/dashboard/coordinator` as the coordinator; read each `rejected_events` entry back with `GET /events/{id}` | — | 200 with `rejected_events` (`event_id`, `event_name`, `starts_at`). No id is also in `active_events`. Each one reads back as the coordinator with status `rejected`. Automated in `verify_live.py`. | 🔴 |
 | TC-DASH-031 | An event page belongs to Events | As TC-DASH-001 | Open any event from the board or the Events view; look at the sidebar, then press the back button | — | On the event page the sidebar's **Events** link is highlighted yellow (not Overview). The button reads **Back to events** and opens the Events view (`?tab=events`). | 🟠 |
+| TC-DASH-032 | AC2 — a multi-space event's venue is ready only when every space is (D35, CR-97 AC10) | A planning event assigned to the coordinator with two event spaces, one with an approved booking and one without (the shared project has "456") | Open `/dashboard/coordinator` and read the event's venue readiness; open the event page and read what blocks Send for safety check | — | The dashboard shows venue **pending**, not ready, while the event page names the space with no approved booking. Once every space has an approved, unflagged booking, both read ready. Last run: 2026-11-01, pass ([manual](runs/2026-11-01-2356-manual-67b9546.md)). | 🟠 |
 
 ### Traceability — SCRUM-72 and 72-R
 
@@ -52,7 +53,7 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 | AC1 "prioritized list of incoming event requests requiring immediate action" | TC-DASH-006, TC-DASH-008, TC-DASH-026 (TC-DASH-007 superseded) |
 | AC1 "requests awaiting initial approval/rejection" | TC-DASH-010, TC-DASH-014, TC-DASH-026 |
 | AC1 "items with newly received client clarification responses" (QA-22, QA-77 return/resubmit) | TC-DASH-020 |
-| AC2 "Displays status for each active event" | TC-DASH-010, TC-DASH-011, TC-DASH-013 |
+| AC2 "Displays status for each active event" | TC-DASH-010, TC-DASH-011, TC-DASH-013, TC-DASH-032 |
 | Only the caller's assigned events; access by active role (SCRUM-76) | TC-DASH-013, TC-DASH-016, TC-DASH-017, TC-DASH-018 |
 | Rows open the review page (SCRUM-34/52/33) | TC-DASH-019, TC-DASH-023 |
 | Layout follows the organiser dashboard (REQUIREMENTS §6.21.1 [Team decision]) | TC-DASH-021, TC-DASH-022, TC-DASH-024 |

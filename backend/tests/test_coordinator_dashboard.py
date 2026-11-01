@@ -244,6 +244,53 @@ class TestReadiness:
             row = event_row("e-016", "planning", technical_readiness=value)
             assert self.readiness(data, row).technical.value == value
 
+    # D35, CR-97 AC10: an event with event spaces is ready space by space, as on
+    # its event page, not because one of its bookings is approved.
+    TWO_SPACES = [{"id": "s-1", "label": "Main venue"}, {"id": "s-2", "label": "Breakout room"}]
+
+    def space_bookings(self, monkeypatch, by_space):
+        from app.modules.events.schemas import BookingReadiness
+
+        asked = {}
+
+        def booking_readiness_by_event_space(ids):
+            asked["ids"] = ids
+            return {"e-050": {space: [BookingReadiness(status=status) for status in statuses]
+                              for space, statuses in by_space.items()}}
+
+        monkeypatch.setattr(venues_service, "booking_readiness_by_event_space", booking_readiness_by_event_space)
+        return asked
+
+    def test_a_space_without_an_approved_booking_keeps_the_venue_pending(self, data, monkeypatch):
+        data.bookings = {"e-050": ["approved"]}
+        self.space_bookings(monkeypatch, {"s-1": ["approved"]})
+
+        row = event_row("e-050", "planning", spaces=self.TWO_SPACES)
+        assert self.readiness(data, row).venue.value == "pending"
+
+    def test_a_held_booking_on_one_space_keeps_the_venue_pending(self, data, monkeypatch):
+        data.bookings = {"e-050": ["approved", "held"]}
+        self.space_bookings(monkeypatch, {"s-1": ["approved"], "s-2": ["held"]})
+
+        row = event_row("e-050", "planning", spaces=self.TWO_SPACES)
+        assert self.readiness(data, row).venue.value == "pending"
+
+    def test_the_venue_is_ready_once_every_space_has_an_approved_booking(self, data, monkeypatch):
+        data.bookings = {"e-050": ["approved", "approved"]}
+        asked = self.space_bookings(monkeypatch, {"s-1": ["approved"], "s-2": ["released", "approved"]})
+
+        row = event_row("e-050", "planning", spaces=self.TWO_SPACES)
+        assert self.readiness(data, row).venue.value == "ready"
+        assert asked == {"ids": ["e-050"]}
+
+    def test_an_affected_space_is_still_a_venue_issue(self, data, monkeypatch):
+        data.bookings = {"e-050": ["approved", "approved"]}
+        data.affected = {"e-050"}
+        self.space_bookings(monkeypatch, {"s-1": ["approved"], "s-2": ["approved"]})
+
+        row = event_row("e-050", "planning", spaces=self.TWO_SPACES)
+        assert self.readiness(data, row).venue.value == "issue"
+
 
 class TestUnassignedEvents:
     """Unassigned events are the Event Coordinator Lead's queue (customer
@@ -280,6 +327,8 @@ class TestRepositoryQueries:
 
         admin.table.assert_called_once_with("events")
         assert "profiles!events_organiser_id_fkey(full_name)" in query.select.call_args.args[0]
+        # D35: each event's spaces come in the same query, for per-space venue readiness.
+        assert "spaces:event_space_requests(id, label)" in query.select.call_args.args[0]
         query.eq.assert_called_once_with("coordinator_id", COORDINATOR_ID)
         query.in_.assert_called_once_with("status", ["planning", "under_review"])
         assert [row["id"] for row in rows] == ["e-020"]
@@ -347,6 +396,34 @@ class TestCrossModuleReads:
             "e-1": [BookingReadiness(status="approved", flags=["affected"]), BookingReadiness(status="held")],
         }
         assert venues_service.booking_statuses_by_event(["e-1"]) == {"e-1": ["approved", "held"]}
+
+    def test_booking_readiness_is_grouped_by_event_then_space(self, monkeypatch):
+        # D35: the coordinator dashboard reads every event's spaces in one query.
+        from app.modules.events.schemas import BookingReadiness
+        from app.modules.venues import repository as venues_repository
+
+        asked = {}
+
+        def list_booking_statuses(ids):
+            asked["ids"] = ids
+            return [
+                {"event_id": "e-1", "event_space_request_id": "s-1", "status": "approved", "flag": None},
+                {"event_id": "e-1", "event_space_request_id": "s-2", "status": "held", "flag": "conflict",
+                 "needs_re_review_since": "2026-10-30T10:00:00+00:00"},
+                {"event_id": "e-2", "event_space_request_id": "s-3", "status": "approved", "flag": None},
+                {"event_id": "e-2", "event_space_request_id": None, "status": "approved", "flag": None},
+            ]
+
+        monkeypatch.setattr(venues_repository, "list_booking_statuses", list_booking_statuses)
+
+        assert venues_service.booking_readiness_by_event_space(["e-1", "e-2"]) == {
+            "e-1": {
+                "s-1": [BookingReadiness(status="approved")],
+                "s-2": [BookingReadiness(status="held", flags=["conflict"], needs_re_review=True)],
+            },
+            "e-2": {"s-3": [BookingReadiness(status="approved")]},
+        }
+        assert asked == {"ids": ["e-1", "e-2"]}
 
     def test_affected_event_ids_are_the_events_with_a_live_booking_flagged_affected(self, monkeypatch):
         from app.modules.venues import repository as venues_repository
