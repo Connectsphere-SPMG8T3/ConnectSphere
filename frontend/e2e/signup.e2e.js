@@ -24,7 +24,7 @@ test("TC-AUTH-037 TC-AUTH-038 an organiser signs up, signs in and opens a new ev
   skipIfSignInRefused();
   const email = throwawayEmail("037");
   await page.goto("/login");
-  await page.getByRole("link", { name: "Create organiser account" }).click();
+  await page.getByRole("main").getByRole("link", { name: "Create organiser account" }).click();
   await expect(page).toHaveURL("/signup/organiser");
 
   await fillSignup(page, { email });
@@ -142,15 +142,15 @@ test("TC-AUTH-046 the sign-up page is only for signed-out visitors", async ({ pa
     const visitor = await signedOut.newPage();
     await visitor.goto("/login");
     await expect(visitor.getByText("New Event Organiser?")).toBeVisible();
-    await expect(visitor.getByRole("link", { name: "Create organiser account" })).toHaveAttribute(
+    await expect(visitor.getByRole("main").getByRole("link", { name: "Create organiser account" })).toHaveAttribute(
       "href",
       "/signup/organiser",
     );
-    await expect(visitor.getByRole("link", { name: "Create attendee account" })).toHaveAttribute(
+    await expect(visitor.getByRole("main").getByRole("link", { name: "Create attendee account" })).toHaveAttribute(
       "href",
       "/signup/attendee",
     );
-    await visitor.getByRole("link", { name: "Create attendee account" }).click();
+    await visitor.getByRole("main").getByRole("link", { name: "Create attendee account" }).click();
     await expect(visitor).toHaveURL("/signup/attendee");
     await expect(visitor.getByRole("heading", { name: "Create an Attendee Account" })).toBeVisible();
   } finally {

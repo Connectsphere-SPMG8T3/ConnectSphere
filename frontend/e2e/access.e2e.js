@@ -30,8 +30,9 @@ test("TC-RBAC-004 a signed-in user who opens login is sent to their dashboard", 
   await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(0);
 });
 
-test("TC-RBAC-005 an unknown path goes to login", async ({ page }) => {
+test("TC-RBAC-005 an unknown path goes to the public event directory", async ({ page }) => {
   await page.goto("/this-page-does-not-exist");
 
-  await expect(page).toHaveURL("/login");
+  await expect(page).toHaveURL("/");
+  await expect(page.getByRole("heading", { name: "What are you up to?", exact: true })).toBeVisible();
 });
