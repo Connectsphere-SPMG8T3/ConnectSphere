@@ -49,7 +49,7 @@ Read, in this order:
 1. `docs/REQUIREMENTS.md` — what the system *should* do: behaviour specs, acceptance criteria, the domain model, customer clarifications cited as `QA-<row>`.
 2. `docs/IMPLEMENTATION_MAP.md` — what exists **right now** (modules, endpoints, tables, reusable components) and what to know before building on it.
 3. `docs/PROJECT_OVERVIEW.md` — course and customer context, the 20 first-release features, and the reasoning behind the architecture and design system.
-4. `docs/BUILD_LOG.md` — the append-only log of what each story actually built.
+4. `docs/BUILD_LOG.md` — what each story built, up to 1 Nov 2026 (frozen). Later stories are recorded in their PR descriptions.
 5. `docs/SETUP.md` — how to run everything locally.
 6. `docs/DEFECTS.md` — known defects (D1, D2, …) and their status.
 7. `docs/test-cases/` — existing manual test cases, one file per area (start at its `README.md`).
@@ -142,8 +142,9 @@ Commit the run logs with the story, since they are the evidence that it was test
 
 ## Keep the paper trail current (graded evidence)
 
-- `docs/IMPLEMENTATION_MAP.md`: **after implementing anything that changes what exists**, update the map in the same branch. That includes a story or fix, a module, endpoint, table, or migration, a reusable component, store, or helper, or a changed contract (request/response shape, guard, enum). Unlike `BUILD_LOG.md`, this file is edited in place: update the status table, add the new pieces to the reuse tables, remove what no longer exists, and record any "know before you build" notes the next developer needs. Replace its "Last updated" line with this change: one entry, not a running list (the history belongs in `BUILD_LOG.md`).
-- `docs/BUILD_LOG.md` §4: append an entry for each completed story or bug fix, following the existing template. Never rewrite past entries.
+- `docs/IMPLEMENTATION_MAP.md`: **after adding or changing anything another story will reuse or rely on**, update the map in the same branch: an endpoint (method, path, guard), a table, a reusable component, store or helper, or a changed contract (request/response shape, guard, enum). Edit it in place: add the new pieces next to related rows (not at the end of a table), remove what no longer exists, and record any "know before you build" notes the next developer needs. The map has no status table and no "Last updated" line; don't add them back.
+- `docs/BUILD_LOG.md` is **frozen** (1 Nov 2026): never add an entry. The PR description is a story's or fix's record. Draft it in the final report, following `.github/pull_request_template.md`, so the developer can paste it: each acceptance criterion with the test or TC ID that proves it, the normal, boundary, conflict and failure scenarios covered, the recorded runs as full `blob/<sha>/…` URLs (relative links break in a PR description), and what wasn't verified.
+- How a story was interpreted goes in `docs/REQUIREMENTS.md` as **[Assumption]** or **[Team decision]**, citing the `QA-<row>`, and the developer copies it into the PBI's Customer clarification or Notes column.
 - `docs/test-cases/<area>.md`: add manual cases for new behaviour, traced to PBI IDs and acceptance criteria, with the Type, Created and Last run columns (`docs/test-cases/README.md`). The team copies them into the Test cases sheet before submission, so don't write to that sheet.
 - `docs/REQUIREMENTS.md`: update it when a rule, assumption, or design decision changes.
 - `docs/DEFECTS.md`: mark defects fixed, with the branch or commit, and add any new defect as the next number.

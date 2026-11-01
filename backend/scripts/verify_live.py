@@ -1833,6 +1833,9 @@ def _(ctx: Context) -> None:
 
 @check("TC-BOOK-004", "An event that already holds a venue can't request another")
 def _(ctx: Context) -> None:
+    # Without its held booking the request would succeed and book Heritage Hall for
+    # real (D78), so stop as blocked first. PLANNING_FIXTURE is SAFE_EVENT.
+    safety_fixture(ctx)
     response = request_venue(ctx, ctx.shared("event_coordinator"), PLANNING_FIXTURE, HERITAGE_HALL)
     expect_status(response, 409)
     expect_detail(response, "This event already has a venue booking.")

@@ -1,5 +1,5 @@
 # ConnectSphere — Build Log
-**What each story, fix and enabler actually built, in the order it landed.** Append-only.
+**What each story, fix and enabler actually built, in the order it landed, up to 1 Nov 2026.** Frozen: no new entries.
 
 This is the requirement → code → test trail the course rubric rewards. Each entry quotes its backlog record verbatim (the Jira issue until Sprint 2, the Product backlog sheet row from Sprint 3) and records how the ticket was interpreted, what was built, and how it was verified.
 
@@ -7,46 +7,17 @@ This is the requirement → code → test trail the course rubric rewards. Each 
 - Inside entries, a bare "§1"–"§3" or "§5"–"§7" means [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md); a bare "§4.N" means this file.
 - For what exists *now*, see [`IMPLEMENTATION_MAP.md`](IMPLEMENTATION_MAP.md); for what the system *should* do, [`REQUIREMENTS.md`](REQUIREMENTS.md).
 
-## How to add an entry
+## Frozen on 2026-11-01
 
-When a story is completed, copy the template below, fill it in from the PBI's row in the Product backlog sheet (Jira for stories before Sprint 3) (don't paraphrase the user story or acceptance criteria — quote them verbatim, the same way SCRUM-48's entry does), and add it as a new `###` subsection *after* the most recent entry, so the log reads chronologically. Do not delete or rewrite prior entries when requirements change later — instead, add a new entry for the story that changes them, and note in that new entry which earlier entry/behaviour it supersedes. This keeps the log an honest history of what was built and when, which is exactly the kind of requirement → code traceability the course rubric ([`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) §1) rewards.
+No new entries are added. Every branch appended the next number, so open PRs kept conflicting here, and five numbers were used twice (4.9, 4.31, 4.44, 4.51 and 4.108; cite those by title as well as number).
 
-<details>
-<summary><strong>Template for a new entry (click to expand)</strong></summary>
+From 2026-11-01 a story or fix is recorded in:
 
-```markdown
-### 4.N. SCRUM-XX / CR-XX — <title> (exact backlog record)
+- **its PR description**: what was built, each acceptance criterion with its tests and TC IDs, how it was verified, and what wasn't;
+- **[`REQUIREMENTS.md`](REQUIREMENTS.md)**: how a story was interpreted, as **[Assumption]** or **[Team decision]** citing the `QA-<row>`;
+- **the Product backlog sheet**: the same interpretation in the story's Customer clarification or Notes column.
 
-| Field | Value |
-|---|---|
-| ID | `SCRUM-XX` or `CR-XX` |
-| Title | <copy from the Product backlog> |
-| Type | US: Core feature / US: Non-core feature / Bug fix / Enhancement |
-| Status | <status at time of writing this entry> |
-| Epic | <epic name> |
-| Sprint | <sprint number> |
-| Estimate | <n> story points |
-| Priority | P1–P5 |
-| Customer clarification | <session and date, or "none"> |
-
-**User story (verbatim):**
-
-> <paste exactly as written in the Product backlog>
-
-**Acceptance criteria (verbatim from the Product backlog):**
-
-> <paste exactly as written, including any typos — note them rather than silently fixing them>
-
-#### How the implementation maps to the ticket
-
-<Explain anything the ticket left implicit that you had to interpret, and what NFRs or prior log entries justified that interpretation. Be explicit about assumptions vs. literal ticket text — an instructor may ask "where did requirement X come from?" and the answer should be findable here.>
-
-What was actually built:
-
-1. <bullet per behaviour, naming the actual file/endpoint/component that implements it>
-```
-
-</details>
+The entries below stay as they are and keep their numbers, so citations such as "BUILD_LOG §4.17" still work.
 
 ## Entries
 
@@ -3769,20 +3740,22 @@ What was actually built:
 - Live TC-REG-029/030 API/database checks and TC-REG-031/033/034 browser checks passed against the revised four-status report and are recorded in [the API/database run](test-cases/runs/2026-10-31-1030-api-db-54c6cb9.md) and [the browser run](test-cases/runs/2026-10-31-1055-e2e-54c6cb9.md).
 - Manual TC-REG-032 passed after the final status-scope change. The developer confirmed both organiser and coordinator pages at desktop width and 375px, including the four-status report/CSV scope.
 
+### 4.110. Bug fix D61 — Tech Support dashboard times in Singapore time
 
-### 4.111. Bug fix D68 — four stale browser checks
+On `fix/d61-tech-support-times-singapore`, 2026-10-31. Defect: DEFECTS D61 (Medium). Frontend only; no API or database change. Codex wrote the implementation and tests from a requirements brief; Claude reviewed them and verified the fix live.
 
-On `fix/d68-stale-browser-checks`, 2026-10-31. Defect: DEFECTS D68 (Low, verification). Test-only: three Playwright specs and the TC-RBAC-005 case; no product change. Claude triaged each case; Codex wrote the spec changes; Claude reviewed and re-ran them. (§4.110 is D61, on its own branch.)
+**Symptom.** The maintenance cards formatted times with `timeZone: "UTC"`, so an outage starting 25 Oct 00:00 in Singapore showed as "24 Oct, 4:00 pm". The availability check and inventory window did the opposite: they read the typed date and time, and picked the default day, in the browser's timezone. Both were wrong for anyone not set to Singapore time.
 
-**Symptom.** Four checks failed in every full browser run since 2026-10-24 and hid real failures among them: TC-RBAC-005 (`/login` expected, `/` received), TC-TSD-017 (4 cards expected, 1 found), and TC-AUTH-037/038 and TC-AUTH-046 (strict-mode violations: two "Create organiser account" links).
+**Reproduction.** Browser check TC-TSD-018 (`frontend/e2e/tech-support-times.e2e.js`, Singapore-timezone browser, outage on throwaway equipment) failed on the old code: `Received: … 24 Oct 2031, 4:00 pm – 24 Oct 2031, 5:00 pm`. Five unit tests run with `TZ=UTC` also failed on the old code: the maintenance card, the availability payload (`09:00Z` instead of `01:00Z`), the inventory request, and both tabs' default day.
 
-**Root cause, per case: the product changed on purpose and the checks didn't follow.**
-- TC-RBAC-005: the catch-all `/:pathMatch(.*)*` → `/` is unchanged since SCRUM-48, but story 43 (`957cdbd`, 2026-10-22) made `/` the public event directory, so an unknown path no longer bounces to `/login`. The developer confirmed the new destination is intended (2026-10-31).
-- TC-AUTH-037/038, TC-AUTH-046: `PublicFooter.vue` also carries the sign-up links, so the page-wide locators matched two.
-- TC-TSD-017: the tech support tiles are now wrapped in a `RouterLink`/`div` so they open their lists, which frontend/AGENTS.md allows. The check found the grid by walking exactly three parents up from the label, so it landed on one wrapper.
+**Root cause.** REQUIREMENTS §4 says times are stored in UTC and displayed in Singapore time. `features/venues/singaporeTime.js` has the helpers, but the dashboard predated them: one formatter hard-coded UTC, and the windows used `new Date(datetimeLocal)`, which reads the value in the browser's zone.
 
-**Why it lasted.** Each failure was recorded as "known" in later runs rather than triaged; a failing check that always fails stops being read.
+**Why tests missed it.** The existing specs built their expectations the same browser-local way (`new Date(2026, 9, 19, 22, 30)`, `new Date(value).toISOString()`), so they agreed with the code in any timezone. No spec rendered a maintenance card's time.
 
-**Fix.** TC-RBAC-005 expects `/` and the directory's "What are you up to?" heading; its case in `roles-and-access.md` now says so. The sign-up link lookups are scoped to `getByRole("main")`, with every href assertion and click kept. The summary-layout check finds the nearest `grid` ancestor, counts its direct children (any tag), keeps all its measurements at the seven widths, and adds an assertion that each card fills its grid child, so a wrapper that doesn't stretch its card is still caught. TC-ATT-001 shares that check and still passes. Three existing tests changed, each because the behaviour it checked deliberately changed (story 43's public `/`, `PublicFooter`'s links, the clickable tiles), as AGENTS.md's test rule requires.
+**Fix.** New `formatSingaporeDateTime(iso)` in `singaporeTime.js`, used by the maintenance cards and by `EquipmentRequestPanel.vue`, which already formatted the same way inline. The availability check and inventory request send `toSingaporeIso(date, time)`. `inventoryWindow.js` takes its default day from `singaporeDayKey` and compares `datetime-local` strings directly. Three existing assertions changed, because the behaviour they checked (browser-local windows) is what D61 replaces with REQUIREMENTS §4: in `inventoryWindow.spec.js` the default-window inputs, and in `techSupportDashboard.spec.js` the `iso` helper, the fake system time and the availability payload expectation. Request and response shapes are unchanged.
 
-**Verified.** The three specs: 4 failed and 15 passed before; 19/19 after, on Codex's run and on Claude's re-run. Recorded runs on this branch (main at `e242d76`, with D67 and D71 merged) are the first fully green pair since 2026-10-24: [browser](test-cases/runs/2026-10-31-2154-e2e-e242d76.md) 115 passed, 0 failed (TC-REG-011 is blocked by design: no registration is in progress in the data); [API and database](test-cases/runs/2026-10-31-2123-api-db-e242d76.md) 245/245. The ECONNRESET knock-on D68 described did not occur.
+**Blast radius.** The other `datetime-local` and formatting code in `src/` already goes through `singaporeTime.js` or sets `timeZone: "Asia/Singapore"`, and `EquipmentRequestPanel` now shares the helper. No stored data is affected, since this was display and input only.
+
+**Verified.** Frontend suite 1,900/1,900, `npm run build` passes, and Codex reports the changed lines at 100% coverage. TC-TSD-018 fails on the old dashboard and passes on the fix, in a real Singapore-timezone browser; before and after card screenshots are in `docs/screenshots/fix-d61-tech-support-times-singapore/`. Recorded runs: [browser](test-cases/runs/2026-10-31-2031-e2e-54c6cb9.md) 107/111, with TC-TSD-018 passing; the four failures are D68's known TC-RBAC-005, TC-TSD-017, TC-AUTH-037/038 and TC-AUTH-046. [API and database](test-cases/runs/2026-10-31-1959-api-db-54c6cb9.md) 236/238, with no backend change on this branch. `equipment_availability_checks.sql` is D67, fixed in PR #121, which this branch predates. TC-CHANGE-003 hit a client `ReadTimeout`: the server log shows Supabase dropped the connection mid-request (`RemoteProtocolError: Server disconnected without sending a response`), the D42 class. The check passed on the same backend code on 2026-10-30 and wasn't re-run.
+
+**Manual pass.** TC-TSD-018 at desktop and phone width is the developer's (not yet done).

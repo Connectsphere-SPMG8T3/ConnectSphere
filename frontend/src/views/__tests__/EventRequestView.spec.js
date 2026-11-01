@@ -108,13 +108,21 @@ const chooseSpacePurpose = async (el, purpose) => {
   }
 };
 
+// The form refuses dates that aren't after today in Singapore, so the fixtures'
+// dates only stay valid with the clock fixed before them (D78). Only Date is faked:
+// the form's async loads still run on real timers.
+const TODAY = new Date("2026-10-20T02:00:00Z");
+
 describe("EventRequestView amending a returned request (SCRUM-33)", () => {
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(TODAY);
     document.body.innerHTML = "";
     vi.clearAllMocks();
   });

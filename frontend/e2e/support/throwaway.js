@@ -278,6 +278,16 @@ export function createThrowawayLine(event, equipment, quantity) {
   return row;
 }
 
+/** A maintenance outage on throwaway equipment (D61). Deleted with the equipment,
+ * which cascades to its unavailability rows. */
+export function createThrowawayOutage(equipment, startAt, endAt, reason) {
+  const [row] = query(
+    "insert into public.equipment_unavailability (equipment_id, quantity, start_at, end_at, reason) values " +
+      `('${equipment.id}', 1, '${startAt}', '${endAt}', '${reason}') returning id`,
+  );
+  return row;
+}
+
 /** Sets a throwaway line's status directly, as if tech support had acted on it (D70). */
 export function setThrowawayLineStatus(line, status) {
   query(`update public.equipment_requests set status = '${status}' where id = '${line.id}'`);

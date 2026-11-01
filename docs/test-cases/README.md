@@ -2,7 +2,7 @@
 
 Manual test cases for every implemented story, one file per area of the system. Each case names the exact code path it exercises, so it can be turned into an automated test later, and each story's section ends with a traceability table mapping its acceptance criteria to cases and automated tests.
 
-See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, [BUILD_LOG.md](../BUILD_LOG.md) for how each story was built, and [SETUP.md](../SETUP.md) for environment setup.
+See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, each story's PR description (or, before 1 Nov 2026, [BUILD_LOG.md](../BUILD_LOG.md)) for how it was built, and [SETUP.md](../SETUP.md) for environment setup.
 
 ## Where to find a case
 

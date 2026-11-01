@@ -96,7 +96,7 @@ The customer briefing describes far more functionality (client management, recur
 
 The instructions are explicit that these 20 features are **not isolated** — the release should demonstrate coherent end-to-end workflows across them (matching the lifecycle in §2.2), and design/tests should reflect the relationships between features (e.g. an attendance change should be able to affect venue suitability).
 
-Which of the 20 features have implementation, story by story, is in [`IMPLEMENTATION_MAP.md`](IMPLEMENTATION_MAP.md) §1; how each was built is in [`BUILD_LOG.md`](BUILD_LOG.md). Do not assume a feature's domain logic exists until one of those says so.
+Which of the 20 features have implementation, story by story, is in the Product backlog sheet; how each was built is in its PR description (and, before 1 Nov 2026, [`BUILD_LOG.md`](BUILD_LOG.md)). Do not assume a feature's domain logic exists until one of those says so.
 
 `frontend/src/features/events/` contains coordinator-dashboard presentation logic, while the SCRUM-8 request implementation lives in `backend/app/modules/events/` and `frontend/src/stores/events.js` / `frontend/src/views/events/`. Coordinator assignment, reassignment, and submission notifications remain separate SCRUM-12 / SCRUM-68 scope.
 

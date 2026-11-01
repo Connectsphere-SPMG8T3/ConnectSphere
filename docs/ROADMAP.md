@@ -79,7 +79,7 @@ SCRUM-48 is done, so **Jie Ching has spare capacity** for the rest of the sprint
 - Integration test for submit, including a second submit returning `409`.
 - Vue: request form submit, a field error summary, and a status badge.
 - Manual test cases TC-EVT-0xx in `docs/test-cases/events.md`, linked to the Jira key.
-- `BUILD_LOG.md` entry.
+- A PR description recording what was built and how it was verified (a `BUILD_LOG.md` entry until the log was frozen on 1 Nov 2026).
 
 **Definition of Done** — from Sprint 3 the team's DoD is the one in the Scrum playbook §6, mirrored in [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md), with the step-by-step process in [`DEVELOPMENT_WORKFLOW.md`](DEVELOPMENT_WORKFLOW.md). It replaced the checklist this review proposed. CI now exists, and the 100% coverage target is set in [`CI.md`](CI.md) §4 item 2.
 

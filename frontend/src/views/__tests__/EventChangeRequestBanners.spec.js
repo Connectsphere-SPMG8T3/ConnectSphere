@@ -35,8 +35,13 @@ function eventResponse(overrides = {}) {
 }
 
 const mountedApps = [];
+// "Request changes" shows only before the event starts, so the fixtures' dates stay
+// in the future only with the clock fixed before them (D78). Only Date is faked.
+const TODAY = new Date("2026-10-20T02:00:00Z");
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(TODAY);
   registrationsApi.managedEvent.mockResolvedValue({
     event_id: "event-32",
     effective_capacity: null,
@@ -84,6 +89,7 @@ afterEach(() => {
   mountedApps.splice(0).forEach((app) => app.unmount());
   document.body.innerHTML = "";
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("organiser event page (story 32)", () => {

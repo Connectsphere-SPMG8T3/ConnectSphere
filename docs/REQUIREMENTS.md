@@ -2,7 +2,7 @@
 
 **Status:** living document, v0.4 (13 Oct 2026, Sprint 3). v0.2 applied the Session 1 customer clarifications; v0.3 applies the Session 2 answers (§12) and closes the §9 questions they resolved; v0.4 applies the Session 3 answers on the Week 7 changes (§13).
 
-`docs/BUILD_LOG.md` records what was *built*; this file records what the system *should do*. Update this file whenever the customer clarifies a rule.
+PR descriptions (before 1 Nov 2026, `docs/BUILD_LOG.md`) record what was *built*; this file records what the system *should do*. Update this file whenever the customer clarifies a rule.
 
 **Sources, in priority order (latest clarification wins):**
 1. **Session 3 Clarification Answers** (the Week 7 change notice: Event Coordinator Lead, Safety Officer, Preparation, setup/turnaround, multi-venue events, hold expiry), cited as **`QA3-<n>`**, where `<n>` is the row number in §13 (the customer's sheet, header = row 1, so the customer's own "Refer row 13" is QA3-13). Where Session 3 differs from an earlier session or from the Week 7 change notice's backlog wording, Session 3 wins. The **Session 3 meeting summary** (§13.1) is cited as **`M3`**. Where M3 and a written answer differ, the rule says which one was followed and why.
@@ -713,7 +713,7 @@ See §5 for the state machine.
 
 ### 6.6.1 Safety queue and decisions (CR-103 / CR-104)
 
-Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-decision-design.md` (9 Oct 2026). Implementation and verification status belongs in IMPLEMENTATION_MAP, not this requirements section.
+Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-decision-design.md` (9 Oct 2026). Implementation and verification status belongs in the Product backlog and the PR, not this requirements section.
 
 | Lifecycle action | Source → target | Behaviour |
 |---|---|---|
