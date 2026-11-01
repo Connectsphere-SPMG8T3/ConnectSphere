@@ -31,7 +31,9 @@ begin
     if v_count <> 1 then
         raise exception 'ATTENDEE FAIL: expected 1 notified (registered, not the actor), got %', v_count;
     end if;
-    if (select count(*) from public.notifications where event_id = v_event) <> 1 then
+    -- SCRUM-53 AC5: the fixture registrations send their own confirmations; count the rest.
+    if (select count(*) from public.notifications
+         where event_id = v_event and type <> 'attendee_registration_changed') <> 1 then
         raise exception 'ATTENDEE FAIL: cancelled, withdrawn or actor rows were written';
     end if;
     if not exists (

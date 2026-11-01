@@ -54,7 +54,8 @@ async function followInvitationNotification(page, event) {
   const bell = page.getByRole("button", { name: /^Notifications/ });
   await expect(bell).toBeVisible();
   await bell.click();
-  const invitation = page.getByRole("link", { name: new RegExp(event.name) });
+  // SCRUM-53 AC5: the attendee also has a "waiting list" confirmation naming the event.
+  const invitation = page.getByRole("link", { name: new RegExp(`A place is available for "${event.name}"`) });
   await expect(invitation).toBeVisible();
   await invitation.click();
   await expect(page).toHaveURL(/\/dashboard\/attendee\/?$/);
