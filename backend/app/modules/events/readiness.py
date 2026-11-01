@@ -16,6 +16,12 @@ def safety_readiness(
     return SafetyReadiness(ready=not missing, missing=missing)
 
 
+def spaces_ready(spaces: list[SpaceReadiness]) -> bool:
+    """Whether every event space has its own approved, unflagged booking: the
+    venue half of the safety check, for screens that show readiness (D35)."""
+    return not _per_space_missing(spaces)
+
+
 def _active(bookings: list[BookingReadiness]) -> list[BookingReadiness]:
     return [booking for booking in bookings if booking.status in ACTIVE_BOOKING_STATUSES]
 

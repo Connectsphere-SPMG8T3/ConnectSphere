@@ -104,7 +104,7 @@ def list_events(organiser_id: str) -> list[dict]:
 # so a bare `profiles(...)` embed fails the whole query with PGRST201.
 _COORDINATOR_DASHBOARD_COLUMNS = (
     "id, name, status, starts_at, submitted_at, technical_readiness, preliminary_equipment_needs, "
-    "organiser:profiles!events_organiser_id_fkey(full_name)"
+    "organiser:profiles!events_organiser_id_fkey(full_name), spaces:event_space_requests(id, label)"
 )
 
 

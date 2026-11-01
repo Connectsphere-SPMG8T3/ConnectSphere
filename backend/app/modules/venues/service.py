@@ -719,6 +719,21 @@ def booking_readiness_by_space(event_id: str) -> dict[str, list[BookingReadiness
     return readiness
 
 
+def booking_readiness_by_event_space(event_ids: Iterable[str]) -> dict[str, dict[str, list[BookingReadiness]]]:
+    """`{event_id: {event_space_request_id: [BookingReadiness, ...]}}`: what
+    `booking_readiness_by_space` gives for one event, for many in one query
+    (the coordinator dashboard, D35). Bookings without a space are left out."""
+    readiness: dict[str, dict[str, list[BookingReadiness]]] = {}
+    for row in repository.list_booking_statuses(event_ids):
+        if row.get("event_space_request_id"):
+            flags = [row["flag"]] if row.get("flag") else []
+            readiness.setdefault(row["event_id"], {}).setdefault(row["event_space_request_id"], []).append(
+                BookingReadiness(status=row["status"], flags=flags,
+                                 needs_re_review=bool(row.get("needs_re_review_since")))
+            )
+    return readiness
+
+
 def booking_readiness_by_event(event_ids: Iterable[str]) -> dict[str, list[BookingReadiness]]:
     """`{event_id: [BookingReadiness, ...]}`: each booking's status and its
     open flag, for the safety readiness check (82 AC10). A flagged booking

@@ -20,7 +20,7 @@ from app.core.exceptions import (
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.equipment import service as equipment_service
 from app.modules.events import change_fields, change_impact, lead_scope, lifecycle, repository
-from app.modules.events.readiness import safety_readiness
+from app.modules.events.readiness import safety_readiness, spaces_ready
 from app.modules.venues import service as venues_service
 from app.modules.registrations import service as registrations_service
 from app.modules.registrations.schemas import ManagedRegistrationReport
@@ -1091,10 +1091,15 @@ def submit(event_id: str, organiser_id: str, body: EventUpdateRequest | None = N
     return _to_response(updated)
 
 
-def _venue_readiness(booking_statuses: list[str], affected: bool = False) -> ReadinessState:
+def _venue_readiness(booking_statuses: list[str], affected: bool = False,
+                     spaces: list[SpaceReadiness] | None = None) -> ReadinessState:
     # An Affected booking (CR-95) is not ready, even one that was approved.
     if affected:
         return ReadinessState.issue
+    # CR-97 AC10: an event with event spaces is ready space by space, the same
+    # rule as its event page, so one approved space doesn't speak for the rest.
+    if spaces:
+        return ReadinessState.ready if spaces_ready(spaces) else ReadinessState.pending
     # REQUIREMENTS §6.6: the venue is ready once a booking is approved.
     return ReadinessState.ready if "approved" in booking_statuses else ReadinessState.pending
 
@@ -1152,6 +1157,8 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
     change_requests = repository.list_open_change_requests(event_ids)
     bookings = venues_service.booking_statuses_by_event(event_ids) if event_ids else {}
     affected = venues_service.affected_event_ids(event_ids) if event_ids else set()
+    spaced_ids = [row["id"] for row in rows if row.get("spaces")]
+    space_bookings = venues_service.booking_readiness_by_event_space(spaced_ids) if spaced_ids else {}
     equipment = equipment_service.equipment_readiness_by_event(event_ids) if event_ids else {}
 
     action_items: list[CoordinatorActionItem] = []
@@ -1194,7 +1201,11 @@ def coordinator_dashboard(coordinator_id: str) -> CoordinatorDashboard:
                 flags=(["technical_issue"] if technical is ReadinessState.issue else [])
                 + (["venue_affected"] if row["id"] in affected else []),
                 readiness=Readiness(
-                    venue=_venue_readiness(bookings.get(row["id"], []), row["id"] in affected),
+                    venue=_venue_readiness(
+                        bookings.get(row["id"], []), row["id"] in affected,
+                        [SpaceReadiness(label=space["label"], bookings=space_bookings.get(row["id"], {}).get(space["id"], []))
+                         for space in row.get("spaces") or []],
+                    ),
                     equipment=equipment.get(row["id"], ReadinessState.not_required),
                     technical=technical,
                 ),
