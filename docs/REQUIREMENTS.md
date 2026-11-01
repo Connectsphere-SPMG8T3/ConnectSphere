@@ -1228,14 +1228,16 @@ The delivery channel and delivery preferences are a team choice (QA-11, QA-39, Q
 | EventDetailsChanged (date, time, venue) | Registered attendees | QA-124 |
 | EventCancelled | Organiser; coordinator; venue staff; tech support; registered attendees | QA-114 |
 | VenueChangedAffectsBooking / VenueBlockedAffectsBooking | Affected coordinators; venue staff; for an unavailable venue, also the **organiser**, with the next action (CAL-R5). **Not** attendees | QA-26, QA-117, QA3-7 |
-| ReplacementVenueConfirmed (attendee-facing details changed) | Registered attendees | QA3-7 |
+| ReplacementVenueConfirmed (attendee-facing details changed) | Registered attendees, when venue staff approve the replacement and the venue they see changes (SCRUM-53, item 115) | QA3-7, QA3-26 |
 | HoldExpiring / HoldExpired | Assigned coordinator | QA3-11, BR-R12 |
 | EquipmentOutageAffectsReservation | Tech support; affected coordinators | QA-31 |
 | RegistrationFull | Organiser; coordinator | W1 §6 |
 | WaitlistInvitation | The invited attendee | QA-30 |
+| RegistrationStatusChanged (registered, waitlisted, withdrawn, left, invitation expired) | The attendee | W4 Notification System, W1 §6; SCRUM-53 AC5 |
 
 **Rules**
 - **NT-R1:** The actor is never notified of their own action.
+  - **[Team decision, SCRUM-53 AC5]** Exception: an attendee's own registration change (registered, waitlisted with their position, withdrawn, left the waiting list) sends them a one-line confirmation, as does an invitation expiring. The bell is their record of where they stand, so the waitlist position isn't lost once the page is closed. An invitation keeps SCRUM-86's own notice and a cancellation story 115's, so neither sends a second one.
 - **NT-R2:** Notification text never exposes information the recipient's role can't see (AUTH-R2).
 - **NT-R3:** A notification is created in the same transaction as its action (or through an outbox table), so an action never succeeds without its notification.
 - **NT-R4:** In-app notifications **cannot be switched off** in release 1, so critical notices (cancellation, confirmation, date or venue changes) always reach the user. `communication_preferences` applies only to the future email channel (QA2-21).
@@ -1637,6 +1639,8 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 112. **[Assumption, story 62]** The organiser sees the assigned coordinator's direct edits to ordinary fields (story 112) in the history, with the coordinator's name, although AC3 names only "their own edits". Hiding them would leave the organiser unable to see why their event's description changed. Confirm with the PO.
 113. **[Assumption, story 62]** A venue edit appears in an event's history only if it was made while the event held or had booked that venue, and only to the coordinator (AC5).
 114. **[Assumption, SCRUM-35 AC1]** The manager registrations report stays available when registration is disabled, so managers can still review rows with Registered, Waitlisted, Invited or Withdrawn status. Terminal statuses remain stored but are not returned. The story doesn't say whether disabling registration should also hide the report; confirm with the customer.
+115. **[Team decision, SCRUM-53 AC1, AC3, AC6]** "A replacement is confirmed" (QA3-7) is the moment venue staff approve the CR-95 replacement booking, not the event being Confirmed again (Jie Ching, 2026-11-01). Registered attendees are then told "The venue for "X" has changed to <venue>." Attendees see only the primary venue, or every confirmed venue when none is primary (story 43, QA3-26), so nothing is sent when the replacement is in the same venue, or replaces a secondary space while a primary is set.
+116. **[Team decision, SCRUM-53 AC2]** An approved date or time change tells attendees the new time (""X" now runs 12 Nov 2099, 10:00 am – 1:00 pm.") in the event's own timezone, naming the timezone when it isn't Asia/Singapore. The end repeats the date only when it falls on another day.
   
 ## 10. Non-functional requirements
 

@@ -650,8 +650,8 @@ def approve_change(event_id: str, coordinator_id: str, version: int) -> EventRes
         history_reason=f"Change approved: {change_fields.describe(request['changes'])}",
         officer_message=f'"{name}" returned to planning. {_RETURN_REASONS["approved_details_changed"]}',
         # RG-R4, Q9: attendees act on a new date or time, not on attendance or layout.
-        attendee_message=(f'The date or time of "{name}" has changed. Check the event page for the new time.'
-                          if moved else None),
+        # SCRUM-53 AC2: the notice says what the new time is.
+        attendee_message=f'"{name}" now runs {_event_schedule(candidate)}.' if moved else None,
         booking_plans=[_plan_payload(plan) for plan in plans],
         staff_again_message=(f'"{name}" changed again while under re-review. '
                              "Check its booking against the new details."),
@@ -808,6 +808,25 @@ def _submission_errors(row: dict) -> list[dict]:
                 errors.append({"loc": ["body", "registration_closes_at"], "msg": "Registration closing time cannot be after the event end time.", "type": "value_error"})
 
     return errors
+
+
+def _event_schedule(event: dict) -> str:
+    """"12 Nov 2099, 10:00 am – 1:00 pm" in the event's own timezone, named when it
+    isn't Singapore; the end repeats the date only when it falls on another day."""
+    zone_name = event.get("event_timezone") or DEFAULT_EVENT_TIMEZONE
+    zone = ZoneInfo(zone_name)
+    starts_at = _parse_datetime(event["starts_at"]).astimezone(zone)
+    ends_at = _parse_datetime(event["ends_at"]).astimezone(zone)
+
+    def day(value: datetime) -> str:
+        return f"{value.day} {value:%b %Y}"
+
+    def clock(value: datetime) -> str:
+        return f"{value.hour % 12 or 12}:{value:%M} {'am' if value.hour < 12 else 'pm'}"
+
+    end = clock(ends_at) if ends_at.date() == starts_at.date() else f"{day(ends_at)}, {clock(ends_at)}"
+    schedule = f"{day(starts_at)}, {clock(starts_at)} – {end}"
+    return schedule if zone_name == DEFAULT_EVENT_TIMEZONE else f"{schedule} ({zone_name})"
 
 
 def _parse_datetime(value: datetime | str) -> datetime:

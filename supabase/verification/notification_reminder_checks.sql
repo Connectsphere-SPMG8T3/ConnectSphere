@@ -76,8 +76,10 @@ begin
     if v_message like '%a venue to be confirmed%' then
         raise exception 'REMINDER FAIL: the approved venue was not named: %', v_message;
     end if;
+    -- SCRUM-53 AC5: the fixture registrations send their own confirmations; they aren't reminders.
     if exists (select 1 from public.notifications
-                where event_id in ('e0000000-0000-4000-8000-0000000007c2', 'e0000000-0000-4000-8000-0000000007c3')) then
+                where event_id in ('e0000000-0000-4000-8000-0000000007c2', 'e0000000-0000-4000-8000-0000000007c3')
+                  and type <> 'attendee_registration_changed') then
         raise exception 'REMINDER FAIL: a reminder was sent for an event too far away or cancelled';
     end if;
 

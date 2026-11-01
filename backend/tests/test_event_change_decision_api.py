@@ -396,14 +396,15 @@ class TestApproveSignificantChange:
 
         assert approvals["calls"][0]["attendee_message"] is None
 
-    @pytest.mark.parametrize(("field", "after"), [
-        ("starts_at", "2099-11-12T11:00:00+08:00"),
-        ("ends_at", "2099-11-12T13:00:00+08:00"),
-        ("event_timezone", "Asia/Tokyo"),
+    @pytest.mark.parametrize(("field", "after", "runs"), [
+        ("starts_at", "2099-11-12T11:00:00+08:00", "12 Nov 2099, 11:00 am – 12:00 pm"),
+        ("ends_at", "2099-11-12T13:00:00+08:00", "12 Nov 2099, 10:00 am – 1:00 pm"),
+        ("ends_at", "2099-11-13T01:30:00+08:00", "12 Nov 2099, 10:00 am – 13 Nov 2099, 1:30 am"),
+        ("event_timezone", "Asia/Tokyo", "12 Nov 2099, 11:00 am – 1:00 pm (Asia/Tokyo)"),
     ])
-    def test_attendees_are_told_of_a_new_date_or_time(self, client, auth_headers, act_as, events, approvals,
-                                                     field, after):
-        """RG-R4, Q9."""
+    def test_attendees_are_told_the_new_date_and_time(self, client, auth_headers, act_as, events, approvals,
+                                                      field, after, runs):
+        """RG-R4, Q9; SCRUM-53 AC2 says what changed, in the event's own timezone."""
         before = events["store"][EVENT_ID][field]
         events["request"]["value"]["changes"] = {
             "event": [{"field": field, "before": before, "after": after}], "spaces": []}
@@ -411,8 +412,7 @@ class TestApproveSignificantChange:
 
         approve(client, auth_headers)
 
-        assert approvals["calls"][0]["attendee_message"] == (
-            'The date or time of "Partner Summit" has changed. Check the event page for the new time.')
+        assert approvals["calls"][0]["attendee_message"] == f'"Partner Summit" now runs {runs}.'
 
 
 class TestApprovalPlansTheBookings:
