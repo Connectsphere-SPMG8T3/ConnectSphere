@@ -346,14 +346,17 @@ watch(
         </p>
         <p data-testid="inventory-window" class="mb-4 text-sm font-bold" aria-live="polite">{{ inventoryWindowText }}</p>
 
-        <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[1fr_14rem]">
-          <label class="flex flex-col gap-2 text-xs font-bold">
+        <!-- D22: two columns only from lg, where the picker fits beside the expanded
+             sidebar; minmax(0, …) and min-w-0 let the search field shrink instead
+             of pushing the picker past the content edge. -->
+        <div class="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_14rem]">
+          <label class="flex min-w-0 flex-col gap-2 text-xs font-bold">
             Search equipment
-            <input v-model="inventorySearch" type="search" placeholder="Search by name" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" />
+            <input v-model="inventorySearch" type="search" placeholder="Search by name" class="w-full min-w-0 border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4" />
           </label>
-          <label class="flex flex-col gap-2 text-xs font-bold">
+          <label class="flex min-w-0 flex-col gap-2 text-xs font-bold">
             Status filter
-            <select v-model="inventoryFilter" class="border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4">
+            <select v-model="inventoryFilter" class="w-full min-w-0 border-2 border-ink bg-canvas px-4 py-3 text-base font-medium shadow-hard outline-none focus:bg-bauhaus-yellow/20 sm:border-4">
               <option value="all">All statuses</option>
               <option value="out-of-stock">Out of stock</option>
               <option value="available">Fully available</option>
@@ -367,6 +370,12 @@ watch(
           <span class="h-5 w-5 animate-spin rounded-full border-2 border-ink border-t-transparent" aria-hidden="true"></span>
           Loading inventory
         </div>
+        <!-- D15: after a failed load the inventory is unknown, not empty. -->
+        <BauhausEmptyState
+          v-else-if="inventoryError"
+          title="Inventory couldn't be loaded"
+          detail="The equipment list isn't shown until it loads. Refresh the page to try again."
+        />
         <div v-else class="overflow-x-auto border-2 border-ink bg-canvas shadow-hard sm:border-4">
           <table class="w-full min-w-[48rem] text-left text-sm">
             <thead class="bg-ink text-canvas">
@@ -418,7 +427,7 @@ watch(
           </ul>
           <BauhausEmptyState
             v-else
-            title="No maintenance scheduled"
+            :title="maintenanceError ? 'Maintenance couldn\'t be loaded' : 'No maintenance scheduled'"
             :detail="maintenanceError ? 'The maintenance records could not be loaded.' : 'No equipment is booked for maintenance.'"
           />
         </section>

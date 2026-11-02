@@ -111,6 +111,20 @@ describe("TechSupportDashboard tabs", () => {
     expect(failedTile.textContent).toContain("—");
   });
 
+  it("doesn't call the inventory or maintenance empty when they failed to load (D15, TC-TSD-011)", async () => {
+    equipmentApi.inventory.mockRejectedValue(new Error("down"));
+    equipmentApi.maintenance.mockRejectedValue(new Error("down"));
+    const { el } = await mountDashboard();
+    await settle();
+
+    expect(el.querySelector('[role="alert"]')).not.toBeNull();
+    expect(el.textContent).not.toContain("No equipment matches this filter.");
+    expect(el.textContent).not.toContain("No maintenance scheduled");
+    expect(el.querySelector("table")).toBeNull();
+    expect(el.textContent).toContain("Inventory couldn't be loaded");
+    expect(el.textContent).toContain("Maintenance couldn't be loaded");
+  });
+
   it("marks fully available stock with the design-system green, not a raw Tailwind colour", async () => {
     const { el } = await mountDashboard();
     await settle();
