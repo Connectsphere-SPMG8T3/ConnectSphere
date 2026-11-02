@@ -53,7 +53,9 @@ const inventoryWindowMessage = computed(() => inventoryWindowError(inventoryStar
 const inventoryWindowText = computed(() => {
   const window = shownWindow.value ?? { startAt: inventoryStartAt.value, endAt: inventoryEndAt.value };
   const label = describeInventoryWindow(window.startAt, window.endAt);
-  return shownWindow.value ? `Showing stock for ${label}` : `Loading stock for ${label}`;
+  if (shownWindow.value) return `Showing stock for ${label}`;
+  // D15: a failed load isn't still loading.
+  return inventoryError.value ? `Couldn't load stock for ${label}` : `Loading stock for ${label}`;
 });
 // Only the latest load may fill the table, so changing the window quickly
 // can't leave an earlier window's numbers under the new label.
@@ -133,7 +135,9 @@ const tiles = computed(() => {
       key: "types",
       label: "Equipment types",
       value: show(inventoryItems.value.length),
-      detail: inventoryLoaded.value ? `${units} units in total` : "Loading the inventory",
+      detail: inventoryLoaded.value
+        ? `${units} units in total`
+        : inventoryError.value ? "The inventory couldn't be loaded" : "Loading the inventory",
       background: "white",
       accent: "none",
     },

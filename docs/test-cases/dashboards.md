@@ -254,8 +254,8 @@ The two maintenance records are PA Systems 08:00–13:00 UTC ("Amplifier inspect
 | DEFECTS D8 (no fabricated dashboard data) | TC-TSD-007, TC-TSD-008 |
 | SCRUM-76 (guards read the session's active role) | TC-TSD-009 |
 | RBAC (technical support only) | TC-TSD-010 |
-| A failed load is not shown as an empty inventory or maintenance list (D15) | TC-TSD-011; `techSupportDashboard.spec.js` ("doesn't call the inventory or maintenance empty when they failed to load") |
-| Inventory filters fit at every width, sidebar collapsed or expanded (D22, NFR-U1) | TC-TSD-018; `frontend/e2e/tech-support-filters.e2e.js` |
+| A failed load is not shown as an empty inventory or maintenance list (D15) | TC-TSD-011; `techSupportDashboard.spec.js` ("doesn't call the inventory or maintenance empty when they failed to load"); `frontend/e2e/tech-support-dashboard-states.e2e.js` (TC-TSD-011, both reads answering 503) |
+| Inventory filters fit at every width, sidebar collapsed or expanded (D22, NFR-U1) | TC-TSD-018; `frontend/e2e/tech-support-dashboard-states.e2e.js` |
 | Navigation and design-system consistency (`fix/ui-TechSupportDashboard`) | TC-TSD-013, TC-TSD-014, TC-TSD-015, TC-TSD-016 |
 | REQUIREMENTS §4 (stored UTC, displayed Asia/Singapore) | TC-TSD-004 |
 

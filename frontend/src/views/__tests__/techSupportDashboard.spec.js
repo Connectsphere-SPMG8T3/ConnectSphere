@@ -123,6 +123,9 @@ describe("TechSupportDashboard tabs", () => {
     expect(el.querySelector("table")).toBeNull();
     expect(el.textContent).toContain("Inventory couldn't be loaded");
     expect(el.textContent).toContain("Maintenance couldn't be loaded");
+    // Nothing still claims to be loading once the load has failed.
+    expect(el.textContent).not.toContain("Loading the inventory");
+    expect(el.querySelector('[data-testid="inventory-window"]').textContent).not.toContain("Loading stock");
   });
 
   it("marks fully available stock with the design-system green, not a raw Tailwind colour", async () => {

@@ -1,9 +1,9 @@
-// D22: the inventory's search and status filter must fit beside the sidebar at
-// every width, collapsed or expanded, without pushing the page sideways.
+// D15 and D22 on the tech support dashboard: a failed load is never shown as
+// empty data, and the inventory filters fit beside the sidebar at every width.
 import { expect, seedSession, test } from "./support/fixtures.js";
 
 for (const collapsed of [true, false]) {
-  test(`TC-TSD-018 tech support inventory filters fit with the sidebar ${collapsed ? "collapsed" : "expanded"}`, async ({ page, sharedSessions }) => {
+  test(`TC-TSD-018 tech support inventory filters fit with the sidebar ${collapsed ? "collapsed" : "expanded"}`, async ({ page, sharedSessions }, testInfo) => {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.addInitScript((value) => window.localStorage.setItem("connectsphere.sidebarCollapsed", value), String(collapsed));
@@ -35,7 +35,25 @@ for (const collapsed of [true, false]) {
       expect(fit.pageScrolls, `page scrolls sideways at ${width}px`).toBe(false);
       expect(fit.overflowing, `filter controls past the content edge at ${width}px`).toBe(0);
       await expect(search).toBeVisible();
+      if (width === 768) await page.screenshot({ path: testInfo.outputPath(`filters-768-${collapsed ? "collapsed" : "expanded"}.png`), fullPage: true });
     }
     expect(errors).toEqual([]);
   });
 }
+
+test("TC-TSD-011 a failed inventory or maintenance load is reported, not shown as empty", async ({ page, sharedSessions }, testInfo) => {
+  await seedSession(page, await sharedSessions("tech_support"));
+  // Only these two reads fail; the session check and everything else still answer.
+  await page.route(/\/equipment\/(inventory|maintenance)(\?|$)/, (route) =>
+    route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Service unavailable" }) }));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/dashboard/tech-support");
+
+  await expect(page.getByRole("alert").first()).toBeVisible();
+  await expect(page.getByText("Inventory couldn't be loaded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Maintenance couldn't be loaded", { exact: true })).toBeVisible();
+  await expect(page.getByText("No equipment matches this filter.")).toHaveCount(0);
+  await expect(page.getByText("No maintenance scheduled")).toHaveCount(0);
+  await expect(page.locator("table")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("load-failure.png"), fullPage: true });
+});
