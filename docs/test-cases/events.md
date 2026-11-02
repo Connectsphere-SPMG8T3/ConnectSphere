@@ -72,6 +72,13 @@ These cases cover the implemented organiser draft and submission workflow. Run t
 | Duplicate submission returns `409` (ER-R4) | TC-EVENT-021 |
 | Only Event Organisers can create requests; ownership is enforced server-side (AUTH-R1, S-R1) | TC-EVENT-005, TC-EVENT-030 |
 
+### Discard a draft (story 9 AC6, D81)
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-EVENT-037 | Only the owning organiser can discard a draft, and it is then gone | Automated (live) | A throwaway draft owned by the seeded organiser | `DELETE /api/v1/events/{id}` as Coordinator, Venue Staff, Tech Support and Attendee; then as the organiser; then `GET` it | — | `403` for each other role and the draft is kept; `204` for the organiser; the `GET` returns `404` and no row remains. | 🔴 | 2026-11-02 | [Pass, 2026-11-02](runs/2026-11-02-1734-api-db-daf2789.md) |
+| TC-EVENT-038 | The organiser discards a draft from the request form | Manual | Signed in as the organiser; a throwaway draft of your own, opened from **Drafts** | 1. Change any field. 2. Click **Discard draft**, read the dialog, click **Keep draft**. 3. Click **Discard draft** again and confirm. 4. Repeat steps 1–2 at 375px. 5. Open a returned or submitted request, and **Create event**. | — | 1–2. The dialog reads **Discard this draft?** and says the draft will be deleted and this can't be undone; **Keep draft** closes it and the form keeps your change. 3. No "leave the page" prompt; a **Draft discarded** toast; the dashboard opens and the draft is gone from **Drafts**. 4. The button and dialog fit at 375px. 5. Neither page offers **Discard draft**. | 🔴 | 2026-11-02 | [Pass, 2026-11-02](runs/2026-11-02-1738-manual-daf2789.md) |
+
 ### Traceability — 9
 
 Story 9 (draft event requests) was built inside SCRUM-8, so its cases are the SCRUM-8 cases above plus the dashboard and Lead-queue cases that check drafts stay private.
@@ -83,7 +90,7 @@ Story 9 (draft event requests) was built inside SCRUM-8, so its cases are the SC
 | AC3 A draft can be reopened and edited later; saved values are kept | TC-EVENT-003, TC-EVENT-007, TC-EVENT-009, TC-EVENT-031 |
 | AC4 Submitting a draft runs story 8's required-field checks; once submitted it is no longer a draft | TC-EVENT-010 to TC-EVENT-016, TC-EVENT-020 |
 | AC5 Drafts are visible only to their organiser, not to coordinators or in the Lead's unassigned queue | TC-EVENT-004, TC-EVENT-030, TC-DASH-011, TC-DASH-013, TC-ASSIGN-006 |
-| AC6 The organiser can discard a draft | Not covered: the UI has no way to discard a draft (DEFECTS D81) |
+| AC6 The organiser can discard a draft | TC-EVENT-037, TC-EVENT-038, TC-EVENT-006 (a submitted event can't be); `TestEventDrafts::test_draft_can_be_discarded_by_its_owner`, `::test_another_organisers_draft_cannot_be_discarded`, `::test_only_an_organiser_can_discard_a_draft`; `EventRequestView.spec.js` and `events.spec.js` (D81) |
 
 ## Reuse a previous event as a template (SCRUM-66)
 
@@ -149,6 +156,23 @@ One case per acceptance criterion, in Jira order (SCRUM-34 AC1–6, then SCRUM-5
 | D11 (creation and submission recorded in history) | TC-REV-015, TC-REV-016 | `test_event_lifecycle.py::test_submit_moves_draft_to_under_review`, `test_events_api.py::TestEventSubmission::test_valid_draft_can_be_submitted_without_coordinator_assignment_through_transition_event`, `test_events_repository.py::test_status_history_puts_the_creation_entry_last_when_timestamps_tie`; `supabase/verification/event_history_checks.sql` (rolled back, against the real trigger and RPC) |
 
 **Automated coverage today.** The backend suite (`test_event_lifecycle.py`, `test_event_review_api.py`) covers every AC above except SCRUM-34 AC6 and SCRUM-52 AC6, which are verified against the real RPC only (Task 9) because the API test suite mocks `repository.transition_event` rather than the database function itself — the mock can't prove the RPC's own booking-release branch. `test_active_role_access.py` covers the new routes' active-role gating automatically (SCRUM-76). On the frontend, `RejectEventModal.spec.js`, `EventStatusHistory.spec.js`, `eventReviewStore.spec.js`, and `CoordinatorEventView.spec.js` cover the client-side halves of AC2 and AC5/AC8. TC-REV-006 and TC-REV-012 are the two cases that most need a real-system re-run if `transition_event` is ever changed, since nothing else exercises them.
+
+## Review submitted event request details (SCRUM-49)
+
+The PO replaced AC2 (client organisation information and past event history) with AC3 on 2026-11-02: client management is outside the first release, so there is no client record or history to show (DEFECTS D82). Both cases read only; event `…0201` is the seeded fixture assigned to `coordinator@connectsphere.dev`.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-REV-017 | AC3: the assigned coordinator's event read names the organiser and their organisation | Automated (live) | Fixture `…0201` assigned to the seeded coordinator | `GET /api/v1/events/e0000000-…-0201` as the coordinator | — | `200`; `organiser` is the event organiser's `full_name` and `organisation_name` from `profiles` (for the seed, Olivia Tan, Tan & Partners Events), and carries no email or phone. | 🔴 | 2026-11-02 | [Pass, 2026-11-02](runs/2026-11-02-1803-api-db-fb77a68.md) |
+| TC-REV-018 | AC1, AC3: Request details shows who sent the request and every submitted field | Manual | Signed in as `coordinator@connectsphere.dev` | Open `/coordinator/events/e0000000-…-0201`; read **Request details** at desktop width, then at 375px | — | The first two rows are **Organiser** (Olivia Tan) and **Organisation** (Tan & Partners Events), followed by the request ID, purpose, attendance, start and end, accessibility needs, equipment needs, description and the space requirements. An empty field reads **Not provided**. Nothing is clipped or overflows at 375px. | 🟠 | 2026-11-02 | [Pass, 2026-11-02](runs/2026-11-02-1808-manual-fb77a68.md) |
+
+### Traceability — SCRUM-49
+
+| SCRUM-49 acceptance criterion | Covered by |
+|---|---|
+| AC1 Can view all submitted event request fields | TC-REV-018; `test_event_review_api.py::TestCoordinatorRead::test_the_assigned_coordinator_can_read_the_event`, `::test_an_unassigned_coordinator_is_forbidden`, `::test_a_coordinator_cannot_read_a_draft_event` |
+| AC2 (removed 2026-11-02, replaced by AC3) | — |
+| AC3 Shows the name and organisation of the organiser who submitted the request | TC-REV-017, TC-REV-018; `TestCoordinatorRead::test_the_assigned_coordinator_sees_the_organisers_name_and_organisation`, `::test_an_organiser_without_an_organisation_reads_as_null`; `test_events_repository.py::test_the_single_event_read_names_the_organiser_and_their_organisation`; `CoordinatorEventView.spec.js` (SCRUM-49 AC3) |
 
 ## Return for amendment (SCRUM-33)
 

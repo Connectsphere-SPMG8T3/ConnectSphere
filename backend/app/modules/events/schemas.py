@@ -289,6 +289,13 @@ class EventCoordinator(BaseModel):
     full_name: str
 
 
+class EventOrganiser(BaseModel):
+    """SCRUM-49 AC3: who sent the request. Name and organisation only; no contact
+    details. `organisation_name` is free text from sign-up (ACC-R5), optional."""
+    full_name: str | None = None
+    organisation_name: str | None = None
+
+
 class BookingReadiness(BaseModel):
     status: str
     flags: list[str] = []
@@ -460,6 +467,8 @@ class EventResponse(EventFields):
     coordinator_id: str | None = None
     # Named on the single-event read; null when unassigned and on other responses.
     coordinator: EventCoordinator | None = None
+    # Named on the single-event read (SCRUM-49 AC3); null on other responses.
+    organiser: EventOrganiser | None = None
     status: EventStatus
     technical_readiness: TechnicalReadiness
     submitted_at: datetime | None = None

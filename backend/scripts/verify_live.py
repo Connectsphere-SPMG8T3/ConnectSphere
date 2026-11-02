@@ -1532,6 +1532,20 @@ def _(ctx: Context) -> None:
 FIXTURE_EVENT = "e0000000-0000-4000-8000-000000000201"  # supabase/seed.sql: under_review, assigned
 
 
+@check("TC-REV-017", "The assigned coordinator's event read names the organiser and their organisation "
+       "(SCRUM-49 AC3, D82)", needs_db=True)
+def _(ctx: Context) -> None:
+    [expected] = db_query(
+        "select p.full_name, p.organisation_name from public.events e "
+        f"join public.profiles p on p.id = e.organiser_id where e.id = '{FIXTURE_EVENT}'"
+    )
+    response = ctx.client.get(f"{ctx.api}/events/{FIXTURE_EVENT}", headers=ctx.shared("event_coordinator").headers)
+    expect_status(response, 200)
+    organiser = response.json().get("organiser")
+    expect(organiser == {"full_name": expected["full_name"], "organisation_name": expected["organisation_name"]},
+           f"organiser {organiser}, expected {expected}")
+
+
 @check("TC-CMT-009", "The organiser and the assigned coordinator both read the event's comment thread")
 def _(ctx: Context) -> None:
     for role in ("event_organiser", "event_coordinator"):
@@ -4101,6 +4115,21 @@ def _(ctx: Context) -> None:
         expect_detail(response, expected)
         [count] = db_query(f"select count(*) as n from public.event_change_requests where event_id = '{event_id}'")
         expect(int(count["n"]) == 0, f"a request was stored on a {status} event")
+
+
+@check("TC-EVENT-037", "Only the owning organiser can discard a draft; it is then gone (story 9 AC6, D81)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "9-037", "2031-10-07 09:00+08", "2031-10-07 12:00+08", status="draft",
+                               assigned=False)
+    for role in ("event_coordinator", "venue_staff", "tech_support", "attendee"):
+        session = ctx.shared(role)
+        expect_status(ctx.client.delete(f"{ctx.api}/events/{event_id}", headers=session.headers), 403)
+    owner = ctx.shared("event_organiser")
+    expect_status(ctx.client.delete(f"{ctx.api}/events/{event_id}", headers=owner.headers), 204)
+    expect_status(ctx.client.get(f"{ctx.api}/events/{event_id}", headers=owner.headers), 404)
+    [count] = db_query(f"select count(*) as n from public.events where id = '{event_id}'")
+    expect(int(count["n"]) == 0, "the discarded draft is still stored")
 
 
 @check("TC-CANCEL-004", "Only the organiser role can request; a blank reason is refused", needs_db=True)

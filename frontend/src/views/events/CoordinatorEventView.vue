@@ -454,6 +454,8 @@ watch(
         <BauhausCard background="white" accent="none" data-testid="request-details-card">
           <h2 class="text-2xl font-bold">Request details</h2>
           <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div><dt class="text-xs font-bold text-ink/70">Organiser</dt><dd class="mt-2 font-medium" data-testid="organiser-name">{{ displayValue(event.organiser?.full_name) }}</dd></div>
+            <div><dt class="text-xs font-bold text-ink/70">Organisation</dt><dd class="mt-2 font-medium" data-testid="organiser-organisation">{{ displayValue(event.organiser?.organisation_name) }}</dd></div>
             <div class="sm:col-span-2"><dt class="text-xs font-bold text-ink/70">Request ID</dt><dd class="mt-2 break-all font-medium" data-testid="request-id">{{ event.id }}</dd></div>
             <div><dt class="text-xs font-bold text-ink/70">Purpose</dt><dd class="mt-2 font-medium">{{ displayValue(event.purpose) }}</dd></div>
             <div><dt class="text-xs font-bold text-ink/70">Expected attendance</dt><dd class="mt-2 font-medium">{{ displayValue(event.expected_attendance) }}</dd></div>
