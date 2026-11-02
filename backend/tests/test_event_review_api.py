@@ -344,6 +344,27 @@ class TestCoordinatorRead:
         assert response.status_code == 200
         assert response.json()["id"] == EVENT_ID
 
+    def test_the_assigned_coordinator_sees_the_organisers_name_and_organisation(
+        self, client, auth_headers, act_as, events
+    ):
+        """SCRUM-49 AC3 (D82): who sent the request, without their contact details."""
+        events["store"][EVENT_ID]["organiser"] = {"full_name": "Olivia Tan", "organisation_name": "Tan & Partners Events"}
+        act_as("event_coordinator")
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["organiser"] == {"full_name": "Olivia Tan", "organisation_name": "Tan & Partners Events"}
+
+    def test_an_organiser_without_an_organisation_reads_as_null(self, client, auth_headers, act_as, events):
+        """SCRUM-49 AC3: organisation_name is optional on profiles (attendee-style sign-ups have none)."""
+        events["store"][EVENT_ID]["organiser"] = {"full_name": "Olivia Tan", "organisation_name": None}
+        act_as("event_coordinator")
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.json()["organiser"] == {"full_name": "Olivia Tan", "organisation_name": None}
+
     def test_an_unassigned_coordinator_is_forbidden(self, client, auth_headers, act_as, events):
         act_as("event_coordinator", user_id=OTHER_COORDINATOR_ID)
 

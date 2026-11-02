@@ -736,3 +736,16 @@ def test_list_open_change_requests_maps_each_event_to_when_it_was_asked(monkeypa
     assert repository.list_open_change_requests(["e1", "e2"]) == {"e1": "2026-10-24T09:00:00+00:00"}
     assert ("eq", "kind", "change") in calls
     assert repository.list_open_change_requests([]) == {}
+
+
+def test_the_single_event_read_names_the_organiser_and_their_organisation(monkeypatch):
+    """SCRUM-49 AC3 (D82): the read that serves the coordinator's event page embeds the
+    organiser's name and organisation through the named organiser FK."""
+    client = TableClient(SimpleNamespace(data={"id": "event-1"}))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+    monkeypatch.setattr(repository, "list_event_spaces", lambda event_id: [])
+
+    repository.get_event("event-1")
+
+    [columns] = [call[1] for call in client.queries[-1].calls if call[0] == "select"]
+    assert "organiser:profiles!events_organiser_id_fkey(full_name, organisation_name)" in columns
