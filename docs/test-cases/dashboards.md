@@ -241,6 +241,7 @@ The two maintenance records are PA Systems 08:00–13:00 UTC ("Amplifier inspect
 | TC-TSD-018 | Times show in Singapore time whatever the browser's timezone (D61) | Signed in as `tech.support@connectsphere.dev`; an outage starting 00:00 SGT (automated on throwaway equipment, `tech-support-times.e2e.js`) | Open **Inventory** and read the outage's card under **Scheduled maintenance**; open **Availability** and check the default window; repeat with the computer's timezone set to another zone | Outage 25 Oct 2031 00:00–01:00 SGT | The card reads **25 Oct 2031, 12:00 am – 25 Oct 2031, 1:00 am**, never 24 Oct 4:00 pm. Both windows default to today's Singapore date, 9 am to 5 pm, and a check for 09:00 asks about 09:00 Singapore time | 🟠 |
 
 | TC-TSD-017 | Summary cards align when labels wrap (D21) | Logged in as the dashboard’s role | Open `/dashboard/tech-support`; resize to 1440, 1280, 1100, 768, 640, 375 and 320px; inspect the summary row, especially Maintenance scheduled | — | Equal card heights and aligned figures/details within each row. Summary text remains visible; its row stays inside the viewport. One/two/three-or-four columns follow available space. Existing category actions still work. | 🟠 |
+| TC-TSD-018 | Inventory filters fit beside the sidebar at every width (D22) | Signed in as `tech.support@connectsphere.dev`; sidebar collapsed, then expanded | Open `/dashboard/tech-support`; resize to 1440, 1024, 900, 768, 640 and 375px; look at **Search equipment** and **Status filter** | — | Both controls stay inside the page's content area and the page never scrolls sideways. They sit side by side from 1024px and stack below that. Before the fix, the status filter ran past the right edge at 768px with the sidebar expanded. | 🟠 |
 
 ### Traceability — SCRUM-73
 
@@ -253,6 +254,8 @@ The two maintenance records are PA Systems 08:00–13:00 UTC ("Amplifier inspect
 | DEFECTS D8 (no fabricated dashboard data) | TC-TSD-007, TC-TSD-008 |
 | SCRUM-76 (guards read the session's active role) | TC-TSD-009 |
 | RBAC (technical support only) | TC-TSD-010 |
+| A failed load is not shown as an empty inventory or maintenance list (D15) | TC-TSD-011; `techSupportDashboard.spec.js` ("doesn't call the inventory or maintenance empty when they failed to load"); `frontend/e2e/tech-support-dashboard-states.e2e.js` (TC-TSD-011, both reads answering 503) |
+| Inventory filters fit at every width, sidebar collapsed or expanded (D22, NFR-U1) | TC-TSD-018; `frontend/e2e/tech-support-dashboard-states.e2e.js` |
 | Navigation and design-system consistency (`fix/ui-TechSupportDashboard`) | TC-TSD-013, TC-TSD-014, TC-TSD-015, TC-TSD-016 |
 | REQUIREMENTS §4 (stored UTC, displayed Asia/Singapore) | TC-TSD-004 |
 

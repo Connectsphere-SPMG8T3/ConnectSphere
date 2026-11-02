@@ -347,6 +347,57 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     expect(el.querySelector('[data-testid="amendment-banner"]')).toBeNull();
   });
 
+  it("discards a saved draft only after confirmation, without the unsaved-changes prompt (D81)", async () => {
+    const draft = returnedEvent({ id: "draft-1", status: "draft", amendment: null });
+    const { el, router } = await mountForm([draft], draft);
+    eventsApi.remove.mockResolvedValue(null);
+    const name = el.querySelector("input");
+    name.value = "Edited before discarding";
+    name.dispatchEvent(new Event("input"));
+    await nextTick();
+
+    buttonByText(el, "Discard draft").click();
+    await nextTick();
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Discard this draft?");
+    document.querySelector('[role="dialog"] button[aria-label="Keep draft"]').click();
+    await nextTick();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(eventsApi.remove).not.toHaveBeenCalled();
+
+    buttonByText(el, "Discard draft").click();
+    await nextTick();
+    document.querySelector('[role="dialog"] button[aria-label="Discard draft"]').click();
+
+    await vi.waitFor(() => expect(eventsApi.remove).toHaveBeenCalledWith("draft-1", "access"));
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-organiser"));
+    expect(document.querySelector('[aria-label="Leave page"]')).toBeNull();
+  });
+
+  it("keeps the draft open and shows the API error when discarding fails (D81)", async () => {
+    const draft = returnedEvent({ id: "draft-1", status: "draft", amendment: null });
+    const { el, router } = await mountForm([draft], draft);
+    eventsApi.remove.mockRejectedValue(new Error("Only draft events can be discarded."));
+
+    buttonByText(el, "Discard draft").click();
+    await nextTick();
+    document.querySelector('[role="dialog"] button[aria-label="Discard draft"]').click();
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]')?.textContent).toContain("Only draft events can be discarded."));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(router.currentRoute.value.name).toBe("event-new");
+    expect(buttonByText(el, "Discard draft").disabled).toBe(false);
+  });
+
+  it("offers no discard for a returned request or an unsaved new request (D81)", async () => {
+    const { el } = await mountForm([returnedEvent()], returnedEvent());
+    expect(buttonByText(el, "Discard draft")).toBeUndefined();
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+
+    const { el: fresh } = await mountNewForm();
+    expect(buttonByText(fresh, "Discard draft")).toBeUndefined();
+  });
+
   it("stages multiple spaces before the first event save", async () => {
     const created = returnedEvent({ id: "draft-2", status: "draft", spaces: [], amendment: null });
     const saved = returnedEvent({

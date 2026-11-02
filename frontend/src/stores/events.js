@@ -257,6 +257,23 @@ export const useEventsStore = defineStore("events", {
       return this.save((token) => eventsApi.update(eventId, eventToPayload(event, { clearing: true }), token));
     },
 
+    // Story 9 AC6 (D81): the API deletes the draft only for its owner and only while
+    // it is still a draft; anything else comes back as an error to show the organiser.
+    async discard(eventId) {
+      const authStore = useAuthStore();
+      this.isSaving = true;
+      this.error = null;
+      try {
+        await authStore.withSession((token) => eventsApi.remove(eventId, token));
+        this.events = this.events.filter((event) => event.id !== eventId);
+      } catch (error) {
+        this.error = error.message;
+        throw error;
+      } finally {
+        this.isSaving = false;
+      }
+    },
+
     async submit(eventId, event) {
       return this.save((token) => eventsApi.submit(eventId, eventToPayload(event, { clearing: true }), token));
     },

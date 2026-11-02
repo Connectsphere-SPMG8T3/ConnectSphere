@@ -339,6 +339,34 @@ class TestEventDrafts:
 
         assert response.status_code == 409
 
+    def test_draft_can_be_discarded_by_its_owner(self, client, auth_headers, authenticate_as):
+        """D81 / story 9 AC6: the owner's discard deletes the draft."""
+        authenticate_as("event_organiser")
+
+        response = client.delete(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.status_code == 204
+        assert client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers).status_code == 404
+
+    def test_another_organisers_draft_cannot_be_discarded(self, client, auth_headers, authenticate_as):
+        """D81 / story 9 AC5-AC6: another organiser's draft answers 404 and is kept."""
+        authenticate_as("event_organiser", user_id="22222222-2222-2222-2222-222222222222")
+
+        response = client.delete(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.status_code == 404
+        assert repository.get_event(EVENT_ID) is not None
+
+    @pytest.mark.parametrize("role", ["event_coordinator", "venue_staff", "tech_support", "attendee"])
+    def test_only_an_organiser_can_discard_a_draft(self, client, auth_headers, authenticate_as, role):
+        """D81: discarding is organiser-only by active role."""
+        authenticate_as(role)
+
+        response = client.delete(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert response.status_code == 403
+        assert repository.get_event(EVENT_ID) is not None
+
 
 class TestEventSubmission:
     def test_submission_uses_the_event_timezone_for_local_date_validation(

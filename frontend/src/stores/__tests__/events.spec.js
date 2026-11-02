@@ -134,6 +134,31 @@ describe("event store", () => {
     expect(store.events).toEqual([]);
   });
 
+  it("discards a draft through the authenticated session and drops it from the list (D81)", async () => {
+    const store = signedInStore();
+    store.events = [{ id: "d1", status: "draft" }, { id: "e2", status: "under_review" }];
+    eventsApi.remove.mockResolvedValue(null);
+
+    await store.discard("d1");
+
+    expect(eventsApi.remove).toHaveBeenCalledWith("d1", "access");
+    expect(store.events).toEqual([{ id: "e2", status: "under_review" }]);
+    expect(store.isSaving).toBe(false);
+    expect(store.error).toBeNull();
+  });
+
+  it("keeps the draft and the API's error when a discard is refused (D81)", async () => {
+    const store = signedInStore();
+    store.events = [{ id: "d1", status: "draft" }];
+    eventsApi.remove.mockRejectedValue(new ApiError("Only draft events can be discarded.", 409));
+
+    await expect(store.discard("d1")).rejects.toThrow("Only draft events can be discarded.");
+
+    expect(store.error).toBe("Only draft events can be discarded.");
+    expect(store.events).toEqual([{ id: "d1", status: "draft" }]);
+    expect(store.isSaving).toBe(false);
+  });
+
   it("loads one event request through the authenticated session", async () => {
     const store = signedInStore();
     eventsApi.get.mockResolvedValue({
