@@ -336,3 +336,22 @@ The attendee dashboard remains a placeholder with existing hardcoded metrics (kn
 ### Traceability — dashboard layout fixes D20/D21
 
 `frontend/e2e/dashboard-summary-layout.e2e.js` automates TC-TSD-017 and TC-ATT-001 (TC-DASH-025 and TC-ORG-010 were dropped when they were superseded): real rendered positions after resize transitions settle, summary-row bounds, readable content, and organiser tile navigation. The venue equivalent remains TC-VSD-035. These implement NFR-U1 and the approved REQUIREMENTS §6.21 layout decision; no new story acceptance criteria are inferred. A developer still judges spacing and readability at desktop/375px. Tech-support’s unrelated inventory-filter page overflow is D22; the summary row is tested independently.
+
+## Navigation sidebar and top bar (77)
+
+Story 77 was built in PRs #11 and #13 (16 and 18 Sep 2026). Its acceptance criteria were written on 2026-11-02, from what those PRs built, and checked against `main` at `00e9177`. AC1, AC2 and AC5 are covered by component tests. These two cases cover the behaviour that needs a real browser.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-NAV-001 | AC3: the sidebar collapses and expands, and the choice survives a reload | Manual | Signed in as any seeded role; window at least 640px wide | 1. Click **Expand navigation** at the top of the sidebar. 2. Reload the page. 3. Click **Collapse navigation**. 4. Reload again. | — | 1. The sidebar widens and shows each link's label next to its icon. 2. After the reload it is still expanded. 3. It narrows to an icon rail with no labels, and every icon still opens its page. 4. After the reload it is still collapsed. The page content moves with the sidebar and is never hidden under it. | 🟠 | 2026-11-02 | [Pass, 2026-11-02](runs/2026-11-02-1725-manual-dc590f7.md) |
+| TC-NAV-002 | AC4: on a phone, the sidebar opens from the top bar and closes on a link or the backdrop | Manual | Signed in as any seeded role; window 375px wide | 1. Load any signed-in page. 2. Tap **Toggle navigation menu** in the top bar. 3. Tap the dark backdrop beside the sidebar. 4. Open the menu again and tap a link. | — | 1. The page shows without the sidebar and with no horizontal scrolling. 2. The sidebar slides in over the page, with a dark backdrop behind it. 3. The sidebar closes and the page is unchanged. 4. The linked page opens and the sidebar is closed. | 🟠 | 2026-11-02 | [Pass, 2026-11-02](runs/2026-11-02-1725-manual-dc590f7.md) |
+
+### Traceability — 77
+
+| Story 77 acceptance criterion | Covered by |
+|---|---|
+| AC1 A sidebar on every signed-in page links to the current role's dashboard and pages, not other roles' | `Nav.spec.js`: the organiser, coordinator, attendee and tech support link tests, and "does not show the tech support views to another role"; TC-DASH-021, TC-TSD-014 |
+| AC2 The current page's link is highlighted | `Nav.spec.js`: the "highlights …" tests and "keeps the current page's link yellow at rest …"; TC-DASH-031, TC-ORG-015 |
+| AC3 The sidebar collapses to an icon rail and the choice survives a reload | `useSidebarState.spec.js` ("keeps a saved choice either way"); TC-NAV-001 |
+| AC4 On a phone the sidebar opens from a top-bar menu button and closes on a link or the backdrop | `useSidebarState.spec.js` ("never starts with the phone menu open"); TC-NAV-002 |
+| AC5 The top bar greets the user by first name, shows today's date and holds the notification bell | `TopBar.spec.js`: "greets the user by first name and shows today's date", "gives every role the bell, attendees included" |

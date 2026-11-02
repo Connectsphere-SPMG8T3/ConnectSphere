@@ -72,6 +72,19 @@ These cases cover the implemented organiser draft and submission workflow. Run t
 | Duplicate submission returns `409` (ER-R4) | TC-EVENT-021 |
 | Only Event Organisers can create requests; ownership is enforced server-side (AUTH-R1, S-R1) | TC-EVENT-005, TC-EVENT-030 |
 
+### Traceability — 9
+
+Story 9 (draft event requests) was built inside SCRUM-8, so its cases are the SCRUM-8 cases above plus the dashboard and Lead-queue cases that check drafts stay private.
+
+| Story 9 acceptance criterion | Covered by |
+|---|---|
+| AC1 The organiser can save a draft at any point, even with required fields missing | TC-EVENT-001, TC-EVENT-002, TC-EVENT-010 |
+| AC2 Drafts appear in the organiser's event list marked "Draft", separate from submitted requests | TC-EVENT-001, TC-ORG-001 |
+| AC3 A draft can be reopened and edited later; saved values are kept | TC-EVENT-003, TC-EVENT-007, TC-EVENT-009, TC-EVENT-031 |
+| AC4 Submitting a draft runs story 8's required-field checks; once submitted it is no longer a draft | TC-EVENT-010 to TC-EVENT-016, TC-EVENT-020 |
+| AC5 Drafts are visible only to their organiser, not to coordinators or in the Lead's unassigned queue | TC-EVENT-004, TC-EVENT-030, TC-DASH-011, TC-DASH-013, TC-ASSIGN-006 |
+| AC6 The organiser can discard a draft | Not covered: the UI has no way to discard a draft (DEFECTS D81) |
+
 ## Reuse a previous event as a template (SCRUM-66)
 
 These cases cover creating a new draft from the signed-in organiser's own previous event. Sharing templates between organisers, including organisers with the same `organisation_name`, is deferred until client organisations are implemented.
