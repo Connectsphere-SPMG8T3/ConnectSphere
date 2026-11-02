@@ -341,3 +341,33 @@ class TestCrossVenueReads:
         """`venue_blocks` has a single FK to `venues`, so it needs no hint."""
         repository.list_all_upcoming_blocks(NOW)
         assert "venues(name)" in blocks_client["venue_blocks"]["select"]
+
+
+class TestRestorableAfterBlock:
+    """SCRUM-54 AC5: the queue marks each booking a block no longer covers, from
+    the computed column on the same read, so the dashboard costs no extra query."""
+
+    @pytest.fixture()
+    def rows(self, monkeypatch):
+        base = {"event_id": "e-1", "venue_id": HALL_A_ID, "status": "approved", "flag": "affected",
+                "booked_period": '["2026-10-13 09:00:00+08","2026-10-13 12:00:00+08")',
+                "created_at": "2026-09-01T10:00:00+08:00", "venues": {"name": "Hall A"}}
+        data = [{**base, "id": "free", "restorable_after_block": True},
+                {**base, "id": "covered", "restorable_after_block": False}]
+        client, recorded = make_client_mock({"venue_bookings": data})
+        monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+        return recorded
+
+    def test_the_computed_column_is_selected_and_read(self, rows):
+        bookings = {b.id: b for b in repository.list_all_upcoming_bookings(NOW, {"approved"})}
+        assert "restorable_after_block" in rows["venue_bookings"]["select"]
+        assert bookings["free"].restorable is True and bookings["covered"].restorable is False
+
+    def test_a_row_without_it_is_not_restorable(self, monkeypatch):
+        client, _ = make_client_mock({"venue_blocks": [], "venue_bookings": [{
+            "id": "x", "event_id": "e-1", "venue_id": HALL_A_ID, "status": "held",
+            "booked_period": '["2026-10-13 09:00:00+08","2026-10-13 12:00:00+08")',
+            "created_at": "2026-09-01T10:00:00+08:00"}]})
+        monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+        [booking] = repository.list_all_upcoming_bookings(NOW, {"held"})
+        assert booking.restorable is False

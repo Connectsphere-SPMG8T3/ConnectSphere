@@ -13,6 +13,7 @@ import {
   formatVenuePeriod,
   inactiveReasonLabel,
   summariseEditHistoryEntry,
+  formatVenueInstant,
   venueProfileTabs,
   venueSlides,
   venueToEditForm,
@@ -396,5 +397,39 @@ describe("countBookings", () => {
     expect(countBookings(1)).toBe("1 booking");
     expect(countBookings(2)).toBe("2 bookings");
     expect(countBookings(0)).toBe("0 bookings");
+  });
+});
+
+describe("a block change in the venue history (SCRUM-54 AC4)", () => {
+  const before = { block: { starts_at: "2031-05-20T01:00:00+00:00", ends_at: "2031-05-20T09:00:00+00:00",
+    reason: "maintenance", notes: "Aircon" } };
+
+  it("reads an ended-early block as the original period and the new one, with the note", () => {
+    const entry = { before, after: { block: { ...before.block, ends_at: "2031-05-20T04:00:00+00:00",
+      status: "ended_early", note: "Fixed early" } } };
+
+    expect(summariseEditHistoryEntry(entry)).toEqual([{
+      field: "block",
+      label: "Block ended early",
+      before: "20 May 2031, 09:00 – 20 May 2031, 17:00 · Maintenance · Aircon",
+      after: "20 May 2031, 09:00 – 20 May 2031, 12:00 · Maintenance · Aircon · Note: Fixed early",
+    }]);
+  });
+
+  it("reads a removed block as removed, with no period after", () => {
+    const entry = { before, after: { block: { ...before.block, ends_at: null, status: "removed", note: null } } };
+
+    expect(summariseEditHistoryEntry(entry)[0]).toMatchObject({ label: "Block removed", after: "Removed" });
+  });
+
+  it("adds the note to a removal", () => {
+    const entry = { before, after: { block: { ...before.block, ends_at: null, status: "removed", note: "Cancelled" } } };
+    expect(summariseEditHistoryEntry(entry)[0].after).toBe("Removed · Note: Cancelled");
+  });
+});
+
+describe("formatVenueInstant", () => {
+  it("shows one instant in Singapore time", () => {
+    expect(formatVenueInstant("2031-04-30T02:30:00Z")).toBe("30 Apr 2031, 10:30");
   });
 });

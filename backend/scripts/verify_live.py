@@ -120,6 +120,7 @@ DB_SCRIPTS = [
     ("venue_release_checks.sql", "TC-BOOK-046 (CR-95: release the original when its replacement is approved)"),
     ("venue_restore_checks.sql", "TC-BOOK-047 (CR-95: restore an affected booking)"),
     ("venue_block_create_checks.sql", "TC-BLOCK-008–013 (SCRUM-51 database half: refusals, history, flags, links, notices, RLS)"),
+    ("venue_block_change_checks.sql", "TC-BLOCK-025 (SCRUM-54 database half: changes, history, freed bookings, restore, RLS)"),
     ("equipment_availability_checks.sql", "TC-EQR-038 (23-R: condition, event window, reference location)"),
     ("equipment_reservation_checks.sql", "TC-EQR-016–020, 022–025 (SCRUM-24 database half)"),
     ("equipment_line_change_checks.sql", "TC-EQR-044–053 (SCRUM-44 database half: edits, removals, notices, history)"),
@@ -2779,6 +2780,170 @@ def _(ctx: Context) -> None:
             expect(holds == [{"flag": "affected", "linked": True}], f"attempt {attempt}: the hold is {holds}")
         else:
             expect(holds == [], f"attempt {attempt}: a refused request left {holds}")
+
+
+# --- Venue staff end, shorten or remove a block early (SCRUM-54) -----------
+# Same throwaway venues as SCRUM-51, so seeded venues are never blocked; the
+# blocks, their history and any bookings go with the venues at the end.
+
+def change_block(ctx: Context, session: Session | None, venue_id: str, block_id: str, action: str, **body):
+    headers = session.headers if session else {}
+    return ctx.client.post(f"{ctx.api}/venues/{venue_id}/blocks/{block_id}/change", headers=headers,
+                           json={"action": action, **body})
+
+
+def _iso(moment: dt.datetime) -> str:
+    return moment.isoformat(timespec="seconds")
+
+
+@check("TC-BLOCK-020", "Venue staff end a started block now: it shows as Ended early, the history records it, and "
+                       "the rest of its period is searchable again", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B020")
+    staff = ctx.shared("venue_staff")
+    now = dt.datetime.now(dt.timezone.utc)
+    created = create_block(ctx, staff, venue_id, _iso(now - dt.timedelta(hours=1)), _iso(now + dt.timedelta(hours=6)))
+    expect_status(created, 200)
+    block_id = created.json()["block"]["id"]
+    later = (_iso(now + dt.timedelta(hours=3)), _iso(now + dt.timedelta(hours=4)))
+    expect(not search_lists(ctx, venue_id, *later), "the venue was searchable during its block")
+
+    ended = change_block(ctx, staff, venue_id, block_id, "end_now", note="  Repaired early  ")
+    expect_status(ended, 200)
+    block = ended.json()["block"]
+    expect(block["status"] == "ended_early" and block["change_note"] == "Repaired early"
+           and block["changed_by"]["id"] == VENUE_STAFF_ID and block["original_period"] is not None
+           and block["created_by"]["id"] == VENUE_STAFF_ID, f"the ended block is {block}")
+    expect(search_lists(ctx, venue_id, *later), "the freed time is not searchable after ending the block")
+
+    history = ctx.client.get(f"{ctx.api}/venues/{venue_id}/history", headers=staff.headers)
+    expect_status(history, 200)
+    newest = history.json()["entries"][0]
+    expect(newest["actor"]["id"] == VENUE_STAFF_ID and newest["after"]["block"]["status"] == "ended_early"
+           and newest["after"]["block"]["note"] == "Repaired early" and newest["before"]["block"]["ends_at"],
+           f"the newest history entry is {newest}")
+
+
+@check("TC-BLOCK-021", "A block is shortened to an earlier end; lengthening, an end at its start, ending one that "
+                       "hasn't started and changing one that ended are refused", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B021")
+    staff = ctx.shared("venue_staff")
+    created = create_block(ctx, staff, venue_id, "2031-09-21T09:00:00+08:00", "2031-09-21T17:00:00+08:00")
+    expect_status(created, 200)
+    block_id = created.json()["block"]["id"]
+
+    cases = [
+        ("shorten", {"ends_at": "2031-09-21T18:00:00+08:00"}, 422,
+         "The new end must be earlier than the current end. To block for longer, add a new block."),
+        ("shorten", {"ends_at": "2031-09-21T09:00:00+08:00"}, 422, "The new end must be after the block's start."),
+        ("end_now", {}, 409, "This block hasn't started yet. Remove it instead."),
+        ("end_now", {"note": "x" * 1001}, 422, "The note can be at most 1000 characters."),
+    ]
+    for action, body, status, detail in cases:
+        response = change_block(ctx, staff, venue_id, block_id, action, **body)
+        expect_status(response, status)
+        expect(detail in response.text, f"{action} {body} answered {response.text} (want {detail!r})")
+
+    shortened = change_block(ctx, staff, venue_id, block_id, "shorten", ends_at="2031-09-21T12:00:00+08:00")
+    expect_status(shortened, 200)
+    period = shortened.json()["block"]["period"]
+    expect(period["ends_at"].startswith("2031-09-21T04:00:00"), f"the shortened period is {period}")
+    expect(search_lists(ctx, venue_id, "2031-09-21T12:00:00+08:00", "2031-09-21T15:00:00+08:00"),
+           "the freed afternoon is not searchable")
+    expect(not search_lists(ctx, venue_id, "2031-09-21T10:00:00+08:00", "2031-09-21T11:00:00+08:00"),
+           "the morning the block still covers is searchable")
+
+    # One that has ended can't be changed (a block whose end has passed).
+    [past] = db_query(
+        "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values "
+        f"('{venue_id}', tstzrange(now() - interval '3 hours', now() - interval '1 hour', '[)'), 'maintenance', "
+        f"'{block_note(ctx)}') returning id"
+    )
+    refused = change_block(ctx, staff, venue_id, past["id"], "end_now")
+    expect_status(refused, 409)
+    expect_detail(refused, "This block has already ended, so it can't be changed.")
+
+
+@check("TC-BLOCK-022", "A block that hasn't started is removed: kept for history, gone from the venue's blocks and "
+                       "from search; it can't be removed twice", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B022")
+    staff = ctx.shared("venue_staff")
+    created = create_block(ctx, staff, venue_id, "2031-09-22T09:00:00+08:00", "2031-09-22T17:00:00+08:00")
+    expect_status(created, 200)
+    block_id = created.json()["block"]["id"]
+
+    removed = change_block(ctx, staff, venue_id, block_id, "remove", note="Contractor cancelled")
+    expect_status(removed, 200)
+    expect(removed.json()["block"]["status"] == "removed", f"the removed block is {removed.json()['block']}")
+    expect(len(blocks_on(venue_id)) == 1, "the removed block was deleted")
+    venue = ctx.client.get(f"{ctx.api}/venues/{venue_id}", headers=staff.headers)
+    expect_status(venue, 200)
+    expect(venue.json()["upcoming_blocks"] == [], f"the venue still lists {venue.json()['upcoming_blocks']}")
+    expect(search_lists(ctx, venue_id, "2031-09-22T10:00:00+08:00", "2031-09-22T11:00:00+08:00"),
+           "the removed block's period is not searchable")
+
+    again = change_block(ctx, staff, venue_id, block_id, "remove")
+    expect_status(again, 409)
+    expect_detail(again, "This block was removed, so it can't be changed.")
+
+
+@check("TC-BLOCK-023", "Only a session acting as venue staff can change a block; a coordinator, a venue-staff "
+                       "holder acting as coordinator, other roles and no token are refused", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B023")
+    created = create_block(ctx, ctx.shared("venue_staff"), venue_id, "2031-09-23T09:00:00+08:00",
+                           "2031-09-23T17:00:00+08:00")
+    expect_status(created, 200)
+    block_id = created.json()["block"]["id"]
+    # The seeded coordinator also holds Venue Staff; its shared session acts as coordinator.
+    for role in ("event_coordinator", "tech_support", "event_organiser"):
+        expect_status(change_block(ctx, ctx.shared(role), venue_id, block_id, "remove"), 403)
+    expect_status(change_block(ctx, None, venue_id, block_id, "remove"), 401)
+    [stored] = db_query(f"select removed_at, changed_at from public.venue_blocks where id = '{block_id}'")
+    expect(stored == {"removed_at": None, "changed_at": None}, f"a refused caller changed the block: {stored}")
+
+
+@check("TC-BLOCK-024", "A booking the block flagged is listed once the block no longer covers it, stays Affected "
+                       "until restored, and restoring tells the coordinator and organiser and leaves the event",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B024")
+    staff = ctx.shared("venue_staff")
+    event_id = throwaway_event(ctx, "B024", "2031-09-24 13:00+08", "2031-09-24 14:00+08", status="confirmed")
+    [booking] = db_query(
+        "insert into public.venue_bookings (event_id, venue_id, booked_period, status) "
+        f"values ('{event_id}', '{venue_id}', tstzrange('2031-09-24 13:00+08', '2031-09-24 14:00+08', '[)'), "
+        "'approved') returning id"
+    )
+    created = create_block(ctx, staff, venue_id, "2031-09-24T09:00:00+08:00", "2031-09-24T17:00:00+08:00",
+                           confirm=True)
+    expect_status(created, 200)
+    block_id = created.json()["block"]["id"]
+
+    # Shortened to end before the booking's start: the booking is free and listed.
+    shortened = change_block(ctx, staff, venue_id, block_id, "shorten", ends_at="2031-09-24T12:00:00+08:00")
+    expect_status(shortened, 200)
+    listed = shortened.json()["restorable"]
+    expect([b["booking_id"] for b in listed] == [booking["id"]] and listed[0]["has_pending_replacement"] is False
+           and listed[0]["block_reason"] == "Maintenance", f"restorable is {listed}")
+    [flag] = db_query(f"select flag::text as flag from public.venue_bookings where id = '{booking['id']}'")
+    expect(flag["flag"] == "affected", "shortening the block cleared the flag (QA3-9)")
+    dashboard = ctx.client.get(f"{ctx.api}/venues/dashboard/venue-staff", headers=staff.headers)
+    expect_status(dashboard, 200)
+    mine = [b for b in dashboard.json()["affected_bookings"] if b["id"] == booking["id"]]
+    expect(len(mine) == 1 and mine[0]["restorable"] is True, f"the dashboard shows {mine}")
+
+    restored = ctx.client.post(f"{ctx.api}{BOOKINGS}/{booking['id']}/restore", headers=staff.headers)
+    expect_status(restored, 200)
+    expect(restored.json()["flag"] is None and restored.json()["status"] == "approved", f"restored is {restored.json()}")
+    [event] = db_query(f"select status::text as status from public.events where id = '{event_id}'")
+    expect(event["status"] == "confirmed", f"restoring moved the event to {event['status']}")
+    roles = db_query(f"select recipient_role::text as role from public.notifications where event_id = '{event_id}' "
+                     "and type = 'venue_booking_restored' order by 1")
+    expect([r["role"] for r in roles] == ["event_coordinator", "event_organiser"],
+           f"restore notices are addressed to {roles} (D81: the organiser's must have a role)")
 
 
 # --- Several venues per event (CR-97) --------------------------------------

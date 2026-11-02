@@ -236,9 +236,27 @@ class VenuePhoto(BaseModel):
     caption: str | None = None
 
 
+class VenueBlock(BlockSummary):
+    """A block as venue staff manage it (SCRUM-54): who set it and when (AC1),
+    and, once ended early or removed, its original period, who changed it,
+    when and why (AC4). `period` is always the block's current period.
+
+    The create response keeps the plain `BlockSummary`: a new block has nothing
+    to say beyond what was just sent.
+    """
+
+    status: Literal["active", "ended_early", "removed"] = "active"
+    created_by: Editor | None = None
+    created_at: datetime | None = None
+    original_period: Period | None = None
+    changed_by: Editor | None = None
+    changed_at: datetime | None = None
+    change_note: str | None = None
+
+
 class VenueDetail(VenueProfile):
     photos: list[VenuePhoto] = []
-    upcoming_blocks: list[BlockSummary] = []
+    upcoming_blocks: list[VenueBlock] = []
     # Every booking that occupies the venue (§6.14): `approved` (confirmed),
     # `held` (tentative) and `re_review`. Deliberately one list with a status
     # on each row, not three server-side buckets — the same reasoning as
@@ -247,7 +265,7 @@ class VenueDetail(VenueProfile):
     upcoming_bookings: list[BookingSummary] = []
 
 
-class VenueStaffBlock(BlockSummary):
+class VenueStaffBlock(VenueBlock):
     """A block seen from the venue-staff queue, which spans every venue.
 
     `BlockSummary` is always read in the context of one venue, so it has no
@@ -269,6 +287,9 @@ class VenueStaffBooking(BookingSummary):
     # `affected` when the venue became unavailable under it (CR-95); venue staff
     # restore or leave it. Null on an unflagged booking.
     flag: str | None = None
+    # SCRUM-54 AC5: flagged by a block that no longer covers it, so venue staff
+    # can restore it. From the `restorable_after_block` computed column.
+    restorable: bool = False
     # `event_name`, `coordinator_name` and decision metadata are resolved by
     # the complete dashboard history query; the SPA only falls back to an id
     # when an event row is genuinely unavailable.
@@ -745,6 +766,58 @@ class BlockAffectedBooking(BaseModel):
     status: Literal["held", "approved"]
     period: Period
     block_reason: str | None = None
+
+
+class RestorableBooking(BlockAffectedBooking):
+    """A booking a block flagged Affected that no block covers any more
+    (SCRUM-54 AC5), so venue staff can restore it. A pending replacement is
+    cancelled if they do (CR-95 AC9), so the list says when there is one (AC7)."""
+
+    has_pending_replacement: bool = False
+
+
+class VenueBlockChangeAction(str, Enum):
+    end_now = "end_now"
+    shorten = "shorten"
+    remove = "remove"
+
+
+BLOCK_CHANGE_NOTE_MAX_LENGTH = 1000
+
+
+class VenueBlockChange(BaseModel):
+    """End a block now, shorten it to `ends_at`, or remove one that hasn't
+    started (SCRUM-54 AC2), with an optional note. Whether the block allows it
+    (started, ended, the new end inside its period) is the database's to say,
+    under the venue lock; here only what the request alone can show is checked."""
+
+    action: VenueBlockChangeAction
+    ends_at: datetime | None = None
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _rules(self):
+        if self.action is VenueBlockChangeAction.shorten:
+            if self.ends_at is None:
+                raise ValueError("A new end is required to shorten a block.")
+            if self.ends_at.tzinfo is None:
+                raise ValueError("The new end must include a timezone.")
+            if self.ends_at <= datetime.now(timezone.utc):
+                raise ValueError("The new end must be in the future. To end the block now, choose End now.")
+        else:
+            self.ends_at = None
+        self.note = (self.note or "").strip() or None
+        if self.note is not None and len(self.note) > BLOCK_CHANGE_NOTE_MAX_LENGTH:
+            raise ValueError(f"The note can be at most {BLOCK_CHANGE_NOTE_MAX_LENGTH} characters.")
+        return self
+
+
+class VenueBlockChangeResponse(BaseModel):
+    """The block as it now stands, and the bookings it no longer covers that
+    venue staff can restore (SCRUM-54 AC5)."""
+
+    block: VenueBlock
+    restorable: list[RestorableBooking] = []
 
 
 class VenueBlockResponse(BaseModel):

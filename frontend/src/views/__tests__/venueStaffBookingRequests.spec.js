@@ -207,3 +207,34 @@ describe("VenueStaffBookingRequestsView", () => {
     expect(el.querySelector('input[type="datetime-local"]')).toBeTruthy();
   });
 });
+
+describe("VenueStaffBookingRequestsView: a booking free to restore (SCRUM-54 AC5)", () => {
+  const AFFECTED = {
+    id: "booking-approved", event_id: "event-2", event_name: "Partner Summit", venue_id: "venue-2",
+    venue_name: "Rooftop Terrace", status: "approved", flag: "affected",
+    period: { starts_at: "2026-10-13T09:00:00+08:00", ends_at: "2026-10-13T12:00:00+08:00" },
+  };
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    localStorage.clear();
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-19T12:00:00+08:00"));
+  });
+
+  it("tags a booking no block covers any more as Venue free again", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue({ ...PAYLOAD, affected_bookings: [{ ...AFFECTED, restorable: true }] });
+    const { el } = await mountPage();
+
+    const section = el.querySelector('[data-testid="affected-bookings"]');
+    expect(section.querySelector('[data-testid="venue-free-again"]').textContent).toContain("Venue free again");
+  });
+
+  it("leaves the tag off a booking still blocked", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue({ ...PAYLOAD, affected_bookings: [{ ...AFFECTED, restorable: false }] });
+    const { el } = await mountPage();
+
+    expect(el.querySelector('[data-testid="venue-free-again"]')).toBeNull();
+  });
+});

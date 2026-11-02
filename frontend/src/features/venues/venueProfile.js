@@ -259,6 +259,11 @@ const sgtFormatter = new Intl.DateTimeFormat("en-SG", {
   hour12: false,
 });
 
+/** One instant in Singapore time, as the venue page shows it ("30 Apr 2031, 10:30"). */
+export function formatVenueInstant(value) {
+  return sgtFormatter.format(new Date(value));
+}
+
 /** A booking or block period in Singapore time, as the venue page shows it. */
 export function formatVenuePeriod(period) {
   return `${sgtFormatter.format(new Date(period.starts_at))} – ${sgtFormatter.format(new Date(period.ends_at))}`;
@@ -307,10 +312,13 @@ const EDIT_HISTORY_FIELD_LABELS = {
 };
 
 function formatHistoryValue(field, value) {
-  // SCRUM-51 AC9: a block's row records only what was added.
+  // SCRUM-51 AC9: a block's row records only what was added. SCRUM-54 AC4: a
+  // change records the block before and after, with its status and note.
   if (field === "block") {
     if (!value) return "None";
-    return [formatVenuePeriod(value), blockReasonLabel(value.reason), value.notes].filter(Boolean).join(" · ");
+    const note = value.note ? `Note: ${value.note}` : null;
+    if (value.status === "removed") return ["Removed", note].filter(Boolean).join(" · ");
+    return [formatVenuePeriod(value), blockReasonLabel(value.reason), value.notes, note].filter(Boolean).join(" · ");
   }
   if (field === "is_active" && typeof value === "boolean") return value ? "Active" : "Inactive";
   if (value == null || value === "") return "None recorded";
@@ -339,6 +347,13 @@ function formatHistoryValue(field, value) {
  * actually changed — a field identical in `before` and `after` is noise a
  * reader has to filter out themselves, so this module filters it instead.
  */
+// SCRUM-54 AC4: a block's row says whether it was added, ended early or removed.
+function blockHistoryLabel(block) {
+  if (block?.status === "ended_early") return "Block ended early";
+  if (block?.status === "removed") return "Block removed";
+  return EDIT_HISTORY_FIELD_LABELS.block;
+}
+
 export function summariseEditHistoryEntry(entry) {
   const before = entry?.before ?? {};
   const after = entry?.after ?? {};
@@ -346,7 +361,7 @@ export function summariseEditHistoryEntry(entry) {
     .filter((field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null))
     .map((field) => ({
       field,
-      label: EDIT_HISTORY_FIELD_LABELS[field],
+      label: field === "block" ? blockHistoryLabel(after.block) : EDIT_HISTORY_FIELD_LABELS[field],
       before: formatHistoryValue(field, before[field]),
       after: formatHistoryValue(field, after[field]),
     }));

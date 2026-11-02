@@ -2,12 +2,15 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 
+import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import BlockVenueModal from "@/components/venues/BlockVenueModal.vue";
+import ChangeBlockModal from "@/components/venues/ChangeBlockModal.vue";
 import DeactivateVenueModal from "@/components/venues/DeactivateVenueModal.vue";
 import VenueGallery from "@/components/venues/VenueGallery.vue";
+import { blockActions, blockSetBy } from "@/features/venues/blockChange";
 import { blockReasonLabel, formatEventReference } from "@/features/venues/dashboard";
 import { useVenueEditStore } from "@/features/venues/venueEditStore";
 import {
@@ -208,6 +211,40 @@ async function block(payload) {
   }
 }
 
+// SCRUM-54: end, shorten or remove a block. Once saved the modal lists the
+// bookings the block no longer covers (AC5). Closing re-reads the venue after
+// a save, or after a refusal, which usually means the block changed elsewhere.
+const changingBlock = ref(null);
+let blockChanged = false;
+
+function openChangeBlock(target) {
+  venueEditStore.clearBlockChange();
+  actionError.value = null;
+  blockChanged = false;
+  changingBlock.value = target;
+}
+
+async function closeChangeBlock() {
+  const reload = blockChanged || Boolean(venueEditStore.blockChangeResult);
+  changingBlock.value = null;
+  venueEditStore.clearBlockChange();
+  actionError.value = null;
+  if (reload) {
+    await refresh();
+    if (activeTab.value === "history") await venueEditStore.loadHistory(venue.value.id);
+  }
+}
+
+async function changeBlock(payload) {
+  actionError.value = null;
+  try {
+    await venueEditStore.changeBlock(venue.value.id, changingBlock.value.id, payload);
+  } catch (error) {
+    actionError.value = error.message;
+    blockChanged = true;
+  }
+}
+
 async function reactivate() {
   reactivateOpen.value = false;
   actionError.value = null;
@@ -298,7 +335,7 @@ watch(() => route.params.id, () => {
           </button>
         </div>
         <p
-          v-if="actionError && !deactivateOpen && !blockOpen"
+          v-if="actionError && !deactivateOpen && !blockOpen && !changingBlock"
           role="alert"
           class="mt-4 border-2 border-ink bg-bauhaus-red px-3 py-2 text-sm font-bold text-canvas"
         >
@@ -324,6 +361,16 @@ watch(() => route.params.id, () => {
         :error="actionError"
         @confirm="block"
         @cancel="closeBlock"
+      />
+      <ChangeBlockModal
+        :open="Boolean(changingBlock)"
+        :venue-name="venue.name"
+        :block="changingBlock"
+        :result="venueEditStore.blockChangeResult"
+        :busy="venueEditStore.isSaving"
+        :error="actionError"
+        @confirm="changeBlock"
+        @cancel="closeChangeBlock"
       />
       <ConfirmModal
         :open="reactivateOpen"
@@ -518,6 +565,18 @@ watch(() => route.params.id, () => {
             </span>
             <span class="font-medium">{{ formatPeriod(block.period) }}</span>
             <span v-if="block.notes" class="text-ink/70">{{ block.notes }}</span>
+            <!-- SCRUM-54 AC1, AC9: venue staff see who set it and when, and change it. -->
+            <span v-if="canEdit" class="basis-full text-xs font-medium text-ink/70 sm:basis-auto">{{ blockSetBy(block) }}</span>
+            <BauhausButton
+              v-if="canEdit && blockActions(block).length"
+              type="button"
+              variant="outline"
+              size="sm"
+              :aria-label="`Change block ${formatPeriod(block.period)}`"
+              @click="openChangeBlock(block)"
+            >
+              Change
+            </BauhausButton>
           </li>
           <li v-if="!venue.upcoming_blocks.length" class="font-medium">No blocks scheduled.</li>
         </ul>
