@@ -230,7 +230,13 @@ values
     ('e0000000-0000-4000-8000-000000000102', 'a0000000-0000-4000-8000-000000000001', 'planning',
      'Seed Seminar Event', 'Venue search fixture', '2026-10-10 13:00+08', '2026-10-10 16:00+08', 50, 'classroom'),
     ('e0000000-0000-4000-8000-000000000103', 'a0000000-0000-4000-8000-000000000001', 'planning',
-     'Seed Innovation Event', 'Venue search fixture', '2026-10-10 14:00+08', '2026-10-10 17:00+08', 60, 'classroom')
+     'Seed Innovation Event', 'Venue search fixture', '2026-10-10 14:00+08', '2026-10-10 17:00+08', 60, 'classroom'),
+    -- The venue-staff dashboard fixtures' events (bookings d…0004 and d…0005 below;
+    -- DEFECTS D38): without them those bookings fail their event foreign key.
+    ('e0000000-0000-4000-8000-000000000104', 'a0000000-0000-4000-8000-000000000001', 'planning',
+     'Seed Terrace Event', 'Venue staff dashboard fixture', '2026-10-13 09:00+08', '2026-10-13 12:00+08', 80, 'reception'),
+    ('e0000000-0000-4000-8000-000000000105', 'a0000000-0000-4000-8000-000000000001', 'planning',
+     'Seed Boardroom Event', 'Venue staff dashboard fixture', '2026-10-12 09:00+08', '2026-10-12 12:00+08', 10, 'boardroom')
 on conflict (id) do nothing;
 
 -- =============================================================================
@@ -262,9 +268,17 @@ values
      'Workshop space with writable walls.'),
     ('b0000000-0000-4000-8000-000000000007', 'Heritage Hall', 'Chinatown Heritage Centre', 150,
      '{step_free_entry}', '09:00', '22:00', true,
-     'Restored shophouse hall.'),
+     'Restored shophouse hall.')
+on conflict (name) do nothing;
+
+-- An inactive venue needs a reason (SCRUM-64, venues_inactive_reason_consistent;
+-- DEFECTS D38). The values match the shared project, where this row was given
+-- them by hand when the constraint arrived.
+insert into public.venues (id, name, location, capacity, accessibility_features, opens_at, closes_at, is_active,
+                           inactive_reason, inactive_note, description)
+values
     ('b0000000-0000-4000-8000-000000000008', 'Old Lecture Theatre', 'Bukit Timah Campus, Block C', 300,
-     '{}', '08:00', '22:00', false,
+     '{}', '08:00', '22:00', false, 'other', 'Deactivated before reasons were recorded',
      'Decommissioned pending refurbishment.')
 on conflict (name) do nothing;
 
@@ -338,6 +352,26 @@ values
     ('c0000000-0000-4000-8000-000000000003', 'b0000000-0000-4000-8000-000000000005',
      tstzrange('2026-10-20 00:00+08', '2026-10-22 00:00+08', '[)'), 'safety', 'Railing inspection.')
 on conflict (id) do nothing;
+
+-- CR-98: every event has at least one space requirement. 20261008100000 backfilled a
+-- "Main space" from each existing event's requirements, but on a fresh database it
+-- runs before the seed creates any events (DEFECTS D38). Do the same here, before
+-- the bookings below link to it, or the booking trigger creates a bare "Main space" without the
+-- event's attendance, layout and facilities. Idempotent: skips events that have one.
+insert into public.event_space_requests (
+    event_id, label, expected_pax, layout_preference, facilities_required, starts_at, ends_at
+)
+select e.id, 'Main space', e.expected_attendance, e.layout_preference,
+       e.facilities_required, e.starts_at, e.ends_at
+from public.events e
+where e.id in (
+    'e0000000-0000-4000-8000-000000000101',
+    'e0000000-0000-4000-8000-000000000102',
+    'e0000000-0000-4000-8000-000000000103',
+    'e0000000-0000-4000-8000-000000000104',
+    'e0000000-0000-4000-8000-000000000105'
+)
+  and not exists (select 1 from public.event_space_requests es where es.event_id = e.id);
 
 -- `created_at` is given explicitly rather than left to its default: the
 -- venue-staff dashboard sorts pending holds oldest-first (BR-R4), and a seed
@@ -604,6 +638,23 @@ values
      'a0000000-0000-4000-8000-000000000002', 'planning', 'Review Fixture: Year-End Dinner',
      'Approve/reject fixture', '2037-11-13 10:00+08', '2037-11-13 12:00+08', 12, 'boardroom', now())
 on conflict (id) do nothing;
+
+-- CR-98: every event has at least one space requirement. 20261008100000 backfilled a
+-- "Main space" from each existing event's requirements, but on a fresh database it
+-- runs before the seed creates any events (DEFECTS D38). Do the same here, before
+-- the held booking below links to it, or the booking trigger creates a bare "Main space" without the
+-- event's attendance, layout and facilities. Idempotent: skips events that have one.
+insert into public.event_space_requests (
+    event_id, label, expected_pax, layout_preference, facilities_required, starts_at, ends_at
+)
+select e.id, 'Main space', e.expected_attendance, e.layout_preference,
+       e.facilities_required, e.starts_at, e.ends_at
+from public.events e
+where e.id in (
+    'e0000000-0000-4000-8000-000000000201',
+    'e0000000-0000-4000-8000-000000000202'
+)
+  and not exists (select 1 from public.event_space_requests es where es.event_id = e.id);
 
 -- CR-99: holds expire. This one is held until its event starts, not the 7-day
 -- default, so the fixture (and TC-BOOK-004, which relies on it) doesn't expire
