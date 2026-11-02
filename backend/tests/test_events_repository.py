@@ -668,6 +668,36 @@ def test_request_event_change_sends_the_changes_version_and_both_messages(monkey
         "p_expected_version": 4, "p_coordinator_message": "to coordinator", "p_lead_message": "to leads"}}
 
 
+def test_request_reassignment_sends_the_reason_statuses_and_lead_message(monkeypatch):
+    """CR-106 RPC contract: one jsonb object with the outcome and the new request."""
+    sent = {}
+    answer = {"outcome": "ok", "request": {"id": "r1", "kind": "reassignment", "status": "open"}}
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: _rpc_client(answer, sent))
+
+    result = repository.request_reassignment(
+        "event-1", "user-1", "On leave", ["planning", "confirmed"], lead_message="to leads")
+
+    assert result == answer
+    assert sent == {"name": "request_reassignment", "params": {
+        "p_event_id": "event-1", "p_actor_id": "user-1", "p_reason": "On leave",
+        "p_active_statuses": ["planning", "confirmed"], "p_lead_message": "to leads"}}
+
+
+def test_decline_reassignment_request_sends_the_lead_reason_and_coordinator_message(monkeypatch):
+    """CR-106 AC5 RPC contract: one jsonb object with the outcome and the declined request."""
+    sent = {}
+    answer = {"outcome": "ok", "request": {"id": "r1", "kind": "reassignment", "status": "declined"}}
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: _rpc_client(answer, sent))
+
+    result = repository.decline_reassignment_request(
+        "event-1", "lead-1", "Nobody is free", coordinator_message="to coordinator")
+
+    assert result == answer
+    assert sent == {"name": "decline_reassignment_request", "params": {
+        "p_event_id": "event-1", "p_lead_id": "lead-1", "p_reason": "Nobody is free",
+        "p_coordinator_message": "to coordinator"}}
+
+
 def test_get_open_change_request_reads_the_open_change_with_its_changes(monkeypatch):
     row = {"id": "r1", "kind": "change", "status": "open", "reason": "x", "changes": {"event": [], "spaces": []},
            "significant": False, "requested_at": "2026-10-24T09:00:00+00:00",
@@ -738,6 +768,81 @@ def test_list_open_change_requests_maps_each_event_to_when_it_was_asked(monkeypa
     assert repository.list_open_change_requests([]) == {}
 
 
+def test_get_open_reassignment_request_reads_the_open_request_with_who_asked(monkeypatch):
+    row = {"id": "r1", "status": "open", "reason": "On leave", "requested_at": "2026-10-27T09:00:00+00:00",
+           "requested_by": {"id": "u1", "full_name": "Marcus"}}
+    client = TableClient(SimpleNamespace(data=row))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.get_open_reassignment_request("event-1") == row
+    [query] = client.queries
+    assert query.calls == [
+        ("table", "event_reassignment_requests"),
+        ("select", "id, status, reason, requested_at, "
+                   "requested_by:profiles!event_reassignment_requests_requested_by_fkey(id, full_name)"),
+        ("eq", "event_id", "event-1"),
+        ("eq", "status", "open"),
+        ("maybe_single",),
+    ]
+
+
+def test_get_open_reassignment_request_is_none_when_nothing_is_open(monkeypatch):
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: TableClient(None))
+
+    assert repository.get_open_reassignment_request("event-1") is None
+
+
+def test_list_reassignment_requests_reads_every_request_with_the_leads_decision(monkeypatch):
+    rows = [{"id": "r1", "status": "declined", "reason": "On leave", "decision_reason": "No cover"}]
+    client = TableClient(SimpleNamespace(data=rows))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.list_reassignment_requests("event-1") == rows
+    [query] = client.queries
+    assert query.calls == [
+        ("table", "event_reassignment_requests"),
+        ("select", "id, status, reason, requested_at, decision_reason, decided_at, "
+                   "requested_by:profiles!event_reassignment_requests_requested_by_fkey(id, full_name), "
+                   "decided_by:profiles!event_reassignment_requests_decided_by_fkey(id, full_name)"),
+        ("eq", "event_id", "event-1"),
+        ("order", "requested_at", {"desc": True}),
+    ]
+
+
+def test_list_reassignment_requests_is_empty_when_there_are_none(monkeypatch):
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: TableClient(SimpleNamespace(data=None)))
+
+    assert repository.list_reassignment_requests("event-1") == []
+
+
+def test_list_open_reassignment_requests_maps_each_event_to_its_open_request(monkeypatch):
+    calls = []
+    row = {"id": "r1", "event_id": "e1", "status": "open", "reason": "On leave"}
+
+    class Query:
+        def __getattr__(self, name):
+            def record(*args, **kwargs):
+                calls.append((name, *args))
+                return self
+            return record
+
+        def execute(self):
+            return SimpleNamespace(data=[row])
+
+    class AdminClient:
+        def table(self, name):
+            calls.append(("table", name))
+            return Query()
+
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: AdminClient())
+
+    assert repository.list_open_reassignment_requests(["e1", "e2"]) == {"e1": row}
+    assert ("table", "event_reassignment_requests") in calls
+    assert ("in_", "event_id", ["e1", "e2"]) in calls
+    assert ("eq", "status", "open") in calls
+    assert repository.list_open_reassignment_requests([]) == {}
+    
+    
 def test_the_single_event_read_names_the_organiser_and_their_organisation(monkeypatch):
     """SCRUM-49 AC3 (D82): the read that serves the coordinator's event page embeds the
     organiser's name and organisation through the named organiser FK."""

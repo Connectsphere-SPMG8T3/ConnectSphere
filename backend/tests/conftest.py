@@ -172,6 +172,10 @@ def cancellation_requests_offline(monkeypatch, request):
         monkeypatch.setattr("app.modules.events.repository.get_open_change_request", lambda event_id: None)
         monkeypatch.setattr("app.modules.events.repository.list_change_requests", lambda event_id: [])
         monkeypatch.setattr("app.modules.events.repository.list_open_change_requests", lambda event_ids: {})
+        # CR-106: reassignment requests, on the coordinator's read, history and the Lead's dashboard.
+        monkeypatch.setattr("app.modules.events.repository.get_open_reassignment_request", lambda event_id: None)
+        monkeypatch.setattr("app.modules.events.repository.list_reassignment_requests", lambda event_id: [])
+        monkeypatch.setattr("app.modules.events.repository.list_open_reassignment_requests", lambda event_ids: {})
 
 
 @pytest.fixture(autouse=True)

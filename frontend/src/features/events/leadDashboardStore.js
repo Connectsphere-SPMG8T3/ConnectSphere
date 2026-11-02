@@ -21,6 +21,9 @@ export const useLeadDashboardStore = defineStore("leadDashboard", {
     hasSettled: false,
     isReassigning: false,
     reassignError: null,
+    // CR-106: declining a coordinator's reassignment request, with its own error for the dialog.
+    isDeclining: false,
+    declineError: null,
   }),
 
   getters: {
@@ -40,6 +43,7 @@ export const useLeadDashboardStore = defineStore("leadDashboard", {
       this.error = null;
       this.hasSettled = false;
       this.reassignError = null;
+      this.declineError = null;
     },
 
     async load() {
@@ -80,6 +84,23 @@ export const useLeadDashboardStore = defineStore("leadDashboard", {
         return false;
       } finally {
         this.isReassigning = false;
+      }
+      await this.load();
+      return true;
+    },
+
+    // CR-106 AC5: decline the coordinator's open request with a reason. The coordinator stays assigned.
+    async declineReassignment(eventId, reason) {
+      const auth = useAuthStore();
+      this.isDeclining = true;
+      this.declineError = null;
+      try {
+        await auth.withSession((token) => eventsApi.declineReassignment(eventId, reason.trim(), token));
+      } catch (err) {
+        this.declineError = err instanceof ApiError ? err.message : NETWORK_ERROR;
+        return false;
+      } finally {
+        this.isDeclining = false;
       }
       await this.load();
       return true;

@@ -132,6 +132,7 @@ DB_SCRIPTS = [
     ("registration_waitlist_checks.sql", "TC-REG-020, 022–028 (SCRUM-86 database half)"),
     ("notification_registration_checks.sql", "TC-NOTIF-017, 018 (SCRUM-53: registration status confirmations, replacement venue)"),
     ("change_history_checks.sql", "TC-HIST-001–007 (story 62 database half: recorded edits, append-only history, RLS)"),
+    ("reassignment_request_checks.sql", "TC-REASSIGN-012 (CR-106 database half: recipients, one open, closing, RLS)"),
 ]
 
 
@@ -5002,6 +5003,260 @@ def _(ctx: Context) -> None:
     event_id = throwaway_event(ctx, "HIST010", "2031-12-12 09:00+08", "2031-12-12 12:00+08", status="planning")
     for role in ("venue_staff", "tech_support", "attendee"):
         expect_status(event_history(ctx, event_id, role), 403)
+
+
+# --- CR-106: the coordinator asks the Lead to reassign their event ----------------------
+# Every check works on its own throwaway events (deleted when the run ends, with their
+# requests, history and notifications), never on seeded ones.
+
+REASSIGN_REASON = "live-check: on leave this month"
+DECLINE_REASON = "live-check: nobody else is free"
+
+
+def seeded_lead_id() -> str:
+    email = ACCOUNTS.get("event_coordinator_lead") or W7_STAFF_ACCOUNTS["event_coordinator_lead"]
+    return db_query(f"select id from public.profiles where email = '{email}'")[0]["id"]
+
+
+def scoped_event(ctx: Context, case: str, day: str, *, status: str = "planning") -> str:
+    """A throwaway event assigned to the coordinator by the seeded Lead, so that Lead holds its scope."""
+    event_id = throwaway_event(ctx, case, f"2031-{day} 09:00+08", f"2031-{day} 12:00+08", status=status)
+    db_query(f"update public.events set assigned_by = '{seeded_lead_id()}' where id = '{event_id}'")
+    return event_id
+
+
+def ask_reassignment(ctx: Context, event_id: str, reason: str = REASSIGN_REASON,
+                     session: Session | None = None) -> httpx.Response:
+    session = session or ctx.shared("event_coordinator")
+    return ctx.client.post(f"{ctx.api}/events/{event_id}/reassignment-request",
+                           headers=session.headers, json={"reason": reason})
+
+
+def decline_request(ctx: Context, event_id: str, reason: str = DECLINE_REASON,
+                    session: Session | None = None) -> httpx.Response:
+    session = session or lead_session(ctx)
+    return ctx.client.post(f"{ctx.api}/events/{event_id}/reassignment-request/decline",
+                           headers=session.headers, json={"reason": reason})
+
+
+def open_requests(event_id: str) -> int:
+    return int(db_query("select count(*) as n from public.event_reassignment_requests "
+                        f"where event_id = '{event_id}'")[0]["n"])
+
+
+@check("TC-REASSIGN-001", "The assigned coordinator asks: one open request, only the Lead holding the scope told, the event unchanged",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = scoped_event(ctx, "106-001", "11-02")
+    before = event_row(event_id)
+    response = ask_reassignment(ctx, event_id, f"  {REASSIGN_REASON}  ")
+    expect_status(response, 201)
+    body = response.json()
+    expect(body["kind"] == "reassignment" and body["status"] == "open" and body["reason"] == REASSIGN_REASON,
+           f"unexpected request: {body}")
+    [row] = db_query("select status, requested_by from public.event_reassignment_requests "
+                     f"where event_id = '{event_id}'")
+    expect(row == {"status": "open", "requested_by": COORDINATOR_ID}, f"row: {row}")
+    notices = db_query("select recipient_id, recipient_role::text as role, message from public.notifications "
+                       f"where event_id = '{event_id}' and type = 'reassignment_requested'")
+    expect(len(notices) == 1 and notices[0]["recipient_id"] == seeded_lead_id()
+           and notices[0]["role"] == "event_coordinator_lead" and REASSIGN_REASON in notices[0]["message"],
+           f"notices: {notices}")
+    expect(event_row(event_id) == before, "requesting changed the event (AC3)")
+
+
+@check("TC-REASSIGN-002", "A second request while one is open is refused", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = scoped_event(ctx, "106-002", "11-03")
+    expect_status(ask_reassignment(ctx, event_id), 201)
+    again = ask_reassignment(ctx, event_id, "live-check: again")
+    expect_status(again, 409)
+    expect_detail(again, "A reassignment request is already open for this event.")
+    expect(open_requests(event_id) == 1, "a second request was stored")
+
+
+@check("TC-REASSIGN-003", "A draft, a submitted and a closed event refuse a request and store nothing",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    for status in ("submitted", "completed", "cancelled", "rejected"):
+        event_id = scoped_event(ctx, f"106-003-{status}", "11-04", status=status)
+        response = ask_reassignment(ctx, event_id)
+        expect_status(response, 409)
+        expect_detail(response, f"Reassignment can't be requested for an event that is {status}.")
+        expect(open_requests(event_id) == 0, f"a request was stored on a {status} event")
+    draft = scoped_event(ctx, "106-003-draft", "11-04", status="draft")
+    expect_status(ask_reassignment(ctx, draft), 404)
+    expect_status(ask_reassignment(ctx, UNKNOWN_EVENT), 404)
+
+
+@check("TC-REASSIGN-004", "Only the assigned coordinator, acting as coordinator, can ask; a reason is required", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = scoped_event(ctx, "106-004", "11-05")
+    for role in ("event_organiser", "event_coordinator_lead", "venue_staff", "tech_support", "attendee", "safety_officer"):
+        response = ask_reassignment(ctx, event_id, session=ctx.shared(role))
+        expect(response.status_code == 403, f"{role} got HTTP {response.status_code}, expected 403")
+    other_email = db_query(f"select email from public.profiles where id = '{SECOND_COORDINATOR}'")[0]["email"]
+    other = ctx.login("event_coordinator", email=other_email)
+    expect_status(ask_reassignment(ctx, event_id, session=other), 403)
+    for reason in ("", "   "):
+        expect_status(ask_reassignment(ctx, event_id, reason), 422)
+    expect(open_requests(event_id) == 0, "a refused request was stored")
+
+
+@check("TC-REASSIGN-005", "A coordinator cannot reassign or hand over directly; the event and its history are untouched",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = scoped_event(ctx, "106-005", "11-06")
+    before = event_row(event_id)
+    coordinator = ctx.shared("event_coordinator")
+    expect_status(ctx.client.post(f"{ctx.api}/events/{event_id}/reassign", headers=coordinator.headers,
+                                  json={"coordinator_id": SECOND_COORDINATOR, "expected_version": 1}), 403)
+    expect_status(ctx.client.post(f"{ctx.api}/events/{event_id}/assign", headers=coordinator.headers,
+                                  json={"coordinator_id": SECOND_COORDINATOR}), 403)
+    expect(event_row(event_id) == before, "a refused reassignment changed the event")
+    [history] = db_query(f"select count(*) as n from public.event_assignment_history where event_id = '{event_id}'")
+    expect(int(history["n"]) == 0, "a refused reassignment wrote history")
+
+
+@check("TC-REASSIGN-006", "The Lead's dashboard and the coordinator's page show the open request; the organiser does not",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = scoped_event(ctx, "106-006", "11-07")
+    expect_status(ask_reassignment(ctx, event_id), 201)
+    dashboard = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead_session(ctx).headers).json()
+    flagged = next((e for e in dashboard["active_events"] if e["event_id"] == event_id), None)
+    expect(flagged and flagged["open_reassignment_request"]["reason"] == REASSIGN_REASON
+           and flagged["open_reassignment_request"]["requested_by"]["id"] == COORDINATOR_ID,
+           f"the Lead's dashboard has {flagged}")
+    detail = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=ctx.shared("event_coordinator").headers).json()
+    expect(detail["open_reassignment_request"]["reason"] == REASSIGN_REASON, "the coordinator does not see it")
+    organiser = ctx.shared("event_organiser")
+    detail = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=organiser.headers).json()
+    expect(detail["open_reassignment_request"] is None, "the organiser sees the request")
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=ctx.shared("event_coordinator").headers).json()["entries"]
+    entry = next((e for e in history if e["kind"] == "reassignment_requested"), None)
+    expect(entry and entry["reason"] == REASSIGN_REASON and entry["actor"]["id"] == COORDINATOR_ID,
+           f"coordinator history: {history}")
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=organiser.headers).json()["entries"]
+    expect(not any(e["kind"].startswith("reassignment_request") for e in history), f"organiser history: {history}")
+
+
+@check("TC-REASSIGN-007", "The Lead declines with a reason: the coordinator is told and stays assigned; blank reasons and other roles are refused",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = scoped_event(ctx, "106-007", "11-08")
+    expect_status(ask_reassignment(ctx, event_id), 201)
+    before = event_row(event_id)
+    for role in ("event_coordinator", "event_organiser", "safety_officer"):
+        response = decline_request(ctx, event_id, session=ctx.shared(role))
+        expect(response.status_code == 403, f"{role} got HTTP {response.status_code}, expected 403")
+    expect_status(decline_request(ctx, event_id, "   "), 422)
+    response = decline_request(ctx, event_id, f"  {DECLINE_REASON}  ")
+    expect_status(response, 200)
+    expect(response.json()["status"] == "declined", f"unexpected response: {response.json()}")
+    [row] = db_query("select status, decided_by, decision_reason from public.event_reassignment_requests "
+                     f"where event_id = '{event_id}'")
+    expect(row == {"status": "declined", "decided_by": seeded_lead_id(), "decision_reason": DECLINE_REASON}, f"row: {row}")
+    notices = db_query("select recipient_id, recipient_role::text as role, message from public.notifications "
+                       f"where event_id = '{event_id}' and type = 'reassignment_declined'")
+    expect(len(notices) == 1 and notices[0]["recipient_id"] == COORDINATOR_ID
+           and notices[0]["role"] == "event_coordinator" and DECLINE_REASON in notices[0]["message"], f"notices: {notices}")
+    expect(event_row(event_id) == before, "declining changed the assignment")
+    again = decline_request(ctx, event_id)
+    expect_status(again, 409)
+    expect_detail(again, "There is no open reassignment request for this event.")
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=ctx.shared("event_coordinator").headers).json()["entries"]
+    declined = next((e for e in history if e["kind"] == "reassignment_declined"), None)
+    expect(declined and declined["reason"] == DECLINE_REASON and declined["actor"]["id"] == seeded_lead_id(),
+           f"history: {history}")
+    expect_status(ask_reassignment(ctx, event_id, "live-check: asking again"), 201)
+
+
+@check("TC-REASSIGN-008", "Another Lead's event cannot be declined", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "106-008", "2031-11-09 09:00+08", "2031-11-09 12:00+08")
+    # Held by the other seeded Lead, so the shared one is out of scope when two Leads exist.
+    others = db_query("select profile_id from public.user_roles where role = 'event_coordinator_lead' "
+                      f"and profile_id <> '{seeded_lead_id()}'")
+    if not others:
+        raise CheckBlocked("not run: only one Lead is seeded, so there is no other Lead's scope to cross")
+    db_query(f"update public.events set assigned_by = '{others[0]['profile_id']}' where id = '{event_id}'")
+    expect_status(ask_reassignment(ctx, event_id), 201)
+    expect_status(decline_request(ctx, event_id), 403)
+    [row] = db_query(f"select status from public.event_reassignment_requests where event_id = '{event_id}'")
+    expect(row["status"] == "open", "an out-of-scope Lead closed the request")
+
+
+@check("TC-REASSIGN-009", "The Lead reassigning answers the request; the coordinator who asked is told; the flag clears",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = scoped_event(ctx, "106-009", "11-10")
+    expect_status(ask_reassignment(ctx, event_id), 201)
+    [event] = db_query(f"select version from public.events where id = '{event_id}'")
+    response = ctx.client.post(f"{ctx.api}/events/{event_id}/reassign", headers=lead_session(ctx).headers,
+                               json={"coordinator_id": SECOND_COORDINATOR, "expected_version": event["version"]})
+    expect_status(response, 200)
+    [row] = db_query("select status, decided_by from public.event_reassignment_requests "
+                     f"where event_id = '{event_id}'")
+    expect(row == {"status": "reassigned", "decided_by": seeded_lead_id()}, f"row: {row}")
+    told = db_query(f"select recipient_id from public.notifications where event_id = '{event_id}' and type = 'event_reassigned'")
+    expect([t["recipient_id"] for t in told] == [COORDINATOR_ID], f"the coordinator who asked was told: {told}")
+    dashboard = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead_session(ctx).headers).json()
+    entry = next((e for e in dashboard["active_events"] if e["event_id"] == event_id), None)
+    expect(entry and entry["open_reassignment_request"] is None, f"the Lead's dashboard still flags it: {entry}")
+
+
+@check("TC-REASSIGN-010", "An event with no Lead holding its scope tells every Lead", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "106-010", "2031-11-11 09:00+08", "2031-11-11 12:00+08")
+    expect_status(ask_reassignment(ctx, event_id), 201)
+    notices = db_query("select recipient_id, recipient_role::text as role from public.notifications "
+                       f"where event_id = '{event_id}' and type = 'reassignment_requested'")
+    leads = db_query("select profile_id from public.user_roles where role = 'event_coordinator_lead'")
+    expect(leads and sorted(n["recipient_id"] for n in notices) == sorted(l["profile_id"] for l in leads)
+           and all(n["role"] == "event_coordinator_lead" for n in notices), f"notices: {notices}, leads: {leads}")
+
+
+@check("TC-REASSIGN-011", "Cancelling the event closes its open request", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = scoped_event(ctx, "106-011", "11-12", status="confirmed")
+    expect_status(ask_reassignment(ctx, event_id), 201)
+    cancelled = ctx.client.post(f"{ctx.api}/events/{event_id}/cancel", headers=ctx.shared("event_coordinator").headers,
+                                json={"reason": "live-check: cancelled"})
+    expect_status(cancelled, 200)
+    [row] = db_query("select status, decision_reason from public.event_reassignment_requests "
+                     f"where event_id = '{event_id}'")
+    expect(row == {"status": "superseded", "decision_reason": "Closed because the event was cancelled."}, f"row: {row}")
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=ctx.shared("event_coordinator").headers).json()["entries"]
+    expect(any(e["kind"] == "reassignment_request_closed" for e in history), f"history: {history}")
+
+
+@check("TC-REASSIGN-019", "A Preparation event takes a request and keeps it open, and a Lead can still reassign it (QA3-3, D73)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = scoped_event(ctx, "106-019", "11-14", status="preparation")
+    expect_status(ask_reassignment(ctx, event_id), 201)
+    [row] = db_query(f"select status from public.event_reassignment_requests where event_id = '{event_id}'")
+    expect(row["status"] == "open", f"the request is {row['status']}")
+    dashboard = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead_session(ctx).headers).json()
+    entry = next((e for e in dashboard["active_events"] if e["event_id"] == event_id), None)
+    expect(entry and entry["open_reassignment_request"]["reason"] == REASSIGN_REASON,
+           f"the Lead's dashboard has {entry}")
+    # Moving a confirmed event into Preparation does not answer its request either.
+    moving = scoped_event(ctx, "106-019-move", "11-14", status="confirmed")
+    expect_status(ask_reassignment(ctx, moving), 201)
+    db_query(f"update public.events set status = 'preparation' where id = '{moving}'")
+    [row] = db_query(f"select status from public.event_reassignment_requests where event_id = '{moving}'")
+    expect(row["status"] == "open", f"entering Preparation left the request {row['status']}")
+
+
+@check("TC-REASSIGN-013", "Asking and declining without a token are 401", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = scoped_event(ctx, "106-013", "11-13")
+    for path in ("reassignment-request", "reassignment-request/decline"):
+        response = ctx.client.post(f"{ctx.api}/events/{event_id}/{path}", json={"reason": REASSIGN_REASON})
+        expect_status(response, 401)
+    expect(open_requests(event_id) == 0, "an unauthenticated request was stored")
 
 
 def db_query(sql: str) -> list[dict]:
