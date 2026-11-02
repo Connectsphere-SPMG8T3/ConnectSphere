@@ -40,6 +40,9 @@ const intent = ref("draft");
 const isNew = computed(() => !form.id);
 // SCRUM-33: a returned request is amended here and resubmitted to its coordinator.
 const isReturned = computed(() => form.status === "returned");
+// Story 9 AC6 (D81): only a saved draft can be discarded; a returned request can't.
+const canDiscard = computed(() => !isNew.value && form.status === "draft");
+const isDiscardModalOpen = ref(false);
 const flaggedKeys = computed(() => flaggedFormKeys(form.amendment?.flagged_fields));
 const isResubmitModalOpen = ref(false);
 // Story 32: a submitted event's details are proposed as a change request instead.
@@ -114,6 +117,18 @@ function requestSubmit() {
   if (!validateSubmission()) return;
   if (isReturned.value) isResubmitModalOpen.value = true;
   else isSubmitModalOpen.value = true;
+}
+
+async function confirmDiscard() {
+  isDiscardModalOpen.value = false;
+  try {
+    await eventsStore.discard(form.id);
+  } catch {
+    return; // eventsStore.error is shown in the page alert.
+  }
+  allowNavigation.value = true;
+  showToast("Draft discarded");
+  await router.push({ name: "dashboard-organiser" });
 }
 
 function confirmSubmit() {
@@ -626,11 +641,21 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
             </BauhausButton>
             <BauhausButton type="submit" variant="primary" :disabled="eventsStore.isSaving">{{ isReturned ? "Resubmit" : "Submit request" }}</BauhausButton>
             <BauhausButton type="button" variant="outline" :disabled="eventsStore.isSaving" @click="requestLeave({ name: 'dashboard-organiser' })">Cancel</BauhausButton>
+            <BauhausButton v-if="canDiscard" type="button" variant="outline" :disabled="eventsStore.isSaving" @click="isDiscardModalOpen = true">Discard draft</BauhausButton>
           </div>
         </BauhausCard>
       </aside>
     </form>
     <ConfirmModal :open="isLeaveModalOpen" @confirm="confirmLeave" @stay="stayOnPage" />
+    <ConfirmModal
+      :open="isDiscardModalOpen"
+      title="Discard this draft?"
+      message="The draft and everything saved in it will be deleted. This can't be undone."
+      confirm-label="Discard draft"
+      cancel-label="Keep draft"
+      @confirm="confirmDiscard"
+      @stay="isDiscardModalOpen = false"
+    />
     <ConfirmModal
       :open="isSubmitModalOpen"
       title="Submit event request?"

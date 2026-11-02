@@ -4102,6 +4102,21 @@ def _(ctx: Context) -> None:
         expect(int(count["n"]) == 0, f"a request was stored on a {status} event")
 
 
+@check("TC-EVENT-037", "Only the owning organiser can discard a draft; it is then gone (story 9 AC6, D81)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "9-037", "2031-10-07 09:00+08", "2031-10-07 12:00+08", status="draft",
+                               assigned=False)
+    for role in ("event_coordinator", "venue_staff", "tech_support", "attendee"):
+        session = ctx.shared(role)
+        expect_status(ctx.client.delete(f"{ctx.api}/events/{event_id}", headers=session.headers), 403)
+    owner = ctx.shared("event_organiser")
+    expect_status(ctx.client.delete(f"{ctx.api}/events/{event_id}", headers=owner.headers), 204)
+    expect_status(ctx.client.get(f"{ctx.api}/events/{event_id}", headers=owner.headers), 404)
+    [count] = db_query(f"select count(*) as n from public.events where id = '{event_id}'")
+    expect(int(count["n"]) == 0, "the discarded draft is still stored")
+
+
 @check("TC-CANCEL-004", "Only the organiser role can request; a blank reason is refused", needs_db=True)
 def _(ctx: Context) -> None:
     event_id = throwaway_event(ctx, "84-004", "2031-10-05 09:00+08", "2031-10-05 12:00+08")
