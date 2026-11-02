@@ -157,6 +157,23 @@ One case per acceptance criterion, in Jira order (SCRUM-34 AC1–6, then SCRUM-5
 
 **Automated coverage today.** The backend suite (`test_event_lifecycle.py`, `test_event_review_api.py`) covers every AC above except SCRUM-34 AC6 and SCRUM-52 AC6, which are verified against the real RPC only (Task 9) because the API test suite mocks `repository.transition_event` rather than the database function itself — the mock can't prove the RPC's own booking-release branch. `test_active_role_access.py` covers the new routes' active-role gating automatically (SCRUM-76). On the frontend, `RejectEventModal.spec.js`, `EventStatusHistory.spec.js`, `eventReviewStore.spec.js`, and `CoordinatorEventView.spec.js` cover the client-side halves of AC2 and AC5/AC8. TC-REV-006 and TC-REV-012 are the two cases that most need a real-system re-run if `transition_event` is ever changed, since nothing else exercises them.
 
+## Review submitted event request details (SCRUM-49)
+
+The PO replaced AC2 (client organisation information and past event history) with AC3 on 2026-11-02: client management is outside the first release, so there is no client record or history to show (DEFECTS D82). Both cases read only; event `…0201` is the seeded fixture assigned to `coordinator@connectsphere.dev`.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-REV-017 | AC3: the assigned coordinator's event read names the organiser and their organisation | Automated (live) | Fixture `…0201` assigned to the seeded coordinator | `GET /api/v1/events/e0000000-…-0201` as the coordinator | — | `200`; `organiser` is the event organiser's `full_name` and `organisation_name` from `profiles` (for the seed, Olivia Tan, Tan & Partners Events), and carries no email or phone. | 🔴 | 2026-11-02 | [Pass, 2026-11-02](runs/2026-11-02-1803-api-db-fb77a68.md) |
+| TC-REV-018 | AC1, AC3: Request details shows who sent the request and every submitted field | Manual | Signed in as `coordinator@connectsphere.dev` | Open `/coordinator/events/e0000000-…-0201`; read **Request details** at desktop width, then at 375px | — | The first two rows are **Organiser** (Olivia Tan) and **Organisation** (Tan & Partners Events), followed by the request ID, purpose, attendance, start and end, accessibility needs, equipment needs, description and the space requirements. An empty field reads **Not provided**. Nothing is clipped or overflows at 375px. | 🟠 | 2026-11-02 | [Pass, 2026-11-02](runs/2026-11-02-1808-manual-fb77a68.md) |
+
+### Traceability — SCRUM-49
+
+| SCRUM-49 acceptance criterion | Covered by |
+|---|---|
+| AC1 Can view all submitted event request fields | TC-REV-018; `test_event_review_api.py::TestCoordinatorRead::test_the_assigned_coordinator_can_read_the_event`, `::test_an_unassigned_coordinator_is_forbidden`, `::test_a_coordinator_cannot_read_a_draft_event` |
+| AC2 (removed 2026-11-02, replaced by AC3) | — |
+| AC3 Shows the name and organisation of the organiser who submitted the request | TC-REV-017, TC-REV-018; `TestCoordinatorRead::test_the_assigned_coordinator_sees_the_organisers_name_and_organisation`, `::test_an_organiser_without_an_organisation_reads_as_null`; `test_events_repository.py::test_the_single_event_read_names_the_organiser_and_their_organisation`; `CoordinatorEventView.spec.js` (SCRUM-49 AC3) |
+
 ## Return for amendment (SCRUM-33)
 
 **Preconditions for every case unless noted otherwise:** every migration applied (including `20260924140000_event_amendment_requests.sql`), fixture event `e0000000-…-0201` reset to `under_review` with `supabase/verification/event_review_fixture_reset.sql`, and assigned to `coordinator@connectsphere.dev` (Marcus Lim). The organiser is `organiser@connectsphere.dev` (Olivia Tan).

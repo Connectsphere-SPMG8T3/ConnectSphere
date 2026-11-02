@@ -137,6 +137,21 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(el.textContent.match(/event-1/g)).toHaveLength(1);
   });
 
+  it("names the organiser and their organisation first in Request details (SCRUM-49 AC3, D82)", async () => {
+    const el = await mountView(eventResponse({ organiser: { full_name: "Olivia Tan", organisation_name: "Tan & Partners Events" } }));
+    const details = el.querySelector('[data-testid="request-details-card"]');
+    expect(details.querySelector('[data-testid="organiser-name"]')?.textContent.trim()).toBe("Olivia Tan");
+    expect(details.querySelector('[data-testid="organiser-organisation"]')?.textContent.trim()).toBe("Tan & Partners Events");
+    const labels = [...details.querySelectorAll("dt")].map((node) => node.textContent.trim());
+    expect(labels.slice(0, 2)).toEqual(["Organiser", "Organisation"]);
+  });
+
+  it("shows Not provided when the organiser has no organisation (SCRUM-49 AC3)", async () => {
+    const el = await mountView(eventResponse({ organiser: { full_name: "Olivia Tan", organisation_name: null } }));
+    const details = el.querySelector('[data-testid="request-details-card"]');
+    expect(details.querySelector('[data-testid="organiser-organisation"]')?.textContent.trim()).toBe("Not provided");
+  });
+
   it("shows the equipment request inside the Request details card", async () => {
     const el = await mountView(eventResponse());
     const details = el.querySelector('[data-testid="request-details-card"]');
