@@ -5658,6 +5658,9 @@ def _(ctx: Context) -> None:
     expect_status(organiser, 200)
     [shown] = [b["preparation"] for b in organiser.json()["venue_bookings"] if b["id"] == booking_id]
     expect(shown["stage"] == "in_progress" and "note" not in shown, f"organiser sees {shown}")
+    # CR-111's venue list is what the organiser's page shows: the stage only.
+    listed = [v.get("preparation_stage") for v in organiser.json()["organiser_venues"] if v["booking_id"] == booking_id]
+    expect(listed == ["in_progress"], f"organiser's venue list has {listed}")
     expect("Internal venue note" not in organiser.text, "the note reached the organiser's response")
 
 
