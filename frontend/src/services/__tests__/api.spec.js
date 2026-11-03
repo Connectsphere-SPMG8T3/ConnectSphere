@@ -390,6 +390,17 @@ describe("eventsApi Lead calls (CR-101)", () => {
     );
   });
 
+  it("reads an event's reassignment history with an encoded event id (SCRUM-81)", async () => {
+    const fetchMock = stubFetch({ entries: [] });
+
+    await eventsApi.reassignmentHistory("event/one", "access-token");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/events/event%2Fone/reassignment-history",
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer access-token" }) }),
+    );
+  });
+
   it("assigns a queued event with only the coordinator id (SCRUM-12)", async () => {
     const fetchMock = stubFetch({ id: "event/one" });
 

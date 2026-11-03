@@ -211,6 +211,10 @@ export const eventsApi = {
       token,
     });
   },
+  // SCRUM-81 AC4: the reassignments of one event in the Lead's scope, newest first.
+  reassignmentHistory(eventId, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/reassignment-history`, { token });
+  },
   list(token) {
     return request("/events", { token });
   },

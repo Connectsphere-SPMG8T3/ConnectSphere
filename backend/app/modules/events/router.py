@@ -197,6 +197,11 @@ def reassign_event(event_id: UUID, body: EventReassignRequest, current_user: Eve
     return service.reassign(str(event_id), current_user.id, str(body.coordinator_id), body.expected_version)
 
 
+@router.get("/{event_id}/reassignment-history", response_model=EventHistoryResponse)
+def read_reassignment_history(event_id: UUID, current_user: EventCoordinatorLead) -> EventHistoryResponse:
+    return service.reassignment_history(str(event_id), current_user.id)
+
+
 @router.post("/{event_id}/return", response_model=EventResponse)
 def return_event(event_id: UUID, body: EventReturnRequest, current_user: EventCoordinator) -> EventResponse:
     return service.return_for_amendment(str(event_id), current_user.id, body)

@@ -573,7 +573,7 @@ For buffers extending beyond Python's supported years, comparison endpoints are 
 | AC4 Block kept; history records original period, reason, new end, who, when, note; shown as Ended early | TC-BLOCK-020, 022, 025, 026, 029; Vitest `venueProfile.spec.js` |
 | AC5 No flag cleared by the change; this block's bookings now free of any block are listed; others not | TC-BLOCK-024, 025, 026, 030; `pytest` `TestRestorableBookings`, `TestRestorableAfterBlock`; Vitest `venueStaffBookingRequests.spec.js` |
 | AC6 Venue staff restore each listed booking; flag cleared, status as before, event unchanged, coordinator and organiser told; an expired hold can't be | TC-BLOCK-024, 025, 026; `pytest` `TestRestoreExpiredHold`, `test_venue_booking_restore_api.py` |
-| AC7 A submitted replacement isn't changed; the coordinator is told | TC-BLOCK-025, 029; REQUIREMENTS §9 item 117 |
+| AC7 A submitted replacement isn't changed; the coordinator is told | TC-BLOCK-025, 029; REQUIREMENTS §9 item 118 |
 | AC8 Restore and replacement approval at once: one outcome | CR-95's lock order (TC-BOOK-046, TC-BOOK-056); not raced here |
 | AC9 Only users acting as Venue Staff view, change or restore | TC-BLOCK-023, 025, 027; `pytest` `TestAccess`, `TestWhoSeesBlockManagement`; Vitest `VenueDetailView.blockChange.spec.js` |
 | AC10 Restoring one booking leaves the event's other bookings unchanged | TC-BLOCK-025 |
