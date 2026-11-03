@@ -11,6 +11,8 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_serializer, model_validator
 
+from app.modules.equipment.schemas import PreparationStage
+
 
 class VenueLayout(str, Enum):
     theatre = "theatre"
@@ -625,8 +627,8 @@ class BookingHistoryEntry(BaseModel):
     actor_name: str | None = None
     reason: str | None = None
     suggestion: str | None = None
-    old_preparation_stage: str | None = None
-    new_preparation_stage: str | None = None
+    old_preparation_stage: PreparationStage | None = None
+    new_preparation_stage: PreparationStage | None = None
     at: datetime
 
     @model_serializer(mode="wrap")
@@ -681,7 +683,8 @@ class VenueBookingDetail(BaseModel):
 
 
 class VenuePreparationStage(BaseModel):
-    stage: str
+    # CR-109 AC2: the same `public.preparation_stage` stages as technical preparation (CR-110).
+    stage: PreparationStage
     updated_at: datetime | None = None
 
 
@@ -691,15 +694,8 @@ class VenuePreparation(VenuePreparationStage):
 
 
 class VenuePreparationRequest(BaseModel):
-    stage: str
+    stage: PreparationStage
     note: str | None = Field(default=None, max_length=2000)
-
-    @field_validator("stage")
-    @classmethod
-    def valid_stage(cls, value: str) -> str:
-        if value not in {"not_started", "in_preparation", "in_progress", "completed"}:
-            raise ValueError("Invalid preparation stage.")
-        return value
 
     @field_validator("note")
     @classmethod

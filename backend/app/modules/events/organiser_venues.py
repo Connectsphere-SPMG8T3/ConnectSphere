@@ -48,7 +48,7 @@ def _next_action(key: str, event_status: str) -> str:
 
 
 def _preparation_stage(booking: dict, event_status: str) -> str | None:
-    # SCRUM-109 AC4: only the stage is copied, and only once the event is Confirmed (AC1).
+    # CR-109 AC4: only the stage is copied, and only once the event is Confirmed (AC1).
     if event_status not in ("confirmed", "preparation"):
         return None
     return (booking.get("preparation") or {}).get("stage") or "not_started"

@@ -1080,7 +1080,7 @@ def _booking_detail(booking: dict) -> VenueBookingDetail:
             facilities_required=context.facilities_required, accessibility_needs=context.accessibility_needs,
         ),
         decision=decision,
-        preparation=_preparation(booking, internal=True) if booking.get("preparation") else None,
+        preparation=booking_preparation(booking, internal=True) if booking.get("preparation") else None,
         history=[BookingHistoryEntry(**entry) for entry in history],
         re_review=_re_review_context(booking, history) if booking["status"] == "re_review" else None,
     )
@@ -1297,7 +1297,7 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
             **({"venue_location": row["venues"]["location"]} if (row.get("venues") or {}).get("location") else {}),
             # Story 37 Q20: why an approved change marked it, so it can be sent for re-review.
             **({"needs_re_review_reason": row["needs_re_review_reason"]} if row.get("needs_re_review_reason") else {}),
-            # SCRUM-109 AC4: each venue's progress; the events module strips the note for the organiser.
+            # CR-109 AC4: each venue's progress; the events module strips the note for the organiser.
             **({"preparation": row["preparation"]} if row.get("preparation") else {}),
         }
         for row in shown.values()
@@ -1358,7 +1358,8 @@ def event_booking_history(event_id: str) -> list[dict]:
     return repository.list_event_booking_history(event_id)
 
 
-def _preparation(row: dict, *, internal: bool) -> VenuePreparation | VenuePreparationStage:
+def booking_preparation(row: dict, *, internal: bool) -> VenuePreparation | VenuePreparationStage:
+    """CR-109 AC4: a booking's recorded progress; the note and who made it only when `internal`."""
     recorded = row.get("preparation") or {}
     stage = recorded.get("stage") or "not_started"
     updated_at = recorded.get("updated_at")
@@ -1378,7 +1379,7 @@ def _preparation(row: dict, *, internal: bool) -> VenuePreparation | VenuePrepar
 def set_venue_preparation(
     booking_id: str, actor_id: str, stage: str, note: str | None
 ) -> VenuePreparationUpdated:
-    """SCRUM-109 AC1-AC3, AC5: update one booking through the atomic RPC."""
+    """CR-109 AC1-AC3, AC5: update one booking through the atomic RPC."""
     row = repository.set_venue_preparation(booking_id, actor_id, stage, note)
     outcome = row.get("outcome")
     if outcome == "booking_not_found" or outcome == "event_not_found":
@@ -1387,13 +1388,15 @@ def set_venue_preparation(
         raise BookingDecisionConflictError(
             "Venue preparation opens once the Safety Officer has confirmed the event."
         )
+    if outcome == "booking_not_active":
+        raise BookingDecisionConflictError("Only an approved booking can record venue preparation.")
     if outcome != "ok":
         raise RuntimeError(f"venue preparation function returned {outcome!r}")
     return VenuePreparationUpdated(
         stage=row["stage"],
         note=row.get("note"),
         updated_at=row.get("updated_at"),
-        updated_by_name=None,
+        updated_by_name=row.get("updated_by_name"),
         event_status=row["event_status"],
     )
 

@@ -1,4 +1,4 @@
-"""SCRUM-109 venue preparation progress through the HTTP API."""
+"""CR-109 venue preparation progress through the HTTP API."""
 
 from copy import deepcopy
 
@@ -50,6 +50,28 @@ class TestVenuePreparation:
         assert response.json()["note"] == "Doors checked"
         assert preparation["calls"] == [(BOOKING_ID, STAFF_ID, "in_progress", "Doors checked")]
 
+    def test_the_saved_update_names_who_made_it(self, client, auth_headers, authenticate_as, preparation):
+        """Review of CR-109: the page credits whoever just saved, not the previous updater."""
+        authenticate_as("venue_staff", user_id=STAFF_ID)
+        preparation["row"]["updated_by_name"] = "Venue Staff"
+
+        response = client.put(PREPARATION_URL, headers=auth_headers, json={"stage": "in_progress"})
+
+        assert response.json()["updated_by_name"] == "Venue Staff"
+
+    def test_a_booking_that_is_not_approved_is_refused(
+        self, client, auth_headers, authenticate_as, preparation
+    ):
+        """CR-109 AC2/AC3 [Assumption]: only the event's approved booking takes progress, so an
+        old rejected, cancelled or released booking can't move the event to Preparation."""
+        authenticate_as("venue_staff", user_id=STAFF_ID)
+        preparation["row"] = {"outcome": "booking_not_active", "event_status": "confirmed"}
+
+        response = client.put(PREPARATION_URL, headers=auth_headers, json={"stage": "completed"})
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Only an approved booking can record venue preparation."
+
     @pytest.mark.parametrize("stage", ["not_started", "in_preparation", "in_progress", "completed"])
     def test_all_preparation_stages_are_valid(
         self, client, auth_headers, authenticate_as, preparation, stage
@@ -66,6 +88,23 @@ class TestVenuePreparation:
 
         assert response.status_code == 409
         assert "confirmed" in response.json()["detail"].lower()
+
+    @pytest.mark.parametrize("outcome", ["booking_not_found", "event_not_found"])
+    def test_a_missing_booking_or_event_is_not_found(
+        self, client, auth_headers, authenticate_as, preparation, outcome
+    ):
+        authenticate_as("venue_staff", user_id=STAFF_ID)
+        preparation["row"] = {"outcome": outcome}
+
+        assert client.put(PREPARATION_URL, headers=auth_headers, json={"stage": "completed"}).status_code == 404
+
+    def test_an_unknown_outcome_is_an_error_not_a_success(self, preparation):
+        from app.modules.venues import service
+
+        preparation["row"] = {"outcome": "something_new"}
+
+        with pytest.raises(RuntimeError, match="something_new"):
+            service.set_venue_preparation(BOOKING_ID, STAFF_ID, "completed", None)
 
     @pytest.mark.parametrize("role", OTHER_ROLES)
     def test_every_other_active_role_is_forbidden(
@@ -131,3 +170,34 @@ class TestPreparationOnTheEventPage:
 
         assert coordinator["preparation"]["note"] == "Internal venue note"
         assert organiser["preparation"] == {"stage": "in_progress", "updated_at": organiser["preparation"]["updated_at"]}
+
+    def test_the_coordinator_is_given_the_updaters_name_not_the_raw_embed(self, monkeypatch):
+        """Review of CR-109: the coordinator reads `updated_by_name`, as the booking page does."""
+        from app.modules.events.service import _for_role
+        from app.modules.venues import service
+
+        self._rows(monkeypatch, self.RECORDED)
+        [booking] = service.active_bookings_for_event("e1")
+
+        preparation = _for_role(booking, "event_coordinator")["preparation"]
+
+        assert preparation["updated_by_name"] == "Venue Staff"
+        assert "updater" not in preparation
+
+    @pytest.mark.parametrize("updater, name", [([{"full_name": "Venue Staff"}], "Venue Staff"), ([], None)])
+    def test_an_updater_embedded_as_a_list_is_read_too(self, updater, name):
+        from app.modules.venues import service
+
+        recorded = {**self.RECORDED, "updater": updater}
+
+        assert service.booking_preparation({"preparation": recorded}, internal=True).updated_by_name == name
+
+    def test_a_booking_with_no_recorded_preparation_has_none_for_either_role(self, monkeypatch):
+        from app.modules.events.service import _for_role
+        from app.modules.venues import service
+
+        self._rows(monkeypatch, None)
+        [booking] = service.active_bookings_for_event("e1")
+
+        assert "preparation" not in _for_role(booking, "event_coordinator")
+        assert _for_role(booking, "event_organiser")["flag"] is None

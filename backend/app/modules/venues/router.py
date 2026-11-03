@@ -272,5 +272,5 @@ def set_venue_preparation(
     body: VenuePreparationRequest,
     current_user: VenueStaffOnly,
 ) -> VenuePreparationUpdated:
-    """SCRUM-109: only Venue Staff record preparation for a booking."""
-    return service.set_venue_preparation(str(booking_id), current_user.id, body.stage, body.note)
+    """CR-109: only Venue Staff record preparation for a booking."""
+    return service.set_venue_preparation(str(booking_id), current_user.id, body.stage.value, body.note)

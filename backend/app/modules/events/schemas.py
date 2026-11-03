@@ -6,7 +6,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
-from app.modules.equipment.schemas import ExitConfirmation, TechnicalPreparation, TechnicalPreparationStage
+from app.modules.equipment.schemas import (
+    ExitConfirmation,
+    PreparationStage,
+    TechnicalPreparation,
+    TechnicalPreparationStage,
+)
 from app.modules.venues.schemas import Facility, VenueLayout, VenuePreparation, VenuePreparationStage
 
 
@@ -486,7 +491,7 @@ class OrganiserVenue(BaseModel):
     status: str
     status_label: str
     next_action: str
-    # SCRUM-109 AC4: the stage only, never the note; set once the event is Confirmed.
+    # CR-109 AC4: the stage only, never the note; set once the event is Confirmed.
     preparation_stage: str | None = None
 
 
@@ -719,6 +724,9 @@ class EventHistoryEntry(BaseModel):
     # A venue booking's step (`booking`) names what happened and at which venue.
     action: str | None = None
     venue_name: str | None = None
+    # CR-109 AC5: a venue preparation step names the stage it moved from and to.
+    old_preparation_stage: PreparationStage | None = None
+    new_preparation_stage: PreparationStage | None = None
     # A technical update (`technical`) names its action, the equipment line, if any, and its detail.
     line_label: str | None = None
     detail: str | None = None
@@ -745,6 +753,9 @@ class EventHistoryEntry(BaseModel):
             data.pop("action", None)
         if self.kind not in ("booking", "venue_edit"):
             data.pop("venue_name", None)
+        if self.old_preparation_stage is None and self.new_preparation_stage is None:
+            data.pop("old_preparation_stage", None)
+            data.pop("new_preparation_stage", None)
         if self.kind != "technical":
             data.pop("line_label", None)
             data.pop("detail", None)

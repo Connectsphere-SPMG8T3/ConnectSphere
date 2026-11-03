@@ -1071,7 +1071,7 @@ def list_active_bookings(event_id: str) -> list[dict]:
 
 
 def set_venue_preparation(booking_id: str, actor_id: str, stage: str, note: str | None) -> dict:
-    """Run SCRUM-109's atomic booking preparation update."""
+    """Run CR-109's atomic booking preparation update."""
     response = get_supabase_admin_client().rpc("set_venue_preparation", {
         "p_booking_id": booking_id,
         "p_actor_id": actor_id,

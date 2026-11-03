@@ -131,6 +131,7 @@ DB_SCRIPTS = [
     ("registration_withdrawal_checks.sql", "TC-REG-018 (SCRUM-55 withdrawal, cutoff, re-registration and grants)"),
     ("change_request_decision_checks.sql", "TC-CHANGE-024 (story 37 database half: decisions, moves, marks, sends, re-review)"),
     ("technical_preparation_checks.sql", "TC-TPREP-001–006 (CR-110 database half: refusals, Preparation, history, notices, RLS)"),
+    ("venue_preparation_checks.sql", "TC-VENUE-109-010 (CR-109 database half: approved booking only, Preparation, unchanged save, stage history, who, grants)"),
     ("registration_waitlist_checks.sql", "TC-REG-020, 022–028 (SCRUM-86 database half)"),
     ("notification_registration_checks.sql", "TC-NOTIF-017, 018 (SCRUM-53: registration status confirmations, replacement venue)"),
     ("change_history_checks.sql", "TC-HIST-001–007 (story 62 database half: recorded edits, append-only history, RLS)"),
@@ -5554,7 +5555,7 @@ def _(ctx: Context) -> None:
     expect(event["status"] == "confirmed", f"a refused update moved the event to {event['status']}")
 
 
-# --- SCRUM-109 venue preparation per booking ------------------------------------
+# --- CR-109 venue preparation per booking ------------------------------------
 # Throwaway venues, events and bookings in 2031; the preparation rows and history
 # cascade when the run deletes the bookings.
 
@@ -5565,10 +5566,11 @@ def venue_preparation(ctx: Context, booking_id: str, stage: str, note: str | Non
                           json={"stage": stage, "note": note})
 
 
-def prepared_booking(ctx: Context, case: str, day: str, status: str = "confirmed") -> tuple[str, str]:
+def prepared_booking(ctx: Context, case: str, day: str, status: str = "confirmed",
+                     booking_status: str = "approved") -> tuple[str, str]:
     venue_id = throwaway_venue(ctx, case)
     event_id = throwaway_event(ctx, case, f"{day} 09:00+08", f"{day} 12:00+08", status=status)
-    return event_id, booking_at(event_id, venue_id, f"{day} 09:00+08", f"{day} 12:00+08", "approved")
+    return event_id, booking_at(event_id, venue_id, f"{day} 09:00+08", f"{day} 12:00+08", booking_status)
 
 
 def stored_preparation(booking_id: str) -> dict | None:
@@ -5587,6 +5589,7 @@ def _(ctx: Context) -> None:
         expect_status(response, 200)
         body = response.json()
         expect(body["stage"] == stage and body["note"] == f"Note {stage}", f"response: {body}")
+        expect(body["updated_by_name"], f"the response names nobody as the updater: {body}")
         stored = stored_preparation(booking_id)
         expect(stored == {"stage": stage, "note": f"Note {stage}", "updated_by": VENUE_STAFF_ID},
                f"stored: {stored}")
@@ -5601,6 +5604,9 @@ def _(ctx: Context) -> None:
     entries = [e for e in history.json()["entries"] if e.get("kind") == "booking" and e.get("action") == "preparation"]
     expect(len(entries) == len(stages), f"{len(entries)} preparation entries in the event history")
     expect(all(e["actor"]["id"] == VENUE_STAFF_ID and e["at"] for e in entries), f"entries: {entries}")
+    # The review of CR-109: each entry names the stage it moved from and to (AC5).
+    moves = sorted((e["old_preparation_stage"], e["new_preparation_stage"]) for e in entries)
+    expect(moves == sorted(zip(("not_started", *stages[:-1]), stages)), f"event history stages: {moves}")
 
 
 @check("TC-VENUE-109-002", "Venue preparation is refused before confirmation and after a return to Planning; "
@@ -5654,6 +5660,7 @@ def _(ctx: Context) -> None:
     expect_status(coordinator, 200)
     [seen] = [b["preparation"] for b in coordinator.json()["venue_bookings"] if b["id"] == booking_id]
     expect(seen["stage"] == "in_progress" and seen["note"] == "Internal venue note", f"coordinator sees {seen}")
+    expect(seen.get("updated_by_name") and "updater" not in seen, f"coordinator's updater: {seen}")
     organiser = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=ctx.shared("event_organiser").headers)
     expect_status(organiser, 200)
     [shown] = [b["preparation"] for b in organiser.json()["venue_bookings"] if b["id"] == booking_id]
@@ -5674,6 +5681,16 @@ def _(ctx: Context) -> None:
     expect_status(venue_preparation(ctx, booking_id, "completed", session=ctx.login("event_coordinator")), 403)
     expect(stored_preparation(booking_id) is None, "a refused caller stored progress")
     expect(event_row(event_id)["status"] == "confirmed", "a refused caller moved the event")
+
+
+@check("TC-VENUE-109-011", "A booking that isn't approved can't record preparation or move the event", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = prepared_booking(ctx, "VPREP011", "2031-12-21", booking_status="rejected")
+    response = venue_preparation(ctx, booking_id, "in_progress", "Should not save")
+    expect_status(response, 409)
+    expect_detail(response, "Only an approved booking can record venue preparation.")
+    expect(stored_preparation(booking_id) is None, "a rejected booking stored progress")
+    expect(event_row(event_id)["status"] == "confirmed", "a rejected booking moved the event")
 
 
 # --- Story 62: an event's change history -------------------------------------------
