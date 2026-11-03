@@ -1421,6 +1421,20 @@ def reassign(event_id: str, lead_id: str, coordinator_id: str, expected_version:
     return _to_response(updated)
 
 
+def reassignment_history(event_id: str, lead_id: str) -> EventHistoryResponse:
+    """The reassignments of an event in the Lead's scope, newest first (SCRUM-81 AC4). Only
+    reassignments, never the rest of the event's history [Assumption, §9 item 110]; the
+    first assignment from the queue is a status change and stays in the status history."""
+    row = repository.get_lead_event(event_id)
+    if not row or row.get("status") == "draft":
+        raise EventNotFoundError()
+    if not lead_scope.in_lead_scope(row, lead_id, repository.list_lead_ids()):
+        raise EventNotInLeadScopeError()
+    return EventHistoryResponse(
+        entries=[EventHistoryEntry(kind="reassignment", **entry) for entry in repository.list_assignment_history(event_id)]
+    )
+
+
 def _comment_role(event: dict, author_id: str | None) -> str | None:
     """The role an author holds on this event. None for someone no longer on it,
     such as a coordinator since reassigned."""

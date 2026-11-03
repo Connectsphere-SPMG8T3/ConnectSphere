@@ -14,6 +14,7 @@ import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import CancellationReasonModal from "@/components/events/CancellationReasonModal.vue";
+import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
 import { showToast } from "@/composables/useToast";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { coordinatorOptions } from "@/features/events/leadDashboard";
@@ -26,7 +27,12 @@ const store = useLeadDashboardStore();
 // Always start from a fresh load: rows left by an earlier visit (or another account on
 // this tab) must never be shown, and the version sent on reassign must be current.
 store.reset();
-onMounted(() => store.load());
+// The history is the event's own (SCRUM-81 AC4), so it loads beside the dashboard rather than
+// after it: an event outside the Lead's scope shows no history card whatever the API answers.
+onMounted(() => {
+  store.load();
+  store.loadHistory(route.params.id);
+});
 
 const event = computed(() => store.eventById(route.params.id));
 const isLoaded = computed(() => store.hasSettled && !store.error);
@@ -199,6 +205,20 @@ async function reassign() {
               {{ isQueued ? "Assign" : "Reassign" }}
             </BauhausButton>
           </div>
+        </section>
+
+        <!-- SCRUM-81 AC4: who moved this event from whom to whom, and when. Reassignments only. -->
+        <section
+          class="mt-8 border-4 border-ink bg-canvas p-5 shadow-hard"
+          aria-labelledby="reassignment-history-heading"
+          data-testid="reassignment-history"
+        >
+          <h2 id="reassignment-history-heading" class="mb-4 text-2xl font-bold">Reassignment history</h2>
+          <p v-if="store.historyError" class="text-sm font-bold" data-testid="reassignment-history-error">
+            {{ store.historyError }}
+          </p>
+          <p v-else-if="store.isLoadingHistory" class="text-sm font-medium text-ink/70">Loading history...</p>
+          <EventStatusHistory v-else :entries="store.history" empty-text="No reassignments yet." />
         </section>
       </template>
     </template>

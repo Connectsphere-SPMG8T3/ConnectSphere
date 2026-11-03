@@ -368,6 +368,46 @@ TC-LEAD-009–014 need a person (wording, layout, phone width) or change shared 
 | [Team decision] an unreassignable event closes the request; the organiser's view excludes it | TC-REASSIGN-011, 016 |
 | Design and wording | TC-REASSIGN-017, 018 |
 
+## Change coordinator assignment (SCRUM-81)
+
+**Preconditions for every case:** the migrations of CR-101, SCRUM-12 and CR-106 are applied (SCRUM-81 adds none); seeded accounts per the [README](README.md); the Lead is `coordinator.lead@connectsphere.dev` and a second Lead `coordinator.lead2@connectsphere.dev` is seeded. The automated cases use throwaway events in 2031 that the run deletes. Created 2026-11-03. Most of this story's acceptance criteria were built by earlier stories (reassign by CR-101, the history by SCRUM-12, the request by CR-106), so the cases below cover only what they did not prove: the Lead's reassignment history, the previous coordinator losing access at once, and the effects of a reassignment. The earlier cases are cited in the traceability table.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-ASSIGN-018 | AC4 — the Lead reads an event's reassignments, newest first; nobody else can | Automated (live) | A queued throwaway event, assigned then reassigned twice by the Lead | `GET /events/<id>/reassignment-history` as the Lead; then as every other role, as the other Lead, with no token, and for a draft | — | After the assignment alone: 200 with no entries (the first assignment is a status change, not a reassignment). After two reassignments: two `reassignment` entries, newest first, each with the previous and new coordinator, the Lead and the time, and no status entries. 403 for the organiser, coordinator, venue staff, tech support, safety officer, attendee and the Lead whose scope does not hold the event; 401 with no token; 404 for a draft. | 🔴 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1042-api-db-e36fba3.md) |
+| TC-ASSIGN-019 | AC3, AC7 — the previous coordinator is refused at once; the new one can act | Automated (live) | A queued throwaway event assigned to coordinator `…02`, then reassigned to `…08` | As `…02`, `POST` approve, reject, return, send-for-safety-check and reassignment-request, and `GET` the event; as `…08`, read and approve | — | 403 for every one of the previous coordinator's requests and the event is unchanged (`under_review`); the new coordinator reads the event (200) and approves it (200, `planning`). | 🔴 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1042-api-db-e36fba3.md) |
+| TC-ASSIGN-020 | AC9, AC12 — a returned request that is reassigned and resubmitted stays with the new coordinator | Automated (live) | An event the organiser created and submitted through the API, assigned to `…02` | The coordinator returns it; the Lead reassigns it to `…08`; the organiser resubmits it | `{"resubmission_note": "…"}` | After the reassignment the status is still `returned`. After the resubmission it is `under_review` with coordinator `…08`, a single `event_resubmitted` notice goes to `…08`, the event is not in the Lead's unassigned queue, and `…08` can approve it. | 🔴 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1042-api-db-e36fba3.md) |
+| TC-ASSIGN-021 | AC2, AC9, AC11, AC12, AC13 — the database half | Automated (database) | Seeded accounts | Run `supabase/verification/reassignment_effects_checks.sql` | — | Rolled back, and ends without a failure: a reassignment leaves the status alone, writes one assignment-history row and no status-history row, tells the new coordinator, the previous coordinator and the organiser once each; a second reassignment of the same version changes nothing; a returned request resubmitted after a reassignment is `under_review` with the new coordinator, who alone is told; an event assigned before Leads existed (`assigned_by` null) can be reassigned and then belongs to that Lead; an account without the coordinator role cannot be assigned. | 🔴 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1042-api-db-e36fba3.md) |
+| TC-ASSIGN-022 | AC4, AC10 — the Lead's event page lists the reassignments | E2E | A throwaway planning event held by `…02`; signed in as the Lead | Open `/lead/events/<id>`; read the **Reassignment history** card; choose another coordinator, **Reassign**, confirm; open the event page again | — | The card first reads "No reassignments yet."; after the reassignment it reads "Reassigned to <new coordinator>" from Marcus Lim, by the Lead, with the time. | 🔴 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1119-e2e-e36fba3.md) |
+| TC-ASSIGN-023 | AC3 — a coordinator's page that was already open is refused after the reassignment | E2E | A throwaway planning event held by `…02`; the coordinator's event page open in one browser, the Lead in another | The Lead reassigns the event to `…08`; the first coordinator opens **Reject**, types a reason and confirms | a reason | The request returns 403 and the dialog shows "Only the event's assigned coordinator can do this."; the event is still in planning and still held by `…08`. | 🔴 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1119-e2e-e36fba3.md) |
+| TC-ASSIGN-024 | Design — the Lead's reassignment history card | Manual | An event you reassigned at least twice, and one never reassigned; signed in as the Lead | Open `/lead/events/<id>` for each at 1440, 768 and 375px; read the card against the reassign card above it | — | The card sits below the reassign control with the same border and shadow; each line reads "Reassigned to <name>", "from <name>" and "by <Lead> · <time>" without wrapping badly or truncating; the never-reassigned event reads "No reassignments yet."; sentence case throughout; no horizontal scroll at 375px. | 🟠 | 2026-11-03 | — |
+
+### Traceability — SCRUM-81
+
+| Acceptance criterion | Covered by |
+|---|---|
+| AC1 only the Lead reassigns; the current assignee and every other role are rejected | TC-LEAD-003, TC-REASSIGN-005; `test_lead_reassign.py`, `test_reassignment_effects.py` (the current assignee) |
+| AC2 the previous coordinator, the new coordinator and the organiser are notified | TC-LEAD-008, TC-LEAD-011, TC-ASSIGN-021 |
+| AC3 the previous coordinator loses access at once, including from an open page | TC-ASSIGN-019, TC-ASSIGN-023; `test_reassignment_effects.py` |
+| AC4 reassignment history (from, to, by whom, when) is kept on the event, and the Lead can read it | TC-ASSIGN-016, TC-ASSIGN-017, TC-ASSIGN-018, TC-ASSIGN-022, TC-ASSIGN-024 |
+| AC5 only an active Event Coordinator who differs from the current one | TC-LEAD-008, TC-ASSIGN-021; `test_lead_reassign.py` |
+| AC6 exactly one coordinator, never unassigned or double-assigned | TC-LEAD-008, TC-ASSIGN-021 |
+| AC7 the new coordinator can view and manage the event at once | TC-ASSIGN-019; `test_reassignment_effects.py` |
+| AC8 only active events | TC-LEAD-008, TC-LEAD-013; `test_lead_reassign.py` |
+| AC9 every event-linked record stays attached; the status is unchanged | TC-ASSIGN-020, TC-ASSIGN-021; `test_reassignment_effects.py` |
+| AC10 the Lead's view of the assignments in their scope shows the update | TC-LEAD-011, TC-LEAD-012, TC-ASSIGN-022 |
+| AC11 two simultaneous reassignments: one wins, the other is out of date | TC-LEAD-011, TC-ASSIGN-021; `test_lead_reassign.py` |
+| AC12 a returned request can be reassigned, and resubmission stays with the coordinator assigned then (QA3-15) | TC-ASSIGN-020, TC-ASSIGN-021; `test_reassignment_effects.py` |
+| AC13 events assigned before the Lead role existed can be reassigned (QA3-38) | TC-LEAD-012, TC-ASSIGN-021; `test_reassignment_effects.py` |
+
+Automated equivalents:
+
+- **pytest**, in `backend/tests/`: `test_lead_reassignment_history.py` (the Lead's history: shape, scope, 404/403/401, every other role) and `test_reassignment_effects.py` (AC1 assignee, AC3, AC7, AC9, AC12, AC13).
+- **Vitest**: `features/events/__tests__/leadReassignmentHistoryStore.spec.js`, `views/__tests__/LeadEventViewHistory.spec.js`, `components/events/__tests__/EventStatusHistoryEmptyText.spec.js`, and one case in `services/__tests__/api.spec.js`.
+- **Live checks:** TC-ASSIGN-018–020 in `backend/scripts/verify_live.py`, TC-ASSIGN-021 through `reassignment_effects_checks.sql` in the same script, and TC-ASSIGN-022–023 in `frontend/e2e/change-coordinator-assignment.e2e.js`.
+
+TC-ASSIGN-024 needs a person (layout, wording, phone width), so it stays manual.
+
 ## Attendee dashboard — layout audit (D21)
 
 The attendee dashboard remains a placeholder with existing hardcoded metrics (known D8); this case checks layout only and does not validate those figures or implement registrations.
