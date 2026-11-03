@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from httpx import HTTPError
+from postgrest.exceptions import APIError
 
 from app.core.exceptions import (
     BookingConflictError,
@@ -22,6 +24,7 @@ from app.core.exceptions import (
     VenueBlockNotFoundError,
     VenueConflictError,
     VenueNotFoundError,
+    VenueServiceUnavailableError,
 )
 from app.modules.events import service as events_service
 from app.modules.events.schemas import BookingReadiness, EventPlanningContext, SpaceRequirements
@@ -1156,6 +1159,48 @@ def approve_booking(booking_id: str, actor_id: str) -> VenueBookingDetail:
         raise BookingDecisionConflictError("Venue blocked for this time.")
     if outcome == "venue_inactive":
         raise BookingDecisionConflictError("This venue is inactive, so the booking can't be approved.")
+    return _booking_detail(repository.get_booking(booking_id))
+
+
+# What `public.cancel_venue_booking` refuses with, as the coordinator reads it (SCRUM-85).
+CANCEL_REFUSALS = {
+    "not_cancellable": "Only a Held or Approved booking can be cancelled.",
+    "hold_expired": "This hold has expired, so it can't be cancelled.",
+    "event_closed": "A booking can't be cancelled once its event has started, ended or been cancelled.",
+}
+
+
+def cancel_booking(booking_id: str, coordinator_id: str) -> VenueBookingDetail:
+    """The assigned coordinator cancels one of their event's bookings (SCRUM-85, BR-R5).
+
+    `public.cancel_venue_booking` decides under the event's and the booking's locks,
+    so a cancel racing an approval, restore or expiry, or a second cancel, saves
+    one outcome (AC9). In the same transaction it frees the slot (AC1), records
+    who and when (AC6), tells every venue staff account (AC1) and returns a Safety
+    review, Confirmed or Preparation event to Planning (AC4, AC8). The event's
+    other bookings are untouched (AC7).
+    """
+    booking = repository.get_booking(booking_id)
+    if booking is None:
+        raise BookingNotFoundError()
+    event_name = events_service.names_by_id([booking["event_id"]]).get(booking["event_id"], "your event")
+    venue_name = booking.get("venue_name") or "the venue"
+    try:
+        result = repository.cancel_booking(
+            booking_id, coordinator_id,
+            staff_message=(f'The coordinator cancelled the booking of {venue_name} for "{event_name}". '
+                           "The venue is free for that time again."),
+            return_message=events_service.return_to_planning_message(event_name, "booking_cancelled"),
+        )
+    except (HTTPError, APIError) as exc:
+        raise VenueServiceUnavailableError() from exc
+    outcome = result["outcome"]
+    if outcome == "booking_not_found":
+        raise BookingNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome in CANCEL_REFUSALS:
+        raise BookingDecisionConflictError(CANCEL_REFUSALS[outcome])
     return _booking_detail(repository.get_booking(booking_id))
 
 

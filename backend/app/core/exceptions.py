@@ -248,6 +248,12 @@ class EventServiceUnavailableError(HTTPException):
                          detail="The event service is temporarily unavailable. Please try again.")
 
 
+class VenueServiceUnavailableError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                         detail="The venue service is temporarily unavailable. Please try again.")
+
+
 class EquipmentServiceUnavailableError(HTTPException):
     def __init__(self) -> None:
         super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
