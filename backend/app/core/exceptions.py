@@ -220,6 +220,13 @@ class UnknownEventArrangementError(HTTPException):
                          detail="Unknown booking or equipment line for this event")
 
 
+class SafetyChecklistError(HTTPException):
+    """CR-108 AC3: the checklist is incomplete, malformed, or marks a Concern on an approval."""
+    def __init__(self, problems: list[str]) -> None:
+        super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                         detail="Safety checklist can't be recorded: " + "; ".join(problems))
+
+
 class EventServiceUnavailableError(HTTPException):
     def __init__(self) -> None:
         super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

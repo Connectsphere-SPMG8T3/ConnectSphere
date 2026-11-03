@@ -16,23 +16,58 @@ def test_approved_change_only_from_confirmed_or_preparation(status):
     else:
         with pytest.raises(EventTransitionError): lifecycle.target('approved_change', status)
 
-@pytest.mark.parametrize('name,field', [('SafetyApproveRequest','comment'),('SafetyChangesRequest','comment'),('SafetyRejectRequest','reason')])
-@pytest.mark.parametrize('text', ['', '   ', 'x'*1001])
-def test_decision_text_validation(name, field, text):
-    assert hasattr(schemas, name)
-    with pytest.raises(ValidationError): getattr(schemas,name)(**{field:text})
+BOOKING = 'a0000000-0000-4000-8000-000000000001'
 
-@pytest.mark.parametrize('name,field', [('SafetyChangesRequest','comment')])
-def test_decision_ids_are_unique_and_text_trimmed(name, field):
-    assert hasattr(schemas,name)
-    uid = 'a0000000-0000-4000-8000-000000000001'
-    result = getattr(schemas,name)(**{field:'  private  ', 'booking_ids':[uid,uid], 'equipment_request_ids':[uid,uid]})
-    assert getattr(result,field) == 'private'
+# CR-108 AC4: the organiser's comment and the officer's private note are separate fields.
+REQUESTS = [
+    ('SafetyApproveRequest', {}, False),
+    ('SafetyChangesRequest', {}, True),
+    ('SafetyRejectRequest', {'booking_id': BOOKING}, True),
+]
+
+@pytest.mark.parametrize('name,extra,required', REQUESTS)
+@pytest.mark.parametrize('text', ['', '   ', 'x'*1001])
+def test_organiser_comment_validation(name, extra, required, text):
+    with pytest.raises(ValidationError): getattr(schemas,name)(organiser_comment=text, **extra)
+
+@pytest.mark.parametrize('name,extra,required', REQUESTS)
+def test_organiser_comment_is_required_except_for_approval(name, extra, required):
+    if required:
+        with pytest.raises(ValidationError): getattr(schemas,name)(**extra)
+    else:
+        assert getattr(schemas,name)(**extra).organiser_comment is None
+
+@pytest.mark.parametrize('name,extra,required', REQUESTS)
+@pytest.mark.parametrize('text,expected', [(None,None),('   ',None),('  note  ','note')])
+def test_private_note_is_optional_and_trimmed(name, extra, required, text, expected):
+    result = getattr(schemas,name)(organiser_comment='  fix the exits  ', private_note=text, **extra)
+    assert result.private_note == expected and result.organiser_comment == 'fix the exits'
+
+def test_private_note_is_bounded():
+    with pytest.raises(ValidationError): schemas.SafetyChangesRequest(organiser_comment='c', private_note='x'*1001)
+
+@pytest.mark.parametrize('name,extra,required', REQUESTS)
+def test_requests_carry_the_checklist(name, extra, required):
+    row = {'factor':'layout','booking_id':BOOKING,'rating':'concern','note':' n '}
+    result = getattr(schemas,name)(organiser_comment='c', checklist=[row], **extra)
+    assert [(a.factor.value, a.rating.value, a.note) for a in result.checklist] == [('layout','concern','n')]
+    assert getattr(schemas,name)(organiser_comment='c', **extra).checklist == []
+
+def test_decision_ids_are_unique():
+    uid = BOOKING
+    result = schemas.SafetyChangesRequest(organiser_comment='c', booking_ids=[uid,uid], equipment_request_ids=[uid,uid])
     assert result.booking_ids == result.equipment_request_ids == [UUID(uid)]
 
+def test_the_old_single_comment_fields_are_gone():
+    # CR-108 replaced `comment` / `reason` with organiser_comment + private_note.
+    assert 'comment' not in schemas.SafetyChangesRequest.model_fields
+    assert 'reason' not in schemas.SafetyRejectRequest.model_fields
+
+CHECKLIST = [{'factor':'layout','booking_id':'b','rating':'concern','note':None}]
+
 @pytest.mark.parametrize('method,rpc,args,kwargs', [
- ('safety_approve','safety_approve_event',('e','a',3),dict(comment=None,organiser_message='o',staff_message='s')),
- ('safety_return','safety_return_event',('e','a',3),dict(decision='changes_requested',comment='c',booking_ids=['b'],equipment_request_ids=['q'],coordinator_message='m')),
+ ('safety_approve','safety_approve_event',('e','a',3),dict(checklist=CHECKLIST,organiser_comment=None,private_note=None,organiser_message='o',staff_message='s')),
+ ('safety_return','safety_return_event',('e','a',3),dict(decision='changes_requested',checklist=CHECKLIST,organiser_comment='c',private_note='p',booking_ids=['b'],equipment_request_ids=['q'],coordinator_message='m')),
  ('return_to_planning','return_event_to_planning',('e',3),dict(from_status='confirmed',reason_code='booking_cancelled',coordinator_message='m',officer_message=None)),
 ])
 def test_safety_rpc_contract(monkeypatch,method,rpc,args,kwargs):
@@ -96,11 +131,18 @@ def test_decisions_embed_decider_and_sort_newest(monkeypatch):
     from unittest.mock import MagicMock
     client=MagicMock();query=client.table.return_value
     query.select.return_value=query;query.eq.return_value=query;query.order.return_value=query
-    query.execute.return_value.data=[{'id':'d','decider':{'full_name':'Officer'}},{'id':'e','decider':None}]
+    item={'factor':'layout','booking_id':'b1','rating':'concern','note':'Narrow aisle'}
+    query.execute.return_value.data=[{'id':'d','decider':{'full_name':'Officer'},'organiser_comment':'Fix the exits','items':[item]},
+                                     {'id':'e','decider':None,'items':None}]
     monkeypatch.setattr(repository,'get_supabase_admin_client',lambda:client)
-    assert repository.list_safety_decisions('event')==[{'id':'d','decided_by_name':'Officer'},{'id':'e','decided_by_name':None}]
+    # CR-108 AC6: each decision comes back with its checklist rows under `checklist`.
+    assert repository.list_safety_decisions('event')==[
+        {'id':'d','organiser_comment':'Fix the exits','decided_by_name':'Officer','checklist':[item]},
+        {'id':'e','decided_by_name':None,'checklist':[]}]
     query.order.assert_called_with('decided_at',desc=True)
-    assert 'profiles!event_safety_decisions_decided_by_fkey(full_name)' in query.select.call_args.args[0]
+    selected=query.select.call_args.args[0]
+    assert 'profiles!event_safety_decisions_decided_by_fkey(full_name)' in selected
+    assert 'event_safety_checklist_items(factor, booking_id, rating, note)' in selected
 
 @pytest.mark.parametrize('domain',['venues','equipment'])
 def test_review_arrangement_reads(monkeypatch,domain):
@@ -125,9 +167,10 @@ def test_review_arrangement_reads(monkeypatch,domain):
 
 def test_reject_text_trimmed_and_legacy_arrays_ignored():
     uid='a0000000-0000-4000-8000-000000000001'
-    result=schemas.SafetyRejectRequest(reason='  private  ',booking_id=uid,booking_ids=[uid],equipment_request_ids=[uid])
-    assert result.reason=='private' and result.booking_id==UUID(uid)
-    assert result.model_dump().keys()=={'reason','booking_id'}
+    # CR-108 AC4: the officer's text is `organiser_comment` (shown to the organiser) and `private_note`.
+    result=schemas.SafetyRejectRequest(organiser_comment='  fix the exits  ',booking_id=uid,booking_ids=[uid],equipment_request_ids=[uid])
+    assert result.organiser_comment=='fix the exits' and result.booking_id==UUID(uid)
+    assert result.model_dump().keys()=={'booking_id','checklist','organiser_comment','private_note'}
 
 def test_approved_change_sources_include_preparation():
     assert lifecycle.allowed_from('approved_change') == ['confirmed', 'preparation']

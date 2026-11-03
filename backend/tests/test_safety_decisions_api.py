@@ -1,4 +1,8 @@
-"""CR-104 decision guards, readiness, validation and private notification text."""
+"""CR-104 decision guards, readiness, validation and private notification text.
+
+CR-108 (QA3-17): every decision carries the six-factor checklist, an organiser comment and an
+optional private note. The old single `comment` / `reason` bodies were replaced (AC3, AC4).
+"""
 from copy import deepcopy
 import pytest
 from app.modules.events import repository
@@ -11,9 +15,16 @@ from tests.test_event_comments_api import acting_as_another_role
 BOOKING='b0000000-0000-4000-8000-000000000001'
 LINE='b0000000-0000-4000-8000-000000000002'
 FOREIGN='b0000000-0000-4000-8000-000000000099'
-CASES=[('safety-approve',{'comment':'  PRIVATE-MARKER  '},'confirmed'),
-       ('safety-request-changes',{'comment':'  PRIVATE-MARKER  ','booking_ids':[BOOKING,BOOKING],'equipment_request_ids':[LINE,LINE]},'planning'),
-       ('safety-reject',{'reason':'  PRIVATE-MARKER  ','booking_id':BOOKING},'planning')]
+VENUE_FACTORS=['attendance_capacity','layout','emergency_access','accessibility','venue_restrictions']
+
+def checklist(rating='satisfactory', bookings=(BOOKING,)):
+    rows=[{'factor':f,'booking_id':b,'rating':rating} for b in bookings for f in VENUE_FACTORS]
+    return rows+[{'factor':'equipment_placement','rating':rating}]
+
+TEXT={'organiser_comment':'  ORGANISER-MARKER  ','private_note':'  PRIVATE-MARKER  ','checklist':checklist()}
+CASES=[('safety-approve',dict(TEXT),'confirmed'),
+       ('safety-request-changes',{**TEXT,'booking_ids':[BOOKING,BOOKING],'equipment_request_ids':[LINE,LINE]},'planning'),
+       ('safety-reject',{**TEXT,'booking_id':BOOKING},'planning')]
 ROLES=['event_organiser','event_coordinator','venue_staff','tech_support','attendee','event_coordinator_lead']
 
 @pytest.fixture()
@@ -22,6 +33,7 @@ def state(monkeypatch):
     monkeypatch.setattr(repository,'get_event',lambda _:deepcopy(state['event']))
     monkeypatch.setattr(venues,'booking_readiness_by_event',lambda ids:{EVENT_ID:[BookingReadiness(status=s) for s in state['bookings']]})
     monkeypatch.setattr(venues,'event_booking_ids',lambda _: {BOOKING},raising=False)
+    monkeypatch.setattr(venues,'event_bookings_with_venues',lambda _:[{'booking_id':BOOKING}],raising=False)
     monkeypatch.setattr(equipment,'event_request_ids',lambda _: {LINE},raising=False)
     def rpc(*args,**kwargs):
         state['calls'].append((args,kwargs))
@@ -43,9 +55,13 @@ def test_decision_and_repeat(client,auth_headers,authenticate_as,state,path,body
     assert result.json()['status']==target and result.json()['latest_safety_decision'] is None
     args,kwargs=state['calls'][0]
     assert args==(EVENT_ID,COORDINATOR_ID,3)
-    assert kwargs['comment']=='PRIVATE-MARKER'
+    assert kwargs['organiser_comment']=='ORGANISER-MARKER'
+    assert kwargs['private_note']=='PRIVATE-MARKER'
+    assert kwargs['checklist']==[{'factor':r['factor'],'booking_id':r.get('booking_id'),'rating':'satisfactory','note':None}
+                                 for r in body['checklist']]
+    # AC5: neither the organiser comment nor the private note travels in a notification.
     messages=[v for k,v in kwargs.items() if k.endswith('message')]
-    assert messages and all('Partner Summit' in m and 'PRIVATE-MARKER' not in m for m in messages)
+    assert messages and all('Partner Summit' in m and 'PRIVATE-MARKER' not in m and 'ORGANISER-MARKER' not in m for m in messages)
     if target=='planning':
         assert kwargs['booking_ids']==[BOOKING]
         assert kwargs['equipment_request_ids']==([LINE] if path=='safety-request-changes' else [])
@@ -74,6 +90,7 @@ def test_decision_roles(client,auth_headers,authenticate_as,state,path,body,targ
 def test_active_role_denied(client,auth_headers,monkeypatch,state,path,body,target):
     acting_as_another_role(monkeypatch,COORDINATOR_ID,'safety_officer','event_coordinator')
     assert post(client,auth_headers,path,body).status_code==403
+    assert not state['calls']
 
 @pytest.mark.parametrize('path,body,target',CASES)
 def test_stale(client,auth_headers,authenticate_as,state,path,body,target):
@@ -90,31 +107,93 @@ def test_not_ready(client,auth_headers,authenticate_as,state,race):
     authenticate_as('safety_officer')
     if race: state.update(stale=True,race=True)
     else: state['bookings']=[]
-    result=post(client,auth_headers,'safety-approve',{})
+    result=post(client,auth_headers,'safety-approve',dict(TEXT))
     assert result.status_code==409
     assert result.json()['detail']=='Not ready for approval: No venue booking is approved.'
     assert len(state['calls'])==(1 if race else 0)
 
 @pytest.mark.parametrize('path,body,target',CASES)
 @pytest.mark.parametrize('text',['','   ','x'*1001])
-def test_invalid_text(client,auth_headers,authenticate_as,state,path,body,target,text):
+def test_invalid_organiser_comment(client,auth_headers,authenticate_as,state,path,body,target,text):
     authenticate_as('safety_officer')
-    body={**body,('reason' if path=='safety-reject' else 'comment'):text}
-    assert post(client,auth_headers,path,body).status_code==422
+    assert post(client,auth_headers,path,{**body,'organiser_comment':text}).status_code==422
     assert not state['calls']
+
+@pytest.mark.parametrize('path,body,target',CASES[1:])
+def test_organiser_comment_is_required_to_return_an_event(client,auth_headers,authenticate_as,state,path,body,target):
+    authenticate_as('safety_officer')
+    without={k:v for k,v in body.items() if k!='organiser_comment'}
+    assert post(client,auth_headers,path,without).status_code==422
+    assert not state['calls']
+
+def test_approval_needs_no_organiser_comment_and_no_private_note(client,auth_headers,authenticate_as,state):
+    authenticate_as('safety_officer')
+    assert post(client,auth_headers,'safety-approve',{'checklist':checklist()}).status_code==200
+    (_,kwargs),=state['calls']
+    assert kwargs['organiser_comment'] is None and kwargs['private_note'] is None
+
+def test_private_note_is_optional_for_returns(client,auth_headers,authenticate_as,state):
+    authenticate_as('safety_officer')
+    body={k:v for k,v in CASES[1][1].items() if k!='private_note'}
+    assert post(client,auth_headers,'safety-request-changes',body).status_code==200
+    assert state['calls'][0][1]['private_note'] is None
 
 @pytest.mark.parametrize('path,field',[('safety-request-changes','booking_ids'),('safety-request-changes','equipment_request_ids'),('safety-reject','booking_id')])
 def test_foreign_ids(client,auth_headers,authenticate_as,state,path,field):
     authenticate_as('safety_officer')
-    result=post(client,auth_headers,path,{('reason' if path=='safety-reject' else 'comment'):'private',field:(FOREIGN if path=='safety-reject' else [FOREIGN])})
+    result=post(client,auth_headers,path,{'organiser_comment':'fix it','checklist':checklist(),field:(FOREIGN if path=='safety-reject' else [FOREIGN])})
     assert result.status_code==422 and result.json()['detail']=='Unknown booking or equipment line for this event'
     assert not state['calls']
 
-
-def test_approve_body_optional(client,auth_headers,authenticate_as,state):
+# CR-108 AC3: a decision can't be recorded until every factor is marked.
+@pytest.mark.parametrize('path,body,target',CASES)
+def test_an_empty_checklist_is_refused(client,auth_headers,authenticate_as,state,path,body,target):
     authenticate_as('safety_officer')
-    assert client.post(f'/api/v1/events/{EVENT_ID}/safety-approve',headers=auth_headers).status_code==200
-    assert state['calls'][0][1]['comment'] is None
+    result=post(client,auth_headers,path,{**body,'checklist':[]})
+    assert result.status_code==422
+    assert result.json()['detail'].startswith("Safety checklist can't be recorded: Mark attendance/capacity for venue booking "+BOOKING)
+    assert not state['calls']
+
+@pytest.mark.parametrize('path,body,target',CASES)
+def test_a_missing_factor_is_named(client,auth_headers,authenticate_as,state,path,body,target):
+    authenticate_as('safety_officer')
+    rows=[r for r in body['checklist'] if r['factor']!='emergency_access']
+    result=post(client,auth_headers,path,{**body,'checklist':rows})
+    assert result.status_code==422
+    assert result.json()['detail']=="Safety checklist can't be recorded: Mark emergency access for venue booking "+BOOKING
+    assert not state['calls']
+
+@pytest.mark.parametrize('path,body,target',CASES)
+def test_every_active_venue_booking_needs_its_own_answers(client,auth_headers,authenticate_as,state,monkeypatch,path,body,target):
+    # AC2: the venue factors are answered per booking, so a second booking needs five more marks.
+    authenticate_as('safety_officer')
+    second='b0000000-0000-4000-8000-000000000003'
+    monkeypatch.setattr(venues,'event_bookings_with_venues',lambda _:[{'booking_id':BOOKING},{'booking_id':second}])
+    result=post(client,auth_headers,path,body)
+    assert result.status_code==422 and 'for venue booking '+second in result.json()['detail']
+    assert not state['calls']
+    full={**body,'checklist':checklist(bookings=(BOOKING,second))}
+    assert post(client,auth_headers,path,full).status_code==200
+
+def test_a_concern_blocks_approval(client,auth_headers,authenticate_as,state):
+    authenticate_as('safety_officer')
+    rows=checklist(); rows[0]={**rows[0],'rating':'concern','note':'Exit is partly blocked'}
+    result=post(client,auth_headers,'safety-approve',{**TEXT,'checklist':rows})
+    assert result.status_code==422
+    assert 'A factor marked Concern blocks approval' in result.json()['detail']
+    assert not state['calls']
+
+@pytest.mark.parametrize('path,body,target',CASES[1:])
+def test_a_concern_is_allowed_when_returning_the_event(client,auth_headers,authenticate_as,state,path,body,target):
+    authenticate_as('safety_officer')
+    rows=checklist(); rows[0]={**rows[0],'rating':'concern','note':'Exit is partly blocked'}
+    assert post(client,auth_headers,path,{**body,'checklist':rows}).status_code==200
+    assert state['calls'][0][1]['checklist'][0]['note']=='Exit is partly blocked'
+
+def test_approve_without_a_body_is_refused(client,auth_headers,authenticate_as,state):
+    authenticate_as('safety_officer')
+    assert client.post(f'/api/v1/events/{EVENT_ID}/safety-approve',headers=auth_headers).status_code==422
+    assert not state['calls']
 
 @pytest.mark.parametrize('path,body,target',CASES)
 @pytest.mark.parametrize('seam',['get_event','rpc'])
@@ -131,22 +210,22 @@ def test_decision_outage_is_503(client,auth_headers,authenticate_as,state,monkey
 
 def test_reject_sends_exactly_the_named_booking(client, auth_headers, authenticate_as, state):
     authenticate_as('safety_officer')
-    result = post(client, auth_headers, 'safety-reject', {'reason': 'Exits blocked', 'booking_id': BOOKING})
+    result = post(client, auth_headers, 'safety-reject', {'organiser_comment': 'Exits blocked', 'booking_id': BOOKING, 'checklist': checklist()})
     assert result.status_code == 200
     (_, kwargs), = state['calls']
     assert kwargs['booking_ids'] == [BOOKING] and kwargs['equipment_request_ids'] == []
     assert kwargs['decision'] == 'arrangement_rejected'
     assert 'its booking is flagged Safety rejected.' in kwargs['coordinator_message']
 
-@pytest.mark.parametrize('body', [{'reason': 'x'}, {'reason': 'x', 'booking_id': 'not-a-uuid'}, {'reason':'x', 'booking_ids':[BOOKING]}])
+@pytest.mark.parametrize('body', [{'organiser_comment': 'x'}, {'organiser_comment': 'x', 'booking_id': 'not-a-uuid'}, {'organiser_comment':'x', 'booking_ids':[BOOKING]}])
 def test_reject_requires_one_booking_id(client, auth_headers, authenticate_as, state, body):
     authenticate_as('safety_officer')
-    assert post(client, auth_headers, 'safety-reject', body).status_code == 422
+    assert post(client, auth_headers, 'safety-reject', {**body, 'checklist': checklist()}).status_code == 422
     assert not state['calls']
 
-def test_changes_requested_body_unchanged(client, auth_headers, authenticate_as, state):
+def test_changes_requested_keeps_its_arrangement_ids(client, auth_headers, authenticate_as, state):
     authenticate_as('safety_officer')
-    result = post(client, auth_headers, 'safety-request-changes', {'comment':'Move the stage','booking_ids':[BOOKING],'equipment_request_ids':[LINE]})
+    result = post(client, auth_headers, 'safety-request-changes', {'organiser_comment':'Move the stage','checklist':checklist(),'booking_ids':[BOOKING],'equipment_request_ids':[LINE]})
     assert result.status_code == 200
     (_, kwargs), = state['calls']
     assert kwargs['booking_ids']==[BOOKING] and kwargs['equipment_request_ids']==[LINE]

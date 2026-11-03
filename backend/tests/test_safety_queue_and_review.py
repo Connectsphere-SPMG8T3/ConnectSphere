@@ -10,7 +10,10 @@ from tests.test_event_review_api import event_row,EVENT_ID,COORDINATOR_ID,ORGANI
 from tests.test_event_comments_api import acting_as_another_role
 from tests.test_safety_decisions_api import ROLES, BOOKING, LINE
 
-DECISION={'id':BOOKING,'decision':'changes_requested','comment':'PRIVATE-LEAK-MARKER','reason_code':None,
+CHECKLIST=[{'factor':'layout','booking_id':BOOKING,'rating':'concern','note':'PRIVATE-NOTE-ON-LAYOUT'},
+           {'factor':'equipment_placement','booking_id':None,'rating':'satisfactory','note':None}]
+DECISION={'id':BOOKING,'decision':'changes_requested','comment':'PRIVATE-LEAK-MARKER','organiser_comment':'ORGANISER-MARKER',
+          'checklist':CHECKLIST,'reason_code':None,
           'affected_booking_ids':[BOOKING],'affected_equipment_request_ids':[LINE],'rejected_venue_ids':[],
           'decided_by_name':'Officer','decided_at':'2026-10-09T01:00:00Z'}
 
@@ -62,7 +65,8 @@ def test_review_shape(client,auth_headers,authenticate_as,state,monkeypatch,atte
     assert data['venues'][0]['attendance_to_capacity']==ratio
     assert data['venues'][0]['emergency_access'] is data['venues'][0]['restrictions'] is None
     assert data['equipment_lines']==[dict(id=LINE,equipment_name='Mic',quantity=2,status='pending')]
-    assert data['decisions'][0]['comment']=='PRIVATE-LEAK-MARKER'
+    assert data['decisions'][0]['private_note']=='PRIVATE-LEAK-MARKER'
+    assert data['decisions'][0]['organiser_comment']=='ORGANISER-MARKER'
 
 @pytest.mark.parametrize('status',[None,'draft','planning','confirmed'])
 def test_review_not_found(client,auth_headers,authenticate_as,state,status):
@@ -75,7 +79,10 @@ def test_decisions_relationship(client,auth_headers,authenticate_as,state,role,u
     authenticate_as(role,uid)
     result=client.get(GETS[2],headers=auth_headers)
     assert result.status_code==code
-    if code==200: assert result.json()[0]['comment']=='PRIVATE-LEAK-MARKER'
+    if code==200:
+        assert result.json()[0]['private_note']=='PRIVATE-LEAK-MARKER'
+        assert result.json()[0]['organiser_comment']=='ORGANISER-MARKER'
+        assert [(c['factor'],c['rating'],c['note']) for c in result.json()[0]['checklist']]==[('layout','concern','PRIVATE-NOTE-ON-LAYOUT'),('equipment_placement','satisfactory',None)]
 
 @pytest.mark.parametrize('role',['event_organiser','event_coordinator'])
 @pytest.mark.parametrize('status',['planning','safety_review','confirmed','under_review','cancelled'])
@@ -85,13 +92,16 @@ def test_latest_decision_visibility(client,auth_headers,authenticate_as,state,ro
     result=client.get(f'/api/v1/events/{EVENT_ID}',headers=auth_headers)
     assert result.status_code==200
     latest=result.json().get('latest_safety_decision','MISSING')
-    if role=='event_coordinator' and status=='planning': assert latest['comment']=='PRIVATE-LEAK-MARKER'
+    if role=='event_coordinator' and status=='planning':
+        assert latest['private_note']=='PRIVATE-LEAK-MARKER' and latest['organiser_comment']=='ORGANISER-MARKER'
     elif role=='event_organiser' and status in ('planning','safety_review','confirmed'):
-        assert latest==dict(decision='changes_requested',reason_label='The Safety Officer asked for changes to the arrangements.',decided_at='2026-10-09T01:00:00Z')
+        assert latest==dict(decision='changes_requested',reason_label='The Safety Officer asked for changes to the arrangements.',organiser_comment='ORGANISER-MARKER',decided_at='2026-10-09T01:00:00Z')
     else: assert latest is None
     if role=='event_organiser':
         for url in [f'/api/v1/events/{EVENT_ID}',f'/api/v1/events/{EVENT_ID}/history',f'/api/v1/events/{EVENT_ID}/comments','/api/v1/events']:
-            assert 'PRIVATE-LEAK-MARKER' not in client.get(url,headers=auth_headers).text
+            text=client.get(url,headers=auth_headers).text
+            # AC5: the private note and the checklist (with its notes) never reach the organiser, by any route.
+            assert 'PRIVATE-LEAK-MARKER' not in text and 'PRIVATE-NOTE-ON-LAYOUT' not in text and 'private_note' not in text
 
 
 def test_queue_order_and_empty(client,auth_headers,authenticate_as,state):
@@ -123,7 +133,7 @@ def test_each_organiser_label_is_private(client,auth_headers,authenticate_as,sta
     response=client.get(f'/api/v1/events/{EVENT_ID}',headers=auth_headers)
     assert response.status_code==200
     assert response.json()['latest_safety_decision']['reason_label']==label
-    assert 'PRIVATE-LEAK-MARKER' not in response.text
+    assert 'PRIVATE-LEAK-MARKER' not in response.text and 'PRIVATE-NOTE-ON-LAYOUT' not in response.text
 
 
 def test_no_decision_leaves_latest_null(client,auth_headers,authenticate_as,state):
@@ -161,3 +171,11 @@ def test_review_shows_who_ticked_the_exit_box_and_when(client,auth_headers,authe
     state['exit']=ExitConfirmation(confirmed_by_name='Tan Wei',confirmed_at='2026-10-19T03:00:00Z')
     data=client.get(GETS[1],headers=auth_headers).json()
     assert data['exit_confirmation']=={'confirmed_by_name':'Tan Wei','confirmed_at':'2026-10-19T03:00:00Z'}
+
+
+def test_the_organiser_gets_no_comment_for_a_decision_recorded_before_organiser_comments(client,auth_headers,authenticate_as,state):
+    authenticate_as('event_organiser',ORGANISER_ID)
+    state['event']['status']='planning'
+    del state['decisions'][0]['organiser_comment']
+    latest=client.get(f'/api/v1/events/{EVENT_ID}',headers=auth_headers).json()['latest_safety_decision']
+    assert latest['organiser_comment'] is None

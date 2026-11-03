@@ -264,8 +264,7 @@ def cancel_event(event_id: UUID, body: EventCancelRequest, current_user: EventCo
 
 
 @router.post("/{event_id}/safety-approve", response_model=EventResponse)
-def safety_approve(event_id: UUID, current_user: SafetyOfficer,
-                   body: SafetyApproveRequest | None = None) -> EventResponse:
+def safety_approve(event_id: UUID, body: SafetyApproveRequest, current_user: SafetyOfficer) -> EventResponse:
     return service.safety_approve(str(event_id), current_user.id, body)
 
 
