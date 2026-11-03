@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.modules.venues import repository
 from app.modules.venues.schemas import Period
-from tests.test_venue_booking_decision_repository import FakeClient
+from tests.test_venue_booking_decision_repository import FakeClient, FakeQuery
 
 VENUE_ID = "b0000000-0000-4000-8000-000000000001"
 BLOCK_ID = "f0000000-0000-4000-8000-000000000511"
@@ -189,3 +189,79 @@ def test_list_upcoming_blocks_leaves_out_removed_blocks_and_names_who_set_them(m
 
     assert [b.id for b in blocks] == [BLOCK_ID]
     assert blocks[0].created_by.full_name == "Vera Staff"
+
+
+# --- SCRUM-57: what occupies a venue, for its calendar -------------------------
+
+class _PerSourceClient:
+    """Answers each table or rpc with its own rows, recording what was asked."""
+
+    def __init__(self, rows):
+        self.queries = {name: FakeQuery(data) for name, data in rows.items()}
+        self.asked = []
+
+    def table(self, name):
+        self.asked.append(name)
+        return self.queries[name]
+
+    def rpc(self, name, params):
+        self.asked.append(name)
+        self.queries[name].calls.append(("params", (params,), {}))
+        return self.queries[name]
+
+
+CALENDAR_BOOKING_ROW = {
+    "id": "d1", "event_id": "e1", "status": "held", "booked_period": FUTURE,
+    "occupied_period": '["2031-05-20 08:30:00+00","2031-05-20 12:45:00+00")', "setup_minutes": 30,
+    "turnaround_minutes": 45, "expires_at": "2031-05-19T09:00:00+00:00", "flag": "affected",
+    "flag_reason": "Venue unavailable: maintenance",
+}
+
+
+def test_list_calendar_occupants_reads_bookings_through_the_shared_check_and_blocks_by_overlap(monkeypatch):
+    client = _PerSourceClient({
+        "venue_conflicts": [_conflict(booking_id="d1"), _conflict(kind="block")],
+        "venue_bookings": [CALENDAR_BOOKING_ROW],
+        "venue_blocks": [BLOCK_ROW],
+    })
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    bookings, blocks = repository.list_calendar_occupants(VENUE_ID, PERIOD)
+
+    literal = "[2031-05-20T08:00:00+00:00,2031-05-20T16:00:00+00:00)"
+    assert client.asked == ["venue_conflicts", "venue_bookings", "venue_blocks"]
+    assert ("params", ({"p_period": literal, "p_venue_id": VENUE_ID},), {}) in client.queries["venue_conflicts"].calls
+    assert ("in_", ("id", ["d1"]), {}) in client.queries["venue_bookings"].calls
+    assert ("eq", ("venue_id", VENUE_ID), {}) in client.queries["venue_blocks"].calls
+    assert ("overlaps", ("blocked_period", literal), {}) in client.queries["venue_blocks"].calls
+    [booking] = bookings
+    assert booking.period.starts_at == datetime(2031, 5, 20, 9, tzinfo=timezone.utc)
+    assert booking.occupied_period.starts_at == datetime(2031, 5, 20, 8, 30, tzinfo=timezone.utc)
+    assert (booking.setup_minutes, booking.turnaround_minutes) == (30, 45)
+    assert booking.expires_at == datetime(2031, 5, 19, 9, tzinfo=timezone.utc)
+    assert (booking.flag, booking.flag_reason) == ("affected", "Venue unavailable: maintenance")
+    [block] = blocks
+    assert block.id == BLOCK_ID and block.created_by.full_name == "Vera Staff"
+
+
+def test_list_calendar_occupants_reads_no_bookings_when_none_occupy(monkeypatch):
+    client = _PerSourceClient({"venue_conflicts": None, "venue_blocks": None})
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    assert repository.list_calendar_occupants(VENUE_ID, PERIOD) == ([], [])
+    assert client.asked == ["venue_conflicts", "venue_blocks"]
+
+
+def test_list_calendar_occupants_leaves_out_removed_blocks_and_reads_an_unflagged_approved_booking(monkeypatch):
+    """SCRUM-54: a removed block no longer occupies the venue."""
+    client = _PerSourceClient({
+        "venue_conflicts": [_conflict(booking_id="d1")],
+        "venue_bookings": [{**CALENDAR_BOOKING_ROW, "expires_at": None, "flag": None, "flag_reason": None}],
+        "venue_blocks": [{**BLOCK_ROW, "removed_at": "2031-05-19T00:00:00+00:00"}],
+    })
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+
+    bookings, blocks = repository.list_calendar_occupants(VENUE_ID, PERIOD)
+
+    assert blocks == []
+    assert bookings[0].expires_at is None and bookings[0].flag is None
