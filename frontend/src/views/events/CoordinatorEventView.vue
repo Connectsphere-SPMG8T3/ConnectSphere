@@ -26,8 +26,14 @@ import { canApprove, canReject, canReturn, canSendForSafetyCheck, useEventReview
 import { formatDecisionTime } from "@/features/venues/bookingDecision";
 import SafetyRejectedNotice from "@/components/venues/SafetyRejectedNotice.vue";
 import AffectedBookingNotice from "@/components/venues/AffectedBookingNotice.vue";
+import CancelBookingActions from "@/components/venues/CancelBookingActions.vue";
 import ReReviewNotice from "@/components/events/ReReviewNotice.vue";
-import { BOOKING_STATUS_LABELS, replacementSearchRoute, venuePanelState } from "@/features/venues/bookingRequest";
+import {
+  BOOKING_STATUS_LABELS,
+  cancellableBookings,
+  replacementSearchRoute,
+  venuePanelState,
+} from "@/features/venues/bookingRequest";
 import { formatHoldExpiry } from "@/features/venues/dashboard";
 
 const route = useRoute();
@@ -89,6 +95,34 @@ async function sendForReReview(bookingId, note) {
   try {
     await review.sendBookingForReReview(bookingId, note);
     showToast("Sent to venue staff for re-review");
+  } catch {
+    // The store exposes the API refusal in the page alert.
+  }
+}
+
+// SCRUM-85: the booking the coordinator asked to cancel, until they confirm or stay.
+const bookingToCancel = ref(null);
+// AC4: past Planning, the event goes back to it, so the dialog says so first.
+const RETURNS_TO_PLANNING = ["safety_review", "confirmed", "preparation"];
+const cancelBookingMessage = computed(() => {
+  const venue = bookingToCancel.value?.venue_name ?? "this venue";
+  const freed = `${venue} will be free for this event's time again, and venue staff will be told.`;
+  return RETURNS_TO_PLANNING.includes(event.value?.status)
+    ? `${freed} The event goes back to Planning and must be sent for its safety check again.`
+    : freed;
+});
+
+function askCancelBooking(booking) {
+  review.error = null;
+  bookingToCancel.value = booking;
+}
+
+async function confirmCancelBooking() {
+  const booking = bookingToCancel.value;
+  bookingToCancel.value = null;
+  try {
+    await review.cancelBooking(booking.id);
+    showToast("Booking cancelled. Venue staff have been told.");
   } catch {
     // The store exposes the API refusal in the page alert.
   }
@@ -549,6 +583,11 @@ watch(
                   The hold expired on {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} before venue staff approved it.
                   <template v-if="spacePanels[space.id].canRequest">You can request this venue again if it's still free, or find another.</template>
                 </p>
+                <CancelBookingActions
+                  :items="cancellableBookings(spacePanels[space.id], event)"
+                  :busy="review.isActing"
+                  @cancel="askCancelBooking"
+                />
               </article>
             </div>
           </section>
@@ -686,6 +725,11 @@ watch(
             </BauhausButton>
           </template>
           <p v-else-if="venuePanel.reason" class="mt-4 text-sm font-medium">{{ venuePanel.reason }}</p>
+          <CancelBookingActions
+            :items="cancellableBookings(venuePanel, event)"
+            :busy="review.isActing"
+            @cancel="askCancelBooking"
+          />
         </BauhausCard>
 
         <BauhausCard v-if="auth.role === 'event_coordinator' && review.safetyDecisions.length" background="white" accent="none">
@@ -712,6 +756,15 @@ watch(
 
     <p v-else-if="review.isLoading" class="text-sm font-bold text-ink/70">Loading request…</p>
 
+    <ConfirmModal
+      :open="Boolean(bookingToCancel)"
+      title="Cancel this venue booking?"
+      :message="cancelBookingMessage"
+      confirm-label="Cancel booking"
+      cancel-label="Keep booking"
+      @confirm="confirmCancelBooking"
+      @stay="bookingToCancel = null"
+    />
     <ConfirmModal :open="isSafetyOpen" title="Send for safety check?"
       message="The Safety Officer will check the venue and technical arrangements. Venue and equipment can't be requested again while it's in review."
       confirm-label="Send" @confirm="confirmSafety" @stay="isSafetyOpen = false" />

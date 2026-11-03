@@ -121,6 +121,7 @@ DB_SCRIPTS = [
     ("venue_restore_checks.sql", "TC-BOOK-047 (CR-95: restore an affected booking)"),
     ("venue_block_create_checks.sql", "TC-BLOCK-008–013 (SCRUM-51 database half: refusals, history, flags, links, notices, RLS)"),
     ("venue_block_change_checks.sql", "TC-BLOCK-025 (SCRUM-54 database half: changes, history, freed bookings, restore, RLS)"),
+    ("venue_booking_cancel_checks.sql", "TC-BCAN-006 (SCRUM-85 database half: statuses, locks, returns, replacements)"),
     ("equipment_availability_checks.sql", "TC-EQR-038 (23-R: condition, event window, reference location)"),
     ("equipment_reservation_checks.sql", "TC-EQR-016–020, 022–025 (SCRUM-24 database half)"),
     ("equipment_line_change_checks.sql", "TC-EQR-044–053 (SCRUM-44 database half: edits, removals, notices, history)"),
@@ -2925,6 +2926,117 @@ def _(ctx: Context) -> None:
             expect(holds == [{"flag": "affected", "linked": True}], f"attempt {attempt}: the hold is {holds}")
         else:
             expect(holds == [], f"attempt {attempt}: a refused request left {holds}")
+
+
+# --- The coordinator cancels a venue booking (SCRUM-85) --------------------------
+# Throwaway venues and events in 2031, deleted with this run's booking-check events.
+
+def cancel_booking(ctx: Context, session: Session, booking_id: str) -> httpx.Response:
+    return ctx.client.post(f"{ctx.api}{BOOKINGS}/{booking_id}/cancel", headers=session.headers)
+
+
+def booking_at(event_id: str, venue_id: str, starts: str, ends: str, status: str, *,
+               setup: int = 0, turnaround: int = 0) -> str:
+    """A booking written straight to the table, with its buffers, for an event that's
+    already past Planning (the request path takes Planning only)."""
+    expires = "now() + interval '7 days'" if status == "held" else "null"
+    [row] = db_query(
+        "insert into public.venue_bookings (event_id, venue_id, booked_period, setup_minutes, turnaround_minutes, "
+        f"status, expires_at) values ('{event_id}', '{venue_id}', tstzrange('{starts}', '{ends}', '[)'), "
+        f"{setup}, {turnaround}, '{status}', {expires}) returning id"
+    )
+    return row["id"]
+
+
+@check("TC-BCAN-001", "Cancelling a Confirmed event's booking frees its whole window, records who, tells venue "
+                      "staff and returns the event to Planning", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "BCAN-001")
+    event_id = throwaway_event(ctx, "BCAN-001", "2031-10-06 10:00+08", "2031-10-06 12:00+08", status="confirmed")
+    booking_id = booking_at(event_id, venue_id, "2031-10-06 10:00+08", "2031-10-06 12:00+08", "approved",
+                            setup=30, turnaround=45)
+    # AC1: setup and turnaround occupy the venue before the cancel.
+    expect(not search_lists(ctx, venue_id, "2031-10-06T09:30:00+08:00", "2031-10-06T09:45:00+08:00"),
+           "the setup buffer was free before cancelling")
+
+    response = cancel_booking(ctx, ctx.shared("event_coordinator"), booking_id)
+    expect_status(response, 200)
+    body = response.json()
+    expect(body["status"] == "cancelled", f"booking reads {body['status']}")
+    expect([(e["action"], e["from_status"], e["to_status"]) for e in body["history"]]
+           == [("cancelled", "approved", "cancelled")], f"history is {body['history']}")
+    [actor] = db_query(f"select actor_id from public.venue_booking_history where booking_id = '{booking_id}'")
+    expect(actor["actor_id"] == COORDINATOR_ID, f"history actor is {actor}")
+
+    # AC1: the whole occupied window is free, setup and turnaround included.
+    for starts, ends in (("2031-10-06T09:30:00+08:00", "2031-10-06T09:45:00+08:00"),
+                         ("2031-10-06T12:00:00+08:00", "2031-10-06T12:45:00+08:00")):
+        expect(search_lists(ctx, venue_id, starts, ends), f"the venue is still taken {starts}–{ends}")
+
+    # AC1: every venue staff account but the actor is told.
+    staff = {r["profile_id"] for r in db_query(
+        f"select profile_id from public.user_roles where role = 'venue_staff' and profile_id <> '{COORDINATOR_ID}'")}
+    told = {r["recipient_id"] for r in db_query(
+        f"select recipient_id from public.notifications where event_id = '{event_id}' "
+        "and type = 'venue_booking_cancelled'")}
+    expect(staff and told == staff, f"venue staff told {told}, expected {staff}")
+
+    # AC4, AC6: back to Planning, with the change in the event's history.
+    expect(event_row(event_id)["status"] == "planning", "the Confirmed event did not return to Planning")
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=ctx.shared("event_coordinator").headers)
+    expect_status(history, 200)
+    expect(any(e.get("from_status") == "confirmed" and e.get("to_status") == "planning"
+               for e in history.json()["entries"]), "the event history has no return to Planning")
+
+
+@check("TC-BCAN-002", "A second cancel is refused with AC3's message and records nothing more", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = hold_for(ctx, "BCAN-002", "2031-10-07 10:00+08", "2031-10-07 12:00+08")
+    coordinator = ctx.shared("event_coordinator")
+    expect_status(cancel_booking(ctx, coordinator, booking_id), 200)
+
+    again = cancel_booking(ctx, coordinator, booking_id)
+    expect_status(again, 409)
+    expect_detail(again, "Only a Held or Approved booking can be cancelled.")
+    [count] = db_query(f"select count(*)::int as n from public.venue_booking_history where booking_id = '{booking_id}'")
+    expect(count["n"] == 1, f"{count['n']} history rows after two cancels")
+    # AC8: a Planning event stays in Planning.
+    expect(event_row(event_id)["status"] == "planning", "cancelling changed a Planning event's status")
+
+
+@check("TC-BCAN-003", "Two cancels at the same moment record one cancellation", needs_db=True)
+def _(ctx: Context) -> None:
+    _event_id, booking_id = hold_for(ctx, "BCAN-003", "2031-10-08 10:00+08", "2031-10-08 12:00+08")
+    coordinator = ctx.shared("event_coordinator")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(cancel_booking, ctx, coordinator, booking_id)
+        second = pool.submit(cancel_booking, ctx, coordinator, booking_id)
+        codes = sorted([first.result().status_code, second.result().status_code])
+    expect(codes == [200, 409], f"expected one 200 and one 409, got {codes}")
+    [count] = db_query(f"select count(*)::int as n from public.venue_booking_history "
+                       f"where booking_id = '{booking_id}' and action = 'cancelled'")
+    expect(count["n"] == 1, f"{count['n']} cancellations recorded")
+
+
+@check("TC-BCAN-004", "Only the assigned coordinator acting as coordinator can cancel; the Lead and others get 403",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    _event_id, booking_id = hold_for(ctx, "BCAN-004", "2031-10-09 10:00+08", "2031-10-09 12:00+08")
+    expect_status(cancel_booking(ctx, second_coordinator(ctx), booking_id), 403)
+    for role in ("event_coordinator_lead", "venue_staff", "event_organiser", "safety_officer", "tech_support", "attendee"):
+        expect_status(cancel_booking(ctx, ctx.shared(role), booking_id), 403)
+    expect(booking_status(booking_id) == "held", "a refused caller changed the booking")
+
+
+@check("TC-BCAN-005", "A booking can't be cancelled once its event has started", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = hold_for(ctx, "BCAN-005", "2031-10-10 10:00+08", "2031-10-10 12:00+08")
+    db_query(f"update public.events set starts_at = now() - interval '1 minute' where id = '{event_id}'")
+
+    response = cancel_booking(ctx, ctx.shared("event_coordinator"), booking_id)
+    expect_status(response, 409)
+    expect_detail(response, "A booking can't be cancelled once its event has started, ended or been cancelled.")
+    expect(booking_status(booking_id) == "held", "a started event's booking was cancelled")
 
 
 # --- Venue staff end, shorten or remove a block early (SCRUM-54) -----------

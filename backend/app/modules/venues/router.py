@@ -251,3 +251,13 @@ def approve_venue_booking(booking_id: UUID, current_user: VenueStaffOnly) -> Ven
     Refused with 409 when the booking is no longer held (including an expired
     hold), a venue block now overlaps it, or the venue has been deactivated."""
     return service.approve_booking(str(booking_id), current_user.id)
+
+
+@bookings_router.post("/{booking_id}/cancel", response_model=VenueBookingDetail, status_code=status.HTTP_200_OK)
+def cancel_venue_booking(booking_id: UUID, current_user: CoordinatorOnly) -> VenueBookingDetail:
+    """The assigned coordinator, acting as coordinator, cancels a held, approved or
+    re-review booking (SCRUM-85). Its slot is freed, venue staff are told, and an
+    event in Safety review, Confirmed or Preparation returns to Planning. 409 when
+    the booking is already finished or the event has started, ended or been
+    cancelled; 403 for anyone else, the Coordinator Lead included."""
+    return service.cancel_booking(str(booking_id), current_user.id)

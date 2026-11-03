@@ -996,6 +996,26 @@ def restore_affected_booking(booking_id: str, actor_id: str) -> dict:
     return (response.data or [])[0]
 
 
+def cancel_booking(booking_id: str, actor_id: str, *, staff_message: str, return_message: str) -> dict:
+    """Run `public.cancel_venue_booking` (SCRUM-85): the cancellation, its history
+    row, venue staff's notices and any return to Planning in one transaction.
+    Returns `{outcome, event_id, from_status}`; every refusal is an outcome code."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "cancel_venue_booking",
+            {
+                "p_booking_id": booking_id,
+                "p_actor_id": actor_id,
+                "p_staff_message": staff_message,
+                "p_return_message": return_message,
+            },
+        )
+        .execute()
+    )
+    return (response.data or [])[0]
+
+
 def list_rejected_bookings(event_id: str) -> list[dict]:
     """The event's rejected bookings, newest decision first, with what venue
     staff said (SCRUM-38 AC6). For the assigned coordinator only."""
