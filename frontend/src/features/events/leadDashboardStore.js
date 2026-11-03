@@ -24,6 +24,12 @@ export const useLeadDashboardStore = defineStore("leadDashboard", {
     // CR-106: declining a coordinator's reassignment request, with its own error for the dialog.
     isDeclining: false,
     declineError: null,
+    // SCRUM-81 AC4: the open event's reassignments. `historyEventId` marks which event the
+    // current load is for, so a slow answer for an event the Lead has left is dropped.
+    history: [],
+    historyEventId: null,
+    historyError: null,
+    isLoadingHistory: false,
   }),
 
   getters: {
@@ -44,6 +50,31 @@ export const useLeadDashboardStore = defineStore("leadDashboard", {
       this.hasSettled = false;
       this.reassignError = null;
       this.declineError = null;
+      this.history = [];
+      this.historyEventId = null;
+      this.historyError = null;
+      this.isLoadingHistory = false;
+    },
+
+    // SCRUM-81 AC4: the reassignments of one event, newest first. A failure leaves the list
+    // empty with a message; the event itself is unaffected.
+    async loadHistory(eventId) {
+      const auth = useAuthStore();
+      this.historyEventId = eventId;
+      this.history = [];
+      this.historyError = null;
+      if (!auth.token) return;
+      this.isLoadingHistory = true;
+      try {
+        const response = await auth.withSession((token) => eventsApi.reassignmentHistory(eventId, token));
+        if (this.historyEventId !== eventId) return;
+        this.history = response?.entries ?? [];
+      } catch (err) {
+        if (this.historyEventId !== eventId) return;
+        this.historyError = err instanceof ApiError ? err.message : NETWORK_ERROR;
+      } finally {
+        if (this.historyEventId === eventId) this.isLoadingHistory = false;
+      }
     },
 
     async load() {

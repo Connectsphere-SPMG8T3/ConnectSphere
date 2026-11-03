@@ -9,6 +9,8 @@ import { summariseEditHistoryEntry } from "@/features/venues/venueProfile";
 
 defineProps({
   entries: { type: Array, required: true },
+  // SCRUM-81: a list of only reassignments is empty for a different reason than a status history.
+  emptyText: { type: String, default: "No status changes recorded yet." },
 });
 
 const formatter = new Intl.DateTimeFormat("en-SG", {
@@ -78,7 +80,7 @@ function heading(entry) {
 </script>
 
 <template>
-  <p v-if="!entries.length" class="text-sm font-medium text-ink/70">No status changes recorded yet.</p>
+  <p v-if="!entries.length" class="text-sm font-medium text-ink/70">{{ emptyText }}</p>
   <ol v-else class="space-y-4">
     <li v-for="entry in entries" :key="entry.id" class="border-l-4 border-ink pl-4">
       <p class="text-sm font-bold">{{ heading(entry) }}</p>
