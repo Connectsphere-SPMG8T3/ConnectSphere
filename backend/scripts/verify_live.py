@@ -133,6 +133,7 @@ DB_SCRIPTS = [
     ("notification_registration_checks.sql", "TC-NOTIF-017, 018 (SCRUM-53: registration status confirmations, replacement venue)"),
     ("change_history_checks.sql", "TC-HIST-001–007 (story 62 database half: recorded edits, append-only history, RLS)"),
     ("reassignment_request_checks.sql", "TC-REASSIGN-012 (CR-106 database half: recipients, one open, closing, RLS)"),
+    ("reassignment_effects_checks.sql", "TC-ASSIGN-021 (SCRUM-81 database half: status kept, returned request resubmitted to the new coordinator, legacy events, stale version)"),
 ]
 
 
@@ -1524,6 +1525,135 @@ def _(ctx: Context) -> None:
     assigned = [e for e in entries if e["kind"] == "status" and e["from_status"] == "submitted" and e["to_status"] == "under_review"]
     expect(len(assigned) == 1, "the assignment from the queue should appear exactly once, as a status change")
     expect(entries[0]["kind"] == "reassignment", "history is not newest first")
+
+
+# --- Change coordinator assignment (SCRUM-81) ------------------------------
+
+
+def reassign_to(ctx: Context, session: Session, event_id: str, coordinator_id: str) -> httpx.Response:
+    """Reassign with the version the database holds now, as a Lead's screen would send it."""
+    version = db_query(f"select version from public.events where id = '{event_id}'")[0]["version"]
+    return ctx.client.post(
+        f"{ctx.api}/events/{event_id}/reassign", headers=session.headers,
+        json={"coordinator_id": coordinator_id, "expected_version": version},
+    )
+
+
+def second_coordinator(ctx: Context) -> Session:
+    email = db_query(f"select email from public.profiles where id = '{SECOND_COORDINATOR}'")[0]["email"]
+    return ctx.login("event_coordinator", email=email)
+
+
+def submitted_through_the_api(ctx: Context, case: str) -> str:
+    """A complete request the organiser created and submitted, so a later resubmission passes
+    the same completeness checks a real one does."""
+    organiser = ctx.shared("event_organiser")
+    created = ctx.client.post(
+        f"{ctx.api}/events", headers=organiser.headers,
+        json={
+            "name": f"{THROWAWAY_EVENT_PREFIX}{ctx.run_id} {case}",
+            "purpose": "Live check",
+            "starts_at": "2031-08-12T09:00:00+08:00",
+            "ends_at": "2031-08-12T17:00:00+08:00",
+            "expected_attendance": 40,
+            "layout_preference": "theatre",
+            "facilities_required": ["projector"],
+        },
+    )
+    expect_status(created, 201)
+    event_id = created.json()["id"]
+    expect_status(ctx.client.post(f"{ctx.api}/events/{event_id}/submit", headers=organiser.headers), 200)
+    return event_id
+
+
+@check("TC-ASSIGN-018", "The Lead reads an event's reassignments (from, to, by, when), newest first; nobody else can", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "81-018")
+    lead = lead_session(ctx)
+    url = f"{ctx.api}/events/{event_id}/reassignment-history"
+    expect_status(assign(ctx, lead, event_id), 200)
+    never = ctx.client.get(url, headers=lead.headers)
+    expect_status(never, 200)
+    expect(never.json()["entries"] == [], "the assignment from the queue is not a reassignment, so none should be listed")
+
+    expect_status(reassign_to(ctx, lead, event_id, SECOND_COORDINATOR), 200)
+    expect_status(reassign_to(ctx, lead, event_id, SOME_COORDINATOR), 200)
+    response = ctx.client.get(url, headers=lead.headers)
+    expect_status(response, 200)
+    entries = response.json()["entries"]
+    expect(len(entries) == 2 and all(e["kind"] == "reassignment" for e in entries), f"expected two reassignments: {entries}")
+    newest, oldest = entries
+    expect(newest["from_coordinator"]["id"] == SECOND_COORDINATOR and newest["to_coordinator"]["id"] == SOME_COORDINATOR,
+           f"newest entry wrong: {newest}")
+    expect(oldest["from_coordinator"]["id"] == SOME_COORDINATOR and oldest["to_coordinator"]["id"] == SECOND_COORDINATOR,
+           f"oldest entry wrong: {oldest}")
+    expect(all(e["actor"]["id"] == lead.body["profile"]["id"] and e["at"] for e in entries), "who or when is missing")
+    expect(newest["at"] >= oldest["at"], "history is not newest first")
+
+    for role in ASSIGN_OTHER_ROLES:
+        denied = ctx.client.get(url, headers=ctx.shared(role).headers)
+        expect(denied.status_code == 403, f"{role} got HTTP {denied.status_code}, expected 403")
+    other_lead = ctx.client.get(url, headers=lead_session(ctx, "event_coordinator_lead_2").headers)
+    expect(other_lead.status_code == 403, f"a Lead outside the event's scope got HTTP {other_lead.status_code}, expected 403")
+    expect(ctx.client.get(url).status_code == 401, "an unauthenticated read was not refused")
+    draft = throwaway_event(ctx, "81-018d", "2031-08-12 09:00+08", "2031-08-12 17:00+08", status="draft", assigned=False)
+    expect_status(ctx.client.get(f"{ctx.api}/events/{draft}/reassignment-history", headers=lead.headers), 404)
+
+
+@check("TC-ASSIGN-019", "After a reassignment the previous coordinator is refused at once and the new one can act", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = queued_event(ctx, "81-019")
+    lead = lead_session(ctx)
+    expect_status(assign(ctx, lead, event_id), 200)
+    previous, current = ctx.shared("event_coordinator"), second_coordinator(ctx)
+    expect_status(reassign_to(ctx, lead, event_id, SECOND_COORDINATOR), 200)
+
+    bodies = {
+        "approve": None,
+        "reject": {"reason": "Live check"},
+        "return": {"message": "Live check", "flagged_fields": ["expected_attendance"]},
+        "send-for-safety-check": None,
+        "reassignment-request": {"reason": "Live check"},
+    }
+    for action, body in bodies.items():
+        response = ctx.client.post(f"{ctx.api}/events/{event_id}/{action}", headers=previous.headers, json=body)
+        expect(response.status_code == 403, f"the previous coordinator got HTTP {response.status_code} on {action}, expected 403")
+    read = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=previous.headers)
+    expect(read.status_code == 403, f"the previous coordinator read the event (HTTP {read.status_code})")
+    expect(event_row(event_id)["status"] == "under_review", "a refused write moved the event")
+
+    expect_status(ctx.client.get(f"{ctx.api}/events/{event_id}", headers=current.headers), 200)
+    approved = ctx.client.post(f"{ctx.api}/events/{event_id}/approve", headers=current.headers)
+    expect_status(approved, 200)
+    expect(approved.json()["status"] == "planning", f"status is {approved.json()['status']}, expected planning")
+
+
+@check("TC-ASSIGN-020", "A returned request that is reassigned and resubmitted stays with the new coordinator, not the queue", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = submitted_through_the_api(ctx, "81-020")
+    lead, organiser = lead_session(ctx), ctx.shared("event_organiser")
+    expect_status(assign(ctx, lead, event_id), 200)
+    returned = ctx.client.post(
+        f"{ctx.api}/events/{event_id}/return", headers=ctx.shared("event_coordinator").headers,
+        json={"message": "Please confirm the attendance", "flagged_fields": ["expected_attendance"]},
+    )
+    expect_status(returned, 200)
+
+    moved = reassign_to(ctx, lead, event_id, SECOND_COORDINATOR)
+    expect_status(moved, 200)
+    expect(moved.json()["status"] == "returned", f"reassigning changed the status to {moved.json()['status']}")
+
+    resubmitted = ctx.client.post(
+        f"{ctx.api}/events/{event_id}/resubmit", headers=organiser.headers, json={"resubmission_note": "Attendance is now 40"},
+    )
+    expect_status(resubmitted, 200)
+    row = event_row(event_id)
+    expect(row["status"] == "under_review" and row["coordinator_id"] == SECOND_COORDINATOR, f"resubmitted to {row}")
+    notified = db_query(f"select recipient_id from public.notifications where event_id = '{event_id}' and type = 'event_resubmitted'")
+    expect([n["recipient_id"] for n in notified] == [SECOND_COORDINATOR], f"resubmission notified {notified}")
+    queue = ctx.client.get(f"{ctx.api}{LEAD_DASHBOARD}", headers=lead.headers).json()["unassigned"]
+    expect(event_id not in {e["event_id"] for e in queue}, "the resubmitted request went back to the unassigned queue")
+    expect_status(ctx.client.post(f"{ctx.api}/events/{event_id}/approve", headers=second_coordinator(ctx).headers), 200)
 
 
 # --- Sign-up (SCRUM-80) ----------------------------------------------------
