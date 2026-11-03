@@ -14,6 +14,8 @@ from app.modules.venues.schemas import (
     VenueBookingCreate,
     VenueBookingDetail,
     VenueBookingReject,
+    VenueBlockChange,
+    VenueBlockChangeResponse,
     VenueBlockCreate,
     VenueBlockResponse,
     VenueDeactivateRequest,
@@ -90,8 +92,9 @@ def read_venue_staff_dashboard(current_user: VenueStaffOnly) -> VenueStaffDashbo
 
 @router.get("/{venue_id}", response_model=VenueDetail, status_code=status.HTTP_200_OK)
 def read_venue(venue_id: UUID, current_user: VenueReader) -> VenueDetail:
-    """One venue with its upcoming blocks and occupying bookings."""
-    return service.get_venue(str(venue_id))
+    """One venue with its upcoming blocks and occupying bookings. Who set or
+    changed a block is shown only to a session acting as Venue Staff (SCRUM-54 AC9)."""
+    return service.get_venue(str(venue_id), manages_blocks=current_user.role == "venue_staff")
 
 
 @router.patch("/{venue_id}", response_model=VenueUpdateResponse, status_code=status.HTTP_200_OK)
@@ -131,6 +134,19 @@ def create_block(venue_id: UUID, body: VenueBlockCreate, current_user: VenueStaf
     block (AC5, AC6). `422` names the problem with the period or reason.
     """
     return service.create_block(str(venue_id), current_user.id, body)
+
+
+@router.post("/{venue_id}/blocks/{block_id}/change", response_model=VenueBlockChangeResponse,
+             status_code=status.HTTP_200_OK)
+def change_block(venue_id: UUID, block_id: UUID, body: VenueBlockChange,
+                 current_user: VenueStaffOnly) -> VenueBlockChangeResponse:
+    """End a block now, shorten it, or remove one that hasn't started
+    (SCRUM-54 AC2), with an optional note. The block is kept, with its original
+    period in the venue's history (AC4). `restorable` lists the bookings it had
+    flagged that no block covers any more, for venue staff to restore (AC5).
+    `409` means the block has ended, was removed, or has (or hasn't) started;
+    `422` names the problem with the new end or the note."""
+    return service.change_block(str(venue_id), str(block_id), current_user.id, body)
 
 
 @router.post("/{venue_id}/reactivate", response_model=VenueDetail, status_code=status.HTTP_200_OK)

@@ -131,3 +131,17 @@ class TestRestoreRepository:
 
         assert result == {"outcome": "ok", "cancelled_booking_ids": ["b2"]}
         assert calls == [("restore_affected_booking", {"p_booking_id": BOOKING_ID, "p_actor_id": VENUE_STAFF_ID})]
+
+
+class TestRestoreExpiredHold:
+    """SCRUM-54 AC6, CR-99: a hold past its expiry can't be restored."""
+
+    def test_an_expired_hold_is_a_409_that_says_why(self, client, auth_headers, authenticate_as, restoring):
+        authenticate_as("venue_staff", user_id=VENUE_STAFF_ID)
+        restoring["outcome"] = "hold_expired"
+
+        response = client.post(RESTORE_URL, headers=auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "This hold has expired, so it can't be restored."
+        assert restoring["booking"]["flag"] == "affected"

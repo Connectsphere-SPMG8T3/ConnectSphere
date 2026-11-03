@@ -141,6 +141,21 @@ class VenueAlreadyInactiveError(HTTPException):
         super().__init__(status_code=status.HTTP_409_CONFLICT, detail="This venue is already inactive.")
 
 
+class VenueBlockNotFoundError(HTTPException):
+    """SCRUM-54: no such block on this venue."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found.")
+
+
+class VenueBlockChangeConflictError(HTTPException):
+    """SCRUM-54 AC2: the block's state no longer allows this change (it has
+    ended, was removed, or has or hasn't started)."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
 class VenueBlockInvalidError(HTTPException):
     """SCRUM-51 AC1: a block period the database refused under its lock, such
     as an end that passed between the request's validation and the save."""

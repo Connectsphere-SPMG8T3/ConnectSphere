@@ -103,6 +103,13 @@ export const venuesApi = {
   createBlock(venueId, payload, token) {
     return request(`/venues/${encodeURIComponent(venueId)}/blocks`, { method: "POST", body: payload, token });
   },
+  changeBlock(venueId, blockId, payload, token) {
+    return request(`/venues/${encodeURIComponent(venueId)}/blocks/${encodeURIComponent(blockId)}/change`, {
+      method: "POST",
+      body: payload,
+      token,
+    });
+  },
 };
 
 export const venueBookingsApi = {

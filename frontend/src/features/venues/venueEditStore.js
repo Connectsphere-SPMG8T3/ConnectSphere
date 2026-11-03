@@ -20,6 +20,8 @@ export const useVenueEditStore = defineStore("venueEdit", {
     affected: [],
     // SCRUM-51: the saved block and the bookings recorded against it (AC6).
     blockResult: null,
+    // SCRUM-54: the changed block and the bookings it no longer covers (AC5).
+    blockChangeResult: null,
     isLoading: false,
     isSaving: false,
     error: null,
@@ -123,6 +125,22 @@ export const useVenueEditStore = defineStore("venueEdit", {
         this.blockResult = response.saved ? { block: response.block, affected: response.affected ?? [] } : null;
         return response.saved;
       });
+    },
+
+    /**
+     * SCRUM-54: end a block now, shorten it or remove it. Keeps the changed
+     * block and the bookings it freed for the dialog's result step.
+     */
+    async changeBlock(venueId, blockId, payload) {
+      this.blockChangeResult = null;
+      return this._save(async (token) => {
+        this.blockChangeResult = await venuesApi.changeBlock(venueId, blockId, payload, token);
+      });
+    },
+
+    clearBlockChange() {
+      this.blockChangeResult = null;
+      this.error = null;
     },
 
     async reactivate(venueId, version) {

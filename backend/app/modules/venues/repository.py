@@ -15,11 +15,12 @@ from postgrest.exceptions import APIError
 from app.db.supabase import get_supabase_admin_client
 from app.modules.venues.schemas import (
     BlockAffectedBooking,
-    BlockSummary,
     BookingSummary,
     Editor,
     Occupant,
     Period,
+    RestorableBooking,
+    VenueBlock,
     VenueProfile,
     VenueStaffBlock,
     VenueStaffBooking,
@@ -375,22 +376,116 @@ def list_occupants(period: Period) -> dict[str, list[Occupant]]:
     return occupants
 
 
-def list_upcoming_blocks(venue_id: str, since: datetime) -> list[BlockSummary]:
-    """Blocks on one venue that end after `since`, soonest first."""
+# A block's own columns plus who set it and who last changed it (SCRUM-54 AC1,
+# AC4). `venue_blocks` has two foreign keys to `profiles`, so each embed names
+# its constraint; a bare `profiles(...)` is ambiguous (PGRST201).
+_BLOCK_COLUMNS = (
+    "id, blocked_period, reason, notes, created_at, original_period, changed_at, change_note, removed_at, "
+    "creator:profiles!venue_blocks_created_by_fkey(id, full_name), "
+    "changer:profiles!venue_blocks_changed_by_fkey(id, full_name)"
+)
+
+
+def _embedded_editor(row: dict, key: str) -> Editor | None:
+    profile = _to_one_embed(row, key)
+    return Editor(id=profile["id"], full_name=profile.get("full_name")) if profile else None
+
+
+def _block_fields(row: dict) -> dict:
+    """The `VenueBlock` fields of a `_BLOCK_COLUMNS` row. A block is removed
+    once `removed_at` is set and ended early once it has an original period;
+    rows read before SCRUM-54 have neither and are active."""
+    if row.get("removed_at"):
+        status = "removed"
+    elif row.get("original_period"):
+        status = "ended_early"
+    else:
+        status = "active"
+    return {
+        "id": row["id"],
+        "period": _parse_range(row["blocked_period"]),
+        "reason": row["reason"],
+        "notes": row.get("notes"),
+        "status": status,
+        "created_by": _embedded_editor(row, "creator"),
+        "created_at": datetime.fromisoformat(row["created_at"]) if row.get("created_at") else None,
+        "original_period": _parse_range(row["original_period"]) if row.get("original_period") else None,
+        "changed_by": _embedded_editor(row, "changer"),
+        "changed_at": datetime.fromisoformat(row["changed_at"]) if row.get("changed_at") else None,
+        "change_note": row.get("change_note"),
+    }
+
+
+def list_upcoming_blocks(venue_id: str, since: datetime) -> list[VenueBlock]:
+    """Blocks on one venue that end after `since`, soonest first. A removed
+    block (SCRUM-54) is kept for its history but no longer listed."""
     response = (
         get_supabase_admin_client()
         .table("venue_blocks")
-        .select("id, blocked_period, reason, notes")
+        .select(_BLOCK_COLUMNS)
         .eq("venue_id", venue_id)
         .execute()
     )
     # One venue carries a handful of blocks, so "still relevant" (ends after
     # `since`, which keeps in-progress ones) is decided on the parsed range.
-    blocks = [
-        BlockSummary(id=row["id"], period=_parse_range(row["blocked_period"]), reason=row["reason"], notes=row.get("notes"))
+    blocks = [VenueBlock(**_block_fields(row)) for row in response.data or [] if not row.get("removed_at")]
+    return sorted((b for b in blocks if b.period.ends_at > since), key=lambda b: b.period.starts_at)
+
+
+def get_block(block_id: str) -> VenueBlock | None:
+    """One block as venue staff manage it (SCRUM-54), whatever its state; None
+    if it doesn't exist."""
+    response = (
+        get_supabase_admin_client()
+        .table("venue_blocks")
+        .select(_BLOCK_COLUMNS)
+        .eq("id", block_id)
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    return VenueBlock(**_block_fields(rows[0])) if rows else None
+
+
+def change_venue_block(venue_id: str, block_id: str, actor_id: str, *, action: str, ends_at: datetime | None,
+                       note: str | None) -> dict:
+    """Run `public.change_venue_block` (SCRUM-54): under the venue lock, end the
+    block now, shorten it or remove it, and record the change in the venue's
+    history. Returns `{outcome}`; refusals are outcome codes."""
+    response = (
+        get_supabase_admin_client()
+        .rpc(
+            "change_venue_block",
+            {
+                "p_venue_id": venue_id,
+                "p_block_id": block_id,
+                "p_actor_id": actor_id,
+                "p_action": action,
+                "p_new_ends_at": ends_at.isoformat() if ends_at else None,
+                "p_note": note,
+            },
+        )
+        .execute()
+    )
+    row = (response.data or [])[0]
+    return {"outcome": row["outcome"]}
+
+
+def list_restorable_block_bookings(block_id: str) -> list[RestorableBooking]:
+    """The bookings this block flagged Affected that no block covers any more
+    (SCRUM-54 AC5), from `public.restorable_block_bookings`, soonest first."""
+    response = (
+        get_supabase_admin_client()
+        .rpc("restorable_block_bookings", {"p_block_id": block_id})
+        .execute()
+    )
+    bookings = [
+        RestorableBooking(booking_id=row["booking_id"], event_id=row["event_id"], status=row["status"],
+                          period=_parse_range(row["occupied_period"]),
+                          has_pending_replacement=bool(row.get("has_pending_replacement")))
         for row in response.data or []
     ]
-    return sorted((b for b in blocks if b.period.ends_at > since), key=lambda b: b.period.starts_at)
+    return sorted(bookings, key=lambda b: (b.period.starts_at, b.booking_id))
 
 
 def list_upcoming_bookings(venue_id: str, since: datetime) -> list[BookingSummary]:
@@ -436,20 +531,16 @@ def list_all_upcoming_blocks(since: datetime) -> list[VenueStaffBlock]:
     response = (
         get_supabase_admin_client()
         .table("venue_blocks")
-        .select("id, venue_id, blocked_period, reason, notes, venues(name)")
+        .select(f"venue_id, venues(name), {_BLOCK_COLUMNS}")
         .overlaps("blocked_period", _open_ended_literal(since))
         .execute()
     )
+    # A removed block (SCRUM-54) is dropped here rather than in the query: the
+    # handful the overlap leaves are cheap to filter.
     blocks = [
-        VenueStaffBlock(
-            id=row["id"],
-            venue_id=row["venue_id"],
-            venue_name=_embedded_venue_name(row),
-            period=_parse_range(row["blocked_period"]),
-            reason=row["reason"],
-            notes=row.get("notes"),
-        )
+        VenueStaffBlock(**_block_fields(row), venue_id=row["venue_id"], venue_name=_embedded_venue_name(row))
         for row in response.data or []
+        if not row.get("removed_at")
     ]
     # Tie-break on id so two blocks starting at the same instant keep a stable
     # order between requests, rather than shuffling on each load.
@@ -465,7 +556,7 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
         # Every relationship is named because bookings have multiple venue,
         # event and profile foreign keys.
         .select(
-            "id, event_id, venue_id, booked_period, status, created_at, expires_at, flag, "
+            "id, event_id, venue_id, booked_period, status, created_at, expires_at, flag, restorable_after_block, "
             "decision_reason, suggestion_note, decided_at, "
             "venues!venue_bookings_venue_id_fkey(name), "
             "events!venue_bookings_event_id_fkey(name, coordinator:profiles!events_coordinator_id_fkey(full_name)), "
@@ -487,6 +578,7 @@ def list_all_upcoming_bookings(since: datetime, statuses: Iterable[str]) -> list
             requested_at=datetime.fromisoformat(row["created_at"]),
             expires_at=datetime.fromisoformat(row["expires_at"]) if row.get("expires_at") else None,
             flag=row.get("flag"),
+            restorable=bool(row.get("restorable_after_block")),
             event_name=_embedded_name(row, "events", "name"),
             coordinator_name=_embedded_name(
                 {"coordinator": (_embedded_relation(row, "events") or {}).get("coordinator")},

@@ -17,7 +17,9 @@ from app.core.exceptions import (
     NotAssignedCoordinatorError,
     VenueAlreadyActiveError,
     VenueAlreadyInactiveError,
+    VenueBlockChangeConflictError,
     VenueBlockInvalidError,
+    VenueBlockNotFoundError,
     VenueConflictError,
     VenueNotFoundError,
 )
@@ -45,6 +47,9 @@ from app.modules.venues.schemas import (
     VenueBookingCreate,
     VenueBookingDetail,
     VenueBookingReject,
+    VenueBlock,
+    VenueBlockChange,
+    VenueBlockChangeResponse,
     VenueBlockCreate,
     VenueBlockResponse,
     VenueDeactivateRequest,
@@ -193,7 +198,14 @@ def search_venues(criteria: VenueSearchCriteria, user: CurrentUser) -> VenueSear
     )
 
 
-def get_venue(venue_id: str) -> VenueDetail:
+# SCRUM-54 AC1, AC9: who set or changed a block, and why, are Venue Staff's.
+_BLOCK_MANAGEMENT_FIELDS = {
+    "created_by": None, "created_at": None, "original_period": None,
+    "changed_by": None, "changed_at": None, "change_note": None,
+}
+
+
+def get_venue(venue_id: str, *, manages_blocks: bool = True) -> VenueDetail:
     """The full venue profile: attributes, who last touched them, and what is
     already booked (SCRUM-67).
 
@@ -213,7 +225,12 @@ def get_venue(venue_id: str) -> VenueDetail:
         booking.event_name = names.get(booking.event_id)
     return VenueDetail(
         **venue.model_dump(),
-        upcoming_blocks=repository.list_upcoming_blocks(venue_id, now),
+        # Read as `VenueBlock` (SCRUM-54); a plain summary takes its defaults.
+        # Anyone else reading the profile sees each block's period and reason only.
+        upcoming_blocks=[
+            VenueBlock.model_validate({**b.model_dump(), **({} if manages_blocks else _BLOCK_MANAGEMENT_FIELDS)})
+            for b in repository.list_upcoming_blocks(venue_id, now)
+        ],
         upcoming_bookings=bookings,
     )
 
@@ -427,7 +444,12 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
         booking.event_name = (contexts_by_event.get(booking.event_id) or EventPlanningContext()).name
     venue = VenueDetail(
         **updated.model_dump(),
-        upcoming_blocks=repository.list_upcoming_blocks(venue_id, now),
+        # Read as `VenueBlock` (SCRUM-54); a plain summary takes its defaults.
+        # Anyone else reading the profile sees each block's period and reason only.
+        upcoming_blocks=[
+            VenueBlock.model_validate({**b.model_dump(), **({} if manages_blocks else _BLOCK_MANAGEMENT_FIELDS)})
+            for b in repository.list_upcoming_blocks(venue_id, now)
+        ],
         upcoming_bookings=bookings,
     )
     return VenueUpdateResponse(saved=True, venue=venue, warnings=warnings)
@@ -542,6 +564,55 @@ def create_block(venue_id: str, actor_id: str, body: VenueBlockCreate) -> VenueB
     block = BlockSummary(id=result["block_id"], period=period, reason=body.reason.value, notes=body.detail)
     linked = repository.list_block_bookings(result["block_id"])
     return VenueBlockResponse(saved=True, block=block, affected=_name_affected(linked, label))
+
+
+# SCRUM-54 AC2: a refusal about the block's state is a 409 (reload and look
+# again); one about the new end or the note is a 422 (fix the input).
+_BLOCK_CHANGE_CONFLICTS = {
+    "ended": "This block has already ended, so it can't be changed.",
+    "removed": "This block was removed, so it can't be changed.",
+    "not_started": "This block hasn't started yet. Remove it instead.",
+    "already_started": "Only a block that hasn't started can be removed. End it now instead.",
+}
+_BLOCK_CHANGE_INVALID = {
+    "end_not_before_current": "The new end must be earlier than the current end. To block for longer, add a new block.",
+    "end_not_after_start": "The new end must be after the block's start.",
+    "end_in_past": "The new end must be in the future. To end the block now, choose End now.",
+    "note_too_long": "The note can be at most 1000 characters.",
+}
+
+
+def change_block(venue_id: str, block_id: str, actor_id: str, body: VenueBlockChange) -> VenueBlockChangeResponse:
+    """End a block now, shorten it, or remove one that hasn't started (SCRUM-54 AC2).
+
+    `public.change_venue_block` decides under the venue lock, so a change can't
+    race a booking request or approval (AC3). It keeps the row and records the
+    original period, the new end, who, when and the note in the venue's history
+    (AC4); it never clears a flag or touches a replacement (AC5, AC7). It does
+    tell the coordinator of each freed booking that has a pending replacement.
+
+    Then the bookings this block flagged that no block covers any more are
+    listed for venue staff to restore (AC5, AC6), through CR-95's restore.
+    Venue staff work as a pool (AUTH-R5), so any of them may change any block.
+    """
+    outcome = repository.change_venue_block(
+        venue_id, block_id, actor_id, action=body.action.value, ends_at=body.ends_at, note=body.note,
+    )["outcome"]
+    if outcome == "venue_not_found":
+        raise VenueNotFoundError()
+    if outcome == "block_not_found":
+        raise VenueBlockNotFoundError()
+    if outcome in _BLOCK_CHANGE_CONFLICTS:
+        raise VenueBlockChangeConflictError(_BLOCK_CHANGE_CONFLICTS[outcome])
+    if outcome in _BLOCK_CHANGE_INVALID:
+        raise VenueBlockInvalidError(_BLOCK_CHANGE_INVALID[outcome])
+
+    block = repository.get_block(block_id)
+    if block is None:
+        raise VenueBlockNotFoundError()
+    label = BLOCK_REASON_LABELS.get(block.reason, block.reason.replace("_", " "))
+    restorable = repository.list_restorable_block_bookings(block_id)
+    return VenueBlockChangeResponse(block=block, restorable=_name_affected(restorable, label))
 
 
 def _name_affected(bookings, label: str):
@@ -997,6 +1068,7 @@ RESTORE_REFUSALS = {
     "venue_inactive": "This venue is inactive, so the booking can't be restored.",
     "still_blocked": "The venue is still blocked for part of this booking's time.",
     "held_by_other": "The venue is taken for part of this booking's time.",
+    "hold_expired": "This hold has expired, so it can't be restored.",
 }
 
 
