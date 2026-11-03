@@ -145,6 +145,11 @@ export const venueBookingsApi = {
   restore(bookingId, token) {
     return request(`/venue-bookings/${encodeURIComponent(bookingId)}/restore`, { method: "POST", token });
   },
+  // SCRUM-85: the assigned coordinator cancels a held, approved or re-review
+  // booking; 409 means it is already finished or its event has started.
+  cancel(bookingId, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/cancel`, { method: "POST", token });
+  },
 };
 
 // SCRUM-113: the notification bell. Every call is scoped by the API to the caller
