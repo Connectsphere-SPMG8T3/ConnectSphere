@@ -87,3 +87,47 @@ class TestVenuePreparation:
 
         assert response.status_code == 422
         assert preparation["calls"] == []
+
+
+class TestPreparationOnTheEventPage:
+    """AC4: the event page's per-space list (`venue_bookings`) carries each booking's progress."""
+
+    RECORDED = {"stage": "in_progress", "note": "Internal venue note",
+                "updated_at": "2026-11-03T08:00:00+00:00", "updater": {"full_name": "Venue Staff"}}
+
+    def _rows(self, monkeypatch, preparation):
+        row = {"id": BOOKING_ID, "event_id": "e1", "event_space_request_id": None, "venue_id": "v1",
+               "status": "approved", "venues": {"name": "Innovation Lab"}, "preparation": preparation}
+        monkeypatch.setattr(repository, "list_active_bookings", lambda event_id: [row])
+
+    def test_each_listed_booking_carries_its_recorded_preparation(self, monkeypatch):
+        from app.modules.venues import service
+
+        self._rows(monkeypatch, self.RECORDED)
+
+        [booking] = service.active_bookings_for_event("e1")
+
+        assert booking["preparation"] == self.RECORDED
+
+    def test_a_booking_with_no_recorded_preparation_keeps_its_shape(self, monkeypatch):
+        from app.modules.venues import service
+
+        self._rows(monkeypatch, None)
+
+        [booking] = service.active_bookings_for_event("e1")
+
+        assert "preparation" not in booking
+
+    def test_the_organiser_sees_the_stage_but_never_the_note(self, monkeypatch):
+        from app.modules.events.schemas import EventSpaceVenueBooking
+        from app.modules.events.service import _for_role
+        from app.modules.venues import service
+
+        self._rows(monkeypatch, self.RECORDED)
+        [booking] = service.active_bookings_for_event("e1")
+
+        coordinator = EventSpaceVenueBooking(**_for_role(booking, "event_coordinator")).model_dump()
+        organiser = EventSpaceVenueBooking(**_for_role(booking, "event_organiser")).model_dump()
+
+        assert coordinator["preparation"]["note"] == "Internal venue note"
+        assert organiser["preparation"] == {"stage": "in_progress", "updated_at": organiser["preparation"]["updated_at"]}

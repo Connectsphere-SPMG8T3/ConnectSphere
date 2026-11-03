@@ -1240,6 +1240,8 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
             **_flag_fields(row),
             # Story 37 Q20: why an approved change marked it, so it can be sent for re-review.
             **({"needs_re_review_reason": row["needs_re_review_reason"]} if row.get("needs_re_review_reason") else {}),
+            # SCRUM-109 AC4: each venue's progress; the events module strips the note for the organiser.
+            **({"preparation": row["preparation"]} if row.get("preparation") else {}),
         }
         for row in shown.values()
     ]
