@@ -245,4 +245,70 @@ describe("ProfileView", () => {
 
     expect(el.querySelector('[role="alert"]')?.textContent.trim()).toBe(message);
   });
+
+  // SCRUM-50 AC2: the profile shows full name, email, phone number and current role.
+  it("shows the full name, email, phone number and current role", async () => {
+    const { el } = await mountProfileView({
+      id: "u2",
+      full_name: "Marcus Lim",
+      email: "coordinator@connectsphere.dev",
+      phone_number: "+6590000002",
+      role: "event_coordinator",
+      roles: ["event_coordinator"],
+      department: "Event Planning",
+    });
+
+    expect(el.textContent).toContain("Marcus Lim");
+    expect(el.textContent).toContain("coordinator@connectsphere.dev");
+    expect(el.textContent).toContain("+65 90000002");
+    expect(el.textContent).toContain("Event Coordinator");
+  });
+
+  // SCRUM-50 AC3: internal staff see a department, organisers an organisation, attendees neither.
+  it("shows the department and no organisation for internal staff", async () => {
+    const { el } = await mountProfileView({
+      id: "u2",
+      full_name: "Marcus Lim",
+      email: "coordinator@connectsphere.dev",
+      role: "event_coordinator",
+      roles: ["event_coordinator"],
+      department: "Event Planning",
+      organisation_name: null,
+    });
+
+    expect(el.textContent).toContain("Department");
+    expect(el.textContent).toContain("Event Planning");
+    expect(el.textContent).not.toContain("Organisation");
+  });
+
+  it("shows the organisation and no department for an Event Organiser", async () => {
+    const { el } = await mountProfileView({
+      id: "u1",
+      full_name: "Olivia Tan",
+      email: "organiser@connectsphere.dev",
+      role: "event_organiser",
+      roles: ["event_organiser"],
+      organisation_name: "Tan & Partners Events",
+      department: null,
+    });
+
+    expect(el.textContent).toContain("Organisation");
+    expect(el.textContent).toContain("Tan & Partners Events");
+    expect(el.textContent).not.toContain("Department");
+  });
+
+  it("shows neither a department nor an organisation for an Attendee", async () => {
+    const { el } = await mountProfileView({
+      id: "u3",
+      full_name: "Siti Rahman",
+      email: "attendee@connectsphere.dev",
+      role: "attendee",
+      roles: ["attendee"],
+      organisation_name: null,
+      department: null,
+    });
+
+    expect(el.textContent).not.toContain("Department");
+    expect(el.textContent).not.toContain("Organisation");
+  });
 });
