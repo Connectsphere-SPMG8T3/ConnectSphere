@@ -486,6 +486,8 @@ class OrganiserVenue(BaseModel):
     status: str
     status_label: str
     next_action: str
+    # SCRUM-109 AC4: the stage only, never the note; set once the event is Confirmed.
+    preparation_stage: str | None = None
 
 
 class HistoryActor(BaseModel):

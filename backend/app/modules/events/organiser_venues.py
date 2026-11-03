@@ -47,6 +47,13 @@ def _next_action(key: str, event_status: str) -> str:
     return ORGANISER_VENUE_STATUSES[key]["next_action"]
 
 
+def _preparation_stage(booking: dict, event_status: str) -> str | None:
+    # SCRUM-109 AC4: only the stage is copied, and only once the event is Confirmed (AC1).
+    if event_status not in ("confirmed", "preparation"):
+        return None
+    return (booking.get("preparation") or {}).get("stage") or "not_started"
+
+
 def organiser_venues(
     event_status: str,
     event_starts_at: datetime | None,
@@ -74,5 +81,6 @@ def organiser_venues(
             status=key,
             status_label=ORGANISER_VENUE_STATUSES[key]["label"],
             next_action=_next_action(key, event_status),
+            preparation_stage=_preparation_stage(booking, event_status),
         ))
     return venues
