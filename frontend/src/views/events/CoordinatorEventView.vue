@@ -19,6 +19,7 @@ import { useAuthStore } from "@/stores/auth";
 import RejectEventModal from "@/components/events/RejectEventModal.vue";
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import { showToast } from "@/composables/useToast";
+import { preparationStageLabel } from "@/features/equipment/preparation";
 import { canCancelEvent } from "@/features/events/cancellation";
 import { describeChanges } from "@/features/events/changeRequest";
 import { canRequestReassignment } from "@/features/events/reassignmentRequest";
@@ -115,10 +116,6 @@ const cancelBookingMessage = computed(() => {
 function askCancelBooking(booking) {
   review.error = null;
   bookingToCancel.value = booking;
-}
-
-function preparationStageLabel(stage) {
-  return (stage ?? "not_started").replaceAll("_", " ");
 }
 
 async function confirmCancelBooking() {

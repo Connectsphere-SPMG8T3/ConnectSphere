@@ -271,6 +271,16 @@ describe("EventStatusHistory change history (story 62)", () => {
     expect(expired.textContent).toContain("by System");
   });
 
+  it("CR-109 AC5 heads a venue preparation step with the stage it moved from and to", async () => {
+    const el = await mountHistory([
+      { id: "b3", kind: "booking", action: "preparation", venue_name: "Hall A", reason: null,
+        old_preparation_stage: "not_started", new_preparation_stage: "in_progress",
+        at: "2026-09-24T06:05:00Z", actor: { id: "v", full_name: "Priya Nair" } },
+    ]);
+
+    expect(el.querySelector("li p").textContent).toBe("Hall A: Preparation · Not started → In progress");
+  });
+
   it("heads a technical update with what happened and to which line", async () => {
     const el = await mountHistory([
       { id: "t1", kind: "technical", action: "preparation", line_label: null, detail: null,

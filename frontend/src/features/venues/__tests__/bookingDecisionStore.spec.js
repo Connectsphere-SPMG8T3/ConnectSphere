@@ -196,7 +196,7 @@ describe("useBookingDecisionStore approve (SCRUM-36)", () => {
   });
 });
 
-describe("useBookingDecisionStore preparation (SCRUM-109)", () => {
+describe("useBookingDecisionStore preparation (CR-109)", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("saves preparation progress and updates the booking", async () => {
@@ -214,6 +214,19 @@ describe("useBookingDecisionStore preparation (SCRUM-109)", () => {
     );
     expect(store.booking.preparation).toMatchObject({ stage: "completed", note: "Doors checked" });
     expect(store.isPreparing).toBe(false);
+  });
+
+  it("credits whoever just saved, not the previous updater", async () => {
+    const store = signedInVenueStaff();
+    store.booking = { ...HELD, preparation: { stage: "in_progress", updated_by_name: "Earlier Staff" } };
+    venueBookingsApi.setPreparation.mockResolvedValue({
+      stage: "completed", note: null, updated_at: "2031-03-01T02:00:00Z", updated_by_name: "Venue Staff",
+      event_status: "preparation",
+    });
+
+    await store.setPreparation("b1", { stage: "completed", note: null });
+
+    expect(store.booking.preparation.updated_by_name).toBe("Venue Staff");
   });
 
   it("reloads the booking when preparation is locked", async () => {

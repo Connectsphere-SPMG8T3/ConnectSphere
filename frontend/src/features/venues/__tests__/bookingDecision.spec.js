@@ -8,6 +8,7 @@ import {
   formatBookingPeriod,
   formatDecisionTime,
   historyActionLabel,
+  bookingHistoryText,
   rejectionErrors,
   rejectionPayload,
 } from "@/features/venues/bookingDecision";
@@ -134,4 +135,16 @@ describe("booking history wording (AC12)", () => {
 it('labels CR-104 safety history actions', () => {
   expect(historyActionLabel('safety_rejected')).toBe('Safety rejected');
   expect(historyActionLabel('safety_revised')).toBe('Marked revised');
+});
+
+describe("bookingHistoryText (CR-109 AC5)", () => {
+  it("names the stage a preparation update moved from and to", () => {
+    expect(bookingHistoryText({ action: "preparation", old_preparation_stage: "not_started",
+      new_preparation_stage: "in_progress" })).toBe("Preparation · Not started → In progress");
+  });
+
+  it("says a note changed without its text, and leaves other steps as their label", () => {
+    expect(bookingHistoryText({ action: "preparation_note_updated" })).toBe("Preparation note updated");
+    expect(bookingHistoryText({ action: "approved" })).toBe("Approved");
+  });
 });

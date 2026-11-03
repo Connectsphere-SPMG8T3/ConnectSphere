@@ -23,12 +23,17 @@ import {
   canRejectBooking,
   canRestoreBooking,
   formatBookingPeriod,
+  bookingHistoryText,
   formatDecisionTime,
-  historyActionLabel,
 } from "@/features/venues/bookingDecision";
 import { useBookingDecisionStore } from "@/features/venues/bookingDecisionStore";
 import { bookingStatusLabel } from "@/features/venues/dashboard";
 import { FACILITIES, LAYOUTS } from "@/features/venues/venueSearchStore";
+import {
+  PREPARATION_STAGE_OPTIONS,
+  isOpenForPreparation,
+  preparationStageLabel,
+} from "@/features/equipment/preparation";
 import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
@@ -46,7 +51,10 @@ const event = computed(() => booking.value?.event ?? {});
 const showApprove = computed(() => canApproveBooking(booking.value, auth.role));
 const showReject = computed(() => canRejectBooking(booking.value, auth.role));
 const isDeciding = computed(() => store.isApproving || store.isRejecting);
-const showPreparation = computed(() => auth.role === "venue_staff");
+// CR-109 AC1, AC7: venue staff may update only while the event is Confirmed or in
+// Preparation; otherwise the recorded progress is shown read-only.
+const showPreparation = computed(() => auth.role === "venue_staff" && isOpenForPreparation(event.value.status));
+const preparationLocked = computed(() => auth.role === "venue_staff" && !isOpenForPreparation(event.value.status));
 const preparationStage = ref("not_started");
 const preparationNote = ref("");
 // CR-95: a booking flagged Affected shows why to everyone who can read the page;
@@ -197,19 +205,17 @@ async function savePreparation() {
         <div class="mt-6 border-t-4 border-ink pt-6" data-testid="venue-preparation">
           <h2 class="text-lg font-bold">Venue preparation</h2>
           <p class="mt-1 text-sm font-medium">
-            Progress: {{ booking.preparation?.stage?.replaceAll("_", " ") ?? "not started" }}
+            Progress: {{ preparationStageLabel(booking.preparation?.stage) }}
+          </p>
+          <p v-if="preparationLocked" class="mt-2 text-sm font-medium">
+            Venue preparation opens once the Safety Officer has confirmed the event.
           </p>
           <template v-if="showPreparation">
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
               <BauhausSelect
                 v-model="preparationStage"
                 label="Preparation stage"
-                :options="[
-                  { value: 'not_started', label: 'Not started' },
-                  { value: 'in_preparation', label: 'In preparation' },
-                  { value: 'in_progress', label: 'In progress' },
-                  { value: 'completed', label: 'Completed' },
-                ]"
+                :options="PREPARATION_STAGE_OPTIONS"
                 :show-placeholder="false"
               />
               <label class="text-sm font-bold" for="venue-preparation-note">
@@ -319,7 +325,7 @@ async function savePreparation() {
         <p v-if="!booking.history.length" class="mt-4 text-sm font-medium">No decisions yet.</p>
         <ol v-else class="mt-6 space-y-5">
           <li v-for="(entry, index) in booking.history" :key="index" class="border-l-4 border-ink pl-4">
-            <p class="font-bold">{{ historyActionLabel(entry.action) }}</p>
+            <p class="font-bold">{{ bookingHistoryText(entry) }}</p>
             <p class="text-sm font-medium text-ink/70">
               {{ entry.actor_name ?? "System" }}, {{ formatDecisionTime(entry.at) }}
             </p>

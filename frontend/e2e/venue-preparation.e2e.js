@@ -1,4 +1,4 @@
-// Venue staff record preparation per venue booking (SCRUM-109) against real data, on
+// Venue staff record preparation per venue booking (CR-109) against real data, on
 // throwaway venues and events in 2031. Cases: docs/test-cases/venues.md.
 import { expect, seedSession, test } from "./support/fixtures.js";
 import {
@@ -24,7 +24,7 @@ test("TC-VENUE-109-006 venue staff save a stage and note; the coordinator sees b
     const sent = page.waitForResponse((r) => r.url().endsWith(`/venue-bookings/${booking.id}/preparation`));
     await panel.getByRole("button", { name: "Save preparation progress" }).click();
     expect((await sent).status()).toBe(200);
-    await expect(panel).toContainText("Progress: in progress");
+    await expect(panel).toContainText("Progress: In progress");
     // AC3: the first update moved the Confirmed event to Preparation.
     expect(readThrowawayEvent(event.id).status).toBe("preparation");
 
@@ -39,7 +39,7 @@ test("TC-VENUE-109-006 venue staff save a stage and note; the coordinator sees b
 
     // AC4: the coordinator sees the stage and the internal note.
     const coordinator = await viewer("event_coordinator", `/coordinator/events/${event.id}`);
-    await expect(coordinator.page.getByText("Venue preparation: in progress").first()).toBeVisible();
+    await expect(coordinator.page.getByText("Venue preparation: In progress").first()).toBeVisible();
     await expect(coordinator.page.getByText("Internal note: Stage rigging booked").first()).toBeVisible();
     await coordinator.context.close();
 
@@ -50,7 +50,7 @@ test("TC-VENUE-109-006 venue staff save a stage and note; the coordinator sees b
     await organiser.context.close();
   });
 
-test("TC-VENUE-109-007 venue staff see a Planning event's progress but saving it is refused",
+test("TC-VENUE-109-007 venue staff see a Planning event's progress read-only, with why",
   async ({ page, sharedSessions }) => {
     const venue = createThrowawayVenue("VPREP-007");
     const event = createThrowawayEvent("VPREP-007", "2031-12-23 09:00+08", "2031-12-23 12:00+08");
@@ -59,12 +59,11 @@ test("TC-VENUE-109-007 venue staff see a Planning event's progress but saving it
     await seedSession(page, await sharedSessions("venue_staff"));
     await page.goto(`/bookings/${booking.id}`);
     const panel = page.getByTestId("venue-preparation");
-    await panel.getByLabel("Preparation stage").selectOption("completed");
-    const sent = page.waitForResponse((r) => r.url().endsWith(`/venue-bookings/${booking.id}/preparation`));
-    await panel.getByRole("button", { name: "Save preparation progress" }).click();
-    // AC1: refused while the event is in Planning, and the event stays there.
-    expect((await sent).status()).toBe(409);
-    await expect(page.getByText("Venue preparation opens once the Safety Officer has confirmed the event."))
+    // AC1, AC7: nothing to fill in while the event is in Planning; the API's 409 is TC-VENUE-109-002.
+    await expect(panel).toContainText("Progress: Not started");
+    await expect(panel.getByText("Venue preparation opens once the Safety Officer has confirmed the event."))
       .toBeVisible();
+    await expect(panel.getByLabel("Preparation stage")).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Save preparation progress" })).toHaveCount(0);
     expect(readThrowawayEvent(event.id).status).toBe("planning");
   });

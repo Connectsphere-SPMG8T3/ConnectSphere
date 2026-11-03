@@ -115,7 +115,7 @@ export const useBookingDecisionStore = defineStore("bookingDecision", {
             stage: updated.stage,
             note: updated.note,
             updated_at: updated.updated_at,
-            updated_by_name: this.booking?.preparation?.updated_by_name ?? null,
+            updated_by_name: updated.updated_by_name ?? null,
           },
         };
         return true;
