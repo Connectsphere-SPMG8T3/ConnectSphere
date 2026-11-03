@@ -67,6 +67,10 @@ function heading(entry) {
   if (entry.kind === "cancellation_rejected") return "Cancellation request rejected";
   if (entry.kind === "change_rejected") return "Change request rejected";
   if (entry.kind === "change_approved") return "Change approved";
+  // CR-106: the coordinator's request that a Lead reassign the event, and the Lead's response.
+  if (entry.kind === "reassignment_requested") return "Reassignment requested";
+  if (entry.kind === "reassignment_declined") return "Reassignment request declined";
+  if (entry.kind === "reassignment_request_closed") return "Reassignment request closed";
   if (entry.kind !== "reassignment") return label(entry.to_status);
   const to = entry.to_coordinator?.full_name ?? "a coordinator";
   return entry.from_coordinator ? `Reassigned to ${to}` : `Assigned to ${to}`;

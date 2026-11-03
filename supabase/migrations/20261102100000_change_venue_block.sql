@@ -12,7 +12,7 @@
 --     coordinator of a freed booking with a pending replacement is told.
 -- A removed block keeps its period and is left out of venue_conflicts, so
 -- search, requests and approval stop seeing it (AC3).
--- Also D81: the restore notice registered only the coordinator's role, so the
+-- Also D83: the restore notice registered only the coordinator's role, so the
 -- organiser's copy (CR-95 AC9, SCRUM-54 AC6) was never shown.
 -- =============================================================================
 
@@ -183,7 +183,7 @@ grant execute on function public.restorable_block_bookings(uuid) to service_role
 
 -- -----------------------------------------------------------------------------
 -- 5. The coordinator's notice when a freed booking has a pending replacement
---    (AC7), and D81: the restore notice goes to the organiser too.
+--    (AC7), and D83: the restore notice goes to the organiser too.
 -- -----------------------------------------------------------------------------
 insert into public.notification_types (type, recipient_roles) values
     ('venue_free_replacement_pending', '{event_coordinator}');

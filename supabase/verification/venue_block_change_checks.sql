@@ -3,7 +3,7 @@
 -- (AC2, AC4), what search and requests see afterwards (AC3), which bookings are
 -- listed as restorable (AC5), that nothing clears a flag by itself (AC5), the
 -- coordinator's notice for a pending replacement (AC7), restore after a block
--- ends: an expired hold refused, the organiser told (D81), the event's status
+-- ends: an expired hold refused, the organiser told (D83), the event's status
 -- and other bookings unchanged (AC6, AC10), and the grants (AC9).
 -- AC8 (restore racing a replacement's approval) needs two sessions; the lock
 -- order it relies on is CR-95's, checked in venue_release_checks.sql.
@@ -350,7 +350,7 @@ begin
         raise exception 'BLOCK RESTORE FAIL: restoring a2 changed the event''s other booking';
     end if;
 
-    -- AC6, D81: the coordinator and the organiser are told, each in their role.
+    -- AC6, D83: the coordinator and the organiser are told, each in their role.
     if (select array_agg(recipient_role::text order by recipient_role::text) from public.notifications
          where event_id = 'e0000000-0000-4000-8000-0000000054a3' and type = 'venue_booking_restored')
        <> array['event_coordinator', 'event_organiser'] then

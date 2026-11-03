@@ -13,6 +13,7 @@ import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
+import CancellationReasonModal from "@/components/events/CancellationReasonModal.vue";
 import { showToast } from "@/composables/useToast";
 import { STATUS_LABELS } from "@/features/events/dashboard";
 import { coordinatorOptions } from "@/features/events/leadDashboard";
@@ -32,6 +33,8 @@ const isLoaded = computed(() => store.hasSettled && !store.error);
 const options = computed(() => coordinatorOptions(store.coordinators, event.value?.coordinator?.id));
 const selected = ref("");
 const isConfirming = ref(false);
+// CR-106: declining the coordinator's request to be reassigned, with the Lead's reason.
+const isDeclining = ref(false);
 // An event with no coordinator is being assigned, so the page says so. A `submitted` one goes
 // through assign (SCRUM-12); an older event that is active but never got a coordinator can only
 // be taken by reassign (CR-101). One that already has a coordinator is reassigned.
@@ -50,6 +53,14 @@ function formatDate(value) {
   if (!value) return "Date to be confirmed";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? "Date to be confirmed" : dateFormat.format(parsed);
+}
+
+async function decline(reason) {
+  const eventName = event.value.event_name;
+  if (await store.declineReassignment(route.params.id, reason)) {
+    isDeclining.value = false;
+    showToast(`Reassignment request for "${eventName}" declined.`);
+  }
 }
 
 async function reassign() {
@@ -132,6 +143,31 @@ async function reassign() {
           </dl>
         </BauhausCard>
 
+        <!-- CR-106 AC2: the coordinator asked to be moved. Reassigning below answers it; declining needs a reason. -->
+        <section
+          v-if="event.open_reassignment_request"
+          data-testid="reassignment-request-banner"
+          class="mb-8 border-4 border-ink bg-bauhaus-yellow p-6 shadow-hard sm:p-8"
+        >
+          <h2 class="text-2xl font-bold">
+            {{ event.open_reassignment_request.requested_by?.full_name ?? "The coordinator" }} asked to be reassigned
+          </h2>
+          <p class="mt-4 text-sm font-bold">Reason:</p>
+          <p class="mt-1 whitespace-pre-wrap font-medium" data-testid="reassignment-request-reason">{{ event.open_reassignment_request.reason }}</p>
+          <p class="mt-4 text-sm font-bold">They stay assigned until you reassign the event or decline.</p>
+          <div class="mt-6">
+            <BauhausButton
+              size="sm"
+              variant="outline"
+              aria-label="Decline request"
+              :disabled="store.isDeclining"
+              @click="store.declineError = null; isDeclining = true"
+            >
+              Decline request
+            </BauhausButton>
+          </div>
+        </section>
+
         <section class="border-4 border-ink bg-canvas p-5 shadow-hard" aria-labelledby="reassign-heading">
           <h2 id="reassign-heading" class="text-2xl font-bold">
             {{ isQueued ? "Assign" : "Reassign" }} coordinator
@@ -167,6 +203,17 @@ async function reassign() {
       </template>
     </template>
 
+    <CancellationReasonModal
+      :open="isDeclining"
+      title="Decline the reassignment request?"
+      :message="`${event?.coordinator?.full_name ?? 'The coordinator'} stays assigned to ${event?.event_name ?? 'this event'} and is told your reason.`"
+      confirm-label="Decline request"
+      confirm-aria-label="Confirm decline reassignment request"
+      :busy="store.isDeclining"
+      :error="isDeclining ? store.declineError : null"
+      @confirm="decline"
+      @cancel="isDeclining = false"
+    />
     <ConfirmModal
       :open="isConfirming"
       :title="isQueued ? 'Assign event?' : 'Reassign event?'"

@@ -182,6 +182,23 @@ export function createThrowawayTechnicalEntry(event, action) {
   );
 }
 
+/** The assigned coordinator's open reassignment request on a throwaway event (CR-106). It is
+ * deleted with the event when the run ends (requests cascade). */
+export function createThrowawayReassignmentRequest(event, reason) {
+  query(
+    "insert into public.event_reassignment_requests (event_id, reason, requested_by) values " +
+      `('${event.id}', '${reason}', 'a0000000-0000-4000-8000-000000000002')`,
+  );
+}
+
+/** The event's reassignment requests, read straight from the database (CR-106). */
+export function readThrowawayReassignmentRequests(eventId) {
+  return query(
+    "select status, decision_reason from public.event_reassignment_requests " +
+      `where event_id = '${eventId}' order by requested_at`,
+  );
+}
+
 /** Free-text accessibility needs on a throwaway event (SCRUM-18). */
 export function setThrowawayEventAccessibilityNeeds(event, needs) {
   query(`update public.events set accessibility_needs = '${needs}' where id = '${event.id}'`);

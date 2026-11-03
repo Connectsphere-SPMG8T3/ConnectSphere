@@ -289,6 +289,13 @@ class EventCoordinator(BaseModel):
     full_name: str
 
 
+class EventOrganiser(BaseModel):
+    """SCRUM-49 AC3: who sent the request. Name and organisation only; no contact
+    details. `organisation_name` is free text from sign-up (ACC-R5), optional."""
+    full_name: str | None = None
+    organisation_name: str | None = None
+
+
 class BookingReadiness(BaseModel):
     status: str
     flags: list[str] = []
@@ -460,6 +467,8 @@ class EventResponse(EventFields):
     coordinator_id: str | None = None
     # Named on the single-event read; null when unassigned and on other responses.
     coordinator: EventCoordinator | None = None
+    # Named on the single-event read (SCRUM-49 AC3); null on other responses.
+    organiser: EventOrganiser | None = None
     status: EventStatus
     technical_readiness: TechnicalReadiness
     submitted_at: datetime | None = None
@@ -497,6 +506,8 @@ class EventResponse(EventFields):
     # Story 84: the open cancellation request, on a single-event read only.
     open_cancellation_request: EventChangeRequest | None = None
     open_change_request: EventChangeRequest | None = None  # story 32
+    # CR-106: the assigned coordinator's own open reassignment request, on their read only.
+    open_reassignment_request: EventChangeRequest | None = None
     venue_bookings: list[EventSpaceVenueBooking] = []
 
 
@@ -680,6 +691,22 @@ class EventCancelRequest(CancellationRequestCreate):
     """Story 115 AC3: the coordinator's reason for cancelling without a request."""
 
 
+REASSIGNMENT_REASON_MAX_LENGTH = CANCELLATION_REASON_MAX_LENGTH  # [Assumption] REQUIREMENTS §9; same cap as the other reasons
+
+
+class ReassignmentRequestCreate(BaseModel):
+    """CR-106 AC1: the coordinator's reason for asking the Lead to reassign the event."""
+
+    reason: str = Field(max_length=REASSIGNMENT_REASON_MAX_LENGTH)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def reason_is_not_blank(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("A reason for the reassignment request is required.")
+        return value.strip()
+
+
 class SpaceChangeProposal(BaseModel):
     """Story 32: proposed values for one of the event's existing spaces. Adding or
     removing a space is out of scope (CR-R16)."""
@@ -805,6 +832,8 @@ class LeadEvent(BaseModel):
     facilities_required: list[Facility] = []
     # The Lead sends it back on reassign, so a screen that is behind can't overwrite a newer change.
     version: int
+    # CR-106 AC2: the coordinator's open request that the Lead reassign the event.
+    open_reassignment_request: EventChangeRequest | None = None
 
 
 class LeadDashboard(BaseModel):
