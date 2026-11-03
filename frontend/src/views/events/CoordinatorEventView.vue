@@ -72,7 +72,11 @@ const showRequestReassignment = computed(() => canRequestReassignment(event.valu
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
-const showEditDetails = computed(() => canEditDetails(event.value?.status));
+// AC6: any coordinator can open an event, but only its assigned one can edit it, so the
+// button isn't offered to the rest (the API would answer 403).
+const showEditDetails = computed(
+  () => canEditDetails(event.value?.status) && Boolean(auth.profile?.id) && event.value?.coordinator_id === auth.profile.id,
+);
 const showCancel = computed(() => canCancelEvent(event.value));
 const isReasonOpen = computed(
   () => isRejectCancellationOpen.value || isCancelOpen.value || isRejectChangeOpen.value || isReassignmentOpen.value,
@@ -885,6 +889,7 @@ watch(
       :event="event"
       :busy="review.isActing"
       :error="isEditDetailsOpen ? review.error : null"
+      :conflict="review.editConflict"
       @confirm="confirmEditDetails"
       @cancel="isEditDetailsOpen = false"
       @reload="reloadAfterStaleEdit"

@@ -1,12 +1,22 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
 
 from app.modules.equipment.schemas import ExitConfirmation, TechnicalPreparation, TechnicalPreparationStage
+from app.modules.events.change_fields import SIGNIFICANT_EVENT_FIELDS
 from app.modules.venues.schemas import Facility, VenueLayout
 
 
@@ -146,11 +156,18 @@ class TechnicalReadiness(str, Enum):
     issue = "issue"
 
 
+# The text bounds in one place, for creation, the organiser's edit and the coordinator's
+# edit (story 112 AC3: "the same validation as creation").
+EventName = Annotated[str, Field(min_length=3, max_length=150)]
+EventPurpose = Annotated[str, Field(max_length=500)]
+EventDescription = Annotated[str, Field(max_length=5000)]
+
+
 class EventFields(BaseModel):
-    name: str = Field(min_length=3, max_length=150)
+    name: EventName
     event_timezone: str = "Asia/Singapore"
-    purpose: str | None = Field(default=None, max_length=500)
-    description: str | None = Field(default=None, max_length=5000)
+    purpose: EventPurpose | None = None
+    description: EventDescription | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     expected_attendance: int | None = Field(default=None, ge=1)
@@ -181,10 +198,10 @@ class EventCreateRequest(EventFields):
 
 
 class EventUpdateRequest(BaseModel):
-    name: str | None = Field(default=None, min_length=3, max_length=150)
+    name: EventName | None = None
     event_timezone: str | None = None
-    purpose: str | None = Field(default=None, max_length=500)
-    description: str | None = Field(default=None, max_length=5000)
+    purpose: EventPurpose | None = None
+    description: EventDescription | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     expected_attendance: int | None = Field(default=None, ge=1)
@@ -212,33 +229,82 @@ class EventUpdateRequest(BaseModel):
         return value
 
 
+SIGNIFICANT_EDIT_MESSAGE = "Significant changes go through a change request."
+NOT_EDITABLE_MESSAGE = "That field can't be edited here."
+
+
 class EventDetailsEdit(BaseModel):
     """The assigned coordinator's direct edit of an event's ordinary details (story 112).
 
-    Only the four fields below can be sent. Any other key is kept in `model_extra` so the
-    service can refuse it by name: a significant field with the change-request message
-    (AC2), anything else as not editable here. Bounds match `EventFields`."""
+    Only the four text fields below can be sent, with the version the coordinator saw.
+    Bounds are `EventFields`' (the `EventName`, `EventPurpose` and `EventDescription`
+    aliases). Name and purpose can be changed but not emptied, since submission required
+    them (`_submission_errors`); description and accessibility notes can be cleared.
+    Text is trimmed before it is checked, so surrounding spaces are never stored.
+
+    Every problem is reported in one 422 (AC3): the field errors and any other key sent,
+    each under its own field. A significant field gets the change-request message (AC2),
+    anything else the not-editable one. The check is made here, before the event is read,
+    so it holds at every status."""
 
     model_config = ConfigDict(extra="allow")
 
     version: int = Field(ge=1)
-    name: str | None = Field(default=None, min_length=3, max_length=150)
-    purpose: str | None = Field(default=None, max_length=500)
-    description: str | None = Field(default=None, max_length=5000)
+    name: EventName | None = None
+    purpose: EventPurpose | None = None
+    description: EventDescription | None = None
     accessibility_needs: str | None = None
 
-    @field_validator("name", "purpose", mode="before")
+    @field_validator("name", "purpose", "description", "accessibility_needs", mode="before")
     @classmethod
-    def required_text_is_trimmed(cls, value):
+    def text_is_trimmed(cls, value):
         return value.strip() if isinstance(value, str) else value
 
-    @model_validator(mode="after")
-    def required_fields_are_not_blank(self):
-        # A submitted request keeps what submission required (_submission_errors).
-        for field in ("name", "purpose"):
-            if field in self.model_fields_set and not getattr(self, field):
-                raise ValueError(f"{field} is required.")
-        return self
+    @field_validator("name", "purpose")
+    @classmethod
+    def required_text_is_present(cls, value, info):
+        # None is what an explicit `null` becomes; "" is whitespace only, which a name
+        # already fails on its length.
+        if not value:
+            raise PydanticCustomError(
+                "required_text", "{field} is required.", {"field": info.field_name.capitalize()}
+            )
+        return value
+
+    @field_validator("description", "accessibility_needs")
+    @classmethod
+    def blank_optional_text_is_cleared(cls, value):
+        return value or None
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def refuse_other_fields(cls, data, handler):
+        refused = [key for key in data if key not in cls.model_fields] if isinstance(data, dict) else []
+        errors = []
+        model = None
+        try:
+            model = handler(data)
+        except ValidationError as exc:
+            # Pydantic skips a model-level check once a field has failed, so take the field
+            # errors as they are and add ours beside them.
+            errors = [
+                {"type": PydanticCustomError(error["type"], error["msg"]), "loc": error["loc"], "input": error["input"]}
+                for error in exc.errors(include_url=False, include_context=False)
+            ]
+        if not refused and not errors:
+            return model
+        errors.extend(
+            {
+                "type": PydanticCustomError(
+                    "not_editable",
+                    SIGNIFICANT_EDIT_MESSAGE if key in SIGNIFICANT_EVENT_FIELDS else NOT_EDITABLE_MESSAGE,
+                ),
+                "loc": (key,),
+                "input": data[key],
+            }
+            for key in refused
+        )
+        raise ValidationError.from_exception_data(cls.__name__, errors)
 
 
 class EventField(str, Enum):

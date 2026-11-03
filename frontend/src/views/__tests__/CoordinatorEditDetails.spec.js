@@ -85,6 +85,14 @@ describe("Story 112 coordinator edits an event's details", () => {
     expect(button(el, "Edit event details")).toBeNull();
   });
 
+  it.each([["another coordinator's", "c2"], ["an unassigned", null]])(
+    "does not offer it on %s event, which the API would refuse (AC6)", async (_label, coordinatorId) => {
+      const el = await mountView(eventResponse({ coordinator_id: coordinatorId }));
+
+      expect(button(el, "Edit event details")).toBeNull();
+    },
+  );
+
   it("saves only what changed, with the loaded version, and shows the saved event", async () => {
     const el = await mountView(eventResponse());
     eventsApi.editDetails.mockResolvedValue(eventResponse({ version: 4 }));

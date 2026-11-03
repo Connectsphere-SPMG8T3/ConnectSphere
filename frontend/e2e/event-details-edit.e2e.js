@@ -41,7 +41,7 @@ test("TC-EDIT-006 the form can't change a significant field, and a returned requ
   await page.getByRole("button", { name: "Edit event details" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("textbox")).toHaveCount(4);
-  for (const label of ["Name", "Purpose", "Description", "Accessibility notes"]) {
+  for (const label of ["Event title", "Purpose", "Description", "Accessibility notes"]) {
     await expect(dialog.getByLabel(label)).toBeVisible();
   }
   await expect(dialog.getByLabel(/start|end|attendance|venue|equipment/i)).toHaveCount(0);

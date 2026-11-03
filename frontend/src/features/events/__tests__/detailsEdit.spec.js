@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  DETAIL_LIMITS,
-  STALE_EVENT_MESSAGE,
-  canEditDetails,
-  changedDetails,
-  detailsFormFrom,
-  detailsFormErrors,
-  isStaleMessage,
-} from "@/features/events/detailsEdit";
+import { canEditDetails, changedDetails, detailsFormErrors, detailsFormFrom } from "@/features/events/detailsEdit";
 
 const EVENT = {
   id: "e1", version: 4, name: "Partner Summit", purpose: "Quarterly meeting",
@@ -58,46 +50,27 @@ describe("changedDetails", () => {
   });
 });
 
-describe("detailsFormErrors (the bounds the API enforces)", () => {
+describe("detailsFormErrors", () => {
   const ok = detailsFormFrom(EVENT);
 
   it("has none for a valid form", () => {
     expect(detailsFormErrors(ok)).toEqual({});
   });
 
-  it.each([["ab", true], ["abc", false], ["a".repeat(150), false], ["a".repeat(151), true], ["   ", true]])(
-    "name %j is an error: %s", (name, isError) => {
-      expect("name" in detailsFormErrors({ ...ok, name })).toBe(isError);
-    },
-  );
-
-  it("requires a purpose and caps it at 500", () => {
-    expect("purpose" in detailsFormErrors({ ...ok, purpose: " " })).toBe(true);
-    expect("purpose" in detailsFormErrors({ ...ok, purpose: "p".repeat(500) })).toBe(false);
-    expect("purpose" in detailsFormErrors({ ...ok, purpose: "p".repeat(501) })).toBe(true);
+  it("says what the organiser's form says (the shared rules)", () => {
+    expect(detailsFormErrors({ ...ok, name: "" }).name).toBe("Enter an event title.");
+    expect(detailsFormErrors({ ...ok, name: "ab" }).name).toBe("Use at least 3 characters.");
+    expect(detailsFormErrors({ ...ok, purpose: " " }).purpose).toBe("Enter the event purpose.");
+    expect(detailsFormErrors({ ...ok, description: "d".repeat(5001) }).description).toBe("Use at most 5000 characters.");
   });
 
-  it("caps the description at 5000 and leaves accessibility notes optional", () => {
-    expect("description" in detailsFormErrors({ ...ok, description: "d".repeat(5000) })).toBe(false);
-    expect("description" in detailsFormErrors({ ...ok, description: "d".repeat(5001) })).toBe(true);
+  it("leaves accessibility notes optional and unbounded", () => {
     expect(detailsFormErrors({ ...ok, accessibility_needs: "" })).toEqual({});
+    expect(detailsFormErrors({ ...ok, accessibility_needs: "a".repeat(10000) })).toEqual({});
   });
 
   it("reports every error together (AC3)", () => {
     const errors = detailsFormErrors({ ...ok, name: "ab", purpose: "", description: "d".repeat(5001) });
     expect(Object.keys(errors).sort()).toEqual(["description", "name", "purpose"]);
-  });
-
-  it("exposes the limits for the form's counters", () => {
-    expect(DETAIL_LIMITS).toEqual({ nameMin: 3, nameMax: 150, purposeMax: 500, descriptionMax: 5000 });
-  });
-});
-
-describe("isStaleMessage (AC4)", () => {
-  it("recognises the API's stale-version message", () => {
-    expect(STALE_EVENT_MESSAGE).toBe("This event was updated by someone else. Reload.");
-    expect(isStaleMessage(STALE_EVENT_MESSAGE)).toBe(true);
-    expect(isStaleMessage("Significant changes go through a change request.")).toBe(false);
-    expect(isStaleMessage(null)).toBe(false);
   });
 });

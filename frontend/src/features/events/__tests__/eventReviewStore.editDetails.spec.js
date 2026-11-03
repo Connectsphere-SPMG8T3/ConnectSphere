@@ -78,13 +78,29 @@ describe("eventReview.editDetails (story 112)", () => {
     expect(eventsApi.get).not.toHaveBeenCalled();
   });
 
-  it("keeps the stale-version message so the dialog can offer a reload", async () => {
-    eventsApi.editDetails.mockRejectedValue(new ApiError("This event was updated by someone else. Reload.", 409));
+  it("marks a 409 as a conflict so the dialog can offer a reload, whatever the wording", async () => {
+    eventsApi.editDetails.mockRejectedValue(new ApiError("Some future wording.", 409));
     const store = loaded();
 
     await expect(store.editDetails({ name: "x" })).rejects.toThrow();
 
-    expect(store.error).toBe("This event was updated by someone else. Reload.");
+    expect(store.error).toBe("Some future wording.");
+    expect(store.editConflict).toBe(true);
+  });
+
+  it("does not mark any other refusal as a conflict, and clears the mark on the next try", async () => {
+    eventsApi.editDetails.mockRejectedValueOnce(new ApiError("Stale.", 409));
+    const store = loaded();
+    await expect(store.editDetails({ name: "x" })).rejects.toThrow();
+    expect(store.editConflict).toBe(true);
+
+    eventsApi.editDetails.mockRejectedValueOnce(new ApiError("Significant changes go through a change request.", 422));
+    await expect(store.editDetails({ name: "x" })).rejects.toThrow();
+    expect(store.editConflict).toBe(false);
+
+    eventsApi.editDetails.mockResolvedValueOnce(SAVED);
+    await store.editDetails({ name: "x" });
+    expect(store.editConflict).toBe(false);
   });
 
   it("does not report a saved edit as failed when the refresh fails", async () => {

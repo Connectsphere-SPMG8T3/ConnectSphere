@@ -5672,6 +5672,17 @@ def _(ctx: Context) -> None:
     after = db_query(f"select starts_at::text, expected_attendance, registration_enabled, version, description "
                      f"from public.events where id = '{event_id}'")[0]
     expect(after.pop("description") is None and after == before, f"a refused edit changed {before} to {after}")
+    # AC2 holds "at any status": a finished event answers with the same message, not the status conflict.
+    finished = throwaway_event(ctx, "EDIT002c", "2031-12-17 09:00+08", "2031-12-17 12:00+08", status="completed")
+    refused = edit_details(ctx, finished, {"starts_at": "2031-12-18T09:00:00+08:00"})
+    expect_status(refused, 422)
+    expect(refused.json()["detail"][0]["msg"] == "Significant changes go through a change request.",
+           f"a completed event answered {refused.json()['detail']}")
+    # AC3: field errors and a refused field come back in one answer, each under its own field.
+    together = edit_details(ctx, event_id, {"name": "ab", "purpose": "", "starts_at": "2031-12-18T09:00:00+08:00"})
+    expect_status(together, 422)
+    fields = sorted(error["loc"][-1] for error in together.json()["detail"])
+    expect(fields == ["name", "purpose", "starts_at"], f"the 422 named {fields}")
 
 
 @check("TC-EDIT-003", "A stale version is refused with the reload message and the other save stands", needs_db=True)

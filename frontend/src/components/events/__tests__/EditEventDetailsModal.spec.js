@@ -44,7 +44,7 @@ describe("EditEventDetailsModal (story 112)", () => {
   it("shows the four ordinary fields filled from the event, and nothing else", async () => {
     await mountModal();
 
-    expect(field("Name").value).toBe("Partner Summit");
+    expect(field("Event title").value).toBe("Partner Summit");
     expect(field("Purpose").value).toBe("Quarterly meeting");
     expect(field("Description").value).toBe("");
     expect(field("Accessibility").value).toBe("Step-free access");
@@ -61,7 +61,7 @@ describe("EditEventDetailsModal (story 112)", () => {
     await mountModal();
 
     expect(save().disabled).toBe(true);
-    await type("Name", "  Partner Summit  ");
+    await type("Event title", "  Partner Summit  ");
     expect(save().disabled).toBe(true);
   });
 
@@ -76,7 +76,7 @@ describe("EditEventDetailsModal (story 112)", () => {
 
   it("shows every field error together and does not emit (AC3)", async () => {
     const { onConfirm } = await mountModal();
-    await type("Name", "ab");
+    await type("Event title", "ab");
     await type("Purpose", "");
 
     expect(save().disabled).toBe(true);
@@ -84,15 +84,15 @@ describe("EditEventDetailsModal (story 112)", () => {
 
     expect(onConfirm).not.toHaveBeenCalled();
     const text = document.body.textContent;
-    expect(text).toContain("Name must be 3 to 150 characters.");
-    expect(text).toContain("Purpose is required.");
+    expect(text).toContain("Use at least 3 characters.");
+    expect(text).toContain("Enter the event purpose.");
   });
 
   it("checks only the fields being changed, as the API does", async () => {
     const { onConfirm } = await mountModal({ event: { ...EVENT, purpose: null } });
     await type("Description", "Agreed offline");
 
-    expect(document.body.textContent).not.toContain("Purpose is required.");
+    expect(document.body.textContent).not.toContain("Enter the event purpose.");
     save().click();
 
     expect(onConfirm).toHaveBeenCalledWith({ description: "Agreed offline" });
@@ -100,14 +100,14 @@ describe("EditEventDetailsModal (story 112)", () => {
 
   it("starts again from the event each time it opens", async () => {
     const { open } = await mountModal();
-    await type("Name", "Something else");
+    await type("Event title", "Something else");
 
     open.value = false;
     await nextTick();
     open.value = true;
     await nextTick();
 
-    expect(field("Name").value).toBe("Partner Summit");
+    expect(field("Event title").value).toBe("Partner Summit");
   });
 
   it("is disabled while the request is in flight", async () => {
@@ -123,16 +123,28 @@ describe("EditEventDetailsModal (story 112)", () => {
     expect(document.querySelector('[role="alert"]').textContent).toContain("Significant changes go through a change request.");
   });
 
-  it("offers a reload when someone else saved first (AC4)", async () => {
-    const { onReload } = await mountModal({ error: "This event was updated by someone else. Reload." });
+  it("offers a reload when the save was refused as a conflict (AC4)", async () => {
+    const { onReload } = await mountModal({ error: "This event was updated by someone else. Reload.", conflict: true });
 
     document.querySelector('button[aria-label="Reload event"]').click();
 
     expect(onReload).toHaveBeenCalled();
   });
 
-  it("offers no reload for any other error", async () => {
-    await mountModal({ error: "Event not found." });
+  it("decides on the conflict, not on the wording of the message", async () => {
+    await mountModal({ error: "Some other wording.", conflict: true });
+
+    expect(document.querySelector('button[aria-label="Reload event"]')).not.toBeNull();
+  });
+
+  it("offers no reload for an error that isn't a conflict, even with the stale wording", async () => {
+    await mountModal({ error: "This event was updated by someone else. Reload.", conflict: false });
+
+    expect(document.querySelector('button[aria-label="Reload event"]')).toBeNull();
+  });
+
+  it("offers no reload when there is no error to reload from", async () => {
+    await mountModal({ error: null, conflict: true });
 
     expect(document.querySelector('button[aria-label="Reload event"]')).toBeNull();
   });

@@ -151,10 +151,11 @@ class TestSignificantAndOtherFields:
         ("layout_preference", "theatre"), ("facilities_required", ["projector"]),
         ("preliminary_equipment_needs", "Two microphones"),
     ])
-    @pytest.mark.parametrize("status", EDITABLE_STATUSES)
+    @pytest.mark.parametrize("status", EDITABLE_STATUSES + READ_ONLY_STATUSES)
     def test_a_significant_field_is_refused_at_every_status(self, client, auth_headers, act_as, events,
                                                             status, field, value):
-        """AC2."""
+        """AC2: "at any status", so a read-only event answers with the change-request message
+        too, not the status conflict (the field check comes first)."""
         events["store"][EVENT_ID]["status"] = status
         act_as("event_coordinator")
 
@@ -211,6 +212,64 @@ class TestValidation:
         act_as("event_coordinator")
 
         assert (edit(client, auth_headers, name=name).status_code == 200) is ok
+
+    def test_a_short_name_and_a_blank_purpose_come_back_together(self, client, auth_headers, act_as, events):
+        """AC3: the required check is per field, so it isn't skipped when another field fails."""
+        act_as("event_coordinator")
+
+        response = edit(client, auth_headers, name="ab", purpose="")
+
+        assert response.status_code == 422
+        assert sorted(error["loc"] for error in response.json()["detail"]) == [["body", "name"], ["body", "purpose"]]
+        assert events["edits"] == []
+
+    def test_a_blank_name_and_a_blank_purpose_each_name_their_field(self, client, auth_headers, act_as, events):
+        act_as("event_coordinator")
+
+        response = edit(client, auth_headers, name="   ", purpose="   ")
+
+        assert response.status_code == 422
+        assert sorted(error["loc"] for error in response.json()["detail"]) == [["body", "name"], ["body", "purpose"]]
+
+    @pytest.mark.parametrize("field", ["name", "purpose"])
+    def test_a_null_name_or_purpose_names_its_field(self, client, auth_headers, act_as, events, field):
+        act_as("event_coordinator")
+
+        response = edit(client, auth_headers, **{field: None})
+
+        assert response.status_code == 422
+        assert [error["loc"] for error in response.json()["detail"]] == [["body", field]]
+
+    def test_field_errors_and_refused_fields_come_back_together(self, client, auth_headers, act_as, events):
+        """AC3: a refused field doesn't wait for the other errors to be fixed."""
+        act_as("event_coordinator")
+
+        response = edit(client, auth_headers, name="ab", purpose="", starts_at="2030-01-01T09:00:00+08:00",
+                        registration_enabled=True)
+
+        assert response.status_code == 422
+        errors = {error["loc"][-1]: error["msg"] for error in response.json()["detail"]}
+        assert sorted(errors) == ["name", "purpose", "registration_enabled", "starts_at"]
+        assert errors["starts_at"] == SIGNIFICANT_MESSAGE
+        assert errors["registration_enabled"] == "That field can't be edited here."
+        assert events["edits"] == []
+
+    @pytest.mark.parametrize("field", ["description", "accessibility_needs"])
+    def test_blank_optional_text_is_stored_as_cleared(self, client, auth_headers, act_as, events, field):
+        events["store"][EVENT_ID][field] = "Old"
+        act_as("event_coordinator")
+
+        response = edit(client, auth_headers, **{field: "   "})
+
+        assert response.status_code == 200
+        assert events["edits"][0]["values"] == {field: None}
+
+    def test_optional_text_is_trimmed(self, client, auth_headers, act_as, events):
+        act_as("event_coordinator")
+
+        edit(client, auth_headers, description="  Agreed  ", accessibility_needs="  Step-free ")
+
+        assert events["edits"][0]["values"] == {"description": "Agreed", "accessibility_needs": "Step-free"}
 
     @pytest.mark.parametrize("length,ok", [(500, True), (501, False)])
     def test_the_purpose_length_bound_matches_creation(self, client, auth_headers, act_as, events, length, ok):

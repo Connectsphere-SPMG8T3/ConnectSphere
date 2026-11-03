@@ -3,13 +3,8 @@ import { computed, reactive, watch } from "vue";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
-import {
-  DETAIL_LIMITS,
-  changedDetails,
-  detailsFormErrors,
-  detailsFormFrom,
-  isStaleMessage,
-} from "@/features/events/detailsEdit";
+import { changedDetails, detailsFormErrors, detailsFormFrom } from "@/features/events/detailsEdit";
+import { EVENT_TEXT_LIMITS } from "@/features/events/eventTextRules";
 
 // Story 112: the assigned coordinator's direct edit of the four ordinary fields. Significant
 // fields are deliberately absent (AC2); the API refuses them whatever this form sends.
@@ -18,6 +13,8 @@ const props = defineProps({
   event: { type: Object, required: true },
   busy: { type: Boolean, default: false },
   error: { type: String, default: null },
+  // The save was refused as a conflict (409): the page is out of date, so offer a reload.
+  conflict: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(["confirm", "cancel", "reload"]);
@@ -32,7 +29,7 @@ const errors = computed(() =>
 const canSave = computed(
   () => Object.keys(changes.value).length > 0 && Object.keys(errors.value).length === 0 && !props.busy,
 );
-const isStale = computed(() => isStaleMessage(props.error));
+const canReload = computed(() => props.conflict && Boolean(props.error));
 
 watch(
   () => props.open,
@@ -70,7 +67,7 @@ const areaClass =
           attendance, venue or equipment go through a change request.
         </p>
         <div class="mt-6 flex flex-col gap-4">
-          <BauhausInput v-model="form.name" label="Name" required compact :error="errors.name ?? ''" />
+          <BauhausInput v-model="form.name" label="Event title" required compact :error="errors.name ?? ''" />
           <div>
             <label for="edit-purpose" class="block text-xs font-bold text-ink">Purpose <span aria-hidden="true">*</span></label>
             <textarea id="edit-purpose" v-model="form.purpose" rows="2" :class="areaClass" :aria-invalid="Boolean(errors.purpose)"></textarea>
@@ -80,7 +77,7 @@ const areaClass =
             <label for="edit-description" class="block text-xs font-bold text-ink">Description</label>
             <textarea id="edit-description" v-model="form.description" rows="4" :class="areaClass" :aria-invalid="Boolean(errors.description)"></textarea>
             <p v-if="errors.description" class="mt-1 text-xs font-bold text-bauhaus-red">{{ errors.description }}</p>
-            <p class="mt-1 text-right text-xs font-bold text-ink/70">{{ form.description.length }} / {{ DETAIL_LIMITS.descriptionMax }}</p>
+            <p class="mt-1 text-right text-xs font-bold text-ink/70">{{ form.description.length }} / {{ EVENT_TEXT_LIMITS.descriptionMax }}</p>
           </div>
           <div>
             <label for="edit-accessibility" class="block text-xs font-bold text-ink">Accessibility notes</label>
@@ -96,7 +93,7 @@ const areaClass =
         </p>
         <div class="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <BauhausButton type="button" variant="outline" aria-label="Cancel" @click="emit('cancel')">Cancel</BauhausButton>
-          <BauhausButton v-if="isStale" type="button" variant="yellow" aria-label="Reload event" @click="emit('reload')">
+          <BauhausButton v-if="canReload" type="button" variant="yellow" aria-label="Reload event" @click="emit('reload')">
             Reload
           </BauhausButton>
           <BauhausButton type="button" variant="primary" aria-label="Save details" :disabled="!canSave" @click="save">
