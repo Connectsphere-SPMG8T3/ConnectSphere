@@ -128,3 +128,5 @@ To measure coverage, run `pytest --cov` here, or `npm run test:coverage` in `fro
 - Authentication credentials (email/password) live in Supabase-managed `auth.users`; domain attributes (role, department, organisation) live in `public.profiles`, kept in sync via a Postgres trigger on user creation.
 - The FastAPI backend never re-implements password verification — it defers to Supabase's GoTrue API, then verifies the returned JWT via the Supabase SDK's `get_claims`, which validates against the project's published JWKS (supporting both the legacy HS256 shared-secret scheme and the current asymmetric ES256 signing keys) rather than a single hardcoded secret.
 - Each backend module (`auth`, `events`, `venues`, `equipment`) is self-contained (`router.py`, `schemas.py`, `service.py`) so future domains can be added without touching existing modules.
+
+test
