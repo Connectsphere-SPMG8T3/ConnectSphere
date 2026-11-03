@@ -365,16 +365,6 @@ watch(
               Approve
             </BauhausButton>
             <BauhausButton
-              v-if="showEditDetails"
-              size="sm"
-              variant="outline"
-              aria-label="Edit event details"
-              :disabled="review.isActing"
-              @click="review.error = null; isEditDetailsOpen = true"
-            >
-              Edit details
-            </BauhausButton>
-            <BauhausButton
               v-if="showReturn"
               size="sm"
               variant="yellow"
@@ -413,6 +403,16 @@ watch(
               @click="review.error = null; isReassignmentOpen = true"
             >
               Request reassignment
+            </BauhausButton>
+            <BauhausButton
+              v-if="showEditDetails"
+              size="sm"
+              variant="outline"
+              aria-label="Edit event details"
+              :disabled="review.isActing"
+              @click="review.error = null; isEditDetailsOpen = true"
+            >
+              Edit details
             </BauhausButton>
           </div>
         </div>
