@@ -1,11 +1,14 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { RouterLink, useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
+import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausCheckboxGroup from "@/components/common/BauhausCheckboxGroup.vue";
 import BauhausInput from "@/components/common/BauhausInput.vue";
+import SectionHeading from "@/components/common/SectionHeading.vue";
+import { sectionTone } from "@/components/common/sectionTone";
 import VenueEditWarningModal from "@/components/venues/VenueEditWarningModal.vue";
 import { venueToEditForm } from "@/features/venues/venueProfile";
 import { useVenueEditStore } from "@/features/venues/venueEditStore";
@@ -13,6 +16,11 @@ import { ACCESSIBILITY_FEATURES, FACILITIES, LAYOUTS } from "@/features/venues/v
 
 const route = useRoute();
 const router = useRouter();
+const breadcrumbItems = computed(() => [
+  { label: "Venues", to: { name: "venue-search" } },
+  { label: store.venue?.name ?? "Venue", to: { name: "venue-detail", params: { id: route.params.id } } },
+  { label: "Edit" },
+]);
 const store = useVenueEditStore();
 
 const form = reactive(venueToEditForm(null));
@@ -60,12 +68,7 @@ const layoutOptions = computed(() => LAYOUTS);
 
 <template>
   <main class="py-8">
-    <RouterLink
-      :to="{ name: 'venue-detail', params: { id: route.params.id } }"
-      class="mb-8 inline-block text-xs font-bold underline decoration-2 underline-offset-4"
-    >
-      ← Back to venue profile
-    </RouterLink>
+    <BauhausBreadcrumb :items="breadcrumbItems" />
 
     <p v-if="store.error && !store.venue" role="alert" class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4">
       {{ store.error }}
@@ -74,51 +77,65 @@ const layoutOptions = computed(() => LAYOUTS);
 
     <form v-else-if="store.venue" class="flex flex-col gap-8" @submit.prevent="save(false)">
       <BauhausCard background="blue" accent="circle" accent-color="bauhaus-yellow">
-        <p class="text-xs font-bold opacity-80">Edit venue</p>
+        <p class="text-sm font-bold opacity-90">Edit venue</p>
         <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">{{ store.venue.name }}</h1>
       </BauhausCard>
 
       <BauhausCard background="white" accent="none">
-        <h2 class="mb-4 text-lg font-bold">Details</h2>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <BauhausInput v-model="form.name" label="Name" required />
-          <BauhausInput v-model="form.location" label="Location" required />
-          <BauhausInput v-model="form.capacity" type="number" min="1" label="Capacity" required />
-          <BauhausInput v-model="form.opensAt" type="time" label="Opens" required />
-          <BauhausInput v-model="form.closesAt" type="time" label="Closes" required />
+        <SectionHeading id="details" :tone="sectionTone(0)">Details</SectionHeading>
+        <p class="mb-6 mt-3 text-base font-medium text-ink/70">Who and where the venue is, and when it is open.</p>
+        <div class="flex flex-col gap-6">
+          <div class="grid gap-6 sm:grid-cols-2">
+            <BauhausInput v-model="form.name" label="Name" required large />
+            <BauhausInput v-model="form.location" label="Location" required large />
+          </div>
+          <div class="flex flex-wrap gap-6">
+            <BauhausInput v-model="form.capacity" type="number" min="1" label="Capacity" required large class="w-full sm:w-40" />
+            <BauhausInput v-model="form.opensAt" type="time" label="Opens" required large class="w-full sm:w-44" />
+            <BauhausInput v-model="form.closesAt" type="time" label="Closes" required large class="w-full sm:w-44" />
+          </div>
+          <label class="flex flex-col gap-2">
+            <span class="text-sm font-bold text-ink">Description</span>
+            <textarea
+              v-model="form.description"
+              rows="3"
+              class="border-2 border-ink bg-canvas p-3 text-base font-medium shadow-hard focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow sm:border-4"
+            ></textarea>
+          </label>
         </div>
-        <label class="mt-4 flex flex-col gap-2">
-          <span class="text-xs font-bold text-ink">Description</span>
-          <textarea
-            v-model="form.description"
-            rows="3"
-            class="border-2 border-ink bg-canvas p-3 text-base font-medium shadow-hard focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow sm:border-4"
-          ></textarea>
-        </label>
       </BauhausCard>
 
       <BauhausCard background="white" accent="none">
-        <h2 class="mb-4 text-lg font-bold">Booking defaults &amp; safety</h2>
-        <p class="mb-4 text-sm font-medium">Defaults apply to new booking requests only. Existing bookings keep their own setup and turnaround times.</p>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <BauhausInput v-model="form.setupMinutes" type="number" min="0" step="1" label="Default setup (minutes)" required />
-          <BauhausInput v-model="form.turnaroundMinutes" type="number" min="0" step="1" label="Default turnaround (minutes)" required />
+        <SectionHeading id="booking-defaults" :tone="sectionTone(1)">Booking defaults &amp; safety</SectionHeading>
+        <p class="mb-6 mt-3 text-base font-medium text-ink/70">
+          Defaults apply to new booking requests only. Existing bookings keep their own setup and turnaround times.
+        </p>
+        <div class="flex flex-col gap-6">
+          <div class="flex flex-wrap gap-6">
+            <BauhausInput v-model="form.setupMinutes" type="number" min="0" step="1" label="Default setup (minutes)" required large class="w-full sm:w-60" />
+            <BauhausInput v-model="form.turnaroundMinutes" type="number" min="0" step="1" label="Default turnaround (minutes)" required large class="w-full sm:w-64" />
+          </div>
+          <div class="grid gap-6 md:grid-cols-2">
+            <label class="flex flex-col gap-2">
+              <span class="text-sm font-bold text-ink">Emergency access</span>
+              <textarea v-model="form.emergencyAccess" rows="4" class="border-2 border-ink bg-canvas p-3 text-base font-medium shadow-hard focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow sm:border-4"></textarea>
+            </label>
+            <label class="flex flex-col gap-2">
+              <span class="text-sm font-bold text-ink">Restrictions</span>
+              <textarea v-model="form.restrictions" rows="4" class="border-2 border-ink bg-canvas p-3 text-base font-medium shadow-hard focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow sm:border-4"></textarea>
+            </label>
+          </div>
         </div>
-        <label class="mt-4 flex flex-col gap-2">
-          <span class="text-xs font-bold text-ink">Emergency access</span>
-          <textarea v-model="form.emergencyAccess" rows="3" class="border-2 border-ink bg-canvas p-3 text-base font-medium shadow-hard focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow sm:border-4"></textarea>
-        </label>
-        <label class="mt-4 flex flex-col gap-2">
-          <span class="text-xs font-bold text-ink">Restrictions</span>
-          <textarea v-model="form.restrictions" rows="3" class="border-2 border-ink bg-canvas p-3 text-base font-medium shadow-hard focus:outline-none focus:ring-4 focus:ring-bauhaus-yellow sm:border-4"></textarea>
-        </label>
       </BauhausCard>
 
       <BauhausCard background="white" accent="none">
-        <h2 class="mb-4 text-lg font-bold">Layouts</h2>
-        <div class="flex flex-col gap-3">
-          <div v-for="option in layoutOptions" :key="option.value" class="flex flex-wrap items-center gap-3">
-            <label class="inline-flex cursor-pointer items-center gap-2 border-2 border-ink px-3 py-2 text-xs font-bold shadow-hard" :class="form.selectedLayouts.includes(option.value) ? 'bg-bauhaus-yellow' : 'bg-canvas'">
+        <SectionHeading id="layouts" :tone="sectionTone(2)">Layouts</SectionHeading>
+        <p class="mb-6 mt-3 text-base font-medium text-ink/70">
+          Tick each layout the venue supports. Add a capacity only when it differs from the venue's.
+        </p>
+        <div class="flex flex-col gap-4">
+          <div v-for="option in layoutOptions" :key="option.value" class="grid gap-3 sm:grid-cols-[13rem_minmax(0,1fr)] sm:items-center">
+            <label class="inline-flex cursor-pointer items-center gap-3 border-2 border-ink px-4 py-3 text-sm font-bold shadow-hard" :class="form.selectedLayouts.includes(option.value) ? 'bg-bauhaus-yellow' : 'bg-canvas'">
               <input
                 type="checkbox"
                 class="h-4 w-4 accent-bauhaus-red"
@@ -133,6 +150,7 @@ const layoutOptions = computed(() => LAYOUTS);
               type="number"
               min="1"
               compact
+              class="w-full sm:max-w-xs"
               :aria-label="`${option.label} capacity`"
               placeholder="Capacity for this layout (optional)"
             />
@@ -141,9 +159,10 @@ const layoutOptions = computed(() => LAYOUTS);
       </BauhausCard>
 
       <BauhausCard background="white" accent="none">
-        <h2 class="mb-4 text-lg font-bold">Facilities &amp; access</h2>
-        <BauhausCheckboxGroup v-model="form.facilities" label="Facilities" :options="FACILITIES" />
-        <BauhausCheckboxGroup v-model="form.accessibilityFeatures" label="Accessibility" :options="ACCESSIBILITY_FEATURES" class="mt-6" />
+        <SectionHeading id="facilities" :tone="sectionTone(3)">Facilities &amp; access</SectionHeading>
+        <p class="mb-6 mt-3 text-base font-medium text-ink/70">What the venue has, and how people can get in and around it.</p>
+        <BauhausCheckboxGroup v-model="form.facilities" label="Facilities" :options="FACILITIES" large />
+        <BauhausCheckboxGroup v-model="form.accessibilityFeatures" label="Accessibility" :options="ACCESSIBILITY_FEATURES" large class="mt-6" />
       </BauhausCard>
 
       <p v-if="saveError" role="alert" class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4">

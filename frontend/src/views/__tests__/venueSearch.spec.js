@@ -364,15 +364,16 @@ describe("VenueSearchView", () => {
     expect(el.querySelector('[aria-label="Request Hall A"]')).toBeNull();
   });
 
-  it("heads the filter card with the page title instead of a separate header card", async () => {
+  it("puts the page title above the filter card, which it labels, instead of a separate header card", async () => {
     const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
     const { el } = await mountView(VenueSearchView);
     await settle();
 
     const heading = el.querySelector("h1");
     expect(heading.textContent).toContain("Find a venue");
-    const filterCard = heading.closest("[data-testid='venue-filters']");
-    expect(filterCard).toBeTruthy();
+    const filterCard = el.querySelector("[data-testid='venue-filters']");
+    expect(filterCard.contains(heading)).toBe(false);
+    expect(filterCard.getAttribute("aria-labelledby")).toBe(heading.id);
     expect(filterCard.querySelector("form")).toBeTruthy();
     expect(el.textContent).not.toContain("Venue catalogue");
     // Grey like the coordinator's Events filter card, with no explanatory paragraph.
@@ -380,29 +381,61 @@ describe("VenueSearchView", () => {
     expect(el.textContent).not.toContain("Every filter you set is strict");
   });
 
-  it("lists matching venues on first visit and reveals excluded ones with reasons on demand", async () => {
+  it("lists matching venues first, then excluded ones greyed out with their reasons", async () => {
     const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
-    const { el, venuesStore } = await mountView(VenueSearchView);
+    const { el } = await mountView(VenueSearchView);
     await settle();
 
     expect(venuesApi.search).toHaveBeenCalledTimes(1);
     expect(el.textContent).toContain("1 matching venue");
-    expect(el.textContent).toContain("Hall A");
     expect(el.textContent).toContain("Theatre (120)");
     expect(el.textContent).toContain("Add a date and time to check availability");
-    expect(el.textContent).not.toContain("Hall B");
+    expect(el.querySelector('button[role="switch"]')).toBeNull();
 
-    const toggle = [...el.querySelectorAll("button")].find((b) => b.textContent.includes("Show 1 excluded"));
-    expect(toggle).toBeTruthy();
-    toggle.click();
+    const cards = [...el.querySelectorAll('[data-testid="venue-result"]')];
+    expect(cards).toHaveLength(2);
+    expect(cards[0].textContent).toContain("Hall A");
+    expect(cards[0].classList.contains("bg-muted")).toBe(false);
+    expect(cards[1].textContent).toContain("Hall B");
+    expect(cards[1].classList.contains("bg-muted")).toBe(true);
+    expect(cards[1].textContent).toContain("Capacity 100 is below the required 150");
+    expect(cards[1].textContent).toContain("Held by another event 10 Oct 13:00–16:00");
+    expect(cards[1].textContent).toContain("Unavailable");
+    expect(el.textContent).toContain("Greyed-out venues don't meet every requirement");
+  });
+
+  it("sorts the matching venues from a Sort by control and keeps excluded ones last", async () => {
+    const HALL_C = { ...HALL_A, id: "b0000000-0000-4000-8000-000000000003", name: "Hall C", capacity: 300 };
+    venuesApi.search.mockResolvedValue({
+      ...RESPONSE,
+      results: [
+        { venue: HALL_C, availability: "available", excluded: false, reasons: [] },
+        ...RESPONSE.results,
+      ],
+      included_count: 2,
+    });
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView);
     await settle();
 
-    expect(venuesStore.showExcluded).toBe(true);
-    expect(el.textContent).toContain("Excluded venues");
-    expect(el.textContent).toContain("Hall B");
-    expect(el.textContent).toContain("Capacity 100 is below the required 150");
-    expect(el.textContent).toContain("Held by another event 10 Oct 13:00–16:00");
-    expect(el.textContent).toContain("Unavailable");
+    const order = () => [...el.querySelectorAll('[data-testid="venue-result"] h3')].map((h) => h.textContent.trim());
+    expect(order()).toEqual(["Hall A", "Hall C", "Hall B"]);
+
+    const sort = el.querySelector('select[aria-label="Sort venues by"]');
+    expect(sort).toBeTruthy();
+    sort.value = "capacity-desc";
+    sort.dispatchEvent(new Event("change"));
+    await settle();
+
+    expect(order()).toEqual(["Hall C", "Hall A", "Hall B"]);
+  });
+
+  it("offers no Sort by control for a single match", async () => {
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView);
+    await settle();
+
+    expect(el.querySelector('select[aria-label="Sort venues by"]')).toBeNull();
   });
 
   it("shows field errors instead of searching when the period is incomplete", async () => {
@@ -658,65 +691,85 @@ describe("VenueDetailView (SCRUM-67)", () => {
     expect(el.textContent).not.toContain("Val Staff");
   });
 
-  const groupTab = (el, label) =>
-    [...el.querySelectorAll("[aria-label='Booking status'] [role='tab']")].find((b) => b.textContent.includes(label));
+  const statusSelect = (el) => el.querySelector("select[aria-label='Booking status']");
+  const statusOption = (el, label) => [...statusSelect(el).options].find((o) => o.textContent.includes(label));
+  const chooseStatus = async (el, label) => {
+    const select = statusSelect(el);
+    select.value = statusOption(el, label).value;
+    select.dispatchEvent(new Event("change"));
+    await settle();
+  };
 
-  it("summarises upcoming confirmed and tentative bookings, each naming its event (AC3)", async () => {
+  it("summarises upcoming bookings, each naming its event and status (AC3)", async () => {
     const el = await openProfile();
     const summary = await openTab(el, "Upcoming bookings");
 
-    // The total is stated once, above the status tabs, so it is never hidden.
+    // The total is stated once, above the Status list, so it is never hidden.
     expect(summary.textContent).toContain("2 upcoming");
-    // Every status is on screen as a tab with its own count.
-    expect(groupTab(el, "Confirmed").textContent).toContain("1");
-    expect(groupTab(el, "Tentative").textContent).toContain("1");
-    expect(groupTab(el, "Under re-review").textContent).toContain("0");
-
-    // Confirmed is selected first and shows its booking.
-    expect(summary.textContent).toContain("Alumni Dinner");
-    expect(summary.textContent).not.toContain("Annual Town Hall");
-
-    groupTab(el, "Tentative").click();
-    await settle();
-
+    // Opens on Pending, as the booking requests page does, because a hold is waiting.
+    expect(statusSelect(el).selectedOptions[0].textContent).toContain("Pending");
     expect(summary.textContent).toContain("Annual Town Hall");
     expect(summary.textContent).not.toContain("Alumni Dinner");
     // 05:00Z is 13:00 in Singapore.
     expect(summary.textContent).toMatch(/13:00/);
-  });
 
-  it("opens on the first status that actually has bookings, not always Confirmed", async () => {
-    venuesApi.get.mockResolvedValue({ ...PROFILE, upcoming_bookings: [PROFILE.upcoming_bookings[0]] });
-    const el = await openProfile();
-    const summary = await openTab(el, "Upcoming bookings");
+    await chooseStatus(el, "Approved");
+    expect(summary.textContent).toContain("Alumni Dinner");
+    expect(summary.textContent).not.toContain("Annual Town Hall");
 
-    expect(groupTab(el, "Tentative").getAttribute("aria-selected")).toBe("true");
-    expect(groupTab(el, "Confirmed").getAttribute("aria-selected")).toBe("false");
+    await chooseStatus(el, "All statuses");
+    expect(summary.textContent).toContain("Alumni Dinner");
     expect(summary.textContent).toContain("Annual Town Hall");
   });
 
+  it("opens on Pending when a hold is waiting, and on All statuses when nothing is pending", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, upcoming_bookings: [PROFILE.upcoming_bookings[0]] });
+    let el = await openProfile();
+    let summary = await openTab(el, "Upcoming bookings");
+    expect(statusSelect(el).selectedOptions[0].textContent).toContain("Pending");
+    expect(summary.textContent).toContain("Annual Town Hall");
+
+    document.body.innerHTML = "";
+    venuesApi.get.mockResolvedValue({ ...PROFILE, upcoming_bookings: [PROFILE.upcoming_bookings[1]] });
+    el = await openProfile();
+    summary = await openTab(el, "Upcoming bookings");
+    expect(statusSelect(el).selectedOptions[0].textContent).toContain("All statuses");
+    expect(summary.textContent).toContain("Alumni Dinner");
+  });
+
+  it("links each upcoming booking to its own booking page, labelled with its status", async () => {
+    const el = await openProfile();
+    const summary = await openTab(el, "Upcoming bookings");
+    await chooseStatus(el, "All statuses");
+
+    const approved = summary.querySelector('a[href="/bookings/d2"]');
+    expect(approved.textContent).toContain("Alumni Dinner");
+    expect(approved.textContent).toContain("Approved");
+    expect(approved.textContent).toContain("View booking");
+    const pending = summary.querySelector('a[href="/bookings/d1"]');
+    expect(pending.textContent).toContain("Annual Town Hall");
+    expect(pending.textContent).toContain("Pending");
+  });
+
   it("says None rather than going blank on a status with no bookings", async () => {
+    venuesApi.get.mockResolvedValue({ ...PROFILE, upcoming_bookings: [PROFILE.upcoming_bookings[1]] });
     const el = await openProfile();
     const summary = await openTab(el, "Upcoming bookings");
 
-    groupTab(el, "Under re-review").click();
-    await settle();
+    await chooseStatus(el, "Pending");
 
     expect(summary.textContent).toContain("None.");
   });
 
-  it("moves between status tabs with the arrow keys", async () => {
+  it("offers the booking requests page's Status choices, Pending first, then only the statuses present", async () => {
     const el = await openProfile();
     await openTab(el, "Upcoming bookings");
 
-    el.querySelector("[aria-label='Booking status']").dispatchEvent(
-      new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
-    );
-    await settle();
-
-    expect(groupTab(el, "Tentative").getAttribute("aria-selected")).toBe("true");
-    // The outer tab row must not move as well.
-    expect(tab(el, "Upcoming bookings").getAttribute("aria-selected")).toBe("true");
+    expect([...statusSelect(el).options].map((o) => o.textContent.trim())).toEqual([
+      "Pending",
+      "All statuses",
+      "Approved",
+    ]);
   });
 
   it("falls back to a short event reference when the booking has no event name", async () => {

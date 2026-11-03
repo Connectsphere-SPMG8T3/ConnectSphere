@@ -3,7 +3,9 @@ import { computed, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
+import SectionHeading from "@/components/common/SectionHeading.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import RequestVenueModal from "@/components/venues/RequestVenueModal.vue";
 import VenueCriteriaForm from "@/components/venues/VenueCriteriaForm.vue";
 import VenueResultCard from "@/components/venues/VenueResultCard.vue";
@@ -11,12 +13,20 @@ import { showToast } from "@/composables/useToast";
 import { criteriaFromEvent, criteriaFromSpace, describeConflict, venuePanelState } from "@/features/venues/bookingRequest";
 import { useVenueBookingStore } from "@/features/venues/venueBookingStore";
 import { useVenuesStore } from "@/features/venues/venueSearchStore";
+import { sortVenueResults, VENUE_SORT_OPTIONS } from "@/features/venues/venueSort";
 import { eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const router = useRouter();
 const venuesStore = useVenuesStore();
+const sortKey = ref("name");
+// Venues that fail a requirement stay in the list, greyed out after the matches,
+// each with the reasons it was excluded. The sort orders the matches only.
+const orderedResults = computed(() => [
+  ...sortVenueResults(venuesStore.includedResults, sortKey.value),
+  ...venuesStore.excludedResults,
+]);
 const bookingStore = useVenueBookingStore();
 const authStore = useAuthStore();
 
@@ -169,8 +179,9 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
       <p v-else class="text-sm font-bold">Loading event…</p>
     </BauhausCard>
 
+    <SectionHeading id="find-a-venue" as="h1" tone="red" class="mb-6">Find a venue</SectionHeading>
+
     <section class="mb-10 border-4 border-ink bg-muted p-5 shadow-hard" data-testid="venue-filters" aria-labelledby="find-a-venue">
-      <h1 id="find-a-venue" class="mb-6 text-3xl font-bold leading-tight sm:text-4xl">Find a venue</h1>
       <VenueCriteriaForm
         :criteria="venuesStore.criteria"
         :errors="venuesStore.fieldErrors"
@@ -190,41 +201,42 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
 
     <section v-if="venuesStore.hasSearched" aria-live="polite">
       <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <h2 class="text-2xl font-bold">
-          {{ venuesStore.includedCount }} matching {{ venuesStore.includedCount === 1 ? "venue" : "venues" }}
-          <span v-if="!venuesStore.hasPeriod" class="block text-xs font-bold text-ink/70">
+        <div>
+          <SectionHeading id="matching-venues" tone="blue">
+            {{ venuesStore.includedCount }} matching {{ venuesStore.includedCount === 1 ? "venue" : "venues" }}
+          </SectionHeading>
+          <p v-if="!venuesStore.hasPeriod" class="mt-3 text-xs font-bold text-ink/70">
             Add a date and time to check availability
-          </span>
-        </h2>
-        <BauhausButton
-          v-if="venuesStore.excludedCount > 0"
-          variant="outline"
-          @click="venuesStore.showExcluded = !venuesStore.showExcluded"
-        >
-          {{ venuesStore.showExcluded ? "Hide" : "Show" }} {{ venuesStore.excludedCount }} excluded
-        </BauhausButton>
+          </p>
+          <p v-if="venuesStore.excludedCount > 0" class="mt-3 text-xs font-bold text-ink/70">
+            Greyed-out venues don't meet every requirement. Each one lists what it is missing.
+          </p>
+        </div>
+        <BauhausSelect
+          v-if="venuesStore.includedCount > 1"
+          v-model="sortKey"
+          class="w-full sm:w-64"
+          label="Sort by"
+          aria-label="Sort venues by"
+          :options="VENUE_SORT_OPTIONS"
+          :show-placeholder="false"
+          compact
+        />
       </div>
 
       <p v-if="venuesStore.includedCount === 0" class="mb-8 text-sm font-medium">
-        No venue meets every requirement. Show the excluded venues to see what each one is missing.
+        No venue meets every requirement. The greyed-out venues below show what each one is missing.
       </p>
 
-      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <VenueResultCard v-for="result in venuesStore.includedResults" :key="result.venue.id" :result="result">
-          <template v-if="canRequest && searchMatchesEvent && result.availability === 'available'" #actions>
+      <div class="flex flex-col gap-6">
+        <VenueResultCard v-for="result in orderedResults" :key="result.venue.id" :result="result">
+          <template v-if="!result.excluded && canRequest && searchMatchesEvent && result.availability === 'available'" #actions>
             <BauhausButton variant="primary" :aria-label="`Request ${result.venue.name}`" @click="openRequest(result.venue)">
               Request this venue
             </BauhausButton>
           </template>
         </VenueResultCard>
       </div>
-
-      <template v-if="venuesStore.showExcluded && venuesStore.excludedResults.length">
-        <h2 class="mb-6 mt-12 text-2xl font-bold">Excluded venues</h2>
-        <div class="grid grid-cols-1 gap-6 opacity-90 lg:grid-cols-2">
-          <VenueResultCard v-for="result in venuesStore.excludedResults" :key="result.venue.id" :result="result" />
-        </div>
-      </template>
     </section>
 
     <RequestVenueModal

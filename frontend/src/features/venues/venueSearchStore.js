@@ -93,7 +93,6 @@ export const useVenuesStore = defineStore("venues", {
     results: [],
     includedCount: 0,
     excludedCount: 0,
-    showExcluded: false,
     hasSearched: false,
     isLoading: false,
     error: null,

@@ -22,6 +22,11 @@ const props = defineProps({
     type: String,
     default: "",
   },
+  // A larger legend and options, for a long form that people read rather than scan.
+  large: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(["update:modelValue"]);
@@ -43,13 +48,13 @@ function toggle(value, checked) {
     :aria-describedby="props.flag ? flagId : undefined"
     :data-flagged="props.flag ? 'true' : undefined"
   >
-    <legend class="mb-2 text-xs font-bold text-ink">{{ label }}<span v-if="required" aria-hidden="true"> *</span></legend>
+    <legend class="mb-2 font-bold text-ink" :class="large ? 'text-sm' : 'text-xs'">{{ label }}<span v-if="required" aria-hidden="true"> *</span></legend>
     <div class="flex flex-wrap gap-2">
       <label
         v-for="option in props.options"
         :key="option.value"
-        class="inline-flex cursor-pointer items-center gap-2 border-2 border-ink px-3 py-2 text-xs font-bold shadow-hard transition-colors"
-        :class="modelValue.includes(option.value) ? 'bg-bauhaus-yellow text-ink' : 'bg-canvas text-ink'"
+        class="inline-flex cursor-pointer items-center gap-2 border-2 border-ink px-3 py-2 font-bold shadow-hard transition-colors"
+        :class="[large ? 'text-sm' : 'text-xs', modelValue.includes(option.value) ? 'bg-bauhaus-yellow text-ink' : 'bg-canvas text-ink']"
       >
         <input
           :id="`${groupId}-${option.value}`"
