@@ -864,6 +864,8 @@ Approved design: `docs/superpowers/specs/2026-10-09-cr-103-104-safety-review-dec
 - **CAL-R7:** if the **original venue becomes available again** before a replacement is confirmed, the event may go back to its original booking, provided the venue is free for the **full occupied interval** and **Venue Staff confirm** the booking can be restored (QA3-9).
 - **CAL-R8:** organisers see **each venue on their event separately**, with its status, any unavailability affecting their plans, and the next action (QA3-53).
 
+**CR-111 build notes (organiser's venues and coordinator, `feature/cr-111-organiser-venues-coordinator`).** The organiser's event page lists each venue on the event from Planning onwards (Planning, Safety review, Confirmed, Preparation) through `organiser_venues`, a separate response shape that carries no flag, flag reason, replacement link, re-review reason or note (AC6). Each entry has the venue, location, the space's time window (the event's, when the space has none), the status and the next action in plain language; the primary venue is marked. Statuses shown: Awaiting venue approval (a hold), Approved, Being re-checked, Affected. Expired, rejected, released and cancelled bookings are not listed. The coordinator line reads "Unassigned" until assigned, then the name (AC1). AC5 (preparation stage) is not built: it needs CR-109's per-booking progress.
+
 **Acceptance criteria**
 - **Given** Hall A is blocked 1–3 Oct for maintenance, **when** a coordinator views October, **then** 1–3 Oct shows as blocked with the reason, and search excludes Hall A for those dates.
 - **Given** a confirmed event in Hall A on 2 Oct, **when** venue staff add that block, **then** they see a warning naming the event, the coordinator is notified, and the booking remains `approved` until someone acts on it.
@@ -1699,7 +1701,12 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 130. **[Assumption, SCRUM-85 AC1]** "The Venue Staff for that venue" is every venue staff account, except the coordinator if they also hold the role. Staff aren't allocated to venues (AUTH-R5, QA-44), as for story 115 (item 92).
 131. **[Team decision, SCRUM-85]** No reason is asked when cancelling a booking: no AC asks for one, and AC6 records only who and when. A confirmation dialog names the venue and, past Planning, says the event goes back to Planning.
 132. **[Team decision, SCRUM-85 AC1]** Cancelling an Affected original whose replacement is still pending leaves the replacement as the space's booking. Cancelling the replacement leaves the original flagged as it was. Either way only the booking the coordinator chose changes (AC7).
-## 10. Non-functional requirements
+133. **[Team decision, CR-111 AC7]** Only the owning organiser can read their event's venue list (anyone else gets 404). The story also named organisers of the same organisation, read-only, but the system has no organisation concept and §6.21.2 already leaves an organisation-wide view for later; the developer chose owner-only on 2026-11-03. Open question for the customer: should organisers in one organisation see each other's events, and how are organisations defined?
+134. **[Team decision, CR-111 AC2, AC3]** The organiser sees a venue that is still a hold, labelled "Awaiting venue approval" and "not confirmed yet", and sees an affected venue while the event is back in Planning. The coordinator's reason for the unavailability stays internal (CAL-R5); the organiser gets the next action only. Rejected and expired bookings are not shown, since a rejection carries venue staff's reasons.
+135. **[Assumption, CR-111 AC5]** The preparation stage is not shown until CR-109 records venue preparation progress; this story adds no placeholder field.
+
+  
+  ## 10. Non-functional requirements
 
 | ID | Requirement | How we meet and verify it | Source |
 |---|---|---|---|

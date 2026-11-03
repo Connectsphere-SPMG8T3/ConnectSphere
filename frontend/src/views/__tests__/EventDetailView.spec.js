@@ -453,6 +453,38 @@ describe("EventDetailView sidebar (D23, D24)", () => {
 
     expect(el.textContent).toContain("Coordinator: Unassigned");
   });
+
+  // CR-111 AC1: after a reassignment the page shows the new coordinator.
+  it("CR-111 shows the new coordinator's name after a reassignment", async () => {
+    const el = await mountDetail(eventResponse({ coordinator_id: "c2", coordinator: { id: "c2", full_name: "Priya Nair" } }));
+
+    expect(el.textContent).toContain("Coordinator: Priya Nair");
+  });
+
+  // CR-111 AC2 to AC4: each venue separately; an affected one is visible even though the event is back in Planning.
+  it("CR-111 lists each venue with its status and marks the affected one and the primary", async () => {
+    const venue = { starts_at: "2026-11-01T02:00:00Z", ends_at: "2026-11-01T07:00:00Z", location: "1 Bayfront Ave" };
+    const el = await mountDetail(eventResponse({
+      status: "planning",
+      organiser_venues: [
+        { ...venue, booking_id: "b1", venue_name: "Marina Hall", space_label: "Main hall", is_primary: true, status: "affected", status_label: "Affected", next_action: "This venue is no longer available. Your coordinator will contact you about the next step." },
+        { ...venue, booking_id: "b2", venue_name: "Harbour Foyer", space_label: "Foyer", is_primary: false, status: "awaiting_approval", status_label: "Awaiting venue approval", next_action: "Venue staff are reviewing this request. This venue is not confirmed yet." },
+      ],
+    }));
+
+    const rows = el.querySelectorAll("[data-testid='organiser-venue']");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].getAttribute("data-status")).toBe("affected");
+    expect(rows[0].textContent).toContain("Primary venue");
+    expect(rows[0].textContent).toContain("Your coordinator will contact you");
+    expect(rows[1].textContent).toContain("Awaiting venue approval");
+  });
+
+  it("CR-111 shows no venue list when the API sends none", async () => {
+    const el = await mountDetail(eventResponse({ status: "under_review" }));
+
+    expect(el.querySelector("[data-testid='organiser-venues']")).toBeNull();
+  });
 });
 
 describe("EventDetailView technical preparation (CR-110 AC4)", () => {
