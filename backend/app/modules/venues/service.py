@@ -42,6 +42,9 @@ from app.modules.venues.schemas import (
     BookingEventRequirements,
     BookingHistoryEntry,
     BookingImpactContext,
+    CalendarBooking,
+    CalendarEntry,
+    CalendarVenue,
     Editor,
     FlaggableBooking,
     HoldExpiry,
@@ -51,6 +54,7 @@ from app.modules.venues.schemas import (
     VenueBookingDetail,
     VenueBookingReject,
     VenueBlock,
+    VenueCalendar,
     VenueBlockChange,
     VenueBlockChangeResponse,
     VenueBlockCreate,
@@ -716,6 +720,57 @@ def venue_staff_dashboard(now: datetime | None = None) -> VenueStaffDashboard:
             key=lambda b: (b.period.starts_at, b.id),
         ),
         blocks=repository.list_all_upcoming_blocks(now),
+    )
+
+
+# How a booking reads on the calendar (SCRUM-57 AC2). An Affected flag outranks
+# the status: the booking still occupies the venue (AC8) but must not read as
+# settled. Re-review is its own type, as on the profile (VC-R6).
+_CALENDAR_BOOKING_TYPES = {"approved": "confirmed", "held": "tentative", "re_review": "re_review"}
+
+
+def _calendar_booking(booking: CalendarBooking, event_name: str | None) -> CalendarEntry:
+    return CalendarEntry(
+        **booking.model_dump(),
+        kind="booking",
+        type="affected" if booking.flag == "affected" else _CALENDAR_BOOKING_TYPES[booking.status],
+        event_name=event_name,
+    )
+
+
+def _calendar_block(block: VenueBlock) -> CalendarEntry:
+    # A block has no setup or turnaround: it occupies exactly its period (AC5).
+    return CalendarEntry(id=block.id, kind="block", type="blocked", period=block.period,
+                         occupied_period=block.period, reason=block.reason, notes=block.notes,
+                         created_by=block.created_by, created_at=block.created_at)
+
+
+def venue_calendar(venue_id: str, period: Period, now: datetime | None = None) -> VenueCalendar:
+    """What occupies one venue during `period`, typed for its calendar (SCRUM-57).
+
+    Only what is current or upcoming is shown (AC3), so the period is asked
+    about from `now` on: a view reaching into the past shows nothing that has
+    ended. A hold past its expiry no longer occupies the venue, even before the
+    minute job marks it expired (AC6). Every venue is offered to switch to,
+    since venue staff are one pool (AUTH-R5, QA-44).
+    """
+    venue = repository.get_venue(venue_id)
+    if venue is None:
+        raise VenueNotFoundError()
+    now = now or datetime.now(timezone.utc)
+    entries: list[CalendarEntry] = []
+    if period.ends_at > now:
+        bookings, blocks = repository.list_calendar_occupants(
+            venue_id, Period(starts_at=max(period.starts_at, now), ends_at=period.ends_at))
+        bookings = [b for b in bookings if not (b.status == "held" and b.expires_at and b.expires_at <= now)]
+        names = events_service.names_by_id(b.event_id for b in bookings) if bookings else {}
+        entries = [_calendar_booking(b, names.get(b.event_id)) for b in bookings]
+        entries += [_calendar_block(b) for b in blocks]
+    return VenueCalendar(
+        venue=CalendarVenue(id=venue.id, name=venue.name, is_active=venue.is_active),
+        period=Period(starts_at=period.starts_at, ends_at=period.ends_at),
+        entries=sorted(entries, key=lambda e: (e.occupied_period.starts_at, e.id)),
+        venues=[CalendarVenue(id=v.id, name=v.name, is_active=v.is_active) for v in repository.list_venues()],
     )
 
 

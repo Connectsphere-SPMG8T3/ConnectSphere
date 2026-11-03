@@ -16,6 +16,7 @@ from app.db.supabase import get_supabase_admin_client
 from app.modules.venues.schemas import (
     BlockAffectedBooking,
     BookingSummary,
+    CalendarBooking,
     Editor,
     Occupant,
     Period,
@@ -430,6 +431,55 @@ def list_upcoming_blocks(venue_id: str, since: datetime) -> list[VenueBlock]:
     # `since`, which keeps in-progress ones) is decided on the parsed range.
     blocks = [VenueBlock(**_block_fields(row)) for row in response.data or [] if not row.get("removed_at")]
     return sorted((b for b in blocks if b.period.ends_at > since), key=lambda b: b.period.starts_at)
+
+
+def list_calendar_occupants(venue_id: str, period: Period) -> tuple[list[CalendarBooking], list[VenueBlock]]:
+    """What occupies one venue during `period`, for its calendar (SCRUM-57 AC3).
+
+    Bookings come from `public.venue_conflicts`, the single conflict check
+    (SCRUM-21), so the calendar shows exactly what refuses a new request:
+    approved, re-review and unexpired held bookings, Affected or not. That
+    check returns no block ids, so blocks are read by the same overlap on
+    `blocked_period`, skipping removed ones as it does (SCRUM-54). A shortened
+    block's `blocked_period` is already only what remains of it.
+    """
+    client = get_supabase_admin_client()
+    literal = _range_literal(period)
+    conflicts = client.rpc("venue_conflicts", {"p_period": literal, "p_venue_id": venue_id}).execute()
+    booking_ids = [row["booking_id"] for row in conflicts.data or [] if row["kind"] == "booking"]
+    bookings = []
+    if booking_ids:
+        response = (
+            client.table("venue_bookings")
+            .select("id, event_id, status, booked_period, occupied_period, setup_minutes, turnaround_minutes, "
+                    "expires_at, flag, flag_reason")
+            .in_("id", booking_ids)
+            .execute()
+        )
+        bookings = [
+            CalendarBooking(
+                id=row["id"],
+                event_id=row["event_id"],
+                status=row["status"],
+                period=_parse_range(row["booked_period"]),
+                occupied_period=_parse_range(row["occupied_period"]),
+                setup_minutes=row.get("setup_minutes") or 0,
+                turnaround_minutes=row.get("turnaround_minutes") or 0,
+                expires_at=datetime.fromisoformat(row["expires_at"]) if row.get("expires_at") else None,
+                flag=row.get("flag"),
+                flag_reason=row.get("flag_reason"),
+            )
+            for row in response.data or []
+        ]
+    response = (
+        client.table("venue_blocks")
+        .select(_BLOCK_COLUMNS)
+        .eq("venue_id", venue_id)
+        .overlaps("blocked_period", literal)
+        .execute()
+    )
+    blocks = [VenueBlock(**_block_fields(row)) for row in response.data or [] if not row.get("removed_at")]
+    return bookings, blocks
 
 
 def get_block(block_id: str) -> VenueBlock | None:
