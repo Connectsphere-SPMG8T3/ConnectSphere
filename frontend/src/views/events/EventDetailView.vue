@@ -137,7 +137,14 @@ onMounted(async () => {
         </div>
       </BauhausCard>
 
-      <p v-if="['planning', 'safety_review', 'confirmed'].includes(event.status) && event.latest_safety_decision?.reason_label" class="mb-8 font-medium">{{ event.latest_safety_decision.reason_label }}</p>
+      <template v-if="['planning', 'safety_review', 'confirmed'].includes(event.status) && event.latest_safety_decision?.reason_label">
+        <p class="font-medium" :class="event.latest_safety_decision.organiser_comment ? 'mb-3' : 'mb-8'">{{ event.latest_safety_decision.reason_label }}</p>
+        <!-- CR-108 AC5: the officer's comment for the organiser; their private notes never reach this page. -->
+        <div v-if="event.latest_safety_decision.organiser_comment" class="mb-8 border-l-4 border-ink pl-3">
+          <p class="text-sm font-bold">Comment from the Safety Officer</p>
+          <p class="mt-1 whitespace-pre-wrap font-medium">{{ event.latest_safety_decision.organiser_comment }}</p>
+        </div>
+      </template>
       <p v-if="event.status === 'safety_review'" class="mb-8 font-medium">Your event is with the Safety Officer for its operational safety check.</p>
       <BauhausCard v-if="['confirmed', 'preparation'].includes(event.status)" background="white" accent="none" class="mb-8">
         <h2 class="text-2xl font-bold">Arrangements</h2>

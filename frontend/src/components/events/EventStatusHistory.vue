@@ -102,6 +102,8 @@ function heading(entry) {
       </p>
       <ChangeRequestChanges v-if="['change_requested', 'change_approved'].includes(entry.kind) && entry.changes" :rows="describeChanges(entry.changes)" class="mt-2" />
       <p v-if="entry.reason" class="mt-1 whitespace-pre-wrap text-sm font-medium">{{ entry.reason }}</p>
+      <!-- CR-108: sent only to the assigned coordinator and Safety Officers. -->
+      <p v-if="entry.kind === 'safety_decision' && entry.private_note" class="mt-1 whitespace-pre-wrap text-sm font-medium">Private notes: {{ entry.private_note }}</p>
     </li>
   </ol>
 </template>

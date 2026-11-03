@@ -166,3 +166,28 @@ def test_recent_decision_repository_includes_arrangement_ids(monkeypatch):
     assert row["rejected_venue_ids"] == [V1]
     for field in ("affected_booking_ids", "affected_equipment_request_ids", "rejected_venue_ids"):
         assert field in query.select.call_args.args[0]
+
+
+def test_checklist_rows_are_named_by_venue_and_looked_up_once(client, auth_headers, authenticate_as, decisions):
+    # CR-108 AC2: the venue factors are answered per booking, so each row names its venue.
+    rows = [dict(factor="layout", booking_id=B1, rating="concern", note="Aisle too narrow"),
+            dict(factor="equipment_placement", booking_id=None, rating="satisfactory", note=None)]
+    decisions["rows"] = [dict(ROW, id=str(uuid4()), checklist=rows) for _ in range(3)]
+    decisions["booking_names"] = {B1: "Heritage Hall"}
+    authenticate_as("safety_officer")
+    response = client.get(URL, headers=auth_headers)
+    assert response.status_code == 200
+    for body in response.json():
+        assert body["checklist"] == [
+            dict(factor="layout", booking_id=B1, venue_name="Heritage Hall", rating="concern", note="Aisle too narrow"),
+            dict(factor="equipment_placement", booking_id=None, venue_name=None, rating="satisfactory", note=None)]
+    assert decisions["calls"]["booking_venue_names"] == 1
+
+
+def test_dashboard_history_carries_both_texts_for_officers(client, auth_headers, authenticate_as, decisions, monkeypatch):
+    row = dict(ROW, event_id=EVENT_ID, event_name="Partner Summit", organiser_comment="Fix the exits")
+    monkeypatch.setattr(repository, "list_recent_safety_decisions", lambda _: [row])
+    authenticate_as("safety_officer")
+    [body] = client.get("/api/v1/events/safety-history", headers=auth_headers).json()["items"]
+    assert body["organiser_comment"] == "Fix the exits"
+    assert body["private_note"] == ROW["comment"]

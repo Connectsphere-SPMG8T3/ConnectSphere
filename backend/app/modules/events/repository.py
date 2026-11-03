@@ -796,19 +796,25 @@ def send_to_safety_review(
     return _first_row(response)
 
 
-def safety_approve(event_id: str, actor_id: str, expected_version: int, *, comment: str | None,
+def safety_approve(event_id: str, actor_id: str, expected_version: int, *, checklist: list[dict],
+                   organiser_comment: str | None, private_note: str | None,
                    organiser_message: str, staff_message: str) -> dict | None:
+    """CR-108: `checklist` is the six-factor answers; `private_note` is stored in the decision's
+    `comment` column and is never shown to the organiser."""
     return _first_row(get_supabase_admin_client().rpc("safety_approve_event", {
         "p_event_id": event_id, "p_actor_id": actor_id, "p_expected_version": expected_version,
-        "p_comment": comment, "p_organiser_message": organiser_message, "p_staff_message": staff_message,
+        "p_checklist": checklist, "p_organiser_comment": organiser_comment, "p_private_note": private_note,
+        "p_organiser_message": organiser_message, "p_staff_message": staff_message,
     }).execute())
 
 
-def safety_return(event_id: str, actor_id: str, expected_version: int, *, decision: str, comment: str,
-                  booking_ids: list[str], equipment_request_ids: list[str], coordinator_message: str) -> dict | None:
+def safety_return(event_id: str, actor_id: str, expected_version: int, *, decision: str, checklist: list[dict],
+                  organiser_comment: str, private_note: str | None, booking_ids: list[str],
+                  equipment_request_ids: list[str], coordinator_message: str) -> dict | None:
     return _first_row(get_supabase_admin_client().rpc("safety_return_event", {
         "p_event_id": event_id, "p_actor_id": actor_id, "p_expected_version": expected_version,
-        "p_decision": decision, "p_comment": comment, "p_booking_ids": booking_ids,
+        "p_decision": decision, "p_checklist": checklist, "p_organiser_comment": organiser_comment,
+        "p_private_note": private_note, "p_booking_ids": booking_ids,
         "p_equipment_request_ids": equipment_request_ids, "p_coordinator_message": coordinator_message,
     }).execute())
 
@@ -834,22 +840,25 @@ def set_primary_space(event_id: str, space_id: str | None, actor_id: str) -> str
 
 def list_safety_decisions(event_id: str) -> list[dict]:
     response = (get_supabase_admin_client().table("event_safety_decisions")
-                .select("*, decider:profiles!event_safety_decisions_decided_by_fkey(full_name)")
+                .select("*, decider:profiles!event_safety_decisions_decided_by_fkey(full_name), "
+                        "items:event_safety_checklist_items(factor, booking_id, rating, note)")
                 .eq("event_id", event_id).order("decided_at", desc=True).execute())
-    return [{**{k: v for k, v in row.items() if k != "decider"},
-             "decided_by_name": (row.get("decider") or {}).get("full_name")}
+    return [{**{k: v for k, v in row.items() if k not in ("decider", "items")},
+             "decided_by_name": (row.get("decider") or {}).get("full_name"),
+             "checklist": row.get("items") or []}
             for row in response.data or []]
 
 
 def list_recent_safety_decisions(since: datetime) -> list[dict]:
     """Every decision since `since`, any event, with its event and decider names (CR-103 AC7)."""
     response = (get_supabase_admin_client().table("event_safety_decisions")
-                .select("id, event_id, decision, comment, decided_at, affected_booking_ids, "
+                .select("id, event_id, decision, comment, organiser_comment, decided_at, affected_booking_ids, "
                         "affected_equipment_request_ids, rejected_venue_ids, event:events(name), "
                         "decider:profiles!event_safety_decisions_decided_by_fkey(full_name)")
                 .gte("decided_at", since.isoformat()).order("decided_at", desc=True).execute())
     return [dict(id=row["id"], event_id=row["event_id"], event_name=(row.get("event") or {}).get("name", ""),
-                 decision=row["decision"], comment=row.get("comment"), decided_at=row["decided_at"],
+                 decision=row["decision"], comment=row.get("comment"),
+                 organiser_comment=row.get("organiser_comment"), decided_at=row["decided_at"],
                  decided_by_name=(row.get("decider") or {}).get("full_name"),
                  affected_booking_ids=row.get("affected_booking_ids", []),
                  affected_equipment_request_ids=row.get("affected_equipment_request_ids", []),

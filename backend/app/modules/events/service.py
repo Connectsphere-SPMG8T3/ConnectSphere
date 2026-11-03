@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from httpx import HTTPError
@@ -14,12 +15,13 @@ from app.core.exceptions import (
     EventNotInLeadScopeError,
     EventServiceUnavailableError,
     NotAssignedCoordinatorError,
+    SafetyChecklistError,
     UnknownEventArrangementError,
 )
 # Module imports, not names: `venues.service` imports this module too, and a
 # module reference resolves at call time, so the cycle is harmless.
 from app.modules.equipment import service as equipment_service
-from app.modules.events import change_fields, change_impact, lead_scope, lifecycle, repository
+from app.modules.events import change_fields, change_impact, lead_scope, lifecycle, repository, safety_checklist
 from app.modules.events.readiness import safety_readiness, spaces_ready
 from app.modules.venues import service as venues_service
 from app.modules.registrations import service as registrations_service
@@ -1035,8 +1037,11 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
             if role == "event_coordinator":
                 response.latest_safety_decision = _named_decisions(decisions[:1])[0]
             else:
+                # AC5: only the outcome and the organiser comment. The private note and the
+                # checklist are never copied across.
                 response.latest_safety_decision = SafetyDecisionSummary(
-                    decision=latest.decision, reason_label=_SAFETY_LABELS[latest.decision], decided_at=latest.decided_at,
+                    decision=latest.decision, reason_label=_SAFETY_LABELS[latest.decision],
+                    organiser_comment=latest.organiser_comment, decided_at=latest.decided_at,
                 )
     return response
 
@@ -1075,12 +1080,13 @@ def history(event_id: str, user_id: str, role: str) -> EventHistoryResponse:
     entries = [EventHistoryEntry(**row) for row in repository.list_status_history(event_id)]
     entries += [EventHistoryEntry(kind="reassignment", **row) for row in repository.list_assignment_history(event_id)]
     entries += [EventHistoryEntry(kind="edit", **row) for row in repository.list_edit_history(event_id)]
-    # SF-R2, D76: the comment may hold the officer's private notes, so the organiser
-    # sees only the outcome, who and when.
+    # SF-R2, CR-108 AC5: everyone sees the outcome, who, when and the organiser comment; the
+    # private note (the `comment` column) is for the coordinator and the Safety Officers only.
     entries += [
         EventHistoryEntry(
             kind="safety_decision", id=row["id"], decision=row["decision"], at=row["decided_at"],
-            reason=row.get("comment") if role == "event_coordinator" else None,
+            reason=row.get("organiser_comment"),
+            private_note=row.get("comment") if role in _SAFETY_NOTE_ROLES else None,
             actor=({"id": row["decided_by"], "full_name": row["decided_by_name"]}
                    if row.get("decided_by") and row.get("decided_by_name") else None),
         )
@@ -1510,6 +1516,8 @@ def return_to_planning(event_id: str, *, reason_code: ReturnReason, message: str
     return _to_response(updated) if updated else None
 
 
+_SAFETY_NOTE_ROLES = ("event_coordinator", "safety_officer")
+
 _SAFETY_LABELS = {
     "approved": "Approved by the Safety Officer.",
     "changes_requested": "The Safety Officer asked for changes to the arrangements.",
@@ -1531,15 +1539,26 @@ def _check_approval_readiness(row: dict) -> None:
         raise EventConflictError("Not ready for approval: " + " ".join(readiness.missing))
 
 
+def _checked_checklist(event_id: str, body, outcome: str) -> list[dict]:
+    """CR-108 AC3: every factor marked, for every active venue booking, before a decision is recorded.
+    The same rules run again inside the RPC; this gives the officer a readable 422 first."""
+    bookings = {UUID(str(item["booking_id"])) for item in venues_service.event_bookings_with_venues(event_id)}
+    problems = safety_checklist.checklist_problems(body.checklist, bookings, outcome)
+    if problems:
+        raise SafetyChecklistError(problems)
+    return [answer.model_dump(mode="json") for answer in body.checklist]
+
+
 @_safety_service_available
-def safety_approve(event_id: str, officer_id: str, body: SafetyApproveRequest | None = None) -> EventResponse:
+def safety_approve(event_id: str, officer_id: str, body: SafetyApproveRequest) -> EventResponse:
     row = _officer_event(event_id)
     lifecycle.target("safety_approve", row["status"])
     _check_approval_readiness(row)
+    checklist = _checked_checklist(event_id, body, "approved")
     message = f'"{row["name"]}": {_SAFETY_LABELS["approved"]}'
     updated = repository.safety_approve(
-        event_id, officer_id, row["version"], comment=body.comment if body else None,
-        organiser_message=message, staff_message=message,
+        event_id, officer_id, row["version"], checklist=checklist, organiser_comment=body.organiser_comment,
+        private_note=body.private_note, organiser_message=message, staff_message=message,
     )
     if not updated:
         _check_approval_readiness(repository.get_event(event_id) or row)
@@ -1550,7 +1569,7 @@ def safety_approve(event_id: str, officer_id: str, body: SafetyApproveRequest | 
 SAFETY_REJECT_REFUSED_MESSAGE = "This venue booking can't be rejected: it must be approved and not already flagged, or the event changed. Reload and try again."
 
 
-def _safety_return(event_id: str, officer_id: str, body, action: str, decision: str, comment: str) -> EventResponse:
+def _safety_return(event_id: str, officer_id: str, body, action: str, decision: str) -> EventResponse:
     row = _officer_event(event_id)
     lifecycle.target(action, row["status"])
     booking_ids = [str(body.booking_id)] if decision == "arrangement_rejected" else [str(id) for id in body.booking_ids]
@@ -1558,8 +1577,10 @@ def _safety_return(event_id: str, officer_id: str, body, action: str, decision: 
     if (set(booking_ids) - venues_service.event_booking_ids(event_id)
             or set(equipment_ids) - equipment_service.event_request_ids(event_id)):
         raise UnknownEventArrangementError()
+    checklist = _checked_checklist(event_id, body, decision)
     updated = repository.safety_return(
-        event_id, officer_id, row["version"], decision=decision, comment=comment,
+        event_id, officer_id, row["version"], decision=decision, checklist=checklist,
+        organiser_comment=body.organiser_comment, private_note=body.private_note,
         booking_ids=booking_ids, equipment_request_ids=equipment_ids,
         coordinator_message=f'"{row["name"]}": {_SAFETY_LABELS[decision]}',
     )
@@ -1570,12 +1591,12 @@ def _safety_return(event_id: str, officer_id: str, body, action: str, decision: 
 
 @_safety_service_available
 def safety_request_changes(event_id: str, officer_id: str, body: SafetyChangesRequest) -> EventResponse:
-    return _safety_return(event_id, officer_id, body, "safety_request_changes", "changes_requested", body.comment)
+    return _safety_return(event_id, officer_id, body, "safety_request_changes", "changes_requested")
 
 
 @_safety_service_available
 def safety_reject(event_id: str, officer_id: str, body: SafetyRejectRequest) -> EventResponse:
-    return _safety_return(event_id, officer_id, body, "safety_reject", "arrangement_rejected", body.reason)
+    return _safety_return(event_id, officer_id, body, "safety_reject", "arrangement_rejected")
 
 
 @_safety_service_available
@@ -1635,7 +1656,8 @@ def safety_review(event_id: str) -> SafetyReviewResponse:
 
 def _named_decisions(rows: list[dict]) -> list[SafetyDecision]:
     """D53/D54: batch names and attach the first response after each rejection."""
-    booking_ids = sorted({str(id) for row in rows for id in row.get("affected_booking_ids", [])})
+    booking_ids = sorted({str(id) for row in rows for id in row.get("affected_booking_ids", [])}
+                         | {str(item["booking_id"]) for row in rows for item in row.get("checklist", []) if item["booking_id"]})
     venue_ids = sorted({str(id) for row in rows for id in row.get("rejected_venue_ids", [])})
     line_ids = sorted({str(id) for row in rows for id in row.get("affected_equipment_request_ids", [])})
     bookings = venues_service.booking_venue_names(booking_ids)
@@ -1646,6 +1668,9 @@ def _named_decisions(rows: list[dict]) -> list[SafetyDecision]:
     for row in rows:
         data = {
             **row,
+            "private_note": row.get("comment"),
+            "checklist": [{**item, "venue_name": bookings.get(str(item["booking_id"])) if item["booking_id"] else None}
+                          for item in row.get("checklist", [])],
             "affected_bookings": [{"booking_id": id, "venue_name": bookings.get(str(id))}
                                   for id in row.get("affected_booking_ids", [])],
             "affected_equipment": [{"id": id, "equipment_name": lines.get(str(id))}

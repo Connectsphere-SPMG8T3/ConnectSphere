@@ -328,13 +328,62 @@ class ReturnReason(str, Enum):
     approved_details_changed = "approved_details_changed"
 
 
-class SafetyApproveRequest(BaseModel):
-    comment: str | None = Field(default=None, min_length=1, max_length=1000)
+class SafetyFactor(str, Enum):
+    """The six checklist factors of the safety review (CR-108 AC1, QA3-17)."""
+    attendance_capacity = "attendance_capacity"
+    layout = "layout"
+    emergency_access = "emergency_access"
+    accessibility = "accessibility"
+    equipment_placement = "equipment_placement"
+    venue_restrictions = "venue_restrictions"
 
-    @field_validator("comment", mode="before")
+
+class SafetyRating(str, Enum):
+    satisfactory = "satisfactory"
+    concern = "concern"
+    not_applicable = "not_applicable"
+
+
+class SafetyChecklistAnswer(BaseModel):
+    """One factor's mark. Venue factors carry the booking they concern; equipment placement has none."""
+    factor: SafetyFactor
+    booking_id: UUID | None = None
+    rating: SafetyRating
+    note: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("note", mode="before")
     @classmethod
-    def strip_comment(cls, value):
+    def strip_note(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+
+class SafetyDecisionText(BaseModel):
+    """What every decision carries besides its outcome (CR-108 AC1, AC4).
+
+    `organiser_comment` is shown to the organiser; `private_note` is for the assigned coordinator and
+    Safety Officers only and must never reach the organiser, a notification or the organiser's history.
+    """
+    checklist: list[SafetyChecklistAnswer] = []
+    organiser_comment: str | None = Field(default=None, min_length=1, max_length=1000)
+    private_note: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("organiser_comment", mode="before")
+    @classmethod
+    def strip_organiser_comment(cls, value):
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("private_note", mode="before")
+    @classmethod
+    def strip_private_note(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+
+class SafetyApproveRequest(SafetyDecisionText):
+    pass
 
 
 class SafetyArrangementIds(BaseModel):
@@ -347,23 +396,13 @@ class SafetyArrangementIds(BaseModel):
         return list(dict.fromkeys(value))
 
 
-class SafetyChangesRequest(SafetyArrangementIds):
-    comment: str = Field(min_length=1, max_length=1000)
-
-    @field_validator("comment", mode="before")
-    @classmethod
-    def strip_comment(cls, value):
-        return value.strip() if isinstance(value, str) else value
+class SafetyChangesRequest(SafetyDecisionText, SafetyArrangementIds):
+    organiser_comment: str = Field(min_length=1, max_length=1000)
 
 
-class SafetyRejectRequest(BaseModel):
+class SafetyRejectRequest(SafetyDecisionText):
     booking_id: UUID
-    reason: str = Field(min_length=1, max_length=1000)
-
-    @field_validator("reason", mode="before")
-    @classmethod
-    def strip_reason(cls, value):
-        return value.strip() if isinstance(value, str) else value
+    organiser_comment: str = Field(min_length=1, max_length=1000)
 
 
 class NamedBooking(BaseModel):
@@ -387,10 +426,25 @@ class SafetyRevision(BaseModel):
     at: datetime
 
 
+class SafetyChecklistItem(BaseModel):
+    """One recorded checklist mark, named by venue. Staff only: the organiser never receives these."""
+    factor: SafetyFactor
+    booking_id: UUID | None = None
+    venue_name: str | None = None
+    rating: SafetyRating
+    note: str | None = None
+
+
 class SafetyDecision(BaseModel):
+    """A decision as the assigned coordinator and the Safety Officers see it (CR-108).
+
+    `private_note` is the decision row's `comment` column. The organiser is given
+    `SafetyDecisionSummary` instead, never this model."""
     id: UUID
     decision: SafetyDecisionKind
-    comment: str | None = None
+    organiser_comment: str | None = None
+    private_note: str | None = None
+    checklist: list[SafetyChecklistItem] = []
     reason_code: ReturnReason | None = None
     affected_booking_ids: list[UUID] = []
     affected_equipment_request_ids: list[UUID] = []
@@ -404,8 +458,10 @@ class SafetyDecision(BaseModel):
 
 
 class SafetyDecisionSummary(BaseModel):
+    """What the organiser sees: the outcome and the officer's comment for them (CR-108 AC5)."""
     decision: SafetyDecisionKind
     reason_label: str
+    organiser_comment: str | None = None
     decided_at: datetime
 
 class EventSpaceVenueBooking(EventVenueBooking):
@@ -632,8 +688,10 @@ class EventHistoryEntry(BaseModel):
     field: str | None = None
     old_value: Any = None
     new_value: Any = None
-    # A safety decision (`safety_decision`) names its outcome.
+    # A safety decision (`safety_decision`) names its outcome; its `reason` is the organiser
+    # comment and `private_note` the officer's private note, which only staff are given (CR-108).
     decision: str | None = None
+    private_note: str | None = None
     # A venue booking's step (`booking`) names what happened and at which venue.
     action: str | None = None
     venue_name: str | None = None
@@ -657,6 +715,8 @@ class EventHistoryEntry(BaseModel):
             data.pop("new_value", None)
         if self.kind != "safety_decision":
             data.pop("decision", None)
+        if data.get("private_note") is None:
+            data.pop("private_note", None)
         if self.kind not in ("booking", "technical"):
             data.pop("action", None)
         if self.kind not in ("booking", "venue_edit"):
@@ -910,7 +970,8 @@ class SafetyHistoryItem(BaseModel):
     event_id: str
     event_name: str
     decision: SafetyDecisionKind
-    comment: str | None = None
+    organiser_comment: str | None = None
+    private_note: str | None = None
     decided_by_name: str | None = None
     decided_at: datetime
 
