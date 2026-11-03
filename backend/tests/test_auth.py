@@ -362,6 +362,38 @@ class TestMe:
 
         assert response.status_code == 503
 
+    @pytest.mark.parametrize(
+        ("overrides", "expected"),
+        [
+            # SCRUM-50 AC3: internal staff carry a department, and no organisation.
+            (
+                {"department": "Event Planning", "organisation_name": None, "phone_number": "+6590000002"},
+                {"department": "Event Planning", "organisation_name": None, "phone_number": "+6590000002"},
+            ),
+            # SCRUM-50 AC3: an Event Organiser carries an organisation, and no department.
+            (
+                {"department": None, "organisation_name": "Tan & Partners Events", "phone_number": None},
+                {"department": None, "organisation_name": "Tan & Partners Events", "phone_number": None},
+            ),
+        ],
+    )
+    def test_me_returns_name_phone_department_and_organisation(self, client, monkeypatch, overrides, expected):
+        """SCRUM-50 AC2/AC3: the profile page shows what the API returns, so /auth/me must carry each field."""
+        row = {**PROFILE_ROW, **overrides}
+        anon_client = _make_anon_client_with_claims(_valid_claims())
+        admin_client = _make_table_mock(row)
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
+        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
+
+        response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["full_name"] == PROFILE_ROW["full_name"]
+        for field, value in expected.items():
+            assert body[field] == value
+
     def test_me_returns_roles_held_by_the_account(self, client, monkeypatch):
         """SCRUM-74: the dropdown needs exactly the roles in user_roles, not a hardcoded set."""
         _authenticate_requests_as_test_user(
