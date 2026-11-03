@@ -42,6 +42,7 @@ const showTechSupportViews = computed(() => authStore.role === "tech_support");
 
 const isDashboardActive = computed(() => route.path === authStore.dashboardPath);
 const isVenueStaffRequestsActive = computed(() => route.name === "dashboard-venue-staff-requests");
+const isVenueCalendarActive = computed(() => route.name === "venue-calendar");
 const isEventOverviewActive = computed(
   () =>
     route.name === eventViewsDashboard.value &&
@@ -339,6 +340,29 @@ async function handleLogout() {
           <path d="M8 9h8M8 13h5" />
         </svg>
         <span :class="labelClass">Booking requests</span>
+      </RouterLink>
+
+      <RouterLink
+        v-if="showVenueStaffRequests"
+        :to="{ name: 'venue-calendar' }"
+        :class="navLinkClass(isVenueCalendarActive)"
+        title="Venue calendar"
+        aria-label="Venue calendar"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="h-5 w-5 shrink-0"
+          aria-hidden="true"
+        >
+          <path d="M4 6h16v14H4z" />
+          <path d="M4 10h16M8 3v5M16 3v5" />
+        </svg>
+        <span :class="labelClass">Venue calendar</span>
       </RouterLink>
 
       <RouterLink

@@ -17,6 +17,8 @@ from app.modules.venues.schemas import (
     VenueBlockChange,
     VenueBlockChangeResponse,
     VenueBlockCreate,
+    VenueCalendar,
+    VenueCalendarRange,
     VenueBlockResponse,
     VenueDeactivateRequest,
     VenueDeactivateResponse,
@@ -149,6 +151,16 @@ def change_block(venue_id: UUID, block_id: UUID, body: VenueBlockChange,
     `409` means the block has ended, was removed, or has (or hasn't) started;
     `422` names the problem with the new end or the note."""
     return service.change_block(str(venue_id), str(block_id), current_user.id, body)
+
+
+@router.get("/{venue_id}/calendar", response_model=VenueCalendar, status_code=status.HTTP_200_OK)
+def read_venue_calendar(
+    venue_id: UUID, period: Annotated[VenueCalendarRange, Query()], current_user: VenueStaffOnly
+) -> VenueCalendar:
+    """SCRUM-57: what occupies a venue during `starts_at`–`ends_at` (offsets
+    required, at most 42 days), typed for its calendar, plus every venue to
+    switch to. Venue Staff only (AC11); 404 for an unknown venue."""
+    return service.venue_calendar(str(venue_id), period)
 
 
 @router.post("/{venue_id}/reactivate", response_model=VenueDetail, status_code=status.HTTP_200_OK)

@@ -103,6 +103,11 @@ export const venuesApi = {
   createBlock(venueId, payload, token) {
     return request(`/venues/${encodeURIComponent(venueId)}/blocks`, { method: "POST", body: payload, token });
   },
+  // SCRUM-57: what occupies one venue over a period, for its calendar.
+  calendar(venueId, { startsAt, endsAt }, token) {
+    const query = toQueryString({ starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString() });
+    return request(`/venues/${encodeURIComponent(venueId)}/calendar${query}`, { token });
+  },
   changeBlock(venueId, blockId, payload, token) {
     return request(`/venues/${encodeURIComponent(venueId)}/blocks/${encodeURIComponent(blockId)}/change`, {
       method: "POST",
