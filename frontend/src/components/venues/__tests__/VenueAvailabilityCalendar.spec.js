@@ -111,7 +111,8 @@ describe("VenueAvailabilityCalendar (SCRUM-57)", () => {
 
   it("shows a hold's expiry and stops drawing it once it has expired (AC6)", async () => {
     const { el, props } = await mountCalendar();
-    expect(entry(el, "tentative").textContent).toContain("Tentative · expires Tue 11 Mar 2031, 18:00");
+    expect(entry(el, "tentative").textContent).toContain("Expires Tue 11 Mar 2031, 18:00");
+    expect(entry(el, "tentative").getAttribute("aria-label")).toContain("Tentative · expires Tue 11 Mar 2031, 18:00");
 
     props.now = new Date("2031-03-11T10:00:00Z");
     await nextTick();
@@ -254,5 +255,18 @@ describe("VenueAvailabilityCalendar (SCRUM-57)", () => {
 
     const failed = await mountCalendar({ calendar: null, error: "Venue not found." });
     expect(failed.el.querySelector('[role="alert"]').textContent).toContain("Venue not found.");
+  });
+});
+
+describe("VenueAvailabilityCalendar band labels", () => {
+  it("labels a buffer long enough to read and leaves a short one to its hatch and title", async () => {
+    const short = { ...CONFIRMED, setup_minutes: 15, turnaround_minutes: 45,
+      occupied_period: { starts_at: "2031-03-11T01:45:00Z", ends_at: "2031-03-11T04:45:00Z" } };
+    const { el } = await mountCalendar({ calendar: payload([short]) });
+
+    const setup = entry(el, "confirmed").querySelector('[data-band="setup"]');
+    expect(setup.textContent.trim()).toBe("");
+    expect(setup.getAttribute("title")).toBe("Setup 09:45–10:00");
+    expect(entry(el, "confirmed").querySelector('[data-band="turnaround"]').textContent).toContain("Turnaround");
   });
 });

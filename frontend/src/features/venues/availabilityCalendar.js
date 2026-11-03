@@ -316,9 +316,19 @@ export function bandLayout(entry, dayKey) {
     .map((band) => {
       const start = Math.max(toInstant(band.startsAt).getTime(), boxStart);
       const end = Math.min(toInstant(band.endsAt).getTime(), boxEnd);
-      return { ...band, top: ((start - boxStart) / span) * 100, height: ((end - start) / span) * 100 };
+      return {
+        ...band,
+        top: ((start - boxStart) / span) * 100,
+        height: ((end - start) / span) * 100,
+        minutes: (end - start) / 60_000,
+      };
     })
     .filter((band) => band.height > 0);
+}
+
+/** A tentative hold's expiry, as the grid shows it under the type (AC6); null otherwise. */
+export function holdExpiry(entry) {
+  return entry.kind === "tentative" && entry.expires_at ? `Expires ${formatInstant(entry.expires_at)}` : null;
 }
 
 /** The type an entry shows on the grid, with a tentative hold's expiry (AC2, AC6). */

@@ -22,6 +22,7 @@ import {
   entryDetails,
   entryTypeMeta,
   formatTime,
+  holdExpiry,
   formatWindow,
   layoutDay,
   periodLabel,
@@ -148,6 +149,10 @@ const swatchClasses = {
   blocked: "border-ink bg-canvas bg-crosshatch",
 };
 const BUFFER_CLASSES = "border-ink/40 bg-canvas bg-hatch text-ink/80";
+// Text sits on a white backing over a pattern, so it stays readable (AC2).
+const chipFor = (entry) => (entry.kind === "confirmed" ? "" : "bg-canvas px-0.5");
+// A band shorter than this is too short for its label; its hatch still shows.
+const MIN_LABELLED_MINUTES = 25;
 const classesFor = (entry) => typeClasses[entry.kind] ?? "border-ink bg-canvas text-ink";
 </script>
 
@@ -191,30 +196,32 @@ const classesFor = (entry) => typeClasses[entry.kind] ?? "border-ink bg-canvas t
           {{ option.label }}
         </button>
       </div>
-      <button
-        type="button"
-        class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold enabled:hover:bg-muted active-press disabled:cursor-not-allowed disabled:opacity-40"
-        :disabled="isShowingToday"
-        @click="emit('today')"
-      >
-        Today
-      </button>
-      <button
-        type="button"
-        class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold hover:bg-muted active-press"
-        :aria-label="`Previous ${view}`"
-        @click="emit('step', -1)"
-      >
-        ←
-      </button>
-      <button
-        type="button"
-        class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold hover:bg-muted active-press"
-        :aria-label="`Next ${view}`"
-        @click="emit('step', 1)"
-      >
-        →
-      </button>
+      <div class="flex gap-2">
+        <button
+          type="button"
+          class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold hover:bg-muted active-press"
+          :aria-label="`Previous ${view}`"
+          @click="emit('step', -1)"
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold enabled:hover:bg-muted active-press disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="isShowingToday"
+          @click="emit('today')"
+        >
+          Today
+        </button>
+        <button
+          type="button"
+          class="border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold hover:bg-muted active-press"
+          :aria-label="`Next ${view}`"
+          @click="emit('step', 1)"
+        >
+          →
+        </button>
+      </div>
       <button
         type="button"
         class="ml-auto border-2 border-ink bg-canvas px-3 py-2 text-xs font-bold enabled:hover:bg-muted active-press disabled:cursor-wait disabled:opacity-60"
@@ -307,20 +314,27 @@ const classesFor = (entry) => typeClasses[entry.kind] ?? "border-ink bg-canvas t
                       band.part === 'event' && item.continuesBefore && band.top === 0 ? 'border-t-0' : '',
                     ]"
                     :style="{ top: `${band.top}%`, height: `${band.height}%` }"
+                    :title="band.part === 'event' ? undefined : `${band.label} ${formatTime(band.startsAt)}–${formatTime(band.endsAt)}`"
                     :data-band="band.part"
                   >
                     <template v-if="band.part === 'event'">
                       <span class="block truncate text-xs font-bold leading-tight">
-                        <span :class="item.entry.kind === 'confirmed' ? '' : 'bg-canvas px-0.5'">{{ entryBadge(item.entry) }}</span>
+                        <span :class="chipFor(item.entry)">{{ entryTypeMeta(item.entry.kind).label }}</span>
                       </span>
                       <span class="block truncate text-xs font-medium leading-tight">
-                        <span :class="item.entry.kind === 'confirmed' ? '' : 'bg-canvas px-0.5'">{{ item.entry.label }}</span>
+                        <span :class="chipFor(item.entry)">{{ item.entry.label }}</span>
                       </span>
-                      <span class="block truncate text-xs font-medium leading-tight opacity-80">
-                        {{ formatTime(band.startsAt) }}–{{ formatTime(band.endsAt) }}
+                      <span class="block truncate text-xs font-medium leading-tight">
+                        <span :class="chipFor(item.entry)">{{ formatTime(band.startsAt) }}–{{ formatTime(band.endsAt) }}</span>
+                      </span>
+                      <span v-if="holdExpiry(item.entry)" class="block truncate text-xs font-bold leading-tight">
+                        <span :class="chipFor(item.entry)">{{ holdExpiry(item.entry) }}</span>
                       </span>
                     </template>
-                    <span v-else class="block truncate text-xs font-bold leading-tight">
+                    <span
+                      v-else-if="band.minutes >= MIN_LABELLED_MINUTES"
+                      class="block truncate text-xs font-bold leading-tight"
+                    >
                       <span class="bg-canvas px-0.5">{{ band.label }}</span>
                     </span>
                   </span>
@@ -377,7 +391,7 @@ const classesFor = (entry) => typeClasses[entry.kind] ?? "border-ink bg-canvas t
               @click="select(segment.item)"
             >
               <span class="truncate">
-                <span :class="segment.item.kind === 'confirmed' ? '' : 'bg-canvas px-0.5'">
+                <span :class="chipFor(segment.item)">
                   {{ entryTypeMeta(segment.item.kind).label }} · {{ segment.item.label }}
                 </span>
               </span>
@@ -402,7 +416,7 @@ const classesFor = (entry) => typeClasses[entry.kind] ?? "border-ink bg-canvas t
         <template v-if="selected">
           <div class="flex items-start justify-between gap-2">
             <span class="border-2 px-2 py-0.5 text-xs font-bold" :class="classesFor(selected)">
-              <span :class="selected.kind === 'confirmed' ? '' : 'bg-canvas px-0.5'">{{ entryBadge(selected) }}</span>
+              <span :class="chipFor(selected)">{{ entryBadge(selected) }}</span>
             </span>
             <button
               type="button"

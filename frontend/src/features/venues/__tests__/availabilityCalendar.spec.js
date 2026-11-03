@@ -4,6 +4,7 @@ import {
   ENTRY_TYPES,
   bandLayout,
   entryBadge,
+  holdExpiry,
   bookingBands,
   entryDetails,
   entryTypeMeta,
@@ -336,6 +337,7 @@ describe("bandLayout (AC5)", () => {
     expect(bands[0].height).toBeCloseTo((30 / 195) * 100);
     expect(bands[1].top).toBeCloseTo((30 / 195) * 100);
     expect(bands[2].top + bands[2].height).toBeCloseTo(100);
+    expect(bands.map((band) => band.minutes)).toEqual([30, 120, 45]);
   });
 
   it("leaves out a band on another day when a booking runs past midnight", () => {
@@ -378,5 +380,6 @@ describe("entryBadge (AC2, AC6)", () => {
       "Tentative",
       "Blocked",
     ]);
+    expect(entries.map(holdExpiry)).toEqual([null, "Expires Mon 10 Mar 2031, 18:00", null, null]);
   });
 });

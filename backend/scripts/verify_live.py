@@ -3091,6 +3091,135 @@ def _(ctx: Context) -> None:
            f"restore notices are addressed to {roles} (D83: the organiser's must have a role)")
 
 
+# --- Venue availability calendar (SCRUM-57) ----------------------------------
+
+def venue_calendar(ctx: Context, session: Session | None, venue_id: str, starts: str, ends: str):
+    headers = session.headers if session else {}
+    return ctx.client.get(f"{ctx.api}/venues/{venue_id}/calendar", headers=headers,
+                          params={"starts_at": starts, "ends_at": ends})
+
+
+def calendar_booking(event_id: str, venue_id: str, starts: str, ends: str, status: str, *, space_id: str | None = None,
+                     setup: int = 0, turnaround: int = 0, expires: str | None = None) -> str:
+    """A booking on a throwaway event; it goes when the event is deleted."""
+    space = f"'{space_id}'" if space_id else "null"
+    expiry = expires or "null"
+    [row] = db_query(
+        "insert into public.venue_bookings (event_id, event_space_request_id, venue_id, booked_period, status, "
+        f"setup_minutes, turnaround_minutes, expires_at) values ('{event_id}', {space}, '{venue_id}', "
+        f"tstzrange('{starts}', '{ends}', '[)'), '{status}', {setup}, {turnaround}, {expiry}) returning id"
+    )
+    return row["id"]
+
+
+@check("TC-VCAL-001", "A venue's calendar types each booking and block, gives a booking its own buffers, and "
+                      "leaves out expired holds, released bookings and removed blocks; a shortened block shows "
+                      "only what remains", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "VC001")
+    staff = ctx.shared("venue_staff")
+    event_id = throwaway_event(ctx, "VC001", "2031-10-06 06:00+08", "2031-10-06 23:00+08")
+    space = lambda label: throwaway_space(event_id, label)  # noqa: E731
+    approved = calendar_booking(event_id, venue_id, "2031-10-06 09:00+08", "2031-10-06 10:00+08", "approved",
+                                space_id=space("A"), setup=30, turnaround=45)
+    held = calendar_booking(event_id, venue_id, "2031-10-06 11:00+08", "2031-10-06 12:00+08", "held",
+                            space_id=space("B"))
+    calendar_booking(event_id, venue_id, "2031-10-06 13:00+08", "2031-10-06 14:00+08", "held",
+                     space_id=space("C"), expires="now() - interval '1 hour'")
+    affected = calendar_booking(event_id, venue_id, "2031-10-06 15:00+08", "2031-10-06 16:00+08", "approved",
+                                space_id=space("D"))
+    db_query("update public.venue_bookings set flag = 'affected', flag_reason = 'Venue unavailable: live check', "
+             f"flagged_at = now() where id = '{affected}'")
+    calendar_booking(event_id, venue_id, "2031-10-06 17:00+08", "2031-10-06 18:00+08", "released",
+                     space_id=space("E"))
+    removed = create_block(ctx, staff, venue_id, "2031-10-06T06:00:00+08:00", "2031-10-06T07:00:00+08:00")
+    expect_status(removed, 200)
+    expect_status(change_block(ctx, staff, venue_id, removed.json()["block"]["id"], "remove"), 200)
+    shortened = create_block(ctx, staff, venue_id, "2031-10-06T19:00:00+08:00", "2031-10-06T23:00:00+08:00")
+    expect_status(shortened, 200)
+    expect_status(change_block(ctx, staff, venue_id, shortened.json()["block"]["id"], "shorten",
+                               ends_at="2031-10-06T20:00:00+08:00"), 200)
+
+    response = venue_calendar(ctx, staff, venue_id, "2031-10-06T00:00:00+08:00", "2031-10-07T00:00:00+08:00")
+    expect_status(response, 200)
+    body = response.json()
+    expect(body["timezone"] == "Asia/Singapore" and body["venue"]["id"] == venue_id
+           and any(v["id"] == venue_id for v in body["venues"]), f"the calendar is for {body['venue']}")
+    entries = body["entries"]
+    expect([(e["id"], e["type"]) for e in entries]
+           == [(approved, "confirmed"), (held, "tentative"), (affected, "affected"),
+               (shortened.json()["block"]["id"], "blocked")], f"the entries are {entries}")
+    first = entries[0]
+    expect(first["occupied_period"]["starts_at"].startswith("2031-10-06T00:30:00")
+           and first["occupied_period"]["ends_at"].startswith("2031-10-06T02:45:00")
+           and first["period"]["starts_at"].startswith("2031-10-06T01:00:00")
+           and (first["setup_minutes"], first["turnaround_minutes"]) == (30, 45)
+           and first["event_name"].endswith("VC001"), f"the approved booking reads {first}")
+    expect(entries[1]["expires_at"] is not None, f"the hold has no expiry: {entries[1]}")
+    block = entries[3]
+    expect(block["period"]["ends_at"].startswith("2031-10-06T12:00:00") and block["reason"] == "maintenance"
+           and block["created_by"]["id"] == VENUE_STAFF_ID, f"the shortened block reads {block}")
+
+
+@check("TC-VCAL-002", "An event booked at two venues shows on each venue's calendar with that venue's own "
+                      "window", needs_db=True)
+def _(ctx: Context) -> None:
+    staff = ctx.shared("venue_staff")
+    hall, studio = throwaway_venue(ctx, "VC002a"), throwaway_venue(ctx, "VC002b")
+    event_id = throwaway_event(ctx, "VC002", "2031-10-07 09:00+08", "2031-10-07 18:00+08")
+    calendar_booking(event_id, hall, "2031-10-07 09:00+08", "2031-10-07 12:00+08", "approved",
+                     space_id=throwaway_space(event_id, "Main"))
+    calendar_booking(event_id, studio, "2031-10-07 14:00+08", "2031-10-07 16:00+08", "held",
+                     space_id=throwaway_space(event_id, "Breakout"))
+    windows = {}
+    for venue_id in (hall, studio):
+        response = venue_calendar(ctx, staff, venue_id, "2031-10-07T00:00:00+08:00", "2031-10-08T00:00:00+08:00")
+        expect_status(response, 200)
+        [entry] = response.json()["entries"]
+        expect(entry["event_id"] == event_id, f"{venue_id} shows {entry}")
+        windows[venue_id] = (entry["type"], entry["period"]["starts_at"][:19])
+    expect(windows == {hall: ("confirmed", "2031-10-07T01:00:00"), studio: ("tentative", "2031-10-07T06:00:00")},
+           f"the two calendars show {windows}")
+
+
+@check("TC-VCAL-003", "A venue with nothing in the period has an empty calendar; a period already under way "
+                      "shows nothing that has ended", needs_db=True)
+def _(ctx: Context) -> None:
+    staff = ctx.shared("venue_staff")
+    venue_id = throwaway_venue(ctx, "VC003")
+    empty = venue_calendar(ctx, staff, venue_id, "2031-10-08T00:00:00+08:00", "2031-10-15T00:00:00+08:00")
+    expect_status(empty, 200)
+    expect(empty.json()["entries"] == [], f"an empty venue shows {empty.json()['entries']}")
+
+    now = dt.datetime.now(dt.timezone.utc)
+    db_query(
+        "insert into public.venue_blocks (venue_id, blocked_period, reason, notes) values "
+        f"('{venue_id}', tstzrange(now() - interval '3 hours', now() - interval '1 hour', '[)'), 'maintenance', "
+        f"'{block_note(ctx)}')"
+    )
+    current = create_block(ctx, staff, venue_id, _iso(now - dt.timedelta(minutes=30)), _iso(now + dt.timedelta(hours=2)))
+    expect_status(current, 200)
+    response = venue_calendar(ctx, staff, venue_id, _iso(now - dt.timedelta(days=1)), _iso(now + dt.timedelta(days=1)))
+    expect_status(response, 200)
+    expect([e["id"] for e in response.json()["entries"]] == [current.json()["block"]["id"]],
+           f"the calendar shows {response.json()['entries']}")
+
+
+@check("TC-VCAL-004", "Only a session acting as venue staff can read a venue's calendar; a bad period is 422 and "
+                      "an unknown venue 404", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "VC004")
+    period = ("2031-10-08T00:00:00+08:00", "2031-10-15T00:00:00+08:00")
+    # The seeded coordinator also holds Venue Staff; its shared session acts as coordinator.
+    for role in ("event_coordinator", "event_organiser", "tech_support"):
+        expect_status(venue_calendar(ctx, ctx.shared(role), venue_id, *period), 403)
+    expect_status(venue_calendar(ctx, None, venue_id, *period), 401)
+    staff = ctx.shared("venue_staff")
+    expect_status(venue_calendar(ctx, staff, venue_id, "2031-10-01T00:00:00+08:00", "2031-11-13T00:00:00+08:00"), 422)
+    expect_status(venue_calendar(ctx, staff, venue_id, period[1], period[0]), 422)
+    expect_status(venue_calendar(ctx, staff, "b0000000-0000-4000-8000-0000000000ff", *period), 404)
+
+
 # --- Several venues per event (CR-97) --------------------------------------
 
 def throwaway_space(event_id: str, label: str, *, pax: int | None = None, layout: str | None = None,
