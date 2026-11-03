@@ -50,13 +50,15 @@ def test_legacy_reject_arrays_are_probed_and_text_checks_supply_booking_id():
     probe('TC-SDEC-016',respond)
     rejects=[body for path,body in requests if path.endswith('/safety-reject')]
     assert any('booking_ids' in body and 'booking_id' not in body for body in rejects)
-    assert all('booking_id' in body for body in rejects if body['reason'].strip()=='' or len(body['reason'])>1000)
+    # CR-108: the text under test is the organiser comment; a private note alone is probed too.
+    assert all('booking_id' in body for body in rejects if body.get('organiser_comment', '').strip()=='' or len(body.get('organiser_comment', ''))>1000)
+    assert any('organiser_comment' not in body and 'private_note' in body for body in rejects)
 
 
 def test_other_safety_probes_use_the_new_valid_reject_shape():
     for action,body in live.SAFETY_DECISIONS:
         if action=='safety-reject':
-            assert set(body)=={'reason','booking_id'}
+            assert set(body)=={'organiser_comment','booking_id'}
 
 
 def test_revision_followup_live_check_uses_note_and_named_history(monkeypatch):
@@ -66,7 +68,7 @@ def test_revision_followup_live_check_uses_note_and_named_history(monkeypatch):
     def respond(request):
         seen.append(request)
         if request.url.path.endswith('/safety-reject'):
-            assert json.loads(request.content) == {'booking_id': 'old', 'reason': 'live check exits'}
+            assert json.loads(request.content) == {'booking_id': 'old', 'organiser_comment': 'live check exits', 'checklist': live.safety_checklist(['old'])}
             return httpx.Response(200)
         if request.url.path.endswith('/mark-revised'):
             note = json.loads(request.content)['note']
