@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ALL_VENUE_STATUSES,
+  bookingStatusColumns,
   PENDING_BOOKING_STATUS,
   blockReasonLabel,
   bookingStatusLabel,
@@ -371,5 +372,51 @@ describe("filterVenueStatuses", () => {
     const copy = [...rows];
     filterVenueStatuses(rows, "blocked");
     expect(rows).toEqual(copy);
+  });
+});
+
+describe("bookingStatusColumns", () => {
+  const at = (day) => ({ starts_at: `2031-05-${day}T10:00:00Z`, ends_at: `2031-05-${day}T12:00:00Z` });
+  const hold = (id, expires) => ({ id, status: "held", expires_at: expires, period: at("10") });
+  const state = {
+    pendingHolds: [hold("h2", "2031-05-09T10:00:00Z"), hold("h1", "2031-05-08T10:00:00Z")],
+    affectedBookings: [
+      { id: "f2", status: "approved", flag: "affected", period: at("18") },
+      { id: "f1", status: "held", flag: "affected", period: at("14") },
+    ],
+    bookingRequests: [
+      hold("h1", "2031-05-08T10:00:00Z"),
+      { id: "a2", status: "approved", period: at("20") },
+      { id: "x1", status: "rejected", period: at("21") },
+      { id: "a1", status: "approved", period: at("15") },
+    ],
+  };
+
+  it("has Flagged bookings, Pending requests (in the middle) and Approved columns", () => {
+    expect(bookingStatusColumns(state).map((column) => [column.status, column.label])).toEqual([
+      ["flagged", "Flagged bookings"],
+      ["pending", "Pending requests"],
+      ["approved", "Approved"],
+    ]);
+  });
+
+  it("puts flagged and approved bookings soonest first and the holds nearest their expiry first, leaving rejected ones out", () => {
+    const [flagged, pending, approved] = bookingStatusColumns(state);
+
+    expect(flagged.events.map((booking) => booking.id)).toEqual(["f1", "f2"]);
+    expect(pending.events.map((booking) => booking.id)).toEqual(["h1", "h2"]);
+    expect(approved.events.map((booking) => booking.id)).toEqual(["a1", "a2"]);
+  });
+
+  it("flags a column as needing action only while it holds a booking that needs a decision", () => {
+    const [flagged, pending, approved] = bookingStatusColumns(state);
+    expect([flagged.needsAttention, pending.needsAttention, approved.needsAttention]).toEqual([true, true, false]);
+
+    const [emptyFlagged, emptyPending] = bookingStatusColumns({});
+    expect([emptyFlagged.needsAttention, emptyPending.needsAttention]).toEqual([false, false]);
+  });
+
+  it("returns three empty columns for no data", () => {
+    expect(bookingStatusColumns().map((column) => column.events)).toEqual([[], [], []]);
   });
 });

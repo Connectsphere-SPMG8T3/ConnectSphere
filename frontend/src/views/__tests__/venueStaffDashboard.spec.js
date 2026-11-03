@@ -100,16 +100,44 @@ describe("VenueStaffDashboard", () => {
     vi.setSystemTime(new Date("2026-09-19T12:00:00+08:00"));
   });
 
-  it("shows the four counts from the payload", async () => {
-    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+  const columnCounts = (el) =>
+    Object.fromEntries(
+      [...el.querySelectorAll("[data-status-group]")].map((column) => [
+        column.dataset.statusGroup,
+        column.querySelector("p.text-2xl").textContent.trim(),
+      ]),
+    );
+
+  it("shows Flagged bookings, Pending requests in the middle, and Approved, with their counts", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue({
+      ...PAYLOAD,
+      affected_bookings: [
+        { id: "d-7", event_id: "e7", event_name: "Staff Retreat", venue_id: "b-5", venue_name: "Rooftop Terrace",
+          period: { starts_at: "2026-10-21T09:00:00+08:00", ends_at: "2026-10-21T12:00:00+08:00" },
+          status: "approved", flag: "affected", restorable: true },
+      ],
+      booking_requests: [
+        ...PAYLOAD.pending_holds,
+        { id: "d-9", event_id: "e9", event_name: "Alumni Dinner", venue_id: "b-1", venue_name: "Grand Ballroom",
+          period: { starts_at: "2026-10-15T09:00:00+08:00", ends_at: "2026-10-15T12:00:00+08:00" }, status: "approved" },
+      ],
+    });
 
     const el = await mountDashboard();
 
-    const text = el.textContent;
-    expect(text).toContain("Pending requests");
-    expect(text).toContain("In re-review");
-    expect(text).toContain("Active & upcoming blocks");
-    expect(text).toContain("2 active · 1 inactive");
+    expect(el.querySelector("#booking-status").textContent).toContain("Booking status");
+    expect([...el.querySelectorAll("[data-status-group]")].map((column) => column.dataset.statusGroup)).toEqual([
+      "flagged",
+      "pending",
+      "approved",
+    ]);
+    expect(columnCounts(el)).toEqual({ flagged: "1", pending: "2", approved: "1" });
+    expect(el.querySelector('[data-status-group="approved"]').textContent).toContain("Alumni Dinner");
+    expect(el.querySelector('[data-status-group="flagged"]').textContent).toContain("Staff Retreat");
+    expect(el.querySelector('[data-status-group="flagged"]').textContent).toContain("Venue free again: ready to restore");
+    // There is no In re-review column, and the legend explains only the colours the board uses.
+    expect(el.querySelector("[data-board-legend]").textContent).not.toContain("Blue");
+    expect(el.querySelector('[data-status-group="re_review"]')).toBeNull();
   });
 
   it("carries none of the fabricated metrics it replaced", async () => {
@@ -121,11 +149,9 @@ describe("VenueStaffDashboard", () => {
     expect(el.textContent).not.toContain("Venues Managed");
     expect(el.textContent).not.toContain("Booking Requests");
     expect(el.textContent).not.toContain("Availability Updates Due");
-    // The old tile values were 12 / 6 / 2. Assert on the figures the tiles
-    // actually carry rather than on the bare digits, which also appear as day
-    // numbers in the calendar grid.
-    const tileValues = [...el.querySelectorAll("p.text-5xl")].map((p) => p.textContent.trim());
-    expect(tileValues).toEqual(["2", "1", "1", "3"]);
+    // The old tile values were 12 / 6 / 2. Assert on the board's own counts rather than on
+    // bare digits, which also appear as day numbers in the calendar grid.
+    expect(columnCounts(el)).toEqual({ flagged: "0", pending: "2", approved: "0" });
   });
 
   it("lists every venue with its status, linking to the venue page", async () => {
@@ -231,31 +257,38 @@ describe("VenueStaffDashboard", () => {
     expect(venues.className).toMatch(/max-h-/);
   });
 
-  it("opens the bookings under re-review from their tile (story 37)", async () => {
+  it("opens the approved bookings from their column", async () => {
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
 
     const el = await mountDashboard();
-    const jump = el.querySelector('a[href="/dashboard/venue-staff/requests?status=re_review"]');
+    el.querySelector('[data-status-group="approved"] button').click();
 
-    expect(jump).not.toBeNull();
-    expect(jump.textContent).toContain("In re-review");
+    const { default: router } = await import("@/router");
+    await vi.waitFor(() => expect(router.currentRoute.value.query).toEqual({ status: "approved" }));
+    expect(router.currentRoute.value.name).toBe("dashboard-venue-staff-requests");
   });
 
-  it("opens the dedicated booking requests page from the summary tile", async () => {
+  it("opens the dedicated booking requests page from the Pending requests column", async () => {
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
 
     const el = await mountDashboard();
-    const jump = el.querySelector('a[href="/dashboard/venue-staff/requests"]');
+    el.querySelector('[data-status-group="pending"] button').click();
 
-    expect(jump).not.toBeNull();
-    expect(jump.textContent).toContain("Pending requests");
-    // The cue is revealed on hover and focus rather than standing on the tile,
-    // but it stays in the DOM so it is part of the link's accessible name.
-    const cue = [...jump.querySelectorAll("span")].find((s) => s.textContent.includes("See the list"));
-    expect(cue).toBeDefined();
-    expect(cue.className).toContain("opacity-0");
-    expect(cue.className).toContain("group-hover:opacity-100");
-    expect(jump.className).toContain("group");
+    const { default: router } = await import("@/router");
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-venue-staff-requests"));
+    expect(router.currentRoute.value.query).toEqual({});
+  });
+
+  it("lists each pending request as a card with its venue and expiry, opening its booking (AC5)", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    const cards = [...el.querySelectorAll('[data-status-group="pending"] a')];
+
+    // The hold that expires first leads.
+    expect(cards.map((card) => card.getAttribute("href"))).toEqual(["/bookings/d-2", "/bookings/d-4"]);
+    expect(cards[0].textContent).toContain("Grand Ballroom");
+    expect(cards[0].textContent).toContain("Expires");
   });
 
   it("opens the calendar on the month that actually has something in it", async () => {
@@ -482,12 +515,13 @@ describe("VenueStaffDashboard", () => {
     expect(el.querySelector('button[aria-label^="Export every block"]').disabled).toBe(true);
   });
 
-  it("withholds every count until the first load settles", async () => {
+  it("withholds the board until the first load settles", async () => {
     venuesApi.venueStaffDashboard.mockReturnValue(new Promise(() => {}));
 
     const el = await mountDashboard();
 
-    expect(el.textContent).toContain("—");
+    expect(el.textContent).toContain("Loading bookings");
+    expect(el.querySelector("[data-status-group]")).toBeNull();
     expect(el.textContent).toContain("Checking for updates");
   });
 

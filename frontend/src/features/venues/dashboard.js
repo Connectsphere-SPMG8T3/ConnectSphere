@@ -55,6 +55,43 @@ export function sortPendingHoldsSoonestExpiryFirst(holds = []) {
   );
 }
 
+/**
+ * The venue staff dashboard's status board: Pending requests in the middle, with
+ * the bookings flagged because their venue became unavailable (CR-95) before
+ * them and the approved ones after (SCRUM-70 AC3). Pending holds nearest their
+ * expiry come first, so the one about to lapse is on top; the others run
+ * soonest first. A column "needs attention" only while it holds a booking that
+ * waits on venue staff.
+ */
+export function bookingStatusColumns({ pendingHolds = [], affectedBookings = [], bookingRequests = [] } = {}) {
+  const startsAt = (booking) => timestamp(booking?.period?.starts_at);
+  const soonestFirst = (rows) =>
+    [...rows].sort((a, b) => startsAt(a) - startsAt(b) || String(a.id).localeCompare(String(b.id)));
+  return [
+    {
+      status: "flagged",
+      label: "Flagged bookings",
+      description: "Venue unavailable. Restore or leave.",
+      events: soonestFirst(affectedBookings),
+      needsAttention: affectedBookings.length > 0,
+    },
+    {
+      status: "pending",
+      label: "Pending requests",
+      description: "Awaiting your approval.",
+      events: sortPendingHoldsSoonestExpiryFirst(pendingHolds),
+      needsAttention: pendingHolds.length > 0,
+    },
+    {
+      status: "approved",
+      label: "Approved",
+      description: "Confirmed bookings on your venues.",
+      events: soonestFirst(bookingRequests.filter((booking) => booking.status === "approved")),
+      needsAttention: false,
+    },
+  ];
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // "YYYY-MM-DDTHH:MM" on Singapore's clock: what a datetime-local input holds.
