@@ -310,6 +310,12 @@ watch(() => route.params.id, () => {
           >
             Edit venue
           </RouterLink>
+          <RouterLink
+            :to="{ name: 'venue-calendar', params: { venueId: venue.id } }"
+            class="inline-block border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard hover:bg-muted active-press sm:border-4"
+          >
+            View calendar
+          </RouterLink>
           <button
             v-if="venue.is_active"
             type="button"

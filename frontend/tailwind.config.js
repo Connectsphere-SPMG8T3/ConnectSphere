@@ -29,6 +29,20 @@ export default {
         hard: "4px 4px 0px 0px #141414",
         "hard-lg": "8px 8px 0px 0px #141414",
       },
+      // Fills for the venue availability calendar (SCRUM-57 AC2, AC5): each entry
+      // type is told apart by pattern as well as colour, and a booking's setup
+      // and turnaround by a hatch. Built from the ink and primary values above.
+      backgroundImage: {
+        hatch: "repeating-linear-gradient(135deg, rgba(20,20,20,0.22) 0 2px, transparent 2px 7px)",
+        "stripes-red": "repeating-linear-gradient(45deg, rgba(194,43,34,0.4) 0 6px, transparent 6px 12px)",
+        "dots-blue": "radial-gradient(rgba(26,68,184,0.55) 1.5px, transparent 1.75px)",
+        crosshatch:
+          "repeating-linear-gradient(45deg, rgba(20,20,20,0.3) 0 1px, transparent 1px 8px), " +
+          "repeating-linear-gradient(-45deg, rgba(20,20,20,0.3) 0 1px, transparent 1px 8px)",
+      },
+      backgroundSize: {
+        dots: "8px 8px",
+      },
       borderRadius: {
         none: "0px",
         full: "9999px",
