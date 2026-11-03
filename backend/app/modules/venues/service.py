@@ -1188,6 +1188,8 @@ def active_bookings_for_event(event_id: str) -> list[dict]:
             "status": row["status"],
             "expires_at": row.get("expires_at"),
             **_flag_fields(row),
+            # CR-111: where the venue is, for the organiser's list; absent when it has none recorded.
+            **({"venue_location": row["venues"]["location"]} if (row.get("venues") or {}).get("location") else {}),
             # Story 37 Q20: why an approved change marked it, so it can be sent for re-review.
             **({"needs_re_review_reason": row["needs_re_review_reason"]} if row.get("needs_re_review_reason") else {}),
         }
