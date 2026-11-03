@@ -23,6 +23,7 @@ from app.core.exceptions import (
 from app.modules.equipment import service as equipment_service
 from app.modules.events import change_fields, change_impact, lead_scope, lifecycle, repository, safety_checklist
 from app.modules.events.readiness import safety_readiness, spaces_ready
+from app.modules.events.organiser_venues import organiser_venues
 from app.modules.venues import service as venues_service
 from app.modules.registrations import service as registrations_service
 from app.modules.registrations.schemas import ManagedRegistrationReport
@@ -993,6 +994,8 @@ def _for_role(booking: dict, role: str) -> dict:
 # SCRUM-82 AC8, CR-110 Q10: the organiser sees the confirmed arrangements, and
 # keeps seeing them once preparation starts.
 _ORGANISER_ARRANGEMENT_STATUSES = ("confirmed", "preparation")
+# CR-111: Planning is included because an unavailable venue returns the event there (SCRUM-64).
+_ORGANISER_VENUE_LIST_STATUSES = ("planning", "safety_review", "confirmed", "preparation")
 
 
 @_safety_service_available
@@ -1019,6 +1022,13 @@ def read(event_id: str, user_id: str, role: str = "event_organiser") -> EventRes
             EventSpaceVenueBooking(**_for_role(booking, role))
             for booking in venues_service.active_bookings_for_event(event_id)
         ]
+    if role == "event_organiser" and row["status"] in _ORGANISER_VENUE_LIST_STATUSES:
+        # CR-111: every venue separately, from the same booking rows, through the pure rule
+        # that drops what the organiser must not see.
+        response.organiser_venues = organiser_venues(
+            row["status"], response.starts_at, response.ends_at, response.spaces,
+            venues_service.active_bookings_for_event(event_id),
+        )
     if role == "event_coordinator" and (row["status"] in _ORGANISER_ARRANGEMENT_STATUSES
                                         or row.get("preparation_record")):
         response.technical_preparation = equipment_service.technical_preparation(row, internal=True)

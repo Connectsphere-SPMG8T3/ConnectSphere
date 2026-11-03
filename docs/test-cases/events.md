@@ -623,3 +623,25 @@ Use disposable events and registrations only; never withdraw a seeded/shared reg
 | AC4 A stale save is refused with "This event was updated by someone else. Reload." | TC-EDIT-003, 007 | `TestStatusAndConcurrency`; `EditEventDetailsModal.spec.js` and `CoordinatorEditDetails.spec.js` (Reload). |
 | AC5 Every edit is recorded in the change history | TC-EDIT-001, 005 | `test_event_details_edit_api.py::test_all_four_ordinary_fields_save_through_the_recorded_edit` (the save goes through `edit_event`); the history itself is story 62's TC-HIST-001, 008. |
 | AC6 Only the assigned coordinator, acting as coordinator; rejected, cancelled and completed events are read-only; the organiser's own editing is unchanged | TC-EDIT-004, 006 | `TestAuthorisation` (other roles, unassigned, acting as another role, draft 404); `TestStatusAndConcurrency` (read-only statuses); `test_the_organiser_still_edits_through_their_own_route`. |
+## See my event's venues and coordinator (CR-111)
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-ORGV-001 | AC2, AC3 — each venue is listed with its status; an unavailable venue is shown as affected with the next action | E2E | Branch servers running; `supabase login` done | `npm run test:e2e:record -- organiser-venues.e2e.js` | A throwaway Confirmed event owned by the seeded organiser, with an approved booking at Seminar Room 1 and a maintenance block over it | The organiser's `/events/{id}` lists Seminar Room 1 as "Affected" with "This venue is no longer available. Your coordinator will contact you about the next step." | 🔴 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1702-e2e-54b3e93.md) |
+| TC-ORGV-002 | AC1 — the coordinator is named, not "Unassigned" | E2E | As 001 | As 001 | As 001 (the throwaway event has a coordinator) | The page reads "Coordinator: <name>" and never "Unassigned" | 🟡 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1702-e2e-54b3e93.md) |
+| TC-ORGV-003 | AC6 — internal details never reach the organiser | E2E | As 001 | As 001 | As 001 | The page never shows the coordinator's flag reason ("Venue unavailable: Maintenance") | 🔴 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1702-e2e-54b3e93.md) |
+| TC-ORGV-004 | AC7, SCRUM-76 — only the owning organiser, acting as organiser, reads the list | E2E | As 001 | As 001 | A throwaway Confirmed event with an approved booking; raw requests with an attendee session and the owner's session | Attendee: 403. Owner: 200 with `organiser_venues[0].venue_name` "Seminar Room 1". Another organiser getting 404 is in `test_event_organiser_venues_api.py` (there is only one seeded organiser) | 🔴 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1702-e2e-54b3e93.md) |
+| TC-ORGV-005 | AC2, AC4 — the list reads well: location, time window, "Primary venue" badge, status, next action | Manual | An event with two venues, one marked primary, one still a hold | As the organiser open `/events/{id}` at desktop width and at 375px | — | Each venue is its own row; the primary one carries a "Primary venue" badge; the hold reads "Awaiting venue approval" and says it is not confirmed; nothing overflows or truncates at 375px | 🟡 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1722-manual-b68e3b2.md) |
+| TC-ORGV-006 | AC3 — an affected venue stands out and the wording is clear in Planning | Manual | An event returned to Planning by a venue deactivation | As the organiser open `/events/{id}` | — | The affected row is yellow, reads "Affected" with the next action, and the page never explains why the venue is unavailable | 🟡 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1722-manual-b68e3b2.md) |
+
+### Traceability — CR-111
+
+| Acceptance criterion | Cases | Notes |
+|---|---|---|
+| AC1 Coordinator "Unassigned", then the name; the new name after a reassignment | TC-ORGV-002 | `test_event_organiser_venues_api.py`, `organiserVenues.spec.js`, `EventDetailView.spec.js` |
+| AC2 Each venue listed separately with venue, location, window and status | TC-ORGV-001, 005 | `test_organiser_venues.py` |
+| AC3 An unavailable venue is shown as affected, with the next action | TC-ORGV-001, 006 | Shown from Planning, because a deactivation returns the event there (SCRUM-64) |
+| AC4 The primary venue is marked | TC-ORGV-005 | `OrganiserVenueList.spec.js` |
+| AC5 Preparation stage once Confirmed | — | **Not built**: waits for CR-109 (venue preparation). Nothing to show until it records progress |
+| AC6 No internal details | TC-ORGV-003 | A separate response shape with no flag, reason, link or notes fields (`OrganiserVenue`) |
+| AC7 Owner only; others get 404 | TC-ORGV-004 | Owner only, [Team decision]: no organisation concept exists yet (REQUIREMENTS §9) |

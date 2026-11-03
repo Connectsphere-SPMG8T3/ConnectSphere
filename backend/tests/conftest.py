@@ -199,5 +199,8 @@ def active_space_bookings_offline(monkeypatch, request):
     """
     # Stubbed at the repository, like the two fixtures above, so a test can
     # supply rows and the service's per-space mapping still runs (CR-97).
-    if request.node.name != "test_list_active_bookings_reads_rows_and_returns_empty_on_schema_read_failure":
+    if request.node.name not in (
+        "test_list_active_bookings_reads_rows_and_returns_empty_on_schema_read_failure",
+        "test_the_repository_reads_the_venue_location",  # CR-111
+    ):
         monkeypatch.setattr("app.modules.venues.repository.list_active_bookings", lambda event_id: [])

@@ -497,6 +497,23 @@ class EventSpaceVenueBooking(EventVenueBooking):
     pass
 
 
+class OrganiserVenue(BaseModel):
+    """CR-111: one venue on the organiser's event. A deliberately separate shape from
+    `EventVenueBooking`: it has no flag, flag reason, replacement link or notes, so
+    nothing internal can reach the organiser by being added there."""
+
+    booking_id: str
+    space_label: str | None = None
+    venue_name: str | None = None
+    location: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    is_primary: bool = False
+    status: str
+    status_label: str
+    next_action: str
+
+
 class HistoryActor(BaseModel):
     id: str
     full_name: str
@@ -594,6 +611,8 @@ class EventResponse(EventFields):
     # CR-106: the assigned coordinator's own open reassignment request, on their read only.
     open_reassignment_request: EventChangeRequest | None = None
     venue_bookings: list[EventSpaceVenueBooking] = []
+    # CR-111: the organiser's own list of venues; empty on every other role's read.
+    organiser_venues: list[OrganiserVenue] = []
 
 
 class EventListResponse(BaseModel):

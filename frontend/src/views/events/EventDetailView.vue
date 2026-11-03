@@ -7,12 +7,14 @@ import BauhausCard from "@/components/common/BauhausCard.vue";
 import ManagedRegistrationsPanel from "@/components/registrations/ManagedRegistrationsPanel.vue";
 import AmendmentBanner from "@/components/events/AmendmentBanner.vue";
 import EventDiscussion from "@/components/events/EventDiscussion.vue";
+import OrganiserVenueList from "@/components/events/OrganiserVenueList.vue";
 import EventStatusHistory from "@/components/events/EventStatusHistory.vue";
 import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
 import RequestCancellationModal from "@/components/events/RequestCancellationModal.vue";
 import { canRequestCancellation } from "@/features/events/cancellation";
 import { canRequestChange, describeChanges } from "@/features/events/changeRequest";
 import { hasThread } from "@/features/events/comments";
+import { coordinatorLabel } from "@/features/events/organiserVenues";
 import { BOOKING_STATUS_LABELS } from "@/features/venues/bookingRequest";
 import { preparationStageLabel } from "@/features/equipment/preparation";
 import { STATUS_LABELS } from "@/features/events/dashboard";
@@ -148,11 +150,17 @@ onMounted(async () => {
       <p v-if="event.status === 'safety_review'" class="mb-8 font-medium">Your event is with the Safety Officer for its operational safety check.</p>
       <BauhausCard v-if="['confirmed', 'preparation'].includes(event.status)" background="white" accent="none" class="mb-8">
         <h2 class="text-2xl font-bold">Arrangements</h2>
-        <p class="mt-4">Venue: {{ event.venue_booking?.venue_name ?? 'Not provided' }}</p>
-        <p>Booking: {{ BOOKING_STATUS_LABELS[event.venue_booking?.status] ?? 'Not provided' }}</p>
+        <template v-if="!event.organiser_venues?.length">
+          <p class="mt-4">Venue: {{ event.venue_booking?.venue_name ?? 'Not provided' }}</p>
+          <p>Booking: {{ BOOKING_STATUS_LABELS[event.venue_booking?.status] ?? 'Not provided' }}</p>
+        </template>
         <p>Technical status: {{ ({ready: 'Ready', not_required: 'Not required', pending: 'Pending', issue: 'Issue'})[event.technical_readiness] ?? 'Not provided' }}</p>
         <!-- CR-110 AC4: the stage only; the API never sends the organiser a note. -->
         <p v-if="event.technical_preparation">Technical preparation: {{ preparationStageLabel(event.technical_preparation.stage) }}</p>
+      </BauhausCard>
+      <!-- CR-111 AC2 to AC4: each venue separately; the API sends nothing internal. Shown from Planning, so an affected venue is visible there. -->
+      <BauhausCard v-if="event.organiser_venues?.length" background="white" accent="none" class="mb-8">
+        <OrganiserVenueList :venues="event.organiser_venues" :timezone="event.eventTimezone" />
       </BauhausCard>
       <AmendmentBanner v-if="event.status === 'returned' && event.amendment" :amendment="event.amendment" class="mb-8">
         <BauhausButton variant="primary" @click="router.push({ name: 'event-new', query: { id: event.id } })">Amend and resubmit</BauhausButton>
@@ -227,7 +235,7 @@ onMounted(async () => {
           <BauhausCard background="white" accent="none">
             <h2 class="text-2xl font-bold">Planning status</h2>
             <p class="mt-3 text-sm font-medium">Your request is currently <strong class="">{{ statusLabel }}</strong>.</p>
-            <p class="mt-3 text-sm font-medium">Coordinator: {{ event.coordinator?.full_name || (event.coordinatorId ? "Assigned" : "Unassigned") }}</p>
+            <p class="mt-3 text-sm font-medium">Coordinator: {{ coordinatorLabel(event) }}</p>
             <BauhausButton
               v-if="canRequestChange(event)"
               variant="yellow"
