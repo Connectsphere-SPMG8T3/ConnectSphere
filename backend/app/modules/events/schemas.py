@@ -212,6 +212,35 @@ class EventUpdateRequest(BaseModel):
         return value
 
 
+class EventDetailsEdit(BaseModel):
+    """The assigned coordinator's direct edit of an event's ordinary details (story 112).
+
+    Only the four fields below can be sent. Any other key is kept in `model_extra` so the
+    service can refuse it by name: a significant field with the change-request message
+    (AC2), anything else as not editable here. Bounds match `EventFields`."""
+
+    model_config = ConfigDict(extra="allow")
+
+    version: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=3, max_length=150)
+    purpose: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=5000)
+    accessibility_needs: str | None = None
+
+    @field_validator("name", "purpose", mode="before")
+    @classmethod
+    def required_text_is_trimmed(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def required_fields_are_not_blank(self):
+        # A submitted request keeps what submission required (_submission_errors).
+        for field in ("name", "purpose"):
+            if field in self.model_fields_set and not getattr(self, field):
+                raise ValueError(f"{field} is required.")
+        return self
+
+
 class EventField(str, Enum):
     """The request fields a coordinator can flag when returning it (SCRUM-33).
     Exactly the fields `EventUpdateRequest` lets the organiser edit."""

@@ -5627,6 +5627,83 @@ def _(ctx: Context) -> None:
         expect_status(event_history(ctx, event_id, role), 403)
 
 
+# --- Story 112: the assigned coordinator edits an event's ordinary details -----------------
+# Each check makes its own throwaway event (deleted with its history when the run ends).
+def edit_details(ctx: Context, event_id: str, fields: dict, *, version: int | None = None,
+                 session=None) -> httpx.Response:
+    session = session or ctx.shared("event_coordinator")
+    body = {"version": event_version(event_id) if version is None else version, **fields}
+    return ctx.client.patch(f"{ctx.api}/events/{event_id}/details", json=body, headers=session.headers)
+
+
+@check("TC-EDIT-001", "The assigned coordinator edits ordinary details; the status holds and the History records it",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EDIT001", "2031-12-15 09:00+08", "2031-12-15 12:00+08", status="planning")
+    saved = edit_details(ctx, event_id, {"description": "Agreed with the organiser", "accessibility_needs": "Step-free"})
+    expect_status(saved, 200)
+    [row] = db_query(f"select status::text, description, accessibility_needs from public.events where id = '{event_id}'")
+    expect(row["status"] == "planning" and row["description"] == "Agreed with the organiser"
+           and row["accessibility_needs"] == "Step-free", f"stored {row}")
+    for role in ("event_coordinator", "event_organiser"):
+        response = event_history(ctx, event_id, role)
+        expect_status(response, 200)
+        edits = {entry["field"]: entry for entry in response.json()["entries"] if entry["kind"] == "edit"}
+        expect(set(edits) == {"description", "accessibility_needs"}, f"{role} sees edits to {sorted(edits)}")
+        expect(edits["description"]["old_value"] is None
+               and edits["description"]["new_value"] == "Agreed with the organiser", f"{role} sees {edits['description']}")
+        expect((edits["description"]["actor"] or {}).get("id") == COORDINATOR_ID,
+               f"{role} sees the edit made by {edits['description']['actor']}")
+
+
+@check("TC-EDIT-002", "A significant or non-editable field is refused and nothing is saved", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EDIT002", "2031-12-16 09:00+08", "2031-12-16 12:00+08", status="confirmed")
+    before = db_query(f"select starts_at::text, expected_attendance, registration_enabled, version "
+                      f"from public.events where id = '{event_id}'")[0]
+    for field, value in (("starts_at", "2031-12-17T09:00:00+08:00"), ("expected_attendance", 99),
+                         ("registration_enabled", True)):
+        refused = edit_details(ctx, event_id, {"description": "must not save", field: value})
+        expect_status(refused, 422)
+        [error] = refused.json()["detail"]
+        wanted = ("That field can't be edited here." if field == "registration_enabled"
+                  else "Significant changes go through a change request.")
+        expect(error["msg"] == wanted and error["loc"] == ["body", field], f"{field} answered {error}")
+    after = db_query(f"select starts_at::text, expected_attendance, registration_enabled, version, description "
+                     f"from public.events where id = '{event_id}'")[0]
+    expect(after.pop("description") is None and after == before, f"a refused edit changed {before} to {after}")
+
+
+@check("TC-EDIT-003", "A stale version is refused with the reload message and the other save stands", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EDIT003", "2031-12-18 09:00+08", "2031-12-18 12:00+08", status="planning")
+    seen = event_version(event_id)
+    expect_status(edit_details(ctx, event_id, {"description": "First save"}, version=seen), 200)
+    stale = edit_details(ctx, event_id, {"description": "Second, from a stale page"}, version=seen)
+    expect_status(stale, 409)
+    expect_detail(stale, "This event was updated by someone else. Reload.")
+    [row] = db_query(f"select description from public.events where id = '{event_id}'")
+    expect(row["description"] == "First save", f"the stale save stored {row['description']!r}")
+
+
+@check("TC-EDIT-004", "Only the assigned coordinator, acting as coordinator, edits; returned and finished events are read-only",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EDIT004", "2031-12-19 09:00+08", "2031-12-19 12:00+08", status="planning")
+    for role in ("event_organiser", "venue_staff", "tech_support", "attendee", "safety_officer"):
+        expect_status(edit_details(ctx, event_id, {"description": "x"}, session=ctx.shared(role)), 403)
+    unassigned = throwaway_event(ctx, "EDIT004b", "2031-12-20 09:00+08", "2031-12-20 12:00+08",
+                                 status="under_review", assigned=False)
+    expect_status(edit_details(ctx, unassigned, {"description": "x"}), 403)
+    for status in ("returned", "rejected", "cancelled", "completed"):
+        closed = throwaway_event(ctx, f"EDIT004-{status}", "2031-12-21 09:00+08", "2031-12-21 12:00+08", status=status)
+        refused = edit_details(ctx, closed, {"description": "x"})
+        expect_status(refused, 409)
+        expect_detail(refused, "This event can't be edited in its current status.")
+    [row] = db_query(f"select description from public.events where id = '{event_id}'")
+    expect(row["description"] is None, "a refused role changed the description")
+
+
 # --- CR-106: the coordinator asks the Lead to reassign their event ----------------------
 # Every check works on its own throwaway events (deleted when the run ends, with their
 # requests, history and notifications), never on seeded ones.

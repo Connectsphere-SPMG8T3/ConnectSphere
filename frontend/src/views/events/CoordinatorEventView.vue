@@ -18,7 +18,9 @@ import SafetyDecisionDetails from "@/components/events/SafetyDecisionDetails.vue
 import { useAuthStore } from "@/stores/auth";
 import RejectEventModal from "@/components/events/RejectEventModal.vue";
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
+import EditEventDetailsModal from "@/components/events/EditEventDetailsModal.vue";
 import { showToast } from "@/composables/useToast";
+import { canEditDetails } from "@/features/events/detailsEdit";
 import { canCancelEvent } from "@/features/events/cancellation";
 import { describeChanges } from "@/features/events/changeRequest";
 import { canRequestReassignment } from "@/features/events/reassignmentRequest";
@@ -45,6 +47,8 @@ const isSafetyOpen = ref(false);
 const isApproveOpen = ref(false);
 const isRejectOpen = ref(false);
 const isReturnOpen = ref(false);
+// Story 112: editing the event's ordinary details directly.
+const isEditDetailsOpen = ref(false);
 // Story 115: deciding the organiser's cancellation request, or cancelling directly.
 const isApproveCancellationOpen = ref(false);
 const isRejectCancellationOpen = ref(false);
@@ -68,6 +72,7 @@ const showRequestReassignment = computed(() => canRequestReassignment(event.valu
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
+const showEditDetails = computed(() => canEditDetails(event.value?.status));
 const showCancel = computed(() => canCancelEvent(event.value));
 const isReasonOpen = computed(
   () => isRejectCancellationOpen.value || isCancelOpen.value || isRejectChangeOpen.value || isReassignmentOpen.value,
@@ -224,6 +229,22 @@ async function confirmReturn({ message, flaggedFields }) {
   }
 }
 
+async function confirmEditDetails(changes) {
+  try {
+    await review.editDetails(changes);
+    isEditDetailsOpen.value = false;
+    showToast("Event details saved");
+  } catch {
+    // Kept open so the coordinator sees the error beside their edits.
+  }
+}
+
+// AC4: someone else saved first, so show their version instead of overwriting it.
+async function reloadAfterStaleEdit() {
+  isEditDetailsOpen.value = false;
+  await review.load(route.params.id);
+}
+
 async function confirmApproveCancellation() {
   isApproveCancellationOpen.value = false;
   try {
@@ -325,7 +346,7 @@ watch(
             <h1 class="mt-2 break-words text-4xl font-bold leading-tight sm:text-5xl">{{ event.name }}</h1>
           </div>
           <div
-            v-if="showApprove || showReject || showReturn || showCancel || showRequestReassignment || event.status === 'planning'"
+            v-if="showApprove || showReject || showReturn || showCancel || showRequestReassignment || showEditDetails || event.status === 'planning'"
             class="flex flex-wrap gap-3 lg:justify-end"
             data-testid="review-actions"
           >
@@ -342,6 +363,16 @@ watch(
               @click="review.error = null; isApproveOpen = true"
             >
               Approve
+            </BauhausButton>
+            <BauhausButton
+              v-if="showEditDetails"
+              size="sm"
+              variant="outline"
+              aria-label="Edit event details"
+              :disabled="review.isActing"
+              @click="review.error = null; isEditDetailsOpen = true"
+            >
+              Edit details
             </BauhausButton>
             <BauhausButton
               v-if="showReturn"
@@ -847,6 +878,16 @@ watch(
       :error="isCancelOpen ? review.error : null"
       @confirm="confirmCancel"
       @cancel="isCancelOpen = false"
+    />
+    <EditEventDetailsModal
+      v-if="event && showEditDetails"
+      :open="isEditDetailsOpen"
+      :event="event"
+      :busy="review.isActing"
+      :error="isEditDetailsOpen ? review.error : null"
+      @confirm="confirmEditDetails"
+      @cancel="isEditDetailsOpen = false"
+      @reload="reloadAfterStaleEdit"
     />
     <ReturnEventModal
       v-if="event"

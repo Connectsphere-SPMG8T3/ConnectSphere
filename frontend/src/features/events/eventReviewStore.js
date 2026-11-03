@@ -275,6 +275,41 @@ export const useEventReviewStore = defineStore("eventReview", {
       return this.event;
     },
 
+    // Story 112: the edit's answer is the bare event row. It goes onto the page at once (new
+    // version included, so the next edit isn't stale) and the dialog can close; the whole event
+    // (spaces, readiness, open requests) and the history that now holds the edit are read again
+    // in the background. The edit stands if either read fails.
+    async editDetails(changes) {
+      if (this.isActing) return this.event;
+      const auth = useAuthStore();
+      const { id: eventId, version } = this.event;
+      this.isActing = true;
+      this.error = null;
+      let saved;
+      try {
+        saved = await auth.withSession((token) => eventsApi.editDetails(eventId, { version, ...changes }, token));
+      } catch (error) {
+        this.error = error.message;
+        throw error;
+      } finally {
+        this.isActing = false;
+      }
+      if (this.historyEventId === eventId) this.event = { ...this.event, ...saved };
+      this.refreshAfterEdit(eventId);
+      return this.event;
+    },
+
+    async refreshAfterEdit(eventId) {
+      const auth = useAuthStore();
+      try {
+        const event = await auth.withSession((token) => eventsApi.get(eventId, token));
+        if (this.historyEventId === eventId) this.event = event;
+        await this.loadHistory(eventId);
+      } catch {
+        // The edit already went through; the page catches up on the next load.
+      }
+    },
+
     async returnForAmendment(message, flaggedFields) {
       return this.act((token) =>
         eventsApi.returnForAmendment(this.event.id, { message: message.trim(), flagged_fields: flaggedFields }, token),
