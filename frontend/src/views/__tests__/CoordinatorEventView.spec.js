@@ -73,9 +73,9 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     });
   });
 
-  it("goes back to the Events view, not the dashboard Overview", async () => {
+  it("the breadcrumb's Events link opens the Events view, not the dashboard Overview", async () => {
     const el = await mountView(eventResponse({ status: "planning" }));
-    const back = [...el.querySelectorAll("button")].find((node) => node.textContent.trim() === "Back to events");
+    const back = [...el.querySelectorAll('nav[aria-label="Breadcrumb"] a')].find((node) => node.textContent.trim() === "Events");
     expect(back).toBeTruthy();
     expect(el.textContent).not.toContain("Back to dashboard");
 

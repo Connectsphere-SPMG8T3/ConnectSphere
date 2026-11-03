@@ -6,8 +6,9 @@
  * API enforces the scope again on the reassign itself.
  */
 import { computed, onMounted, ref } from "vue";
-import { RouterLink, useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
+import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
@@ -35,6 +36,10 @@ onMounted(() => {
 });
 
 const event = computed(() => store.eventById(route.params.id));
+const breadcrumbItems = computed(() => [
+  { label: "Dashboard", to: { name: "dashboard-coordinator-lead" } },
+  { label: event.value?.event_name ?? "Event" },
+]);
 const isLoaded = computed(() => store.hasSettled && !store.error);
 const options = computed(() => coordinatorOptions(store.coordinators, event.value?.coordinator?.id));
 const selected = ref("");
@@ -86,14 +91,7 @@ async function reassign() {
 
 <template>
   <main class="py-8">
-    <p class="mb-6">
-      <RouterLink
-        :to="{ name: 'dashboard-coordinator-lead' }"
-        class="text-xs font-bold underline decoration-2 underline-offset-4"
-      >
-        Back to dashboard
-      </RouterLink>
-    </p>
+    <BauhausBreadcrumb :items="breadcrumbItems" />
 
     <p
       v-if="store.error"

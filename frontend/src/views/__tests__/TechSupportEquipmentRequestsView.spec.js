@@ -135,10 +135,11 @@ describe("TechSupportEquipmentRequestsView (SCRUM-24)", () => {
     expect(el.textContent).toContain("Requests unavailable");
   });
 
-  it("has a way back to the dashboard", async () => {
+  it("has a breadcrumb back to the dashboard that names the current page", async () => {
     const el = await mountView();
 
-    const back = [...el.querySelectorAll("a")].find((a) => a.textContent.includes("Back to dashboard"));
+    const back = [...el.querySelectorAll('nav[aria-label="Breadcrumb"] a')].find((a) => a.textContent.trim() === "Dashboard");
     expect(back.getAttribute("href")).toBe("/dashboard/tech-support");
+    expect(el.querySelector('[aria-current="page"]').textContent.trim()).toBe("Equipment requests");
   });
 });

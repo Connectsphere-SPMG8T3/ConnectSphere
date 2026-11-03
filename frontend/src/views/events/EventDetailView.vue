@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import ManagedRegistrationsPanel from "@/components/registrations/ManagedRegistrationsPanel.vue";
@@ -26,6 +27,11 @@ const router = useRouter();
 const eventsStore = useEventsStore();
 const review = useEventReviewStore();
 const event = computed(() => eventsStore.events.find((storedEvent) => storedEvent.id === route.params.id));
+const breadcrumbItems = computed(() => [
+  { label: "Dashboard", to: { name: "dashboard-organiser" } },
+  { label: "Events", to: { name: "dashboard-organiser", query: { tab: "events" } } },
+  { label: event.value?.name ?? "Event" },
+]);
 const statusLabel = computed(() => STATUS_LABELS[event.value?.status] ?? event.value?.status.replaceAll("_", " "));
 const rejection = computed(() =>
   event.value?.status === "rejected" ? review.history.find((entry) => entry.to_status === "rejected") ?? null : null,
@@ -113,10 +119,8 @@ onMounted(async () => {
 
 <template>
   <main class="py-8">
-    <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
-      <BauhausButton variant="outline" @click="router.push({ name: 'dashboard-organiser', query: { tab: 'events' } })">Back to events</BauhausButton>
-      <p v-if="event" class="text-xs font-bold text-ink/70">Request {{ event.id }}</p>
-    </div>
+    <BauhausBreadcrumb :items="breadcrumbItems" />
+    <p v-if="event" class="mb-8 text-xs font-bold text-ink/70">Request {{ event.id }}</p>
 
     <p
       v-if="eventsStore.error"

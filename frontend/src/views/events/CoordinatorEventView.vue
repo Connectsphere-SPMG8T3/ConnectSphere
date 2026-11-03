@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 
+import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import ManagedRegistrationsPanel from "@/components/registrations/ManagedRegistrationsPanel.vue";
@@ -64,6 +65,11 @@ const approveChangeMessage = computed(() => {
 const isReassignmentOpen = ref(false);
 
 const event = computed(() => review.event);
+const breadcrumbItems = computed(() => [
+  { label: "Dashboard", to: { name: "dashboard-coordinator" } },
+  { label: "Events", to: { name: "dashboard-coordinator", query: { tab: "events" } } },
+  { label: event.value?.name ?? "Event" },
+]);
 const showRequestReassignment = computed(() => canRequestReassignment(event.value));
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
@@ -305,9 +311,7 @@ watch(
 
 <template>
   <main class="py-8">
-    <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
-      <BauhausButton variant="outline" @click="router.push({ name: 'dashboard-coordinator', query: { tab: 'events' } })">Back to events</BauhausButton>
-    </div>
+    <BauhausBreadcrumb :items="breadcrumbItems" />
 
     <p
       v-if="review.error && !isRejectOpen && !isReturnOpen && !isReasonOpen"

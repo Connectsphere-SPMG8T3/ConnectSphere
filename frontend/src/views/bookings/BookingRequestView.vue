@@ -7,8 +7,9 @@
  * rule is the API's; this page only avoids offering what it would refuse.
  */
 import { computed, onMounted, ref, watch } from "vue";
-import { RouterLink, useRoute } from "vue-router";
+import { useRoute } from "vue-router";
 
+import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
@@ -52,10 +53,21 @@ const showRestore = computed(() => canRestoreBooking(booking.value, auth.role));
 const facilities = computed(() =>
   (event.value.facilities_required ?? []).map((value) => FACILITY_LABELS[value] ?? value).join(", "),
 );
-const backLink = computed(() =>
+// A coordinator reaches a booking from the event it belongs to; venue staff from
+// the booking requests queue.
+const breadcrumbItems = computed(() =>
   auth.role === "event_coordinator" && booking.value
-    ? { to: { name: "coordinator-event", params: { id: booking.value.event.id } }, label: "Back to event" }
-    : { to: { name: "dashboard-venue-staff" }, label: "Back to dashboard" },
+    ? [
+        { label: "Dashboard", to: { name: "dashboard-coordinator" } },
+        { label: "Events", to: { name: "dashboard-coordinator", query: { tab: "events" } } },
+        { label: booking.value.event.name ?? "Event", to: { name: "coordinator-event", params: { id: booking.value.event.id } } },
+        { label: "Booking request" },
+      ]
+    : [
+        { label: "Dashboard", to: { name: "dashboard-venue-staff" } },
+        { label: "Booking requests", to: { name: "dashboard-venue-staff-requests" } },
+        { label: "Booking request" },
+      ],
 );
 
 const notSpecified = (value) => (value === null || value === undefined || value === "" ? "Not specified" : value);
@@ -105,14 +117,7 @@ async function reject(form) {
 
 <template>
   <main class="py-8">
-    <div class="mb-8">
-      <RouterLink
-        :to="backLink.to"
-        class="inline-block text-xs font-bold underline decoration-2 underline-offset-4"
-      >
-        ← {{ backLink.label }}
-      </RouterLink>
-    </div>
+    <BauhausBreadcrumb :items="breadcrumbItems" />
 
     <p v-if="store.isLoading && !booking" data-testid="booking-loading" class="text-sm font-bold">
       Loading…
