@@ -158,6 +158,14 @@ function emptyDetail(clearText) {
             <span class="text-xs font-bold text-ink/70">
               {{ booking.venue_name }} · {{ formatPeriod(booking.period) }}
             </span>
+            <!-- SCRUM-54 AC5: the block that flagged it no longer covers it. -->
+            <span
+              v-if="booking.restorable"
+              data-testid="venue-free-again"
+              class="basis-full border-2 border-ink bg-bauhaus-yellow px-2 py-0.5 text-xs font-bold sm:basis-auto"
+            >
+              Venue free again: ready to restore
+            </span>
           </RouterLink>
         </li>
       </ul>
