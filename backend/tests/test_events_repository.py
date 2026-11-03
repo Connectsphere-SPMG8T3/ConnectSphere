@@ -427,8 +427,8 @@ def test_list_recent_safety_decisions_reads_the_window_and_flattens_names(monkey
     from datetime import datetime, timezone
     calls = []
     rows = [
-        {"id": "d1", "event_id": "e1", "decision": "approved", "comment": "ok", "decided_at": "2026-10-09T01:00:00Z",
-         "event": {"name": "Dinner"}, "decider": {"full_name": "Hafiz Ismail"}},
+        {"id": "d1", "event_id": "e1", "decision": "approved", "comment": "ok", "organiser_comment": "Fine by us",
+         "decided_at": "2026-10-09T01:00:00Z", "event": {"name": "Dinner"}, "decider": {"full_name": "Hafiz Ismail"}},
         {"id": "d2", "event_id": "e2", "decision": "withdrawn", "comment": None, "decided_at": "2026-10-08T01:00:00Z",
          "event": None, "decider": None},
     ]
@@ -452,10 +452,10 @@ def test_list_recent_safety_decisions_reads_the_window_and_flattens_names(monkey
     since = datetime(2026, 9, 9, tzinfo=timezone.utc)
     assert repository.list_recent_safety_decisions(since) == [
         {"id": "d1", "event_id": "e1", "event_name": "Dinner", "decision": "approved", "comment": "ok",
-         "decided_at": "2026-10-09T01:00:00Z", "decided_by_name": "Hafiz Ismail",
+         "organiser_comment": "Fine by us", "decided_at": "2026-10-09T01:00:00Z", "decided_by_name": "Hafiz Ismail",
          "affected_booking_ids": [], "affected_equipment_request_ids": [], "rejected_venue_ids": []},
         {"id": "d2", "event_id": "e2", "event_name": "", "decision": "withdrawn", "comment": None,
-         "decided_at": "2026-10-08T01:00:00Z", "decided_by_name": None,
+         "organiser_comment": None, "decided_at": "2026-10-08T01:00:00Z", "decided_by_name": None,
          "affected_booking_ids": [], "affected_equipment_request_ids": [], "rejected_venue_ids": []},
     ]
     assert ("table", ("event_safety_decisions",), {}) in calls
@@ -854,3 +854,4 @@ def test_the_single_event_read_names_the_organiser_and_their_organisation(monkey
 
     [columns] = [call[1] for call in client.queries[-1].calls if call[0] == "select"]
     assert "organiser:profiles!events_organiser_id_fkey(full_name, organisation_name)" in columns
+

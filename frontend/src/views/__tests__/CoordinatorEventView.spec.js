@@ -234,18 +234,20 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
   });
 
   it("CR-104 shows the latest private decision and the full decision history", async () => {
-    const latest = { id: "d1", decision: "arrangement_rejected", comment: "Replace this venue", decided_by_name: "Officer Lee",
+    const latest = { id: "d1", decision: "arrangement_rejected", organiser_comment: "Replace this venue", private_note: "Hall manager is difficult", checklist: [{factor: "emergency_access", booking_id: "b1", venue_name: "Town Hall", rating: "concern", note: "Only one exit"}], decided_by_name: "Officer Lee",
       decided_at: "2026-10-08T02:00:00Z", affected_booking_ids: ["b1"], affected_equipment_request_ids: ["q1"], rejected_venue_ids: ["v1"], rejected_venues: [{venue_id:"v1",venue_name:"Town Hall"}], affected_bookings:[{booking_id:"b1",venue_name:"Town Hall"}], affected_equipment:[{id:"q1",equipment_name:"Projector"}] };
-    const earlier = { ...latest, id: "d0", decision: "changes_requested", comment: "Keep the aisle clear" };
+    const earlier = { ...latest, id: "d0", decision: "changes_requested", organiser_comment: "Keep the aisle clear", private_note: null, checklist: [] };
     eventsApi.safetyDecisions.mockResolvedValue([latest, earlier]);
     const el = await mountView(eventResponse({ status: "planning", latest_safety_decision: latest,
       venue_booking: { id: "b1", venue_id: "v1", venue_name: "Town Hall", status: "released" } }));
     await vi.waitFor(() => expect(el.textContent).toContain("Keep the aisle clear"));
-    for (const text of ["Safety Officer's decision", "Arrangement rejected", "Replace this venue", "Officer Lee", "8 Oct", "Rejected venue: Town Hall", "Concerns: Town Hall · Projector"]) expect(el.textContent).toContain(text);
+    for (const text of ["Safety Officer's decision", "Arrangement rejected", "Replace this venue", "Officer Lee", "8 Oct", "Rejected venue: Town Hall", "Concerns: Town Hall · Projector",
+      // CR-108 AC5: the coordinator sees the organiser comment, the private notes and the checklist.
+      "Comment for the organiser", "Private notes", "Hall manager is difficult", "Emergency access: Concern", "Only one exit"]) expect(el.textContent).toContain(text);
     expect(eventsApi.safetyDecisions).toHaveBeenCalledWith("event-1", "access");
   });
   it("CR-104 identifies rejected bookings even when the released booking is absent from the event read", async () => {
-    const decision = { id: "d1", decision: "arrangement_rejected", comment: "Replace it", decided_by_name: "Officer Lee", decided_at: "2026-10-08T02:00:00Z", affected_booking_ids: ["released-booking"], affected_equipment_request_ids: [], rejected_venue_ids: ["v1"], rejected_venues: [{venue_id:"v1",venue_name:null}] };
+    const decision = { id: "d1", decision: "arrangement_rejected", organiser_comment: "Replace it", decided_by_name: "Officer Lee", decided_at: "2026-10-08T02:00:00Z", affected_booking_ids: ["released-booking"], affected_equipment_request_ids: [], rejected_venue_ids: ["v1"], rejected_venues: [{venue_id:"v1",venue_name:null}] };
     eventsApi.safetyDecisions.mockResolvedValue([decision]);
     const el = await mountView(eventResponse({ status: "planning", latest_safety_decision: decision, venue_booking: null }));
     await vi.waitFor(() => expect(el.textContent).toContain("Safety decision history"));

@@ -262,7 +262,8 @@ begin
     -- The approval recheck refuses a flagged booking (82 AC10, CR-104 AC5).
     select count(*) into v_rows from public.safety_approve_event(
         'e0000000-0000-4000-8000-0000000064a8', v_staff,
-        (select version from public.events where id = 'e0000000-0000-4000-8000-0000000064a8'), 'ok', 'o', 's');
+        (select version from public.events where id = 'e0000000-0000-4000-8000-0000000064a8'),
+        '[]'::jsonb, null, 'ok', 'o', 's');
     if v_rows <> 0 then raise exception 'APPROVE FAIL: approved an event with a flagged booking'; end if;
     if (select status::text from public.events where id = 'e0000000-0000-4000-8000-0000000064a8') <> 'safety_review' then
         raise exception 'APPROVE FAIL: event left safety review';

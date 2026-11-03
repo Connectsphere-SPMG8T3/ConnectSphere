@@ -100,7 +100,7 @@ DB_SCRIPTS = [
     ("event_review_checks.sql", "SCRUM-34/52 grants"),
     ("event_history_checks.sql", "TC-REV-015, TC-REV-016"),
     ("send_for_safety_check.sql", "TC-SAFE-010–015"),
-    ("safety_decision_checks.sql", "TC-SDEC-003, 009–011, 015–017, 024, 025 (database half)"),
+    ("safety_decision_checks.sql", "TC-SDEC-003, 009–011, 015–017, 024, 025, 040–042 (database half)"),
     ("event_amendment_checks.sql", "TC-AMD-001, 005, 008 (database half)"),
     ("event_comment_checks.sql", "TC-CMT-008, 009, 010, 011, 013 (database half)"),
     ("venue_booking_request_checks.sql", "TC-BOOK-001–006 (database half)"),
@@ -4002,8 +4002,8 @@ def _(ctx: Context) -> None:
             expect_status(ctx.client.get(f"{ctx.api}{path}", headers=headers), 403)
         for action, body in (
             ("safety-approve", {}),
-            ("safety-request-changes", {"comment": "Denial check"}),
-            ("safety-reject", {"reason": "Denial check"}),
+            ("safety-request-changes", {"organiser_comment": "Denial check"}),
+            ("safety-reject", {"organiser_comment": "Denial check"}),
         ):
             expect_status(ctx.client.post(
                 f"{ctx.api}/events/{missing_event}/{action}", headers=headers, json=body,
@@ -4027,9 +4027,17 @@ def _(ctx: Context) -> None:
 MISSING_EVENT = "00000000-0000-4000-8000-000000000000"
 SAFETY_DECISIONS = (
     ("safety-approve", {}),
-    ("safety-request-changes", {"comment": "Live check"}),
-    ("safety-reject", {"reason": "Live check", "booking_id": MISSING_EVENT}),
+    ("safety-request-changes", {"organiser_comment": "Live check"}),
+    ("safety-reject", {"organiser_comment": "Live check", "booking_id": MISSING_EVENT}),
 )
+
+
+def safety_checklist(booking_ids, rating: str = "satisfactory", *, equipment: bool = True) -> list[dict]:
+    """CR-108 AC1/AC2: the five venue factors for every booking, then equipment placement once."""
+    rows = [{"factor": factor, "booking_id": booking_id, "rating": rating}
+            for booking_id in booking_ids
+            for factor in ("attendance_capacity", "layout", "emergency_access", "accessibility", "venue_restrictions")]
+    return rows + ([{"factor": "equipment_placement", "rating": rating}] if equipment else [])
 
 
 @check("TC-SDEC-003", "The Event Coordinator Lead is denied every Safety Officer endpoint")
@@ -4077,19 +4085,24 @@ def _(ctx: Context) -> None:
         expect("planning" in response.json()["detail"], f"{action}: {response.json()['detail']}")
 
 
-@check("TC-SDEC-016", "A blank, whitespace-only or 1001-character comment or reason is refused with 422")
+@check("TC-SDEC-016", "A blank, whitespace-only or 1001-character organiser comment is refused with 422")
 def _(ctx: Context) -> None:
     headers = ctx.shared("safety_officer").headers
     for text in ("", "   ", "x" * 1001):
-        for action, field_name in (("safety-request-changes", "comment"), ("safety-reject", "reason")):
+        for action in ("safety-approve", "safety-request-changes", "safety-reject"):
             expect_status(ctx.client.post(
-                f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers, json={field_name: text, **({"booking_id": MISSING_EVENT} if action == "safety-reject" else {})},
+                f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers,
+                json={"organiser_comment": text, **({"booking_id": MISSING_EVENT} if action == "safety-reject" else {})},
             ), 422)
-
-
+    # Returning an event needs the comment; the private note alone is not enough.
+    for action in ("safety-request-changes", "safety-reject"):
+        expect_status(ctx.client.post(
+            f"{ctx.api}/events/{MISSING_EVENT}/{action}", headers=headers,
+            json={"private_note": "only a note", **({"booking_id": MISSING_EVENT} if action == "safety-reject" else {})},
+        ), 422)
     expect_status(ctx.client.post(
         f"{ctx.api}/events/{MISSING_EVENT}/safety-reject", headers=headers,
-        json={"reason": "Legacy arrays", "booking_ids": [MISSING_EVENT]},
+        json={"organiser_comment": "Legacy arrays", "booking_ids": [MISSING_EVENT]},
     ), 422)
 
 
@@ -4130,7 +4143,7 @@ def _(ctx: Context) -> None:
     coordinator = ctx.shared("event_coordinator")
     expect_status(ctx.client.post(
         f"{ctx.api}/events/{event_id}/safety-reject", headers=officer.headers,
-        json={"booking_id": booking_id, "reason": "live check exits"},
+        json={"booking_id": booking_id, "organiser_comment": "live check exits", "checklist": safety_checklist([booking_id])},
     ), 200)
     for note, code in (("   ", 422), ("live check revised", 200)):
         expect_status(ctx.client.post(
@@ -4145,6 +4158,79 @@ def _(ctx: Context) -> None:
     expect(rejection["revision"]["note"] == "live check revised", "history carries the coordinator response")
 
 
+PRIVATE_MARKER = "live-check private note"
+
+
+@check("TC-SDEC-038", "CR-108: an incomplete or Concern checklist is refused and nothing is recorded", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id, _ = safety_rejection_followup_fixture(ctx, "SDEC-038")
+    headers = ctx.shared("safety_officer").headers
+    # AC3: nothing marked, one factor missing, and a Concern on an approval.
+    missing_layout = [row for row in safety_checklist([booking_id]) if row["factor"] != "layout"]
+    concern = safety_checklist([booking_id])
+    concern[0] = {**concern[0], "rating": "concern", "note": "Exit partly blocked"}
+    for action, body in (
+        ("safety-request-changes", {"organiser_comment": "Fix it", "checklist": []}),
+        ("safety-request-changes", {"organiser_comment": "Fix it", "checklist": missing_layout}),
+        ("safety-approve", {"checklist": concern}),
+        ("safety-approve", {"checklist": missing_layout}),
+    ):
+        response = ctx.client.post(f"{ctx.api}/events/{event_id}/{action}", headers=headers, json=body)
+        expect_status(response, 422)
+        expect("checklist can't be recorded" in response.json()["detail"], f"{action}: {response.json()['detail']}")
+    expect(db_query(f"select status from public.events where id='{event_id}'")[0]["status"] == "safety_review",
+           "a refused decision moved the event")
+    expect(db_query(f"select count(*) n from public.event_safety_decisions where event_id='{event_id}'")[0]["n"] == 0,
+           "a refused decision was recorded")
+    # A Concern is fine when the event goes back for changes.
+    expect_status(ctx.client.post(f"{ctx.api}/events/{event_id}/safety-request-changes", headers=headers,
+                                  json={"organiser_comment": "Fix it", "checklist": concern}), 200)
+
+
+@check("TC-SDEC-039", "CR-108: the organiser sees the outcome and comment, never the private note or checklist", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id, venue_id = safety_rejection_followup_fixture(ctx, "SDEC-039")
+    officer = ctx.shared("safety_officer")
+    marks = safety_checklist([booking_id])
+    marks[1] = {**marks[1], "rating": "concern", "note": "Aisle too narrow"}
+    expect_status(ctx.client.post(f"{ctx.api}/events/{event_id}/safety-request-changes", headers=officer.headers, json={
+        "organiser_comment": "  Widen the aisle  ", "private_note": PRIVATE_MARKER, "checklist": marks,
+        "booking_ids": [booking_id],
+    }), 200)
+    organiser = ctx.shared("event_organiser")
+    event = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=organiser.headers)
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=organiser.headers)
+    expect_status(event, 200)
+    expect_status(history, 200)
+    latest = event.json()["latest_safety_decision"]
+    expect(latest["organiser_comment"] == "Widen the aisle", f"organiser comment: {latest}")
+    entry = next(e for e in history.json()["entries"] if e["kind"] == "safety_decision")
+    expect(entry["reason"] == "Widen the aisle" and "private_note" not in entry, f"organiser history: {entry}")
+    for response in (event, history):
+        expect(PRIVATE_MARKER not in response.text and "Aisle too narrow" not in response.text,
+               "the organiser was sent the private note or a checklist note")
+    # The organiser has no read of the decisions at all.
+    expect_status(ctx.client.get(f"{ctx.api}/events/{event_id}/safety-decisions", headers=organiser.headers), 403)
+    # The assigned coordinator and the officer see both, and the checklist named by venue.
+    [venue] = db_query(f"select name from public.venues where id='{venue_id}'")
+    for role in ("event_coordinator", "safety_officer"):
+        response = ctx.client.get(f"{ctx.api}/events/{event_id}/safety-decisions", headers=ctx.shared(role).headers)
+        expect_status(response, 200)
+        [decision] = response.json()
+        expect(decision["organiser_comment"] == "Widen the aisle" and decision["private_note"] == PRIVATE_MARKER, f"{role}: {decision}")
+        concern_row = next(row for row in decision["checklist"] if row["rating"] == "concern")
+        expect(concern_row["venue_name"] == venue["name"] and concern_row["note"] == "Aisle too narrow", f"{role}: {concern_row}")
+        expect(len(decision["checklist"]) == 6, f"{role}: {len(decision['checklist'])} marks")
+    coordinator_history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=ctx.shared("event_coordinator").headers)
+    coordinator_entry = next(e for e in coordinator_history.json()["entries"] if e["kind"] == "safety_decision")
+    expect(coordinator_entry["private_note"] == PRIVATE_MARKER, f"coordinator history: {coordinator_entry}")
+    # AC5: no notification carries either text.
+    leaked = db_query(
+        "select count(*) n from public.notifications "
+        f"where event_id='{event_id}' and (message like '%Widen the aisle%' or message like '%{PRIVATE_MARKER}%')")
+    expect(leaked[0]["n"] == 0, "a notification carried the comment or private note")
+
+
 @check("TC-SDEC-032", "Replace a Safety-rejected venue; approval releases it", needs_db=True)
 def _(ctx: Context) -> None:
     event_id, booking_id, _ = safety_rejection_followup_fixture(ctx, "SDEC-032")
@@ -4154,7 +4240,7 @@ def _(ctx: Context) -> None:
     staff = ctx.shared("venue_staff")
     expect_status(ctx.client.post(
         f"{ctx.api}/events/{event_id}/safety-reject", headers=officer.headers,
-        json={"booking_id": booking_id, "reason": "live check exits"},
+        json={"booking_id": booking_id, "organiser_comment": "live check exits", "checklist": safety_checklist([booking_id])},
     ), 200)
     requested = ctx.client.post(f"{ctx.api}/venue-bookings", headers=coordinator.headers,
         json={"event_id": event_id, "venue_id": venue_id, "replaces_booking_id": booking_id})
@@ -5728,8 +5814,9 @@ def run_db_checks(keyword: str | None) -> list[Result]:
             try:
                 rows = db_query(
                     "select to_regclass('public.event_safety_decisions') is not null "
-                    "and to_regprocedure('public.safety_approve_event(uuid,uuid,integer,text,text,text)') is not null "
-                    "and to_regprocedure('public.safety_return_event(uuid,uuid,integer,text,text,uuid[],uuid[],text)') is not null "
+                    "and to_regclass('public.event_safety_checklist_items') is not null "
+                    "and to_regprocedure('public.safety_approve_event(uuid,uuid,integer,jsonb,text,text,text,text)') is not null "
+                    "and to_regprocedure('public.safety_return_event(uuid,uuid,integer,text,jsonb,text,text,uuid[],uuid[],text)') is not null "
                     "and to_regprocedure('public.return_event_to_planning(uuid,integer,text,text,text,text)') is not null "
                     "as migration_present"
                 )

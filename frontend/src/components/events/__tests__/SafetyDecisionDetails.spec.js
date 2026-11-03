@@ -41,3 +41,50 @@ it("falls back to Coordinator when the response author no longer exists", async 
   const el = await mount({...BASE, decision: "arrangement_rejected", revision: {note: "Moved", by_name: null, at: "2031-01-02T02:00:00Z"}});
   expect(el.textContent).toContain("Coordinator ·");
 });
+
+// CR-108 AC4-AC6: staff see the organiser's comment, the private notes and the checklist, labelled apart.
+const MARKS = [
+  {factor: "layout", booking_id: "b1", venue_name: "Town Hall", rating: "concern", note: "Aisle too narrow"},
+  {factor: "emergency_access", booking_id: "b1", venue_name: "Town Hall", rating: "satisfactory", note: null},
+  {factor: "layout", booking_id: "b2", venue_name: null, rating: "not_applicable", note: null},
+  {factor: "equipment_placement", booking_id: null, venue_name: null, rating: "satisfactory", note: "Clear of walkways"},
+];
+it("labels the organiser's comment and the private notes separately", async () => {
+  const el = await mount({...BASE, decision: "changes_requested", organiser_comment: "Widen the aisle", private_note: "Hall manager is difficult"});
+  expect(el.textContent).toContain("Comment for the organiser");
+  expect(el.textContent).toContain("Widen the aisle");
+  expect(el.textContent).toContain("Private notes");
+  expect(el.textContent).toContain("Not shown to the organiser");
+  expect(el.textContent).toContain("Hall manager is difficult");
+});
+it("shows only the private notes of a decision recorded before organiser comments", async () => {
+  const el = await mount({...BASE, decision: "approved", organiser_comment: null, private_note: "Looked fine"});
+  expect(el.textContent).not.toContain("Comment for the organiser");
+  expect(el.textContent).toContain("Looked fine");
+});
+it("shows neither label when the officer wrote nothing", async () => {
+  const el = await mount({...BASE, decision: "approved", organiser_comment: null, private_note: null});
+  expect(el.textContent).not.toContain("Comment for the organiser");
+  expect(el.textContent).not.toContain("Private notes");
+});
+it("lists the checklist by venue, then the whole event, with each rating and note", async () => {
+  const el = await mount({...BASE, decision: "changes_requested", checklist: MARKS});
+  expect(el.textContent).toContain("Checklist");
+  const text = el.textContent;
+  expect(text.indexOf("Town Hall")).toBeLessThan(text.indexOf("a venue that no longer exists"));
+  expect(text.indexOf("a venue that no longer exists")).toBeLessThan(text.indexOf("Whole event"));
+  for (const expected of ["Layout: Concern", "Aisle too narrow", "Emergency access: Satisfactory", "Layout: Not applicable", "Equipment placement: Satisfactory", "Clear of walkways"])
+    expect(text).toContain(expected);
+});
+it("opens the checklist when a factor is a Concern and leaves it closed otherwise", async () => {
+  expect((await mount({...BASE, decision: "changes_requested", checklist: MARKS})).querySelector("details").open).toBe(true);
+  const calm = MARKS.map((mark) => ({...mark, rating: "satisfactory"}));
+  expect((await mount({...BASE, decision: "approved", checklist: calm})).querySelector("details").open).toBe(false);
+});
+it("has no checklist section for a decision recorded before the checklist existed", async () => {
+  for (const checklist of [undefined, []]) {
+    const el = await mount({...BASE, decision: "approved", checklist});
+    expect(el.querySelector("details")).toBeNull();
+    expect(el.textContent).not.toContain("Checklist");
+  }
+});

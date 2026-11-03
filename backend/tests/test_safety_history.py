@@ -13,9 +13,10 @@ from tests.test_safety_decisions_api import ROLES
 URL = "/api/v1/events/safety-history"
 
 
-def history_row(id, decision, decided_at, decided_by_name="Hafiz Ismail", comment="Crowd near exit"):
+def history_row(id, decision, decided_at, decided_by_name="Hafiz Ismail", comment="Crowd near exit",
+                organiser_comment="Widen the exit"):
     return dict(id=id, event_id="e0000000-0000-4000-8000-000000000831", event_name="Year-End Dinner",
-                decision=decision, comment=comment, decided_by_name=decided_by_name, decided_at=decided_at)
+                decision=decision, comment=comment, organiser_comment=organiser_comment, decided_by_name=decided_by_name, decided_at=decided_at)
 
 
 @pytest.fixture()
@@ -35,16 +36,16 @@ def test_officer_reads_every_recent_decision_newest_first(client, auth_headers, 
     state["rows"] = [
         history_row("a0000000-0000-4000-8000-0000000000a1", "approved", "2026-10-01T01:00:00Z"),
         history_row("a0000000-0000-4000-8000-0000000000a3", "withdrawn", "2026-10-09T01:00:00Z",
-                    decided_by_name=None, comment=None),
+                    decided_by_name=None, comment=None, organiser_comment=None),
         history_row("a0000000-0000-4000-8000-0000000000a2", "arrangement_rejected", "2026-10-05T01:00:00Z"),
     ]
     response = client.get(URL, headers=auth_headers)
     assert response.status_code == 200
     items = response.json()["items"]
     assert [item["decision"] for item in items] == ["withdrawn", "arrangement_rejected", "approved"]
-    assert items[0]["decided_by_name"] is None and items[0]["comment"] is None
+    assert items[0]["decided_by_name"] is None and items[0]["private_note"] is None and items[0]["organiser_comment"] is None
     assert items[1] == dict(id="a0000000-0000-4000-8000-0000000000a2", event_id="e0000000-0000-4000-8000-000000000831",
-                            event_name="Year-End Dinner", decision="arrangement_rejected", comment="Crowd near exit",
+                            event_name="Year-End Dinner", decision="arrangement_rejected", private_note="Crowd near exit", organiser_comment="Widen the exit",
                             decided_by_name="Hafiz Ismail", decided_at="2026-10-05T01:00:00Z",
                             affected_bookings=[], affected_equipment=[], rejected_venues=[], revision=None)
 

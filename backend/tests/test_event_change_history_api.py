@@ -127,6 +127,7 @@ class TestEditEntries:
 
 SAFETY_ROWS = [
     {"id": "s1", "event_id": EVENT_ID, "decision": "changes_requested", "comment": "Officer's own working note",
+     "organiser_comment": "Move the stage back from the exit",
      "reason_code": None, "affected_booking_ids": [], "affected_equipment_request_ids": [], "rejected_venue_ids": [],
      "decided_by": "a0000000-0000-4000-8000-000000000006", "decided_at": "2026-10-30T04:00:00+00:00",
      "decided_by_name": "Hafiz Ismail"},
@@ -140,10 +141,10 @@ def safety_history(monkeypatch, history):
 
 
 class TestSafetyDecisionEntries:
-    """AC5: safety decisions feed the history. AC3, SF-R2, D76: the organiser sees the
-    outcome, who and when, never the comment, which may hold the officer's private notes."""
+    """AC5, AC6 (CR-108): safety decisions feed the history. The organiser sees the outcome, who,
+    when and the organiser comment; the private note is the coordinator's and the officers' only."""
 
-    def test_the_coordinator_sees_the_decision_and_its_comment(self, client, auth_headers, act_as, safety_history):
+    def test_the_coordinator_sees_the_organiser_comment_and_the_private_note(self, client, auth_headers, act_as, safety_history):
         act_as("event_coordinator", COORDINATOR["id"])
 
         decision = read_history(client, auth_headers)[0]
@@ -151,10 +152,12 @@ class TestSafetyDecisionEntries:
         assert decision["id"] == "s1"
         assert decision["kind"] == "safety_decision"
         assert decision["decision"] == "changes_requested"
-        assert decision["reason"] == "Officer's own working note"
+        assert decision["reason"] == "Move the stage back from the exit"
+        assert decision["private_note"] == "Officer's own working note"
         assert decision["actor"] == {"id": "a0000000-0000-4000-8000-000000000006", "full_name": "Hafiz Ismail"}
 
-    def test_the_organiser_sees_the_outcome_without_the_comment(self, client, auth_headers, act_as, safety_history):
+    def test_the_organiser_sees_the_outcome_and_the_organiser_comment_never_the_private_note(
+            self, client, auth_headers, act_as, safety_history):
         act_as("event_organiser", ORGANISER_ID)
 
         response = client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers)
@@ -162,7 +165,18 @@ class TestSafetyDecisionEntries:
         decision = response.json()["entries"][0]
         assert decision["kind"] == "safety_decision"
         assert decision["decision"] == "changes_requested"
-        assert decision["reason"] is None
+        assert decision["reason"] == "Move the stage back from the exit"
+        assert "private_note" not in decision
+        assert "Officer's own working note" not in response.text
+
+    def test_a_decision_recorded_before_organiser_comments_has_no_reason(self, client, auth_headers, act_as, monkeypatch, history):
+        legacy = {k: v for k, v in SAFETY_ROWS[0].items() if k != "organiser_comment"}
+        monkeypatch.setattr(repository, "list_safety_decisions", lambda event_id: [dict(legacy)])
+        act_as("event_organiser", ORGANISER_ID)
+
+        response = client.get(f"/api/v1/events/{EVENT_ID}/history", headers=auth_headers)
+
+        assert response.json()["entries"][0]["reason"] is None
         assert "Officer's own working note" not in response.text
 
 

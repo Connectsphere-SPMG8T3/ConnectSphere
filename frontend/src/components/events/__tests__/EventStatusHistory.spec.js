@@ -242,6 +242,21 @@ describe("EventStatusHistory change history (story 62)", () => {
     expect(approved.querySelectorAll("p")).toHaveLength(2);
   });
 
+  it("CR-108 shows the private notes on a safety decision only when the API sends them", async () => {
+    const el = await mountHistory([
+      { id: "s2", kind: "safety_decision", decision: "changes_requested", reason: "Add a second exit", private_note: "Hall manager resists",
+        at: "2026-09-24T06:05:00Z", actor: { id: "s", full_name: "Hafiz Ismail" } },
+      { id: "s1", kind: "safety_decision", decision: "changes_requested", reason: "Add a second exit",
+        at: "2026-09-23T06:05:00Z", actor: { id: "s", full_name: "Hafiz Ismail" } },
+    ]);
+
+    const [staff, organiser] = el.querySelectorAll("li");
+    expect(staff.textContent).toContain("Add a second exit");
+    expect(staff.textContent).toContain("Private notes: Hall manager resists");
+    expect(organiser.textContent).toContain("Add a second exit");
+    expect(organiser.textContent).not.toContain("Private notes");
+  });
+
   it("heads a booking step with its venue and what happened, and names the system when no one acted", async () => {
     const el = await mountHistory([
       { id: "b1", kind: "booking", action: "approved", venue_name: "Hall A", reason: null,

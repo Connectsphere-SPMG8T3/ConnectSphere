@@ -573,7 +573,7 @@ For buffers extending beyond Python's supported years, comparison endpoints are 
 | AC4 Block kept; history records original period, reason, new end, who, when, note; shown as Ended early | TC-BLOCK-020, 022, 025, 026, 029; Vitest `venueProfile.spec.js` |
 | AC5 No flag cleared by the change; this block's bookings now free of any block are listed; others not | TC-BLOCK-024, 025, 026, 030; `pytest` `TestRestorableBookings`, `TestRestorableAfterBlock`; Vitest `venueStaffBookingRequests.spec.js` |
 | AC6 Venue staff restore each listed booking; flag cleared, status as before, event unchanged, coordinator and organiser told; an expired hold can't be | TC-BLOCK-024, 025, 026; `pytest` `TestRestoreExpiredHold`, `test_venue_booking_restore_api.py` |
-| AC7 A submitted replacement isn't changed; the coordinator is told | TC-BLOCK-025, 029; REQUIREMENTS §9 item 118 |
+| AC7 A submitted replacement isn't changed; the coordinator is told | TC-BLOCK-025, 029; REQUIREMENTS §9 item 119 |
 | AC8 Restore and replacement approval at once: one outcome | CR-95's lock order (TC-BOOK-046, TC-BOOK-056); not raced here |
 | AC9 Only users acting as Venue Staff view, change or restore | TC-BLOCK-023, 025, 027; `pytest` `TestAccess`, `TestWhoSeesBlockManagement`; Vitest `VenueDetailView.blockChange.spec.js` |
 | AC10 Restoring one booking leaves the event's other bookings unchanged | TC-BLOCK-025 |
@@ -600,16 +600,16 @@ For buffers extending beyond Python's supported years, comparison endpoints are 
 
 | Acceptance criterion | Covered by |
 |---|---|
-| AC1 Day, week or month calendar for venues they manage; switch between venues | TC-VCAL-005, 007; Vitest `availabilityCalendar.spec.js` (views), `VenueAvailabilityCalendar.spec.js`, `venueCalendarStore.spec.js`, `VenueCalendarView.spec.js`; REQUIREMENTS §9 item 125 |
-| AC2 Each entry shows its type; told apart by label or pattern as well as colour | TC-VCAL-001, 005, 008; `pytest` `TestEntryTypes`; Vitest `availabilityCalendar.spec.js` (`ENTRY_TYPES`), `VenueAvailabilityCalendar.spec.js`; REQUIREMENTS §9 item 123 |
+| AC1 Day, week or month calendar for venues they manage; switch between venues | TC-VCAL-005, 007; Vitest `availabilityCalendar.spec.js` (views), `VenueAvailabilityCalendar.spec.js`, `venueCalendarStore.spec.js`, `VenueCalendarView.spec.js`; REQUIREMENTS §9 item 126 |
+| AC2 Each entry shows its type; told apart by label or pattern as well as colour | TC-VCAL-001, 005, 008; `pytest` `TestEntryTypes`; Vitest `availabilityCalendar.spec.js` (`ENTRY_TYPES`), `VenueAvailabilityCalendar.spec.js`; REQUIREMENTS §9 item 124 |
 | AC3 Approved, unexpired holds, Affected, current or upcoming blocks; not rejected, cancelled, released, expired or removed; a shortened block's remaining period only | TC-VCAL-001, 003; `pytest` `TestEntryTypes`, `TestVenueAndPeriod`, `test_venue_block_repository.py` (`list_calendar_occupants`) |
 | AC4 Changes show on the next refresh without a full page reload | TC-VCAL-005, 009; Vitest `venueCalendarStore.spec.js`, `VenueCalendarView.spec.js` |
-| AC5 A booking's setup and turnaround as separate bands; blocks have no buffer | TC-VCAL-001, 005, 007, 008; Vitest `bookingBands`, `bandLayout`; REQUIREMENTS §9 item 122 (holds) |
+| AC5 A booking's setup and turnaround as separate bands; blocks have no buffer | TC-VCAL-001, 005, 007, 008; Vitest `bookingBands`, `bandLayout`; REQUIREMENTS §9 item 123 (holds) |
 | AC6 Holds show their expiry; an expired hold stops occupying | TC-VCAL-001, 008; `pytest` `test_a_hold_already_past_its_expiry_is_left_out`; Vitest `toCalendarEntries`, `VenueCalendarView.spec.js` (the minute clock) |
 | AC7 An event with several venue bookings appears on each venue's calendar with its own window | TC-VCAL-002 |
 | AC8 An Affected booking is distinct and keeps occupying until restored or released | TC-VCAL-001, 008; `pytest` `TestEntryTypes` |
 | AC9 Selecting an entry shows event name, type, status, occupied window; a block's reason and who set it | TC-VCAL-001, 005; Vitest `entryDetails`, `VenueAvailabilityCalendar.spec.js` |
-| AC10 Times in the venue's timezone; an empty-state message | TC-VCAL-003, 005, 007; Vitest `formatWindow`; REQUIREMENTS §9 item 124 |
+| AC10 Times in the venue's timezone; an empty-state message | TC-VCAL-003, 005, 007; Vitest `formatWindow`; REQUIREMENTS §9 item 125 |
 | AC11 Only users acting as Venue Staff; everyone else 403 | TC-VCAL-004, 006; `pytest` `TestAccess`; Vitest `Nav.spec.js`, `activeRoleAccess.spec.js` |
 
 ## Venue suitability checking (SCRUM-18)
