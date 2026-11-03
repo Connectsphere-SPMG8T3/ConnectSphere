@@ -134,6 +134,31 @@ export function venuePanelState(event, space = null) {
   return { kind: "none" };
 }
 
+// SCRUM-85: a booking still holding its venue can be cancelled (AC1, AC3), until the
+// event has started, ended or been cancelled (AC10).
+const CANCELLABLE_BOOKING_STATUSES = ["held", "approved", "re_review"];
+const CLOSED_EVENT_STATUSES = ["cancelled", "completed", "rejected"];
+
+/** Whether the coordinator is offered Cancel for `booking`. UX only: the API decides. */
+export function canCancelBooking(booking, event, now = new Date()) {
+  if (!booking || !event) return false;
+  if (!CANCELLABLE_BOOKING_STATUSES.includes(booking.status)) return false;
+  if (CLOSED_EVENT_STATUSES.includes(event.status)) return false;
+  return !event.starts_at || new Date(event.starts_at) > now;
+}
+
+/**
+ * The bookings a venue panel offers to cancel, each with its button's label: the
+ * panel's own booking, and a pending replacement standing beside it (AC1).
+ */
+export function cancellableBookings(panel, event, now = new Date()) {
+  if (!panel) return [];
+  return [
+    { booking: panel.booking, label: "Cancel booking" },
+    { booking: panel.replacement, label: "Cancel replacement request" },
+  ].filter((item) => canCancelBooking(item.booking, event, now));
+}
+
 /**
  * What refused a venue request, as one line under the refusal (SCRUM-21 AC2):
  * the other event's name and the window it occupies, setup to turnaround, or

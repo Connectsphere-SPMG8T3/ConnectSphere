@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from httpx import HTTPError
+from postgrest.exceptions import APIError
 
 from app.core.exceptions import (
     BookingConflictError,
@@ -22,6 +24,7 @@ from app.core.exceptions import (
     VenueBlockNotFoundError,
     VenueConflictError,
     VenueNotFoundError,
+    VenueServiceUnavailableError,
 )
 from app.modules.events import service as events_service
 from app.modules.events.schemas import BookingReadiness, EventPlanningContext, SpaceRequirements
@@ -39,6 +42,9 @@ from app.modules.venues.schemas import (
     BookingEventRequirements,
     BookingHistoryEntry,
     BookingImpactContext,
+    CalendarBooking,
+    CalendarEntry,
+    CalendarVenue,
     Editor,
     FlaggableBooking,
     HoldExpiry,
@@ -48,6 +54,7 @@ from app.modules.venues.schemas import (
     VenueBookingDetail,
     VenueBookingReject,
     VenueBlock,
+    VenueCalendar,
     VenueBlockChange,
     VenueBlockChangeResponse,
     VenueBlockCreate,
@@ -716,6 +723,57 @@ def venue_staff_dashboard(now: datetime | None = None) -> VenueStaffDashboard:
     )
 
 
+# How a booking reads on the calendar (SCRUM-57 AC2). An Affected flag outranks
+# the status: the booking still occupies the venue (AC8) but must not read as
+# settled. Re-review is its own type, as on the profile (VC-R6).
+_CALENDAR_BOOKING_TYPES = {"approved": "confirmed", "held": "tentative", "re_review": "re_review"}
+
+
+def _calendar_booking(booking: CalendarBooking, event_name: str | None) -> CalendarEntry:
+    return CalendarEntry(
+        **booking.model_dump(),
+        kind="booking",
+        type="affected" if booking.flag == "affected" else _CALENDAR_BOOKING_TYPES[booking.status],
+        event_name=event_name,
+    )
+
+
+def _calendar_block(block: VenueBlock) -> CalendarEntry:
+    # A block has no setup or turnaround: it occupies exactly its period (AC5).
+    return CalendarEntry(id=block.id, kind="block", type="blocked", period=block.period,
+                         occupied_period=block.period, reason=block.reason, notes=block.notes,
+                         created_by=block.created_by, created_at=block.created_at)
+
+
+def venue_calendar(venue_id: str, period: Period, now: datetime | None = None) -> VenueCalendar:
+    """What occupies one venue during `period`, typed for its calendar (SCRUM-57).
+
+    Only what is current or upcoming is shown (AC3), so the period is asked
+    about from `now` on: a view reaching into the past shows nothing that has
+    ended. A hold past its expiry no longer occupies the venue, even before the
+    minute job marks it expired (AC6). Every venue is offered to switch to,
+    since venue staff are one pool (AUTH-R5, QA-44).
+    """
+    venue = repository.get_venue(venue_id)
+    if venue is None:
+        raise VenueNotFoundError()
+    now = now or datetime.now(timezone.utc)
+    entries: list[CalendarEntry] = []
+    if period.ends_at > now:
+        bookings, blocks = repository.list_calendar_occupants(
+            venue_id, Period(starts_at=max(period.starts_at, now), ends_at=period.ends_at))
+        bookings = [b for b in bookings if not (b.status == "held" and b.expires_at and b.expires_at <= now)]
+        names = events_service.names_by_id(b.event_id for b in bookings) if bookings else {}
+        entries = [_calendar_booking(b, names.get(b.event_id)) for b in bookings]
+        entries += [_calendar_block(b) for b in blocks]
+    return VenueCalendar(
+        venue=CalendarVenue(id=venue.id, name=venue.name, is_active=venue.is_active),
+        period=Period(starts_at=period.starts_at, ends_at=period.ends_at),
+        entries=sorted(entries, key=lambda e: (e.occupied_period.starts_at, e.id)),
+        venues=[CalendarVenue(id=v.id, name=v.name, is_active=v.is_active) for v in repository.list_venues()],
+    )
+
+
 def booking_statuses_by_event(event_ids: Iterable[str]) -> dict[str, list[str]]:
     """`{event_id: [booking status, ...]}` — the venues module's answer to "has this
     event's venue been settled?" (REQUIREMENTS §6.6: ready once a booking is
@@ -1156,6 +1214,48 @@ def approve_booking(booking_id: str, actor_id: str) -> VenueBookingDetail:
         raise BookingDecisionConflictError("Venue blocked for this time.")
     if outcome == "venue_inactive":
         raise BookingDecisionConflictError("This venue is inactive, so the booking can't be approved.")
+    return _booking_detail(repository.get_booking(booking_id))
+
+
+# What `public.cancel_venue_booking` refuses with, as the coordinator reads it (SCRUM-85).
+CANCEL_REFUSALS = {
+    "not_cancellable": "Only a Held or Approved booking can be cancelled.",
+    "hold_expired": "This hold has expired, so it can't be cancelled.",
+    "event_closed": "A booking can't be cancelled once its event has started, ended or been cancelled.",
+}
+
+
+def cancel_booking(booking_id: str, coordinator_id: str) -> VenueBookingDetail:
+    """The assigned coordinator cancels one of their event's bookings (SCRUM-85, BR-R5).
+
+    `public.cancel_venue_booking` decides under the event's and the booking's locks,
+    so a cancel racing an approval, restore or expiry, or a second cancel, saves
+    one outcome (AC9). In the same transaction it frees the slot (AC1), records
+    who and when (AC6), tells every venue staff account (AC1) and returns a Safety
+    review, Confirmed or Preparation event to Planning (AC4, AC8). The event's
+    other bookings are untouched (AC7).
+    """
+    booking = repository.get_booking(booking_id)
+    if booking is None:
+        raise BookingNotFoundError()
+    event_name = events_service.names_by_id([booking["event_id"]]).get(booking["event_id"], "your event")
+    venue_name = booking.get("venue_name") or "the venue"
+    try:
+        result = repository.cancel_booking(
+            booking_id, coordinator_id,
+            staff_message=(f'The coordinator cancelled the booking of {venue_name} for "{event_name}". '
+                           "The venue is free for that time again."),
+            return_message=events_service.return_to_planning_message(event_name, "booking_cancelled"),
+        )
+    except (HTTPError, APIError) as exc:
+        raise VenueServiceUnavailableError() from exc
+    outcome = result["outcome"]
+    if outcome == "booking_not_found":
+        raise BookingNotFoundError()
+    if outcome == "not_assigned":
+        raise NotAssignedCoordinatorError()
+    if outcome in CANCEL_REFUSALS:
+        raise BookingDecisionConflictError(CANCEL_REFUSALS[outcome])
     return _booking_detail(repository.get_booking(booking_id))
 
 

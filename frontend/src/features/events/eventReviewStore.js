@@ -147,6 +147,32 @@ export const useEventReviewStore = defineStore("eventReview", {
       }
     },
 
+    // SCRUM-85: reading the event again shows a return to Planning (AC4) and the
+    // freed panel (AC2). A refusal reads the event too, so a booking that changed
+    // meanwhile shows as it is, and keeps the refusal in the page alert.
+    async cancelBooking(bookingId) {
+      if (this.isActing) return;
+      const auth = useAuthStore();
+      const eventId = this.event.id;
+      this.isActing = true;
+      this.error = null;
+      try {
+        await auth.withSession((token) => venueBookingsApi.cancel(bookingId, token));
+        await this.load(eventId);
+      } catch (error) {
+        try {
+          const event = await auth.withSession((token) => eventsApi.get(eventId, token));
+          if (this.historyEventId === eventId || this.historyEventId === null) this.event = event;
+        } catch {
+          // The refusal is what the coordinator needs to read.
+        }
+        this.error = error.message;
+        throw error;
+      } finally {
+        this.isActing = false;
+      }
+    },
+
     async sendForSafetyCheck() {
       const eventId = this.event.id;
       try {

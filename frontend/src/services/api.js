@@ -103,6 +103,11 @@ export const venuesApi = {
   createBlock(venueId, payload, token) {
     return request(`/venues/${encodeURIComponent(venueId)}/blocks`, { method: "POST", body: payload, token });
   },
+  // SCRUM-57: what occupies one venue over a period, for its calendar.
+  calendar(venueId, { startsAt, endsAt }, token) {
+    const query = toQueryString({ starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString() });
+    return request(`/venues/${encodeURIComponent(venueId)}/calendar${query}`, { token });
+  },
   changeBlock(venueId, blockId, payload, token) {
     return request(`/venues/${encodeURIComponent(venueId)}/blocks/${encodeURIComponent(blockId)}/change`, {
       method: "POST",
@@ -144,6 +149,11 @@ export const venueBookingsApi = {
   // CR-95 AC9: venue staff restore an affected booking; 409 says why the venue isn't free yet.
   restore(bookingId, token) {
     return request(`/venue-bookings/${encodeURIComponent(bookingId)}/restore`, { method: "POST", token });
+  },
+  // SCRUM-85: the assigned coordinator cancels a held, approved or re-review
+  // booking; 409 means it is already finished or its event has started.
+  cancel(bookingId, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/cancel`, { method: "POST", token });
   },
 };
 

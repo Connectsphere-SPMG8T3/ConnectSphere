@@ -17,6 +17,8 @@ from app.modules.venues.schemas import (
     VenueBlockChange,
     VenueBlockChangeResponse,
     VenueBlockCreate,
+    VenueCalendar,
+    VenueCalendarRange,
     VenueBlockResponse,
     VenueDeactivateRequest,
     VenueDeactivateResponse,
@@ -149,6 +151,16 @@ def change_block(venue_id: UUID, block_id: UUID, body: VenueBlockChange,
     return service.change_block(str(venue_id), str(block_id), current_user.id, body)
 
 
+@router.get("/{venue_id}/calendar", response_model=VenueCalendar, status_code=status.HTTP_200_OK)
+def read_venue_calendar(
+    venue_id: UUID, period: Annotated[VenueCalendarRange, Query()], current_user: VenueStaffOnly
+) -> VenueCalendar:
+    """SCRUM-57: what occupies a venue during `starts_at`–`ends_at` (offsets
+    required, at most 42 days), typed for its calendar, plus every venue to
+    switch to. Venue Staff only (AC11); 404 for an unknown venue."""
+    return service.venue_calendar(str(venue_id), period)
+
+
 @router.post("/{venue_id}/reactivate", response_model=VenueDetail, status_code=status.HTTP_200_OK)
 def reactivate_venue(venue_id: UUID, body: VenueReactivateRequest, current_user: VenueStaffOnly) -> VenueDetail:
     """Make an inactive venue bookable again (SCRUM-64 AC4). Bookings flagged
@@ -239,3 +251,13 @@ def approve_venue_booking(booking_id: UUID, current_user: VenueStaffOnly) -> Ven
     Refused with 409 when the booking is no longer held (including an expired
     hold), a venue block now overlaps it, or the venue has been deactivated."""
     return service.approve_booking(str(booking_id), current_user.id)
+
+
+@bookings_router.post("/{booking_id}/cancel", response_model=VenueBookingDetail, status_code=status.HTTP_200_OK)
+def cancel_venue_booking(booking_id: UUID, current_user: CoordinatorOnly) -> VenueBookingDetail:
+    """The assigned coordinator, acting as coordinator, cancels a held, approved or
+    re-review booking (SCRUM-85). Its slot is freed, venue staff are told, and an
+    event in Safety review, Confirmed or Preparation returns to Planning. 409 when
+    the booking is already finished or the event has started, ended or been
+    cancelled; 403 for anyone else, the Coordinator Lead included."""
+    return service.cancel_booking(str(booking_id), current_user.id)

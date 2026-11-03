@@ -820,6 +820,88 @@ class VenueBlockChangeResponse(BaseModel):
     restorable: list[RestorableBooking] = []
 
 
+# --- SCRUM-57: a venue's availability calendar -------------------------------
+
+# How far one calendar read may reach: a month view's six-week grid.
+CALENDAR_MAX_DAYS = 42
+
+# Every venue is in Singapore, and venues store no timezone of their own
+# (REQUIREMENTS §9, SCRUM-57 AC10).
+VENUE_TIMEZONE = "Asia/Singapore"
+
+CalendarEntryType = Literal["confirmed", "tentative", "affected", "re_review", "blocked"]
+
+
+class VenueCalendarRange(Period):
+    """The period a calendar view asks about, at most `CALENDAR_MAX_DAYS` long."""
+
+    @model_validator(mode="after")
+    def _check_length(self):
+        if (self.ends_at - self.starts_at).total_seconds() > CALENDAR_MAX_DAYS * 86400:
+            raise ValueError(f"A calendar period can be at most {CALENDAR_MAX_DAYS} days long")
+        return self
+
+
+class CalendarBooking(BaseModel):
+    """An occupying booking as the calendar reads it: its own time, the window
+    setup and turnaround widen it to (CR-100), and what flags it carries."""
+
+    id: str
+    event_id: str
+    status: str
+    period: Period
+    occupied_period: Period
+    setup_minutes: int = 0
+    turnaround_minutes: int = 0
+    expires_at: datetime | None = None
+    flag: str | None = None
+    flag_reason: str | None = None
+
+
+class CalendarEntry(BaseModel):
+    """One thing on a venue's calendar (SCRUM-57 AC2, AC9).
+
+    `period` is what people are told (a booking's own time, a block's
+    remaining period) and `occupied_period` what the venue is unavailable for;
+    a block's two are the same. Booking fields are null on a block and block
+    fields null on a booking.
+    """
+
+    id: str
+    kind: Literal["booking", "block"]
+    type: CalendarEntryType
+    period: Period
+    occupied_period: Period
+    status: str | None = None
+    event_id: str | None = None
+    event_name: str | None = None
+    setup_minutes: int = 0
+    turnaround_minutes: int = 0
+    expires_at: datetime | None = None
+    flag: str | None = None
+    flag_reason: str | None = None
+    reason: str | None = None
+    notes: str | None = None
+    created_by: Editor | None = None
+    created_at: datetime | None = None
+
+
+class CalendarVenue(BaseModel):
+    id: str
+    name: str
+    is_active: bool
+
+
+class VenueCalendar(BaseModel):
+    """A venue's occupants over a period, and every venue to switch to (AC1)."""
+
+    venue: CalendarVenue
+    timezone: str = VENUE_TIMEZONE
+    period: Period
+    entries: list[CalendarEntry] = []
+    venues: list[CalendarVenue] = []
+
+
 class VenueBlockResponse(BaseModel):
     """`saved=False` means nothing was written: `affected` lists the bookings
     the block would affect and the caller had not yet set `confirm=true`.

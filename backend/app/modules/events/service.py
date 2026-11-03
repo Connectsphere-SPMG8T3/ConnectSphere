@@ -1503,6 +1503,12 @@ _RETURN_REASONS = {
 }
 
 
+def return_to_planning_message(event_name: str, reason_code: ReturnReason) -> str:
+    """What the coordinator (and the Safety Officers, from review) read when an event
+    returns to planning, for callers that return it inside their own transaction (SCRUM-85)."""
+    return f'"{event_name}" returned to planning. {_RETURN_REASONS[ReturnReason(reason_code)]}'
+
+
 @_safety_service_available
 def return_to_planning(event_id: str, *, reason_code: ReturnReason, message: str | None = None,
                        actor_id: str | None = None) -> EventResponse | None:
@@ -1518,7 +1524,7 @@ def return_to_planning(event_id: str, *, reason_code: ReturnReason, message: str
     action = "safety_withdraw" if row["status"] == "safety_review" else "approved_change"
     lifecycle.target(action, row["status"])
     reason = ReturnReason(reason_code)
-    fixed = f'"{row["name"]}" returned to planning. {_RETURN_REASONS[reason]}'
+    fixed = return_to_planning_message(row["name"], reason)
     updated = repository.return_to_planning(
         event_id, row["version"], from_status=row["status"], reason_code=reason.value,
         coordinator_message=fixed, officer_message=fixed if action == "safety_withdraw" else None,

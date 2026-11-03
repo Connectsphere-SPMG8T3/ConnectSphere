@@ -85,6 +85,7 @@ const HISTORY_ACTION_LABELS = {
   sent_for_re_review: "Sent for re-review",
   re_review_approved: "Re-approved",
   re_review_rejected: "Rejected after re-review",
+  cancelled: "Cancelled by the coordinator",
 };
 
 /** One history row's action as a person reads it; an unknown one is spelled out rather than hidden. */
