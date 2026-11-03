@@ -740,6 +740,8 @@ def set_hold_expiry(booking_id: str, actor_id: str, expires_at: datetime) -> dic
 _BOOKING_DETAIL_COLUMNS = (
     "id, event_id, venue_id, booked_period, status, request_note, created_at, "
     "decision_reason, suggestion_note, decided_at, flag, flag_reason, "
+    "preparation:event_venue_preparation(stage, note, updated_at, "
+    "updater:profiles!event_venue_preparation_updated_by_fkey(full_name)), "
     "venue:venues!venue_bookings_venue_id_fkey(name), "
     "requester:profiles!venue_bookings_requested_by_fkey(full_name), "
     "decider:profiles!venue_bookings_decided_by_fkey(full_name)"
@@ -788,6 +790,7 @@ def get_booking(booking_id: str) -> dict | None:
         "requested_by_name": _embedded_name(row, "requester", "full_name"),
         "flag": row.get("flag"),
         "flag_reason": row.get("flag_reason"),
+        "preparation": row.get("preparation"),
         "decision_reason": row.get("decision_reason"),
         "suggestion_note": row.get("suggestion_note"),
         "decided_by_name": _embedded_name(row, "decider", "full_name"),
@@ -861,7 +864,7 @@ def list_event_booking_history(event_id: str) -> list[dict]:
     response = (
         get_supabase_admin_client()
         .table("venue_booking_history")
-        .select("id, action, reason, created_at, "
+        .select("id, action, reason, old_preparation_stage, new_preparation_stage, created_at, "
                 "actor:profiles!venue_booking_history_actor_id_fkey(id, full_name), "
                 "booking:venue_bookings!venue_booking_history_booking_id_fkey!inner("
                 "event_id, venue:venues!venue_bookings_venue_id_fkey(name))")
@@ -874,6 +877,8 @@ def list_event_booking_history(event_id: str) -> list[dict]:
             "action": row["action"],
             "venue_name": ((row.get("booking") or {}).get("venue") or {}).get("name"),
             "reason": row.get("reason"),
+            "old_preparation_stage": row.get("old_preparation_stage"),
+            "new_preparation_stage": row.get("new_preparation_stage"),
             "actor": row.get("actor"),
             "at": row["created_at"],
         }
@@ -997,7 +1002,9 @@ def list_active_bookings(event_id: str) -> list[dict]:
         response = (
             get_supabase_admin_client()
             .table("venue_bookings")
-            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, flag, flag_reason, replaces_booking_id, needs_re_review_reason, venues!venue_bookings_venue_id_fkey(name)")
+            .select("id, event_id, event_space_request_id, venue_id, status, expires_at, flag, flag_reason, replaces_booking_id, needs_re_review_reason, "
+                    "preparation:event_venue_preparation(stage, note, updated_at, updater:profiles!event_venue_preparation_updated_by_fkey(full_name)), "
+                    "venues!venue_bookings_venue_id_fkey(name)")
             .eq("event_id", event_id)
             # Expired too: a space whose hold ran out still shows it (CR-99 AC7, CR-97).
             .in_("status", [*OCCUPYING_STATUSES, "expired"])
@@ -1011,6 +1018,17 @@ def list_active_bookings(event_id: str) -> list[dict]:
             return []
         raise
     return response.data or []
+
+
+def set_venue_preparation(booking_id: str, actor_id: str, stage: str, note: str | None) -> dict:
+    """Run SCRUM-109's atomic booking preparation update."""
+    response = get_supabase_admin_client().rpc("set_venue_preparation", {
+        "p_booking_id": booking_id,
+        "p_actor_id": actor_id,
+        "p_stage": stage,
+        "p_note": note,
+    }).execute()
+    return (response.data or [])[0]
 
 
 def list_venue_staff_ids() -> set[str]:

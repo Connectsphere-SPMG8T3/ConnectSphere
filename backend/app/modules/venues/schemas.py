@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_serializer, model_validator
 
 
 class VenueLayout(str, Enum):
@@ -625,7 +625,17 @@ class BookingHistoryEntry(BaseModel):
     actor_name: str | None = None
     reason: str | None = None
     suggestion: str | None = None
+    old_preparation_stage: str | None = None
+    new_preparation_stage: str | None = None
     at: datetime
+
+    @model_serializer(mode="wrap")
+    def _omit_preparation_fields_when_not_preparation(self, handler):
+        data = handler(self)
+        if self.old_preparation_stage is None and self.new_preparation_stage is None:
+            data.pop("old_preparation_stage", None)
+            data.pop("new_preparation_stage", None)
+        return data
 
 
 class ReReviewContext(BaseModel):
@@ -657,9 +667,48 @@ class VenueBookingDetail(BaseModel):
     flag_reason: str | None = None
     event: BookingEventRequirements
     decision: BookingDecision | None = None
+    preparation: "VenuePreparation | None" = None
     history: list[BookingHistoryEntry] = []
     # Story 37: set only while the booking is under re-review.
     re_review: ReReviewContext | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unrecorded_preparation(self, handler):
+        data = handler(self)
+        if self.preparation is None:
+            data.pop("preparation", None)
+        return data
+
+
+class VenuePreparationStage(BaseModel):
+    stage: str
+    updated_at: datetime | None = None
+
+
+class VenuePreparation(VenuePreparationStage):
+    note: str | None = None
+    updated_by_name: str | None = None
+
+
+class VenuePreparationRequest(BaseModel):
+    stage: str
+    note: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("stage")
+    @classmethod
+    def valid_stage(cls, value: str) -> str:
+        if value not in {"not_started", "in_preparation", "in_progress", "completed"}:
+            raise ValueError("Invalid preparation stage.")
+        return value
+
+    @field_validator("note")
+    @classmethod
+    def blank_note_is_none(cls, value: str | None) -> str | None:
+        return value.strip() if value and value.strip() else None
+
+
+class VenuePreparationUpdated(VenuePreparation):
+    event_status: str
 
 
 class VenueDeactivateRequest(BaseModel):

@@ -24,6 +24,11 @@ const router = useRouter();
 const eventsStore = useEventsStore();
 const review = useEventReviewStore();
 const event = computed(() => eventsStore.events.find((storedEvent) => storedEvent.id === route.params.id));
+const venueBookings = computed(() => event.value?.venue_bookings?.length
+  ? event.value.venue_bookings
+  : event.value?.venue_booking
+    ? [event.value.venue_booking]
+    : []);
 const statusLabel = computed(() => STATUS_LABELS[event.value?.status] ?? event.value?.status.replaceAll("_", " "));
 const rejection = computed(() =>
   event.value?.status === "rejected" ? review.history.find((entry) => entry.to_status === "rejected") ?? null : null,
@@ -148,8 +153,11 @@ onMounted(async () => {
       <p v-if="event.status === 'safety_review'" class="mb-8 font-medium">Your event is with the Safety Officer for its operational safety check.</p>
       <BauhausCard v-if="['confirmed', 'preparation'].includes(event.status)" background="white" accent="none" class="mb-8">
         <h2 class="text-2xl font-bold">Arrangements</h2>
-        <p class="mt-4">Venue: {{ event.venue_booking?.venue_name ?? 'Not provided' }}</p>
-        <p>Booking: {{ BOOKING_STATUS_LABELS[event.venue_booking?.status] ?? 'Not provided' }}</p>
+        <div v-for="booking in venueBookings" :key="booking.id" class="mt-4 border-l-4 border-ink pl-3">
+          <p>Venue: {{ booking.venue_name ?? "Not provided" }}</p>
+          <p>Booking: {{ BOOKING_STATUS_LABELS[booking.status] ?? "Not provided" }}</p>
+          <p>Venue preparation: {{ preparationStageLabel(booking.preparation?.stage ?? "not_started") }}</p>
+        </div>
         <p>Technical status: {{ ({ready: 'Ready', not_required: 'Not required', pending: 'Pending', issue: 'Issue'})[event.technical_readiness] ?? 'Not provided' }}</p>
         <!-- CR-110 AC4: the stage only; the API never sends the organiser a note. -->
         <p v-if="event.technical_preparation">Technical preparation: {{ preparationStageLabel(event.technical_preparation.stage) }}</p>

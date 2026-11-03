@@ -22,6 +22,8 @@ from app.modules.venues.schemas import (
     VenueDeactivateResponse,
     VenueDetail,
     VenueEditHistoryResponse,
+    VenuePreparationRequest,
+    VenuePreparationUpdated,
     VenueReactivateRequest,
     VenueSearchCriteria,
     VenueSearchResponse,
@@ -249,3 +251,14 @@ def cancel_venue_booking(booking_id: UUID, current_user: CoordinatorOnly) -> Ven
     the booking is already finished or the event has started, ended or been
     cancelled; 403 for anyone else, the Coordinator Lead included."""
     return service.cancel_booking(str(booking_id), current_user.id)
+
+
+@bookings_router.put("/{booking_id}/preparation", response_model=VenuePreparationUpdated,
+                     status_code=status.HTTP_200_OK)
+def set_venue_preparation(
+    booking_id: UUID,
+    body: VenuePreparationRequest,
+    current_user: VenueStaffOnly,
+) -> VenuePreparationUpdated:
+    """SCRUM-109: only Venue Staff record preparation for a booking."""
+    return service.set_venue_preparation(str(booking_id), current_user.id, body.stage, body.note)

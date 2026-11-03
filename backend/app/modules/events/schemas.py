@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 from app.modules.equipment.schemas import ExitConfirmation, TechnicalPreparation, TechnicalPreparationStage
-from app.modules.venues.schemas import Facility, VenueLayout
+from app.modules.venues.schemas import Facility, VenueLayout, VenuePreparation, VenuePreparationStage
 
 
 class EventStatus(str, Enum):
@@ -275,12 +275,15 @@ class EventVenueBooking(BaseModel):
     # Story 37: why an approved change marked it Needs re-review. Absent once sent or never
     # marked, so an unmarked booking keeps the shape it had before.
     needs_re_review_reason: str | None = None
+    preparation: VenuePreparationStage | VenuePreparation | None = None
 
     @model_serializer(mode="wrap")
     def _omit_unmarked(self, handler):
         data = handler(self)
         if self.needs_re_review_reason is None:
             data.pop("needs_re_review_reason", None)
+        if self.preparation is None:
+            data.pop("preparation", None)
         return data
 
 

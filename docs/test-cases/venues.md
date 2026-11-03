@@ -4,6 +4,16 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 
 **In scope:** `GET /api/v1/venues`, `GET /api/v1/venues/{id}`, `POST /api/v1/venues/{id}/deactivate` and `/reactivate`, `POST /api/v1/venue-bookings`, the `/venues` search page, the `/venues/:id` profile page and the Venue panel on the coordinator's event page.
 
+## Venue preparation progress (SCRUM-109)
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-VENUE-109-001 | Venue Staff records preparation for one booking | Integration | Safety Officer-approved Confirmed event with an approved venue booking | `PUT /api/v1/venue-bookings/{booking_id}/preparation` as Venue Staff | Each supported stage and an optional note | 200; the booking stores the stage and note, and the actor/time are recorded in event history. | 🔴 | 2026-11-03 | Not run |
+| TC-VENUE-109-002 | Preparation is locked before confirmation and after a return to Planning | Integration | Event in Planning, then the same event returned to Planning after an update | Call the preparation endpoint directly in both states | Any valid stage | 409 in both cases; the previously recorded progress remains readable and unchanged. | 🔴 | 2026-11-03 | Not run |
+| TC-VENUE-109-003 | First venue update starts Preparation and notifies both viewers | Integration | Confirmed event with assigned coordinator and organiser | Submit the first changed venue preparation update | `in_progress` | Event becomes Preparation; coordinator and organiser receive the preparation-started notification. | 🔴 | 2026-11-03 | Not run |
+| TC-VENUE-109-004 | Coordinator and organiser see the correct preparation fields | Manual | Event with one or more venue bookings and a recorded update | Open the coordinator event page and organiser event page | — | Coordinator sees every booking's stage and internal note. Organiser sees every venue's stage and never sees the note. | 🔴 | 2026-11-03 | Not run |
+| TC-VENUE-109-005 | Only Venue Staff can update venue preparation | Integration | Tokens for every active role, including a multi-role account acting in another role | Call the preparation endpoint with each token | Valid stage | Venue Staff receives 200; every other active role receives 403. | 🔴 | 2026-11-03 | Not run |
+
 ## Venue Staff request history (SCRUM-70-R)
 
 **Preconditions for every case in this section:** migrations for venue booking decisions and expired holds are applied. Signed in as **Venue Staff** (`venue.staff@connectsphere.dev` / `Cs1234`) unless stated. Use throwaway booking requests for any write-based setup; do not alter seeded bookings.

@@ -57,7 +57,7 @@ The release is judged on **coherent end-to-end workflows** (W4). This is the ref
 6. Venue staff approve each booking.
 7. Equipment is requested and **fully reserved** by tech support.
 8. Every required arrangement is approved, so the coordinator **sends the event for the Operational Safety Check**; the **Safety Officer approves** it and the event is **Confirmed** (QA3-2, QA3-3).
-9. Venue staff and tech support record preparation progress per venue, and the first update moves the event to **Preparation** (QA3-45, M3).
+9. Venue staff and tech support record preparation progress per venue, and the first update moves the event to **Preparation** (QA3-45, M3). Venue progress is stored per booking; coordinators see internal notes, while organisers see stage only.
 10. Attendees register within the organiser's registration window.
 11. The organiser requests a significant change and the coordinator approves it. The event returns to Planning, and **only the arrangements the change touches go back to staff** (CR-R5): nothing is reset automatically (QA3-51). The event always passes a new safety check. Everyone affected is notified.
 12. Alternatively, the organiser requests cancellation, the coordinator approves it, reservations are freed, and attendees are notified.

@@ -984,9 +984,22 @@ def managed_registrations(event_id: str, user_id: str, role: str) -> ManagedRegi
 def _for_role(booking: dict, role: str) -> dict:
     """The flag and the replacement link are the coordinator's follow-up (CR-95);
     an organiser sees a confirmed event's venue, not what is wrong with it."""
+    preparation = booking.get("preparation")
     if role == "event_coordinator":
-        return booking
-    return {**booking, "flag": None, "flag_reason": None, "replaces_booking_id": None}
+        return {**booking, **({"preparation": preparation} if preparation else {})}
+    if not preparation:
+        return {**booking, "flag": None, "flag_reason": None, "replaces_booking_id": None}
+    public_preparation = {
+        "stage": preparation.get("stage", "not_started"),
+        "updated_at": preparation.get("updated_at"),
+    }
+    return {
+        **booking,
+        "flag": None,
+        "flag_reason": None,
+        "replaces_booking_id": None,
+        "preparation": public_preparation,
+    }
 
 
 # SCRUM-82 AC8, CR-110 Q10: the organiser sees the confirmed arrangements, and

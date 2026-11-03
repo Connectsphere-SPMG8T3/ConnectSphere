@@ -60,6 +60,9 @@ from app.modules.venues.schemas import (
     VenueDetail,
     VenueEditHistoryEntry,
     VenueEditHistoryResponse,
+    VenuePreparation,
+    VenuePreparationStage,
+    VenuePreparationUpdated,
     VenueSearchCriteria,
     VenueSearchResponse,
     VenueStaffDashboard,
@@ -980,6 +983,7 @@ def active_booking_for_event(event_id: str) -> dict | None:
         "venue_name": (row.get("venues") or {}).get("name"),
         "status": row["status"],
         "expires_at": row.get("expires_at"),
+        "preparation": row.get("preparation"),
         **_flag_fields(row),
     }
 
@@ -1021,6 +1025,7 @@ def _booking_detail(booking: dict) -> VenueBookingDetail:
             facilities_required=context.facilities_required, accessibility_needs=context.accessibility_needs,
         ),
         decision=decision,
+        preparation=_preparation(booking, internal=True) if booking.get("preparation") else None,
         history=[BookingHistoryEntry(**entry) for entry in history],
         re_review=_re_review_context(booking, history) if booking["status"] == "re_review" else None,
     )
@@ -1292,6 +1297,46 @@ def send_booking_for_re_review(booking_id: str, coordinator_id: str, note: str |
 def event_booking_history(event_id: str) -> list[dict]:
     """Story 62 AC5: every booking's history on the event, for its change history."""
     return repository.list_event_booking_history(event_id)
+
+
+def _preparation(row: dict, *, internal: bool) -> VenuePreparation | VenuePreparationStage:
+    recorded = row.get("preparation") or {}
+    stage = recorded.get("stage") or "not_started"
+    updated_at = recorded.get("updated_at")
+    if not internal:
+        return VenuePreparationStage(stage=stage, updated_at=updated_at)
+    updater = recorded.get("updater") or {}
+    if isinstance(updater, list):
+        updater = updater[0] if updater else {}
+    return VenuePreparation(
+        stage=stage,
+        updated_at=updated_at,
+        note=recorded.get("note"),
+        updated_by_name=updater.get("full_name"),
+    )
+
+
+def set_venue_preparation(
+    booking_id: str, actor_id: str, stage: str, note: str | None
+) -> VenuePreparationUpdated:
+    """SCRUM-109 AC1-AC3, AC5: update one booking through the atomic RPC."""
+    row = repository.set_venue_preparation(booking_id, actor_id, stage, note)
+    outcome = row.get("outcome")
+    if outcome == "booking_not_found" or outcome == "event_not_found":
+        raise BookingNotFoundError()
+    if outcome == "not_confirmed":
+        raise BookingDecisionConflictError(
+            "Venue preparation opens once the Safety Officer has confirmed the event."
+        )
+    if outcome != "ok":
+        raise RuntimeError(f"venue preparation function returned {outcome!r}")
+    return VenuePreparationUpdated(
+        stage=row["stage"],
+        note=row.get("note"),
+        updated_at=row.get("updated_at"),
+        updated_by_name=None,
+        event_status=row["event_status"],
+    )
 
 
 # A booking in one of these still holds or has booked its venue.

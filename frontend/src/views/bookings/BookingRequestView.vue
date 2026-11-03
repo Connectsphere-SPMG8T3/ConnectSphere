@@ -12,6 +12,7 @@ import { RouterLink, useRoute } from "vue-router";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
+import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import RejectBookingModal from "@/components/venues/RejectBookingModal.vue";
 import ChangeRequestChanges from "@/components/events/ChangeRequestChanges.vue";
@@ -45,6 +46,9 @@ const event = computed(() => booking.value?.event ?? {});
 const showApprove = computed(() => canApproveBooking(booking.value, auth.role));
 const showReject = computed(() => canRejectBooking(booking.value, auth.role));
 const isDeciding = computed(() => store.isApproving || store.isRejecting);
+const showPreparation = computed(() => auth.role === "venue_staff");
+const preparationStage = ref("not_started");
+const preparationNote = ref("");
 // CR-95: a booking flagged Affected shows why to everyone who can read the page;
 // only venue staff can confirm the venue is free again and restore it (AC9).
 const isAffected = computed(() => booking.value?.flag === "affected");
@@ -63,7 +67,10 @@ const notSpecified = (value) => (value === null || value === undefined || value 
 function load() {
   store.error = null;
   store.conflict = false;
-  return store.load(String(route.params.id));
+  return store.load(String(route.params.id)).then(() => {
+    preparationStage.value = booking.value?.preparation?.stage ?? "not_started";
+    preparationNote.value = booking.value?.preparation?.note ?? "";
+  });
 }
 
 onMounted(load);
@@ -100,6 +107,14 @@ async function reject(form) {
   } else if (store.conflict) {
     isRejectOpen.value = false;
   }
+}
+
+async function savePreparation() {
+  const ok = await store.setPreparation(String(route.params.id), {
+    stage: preparationStage.value,
+    note: preparationNote.value.trim() || null,
+  });
+  if (ok) showToast("Preparation progress saved.");
 }
 </script>
 
@@ -176,6 +191,45 @@ async function reject(form) {
               @click="restore"
             >
               Restore original booking
+            </BauhausButton>
+          </template>
+        </div>
+        <div class="mt-6 border-t-4 border-ink pt-6" data-testid="venue-preparation">
+          <h2 class="text-lg font-bold">Venue preparation</h2>
+          <p class="mt-1 text-sm font-medium">
+            Progress: {{ booking.preparation?.stage?.replaceAll("_", " ") ?? "not started" }}
+          </p>
+          <template v-if="showPreparation">
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              <BauhausSelect
+                v-model="preparationStage"
+                label="Preparation stage"
+                :options="[
+                  { value: 'not_started', label: 'Not started' },
+                  { value: 'in_preparation', label: 'In preparation' },
+                  { value: 'in_progress', label: 'In progress' },
+                  { value: 'completed', label: 'Completed' },
+                ]"
+                :show-placeholder="false"
+              />
+              <label class="text-sm font-bold" for="venue-preparation-note">
+                Internal note
+                <textarea
+                  id="venue-preparation-note"
+                  v-model="preparationNote"
+                  rows="3"
+                  maxlength="2000"
+                  class="mt-2 w-full border-2 border-ink bg-canvas p-2 text-sm font-medium"
+                />
+              </label>
+            </div>
+            <BauhausButton
+              class="mt-4"
+              variant="secondary"
+              :disabled="store.isPreparing"
+              @click="savePreparation"
+            >
+              Save preparation progress
             </BauhausButton>
           </template>
         </div>
