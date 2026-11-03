@@ -3,22 +3,42 @@ import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import SafetyChecklist from "@/components/events/SafetyChecklist.vue";
 import SafetyDecisionDetails from "@/components/events/SafetyDecisionDetails.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import { showToast } from "@/composables/useToast";
 import { exitConfirmationText } from "@/features/equipment/technical";
+import { buildChecklist, canApprove, hasConcern, missingMarks } from "@/features/events/safetyChecklist";
 import { displaySafetyTime } from "@/features/events/safetyDecision";
 import { useSafetyDecisionStore } from "@/features/events/safetyDecisionStore";
 
 const route = useRoute();
 const router = useRouter();
 const safety = useSafetyDecisionStore();
-const comment = ref("");
+// CR-108: the comment the organiser sees and the officer's private notes are separate texts.
+const organiserComment = ref("");
+const privateNote = ref("");
+const marks = ref({});
 const bookingIds = ref([]);
 const rejectedBookingId = ref(null);
 const equipmentIds = ref([]);
 const pendingKind = ref(null);
 const review = computed(() => safety.review);
+const venueBookingIds = computed(() => (review.value?.venues ?? []).map((venue) => venue.booking_id));
+const missing = computed(() => missingMarks(marks.value, venueBookingIds.value));
+const complete = computed(() => missing.value.length === 0);
+const approvable = computed(() => canApprove(marks.value, venueBookingIds.value));
+const concern = computed(() => hasConcern(marks.value, venueBookingIds.value));
+const hasComment = computed(() => organiserComment.value.trim() !== "");
+const missingText = computed(() => `${missing.value.length} checklist ${missing.value.length === 1 ? "mark" : "marks"} still to make.`);
+function resetForm() {
+  organiserComment.value = "";
+  privateNote.value = "";
+  marks.value = {};
+  bookingIds.value = [];
+  equipmentIds.value = [];
+  rejectedBookingId.value = null;
+}
 const confirmations = {
   approve: { title: "Approve this event?", label: "Approve", message: "The event will be Confirmed. The organiser and staff will be notified.", toast: "Event approved" },
   requestChanges: { title: "Request changes?", label: "Request changes", message: "The event returns to Planning. No booking or equipment changes status; the coordinator decides what to change.", toast: "Changes requested" },
@@ -35,17 +55,18 @@ async function confirmDecision() {
   }
   const kind = pendingKind.value;
   pendingKind.value = null;
-  const text = comment.value.trim();
-  const payload = kind === "approve" ? { comment: text || null } : kind === "reject" ? { reason: text, booking_id: rejectedBookingId.value } : {
-    comment: text,
-    booking_ids: [...bookingIds.value], equipment_request_ids: [...equipmentIds.value],
+  const text = organiserComment.value.trim();
+  const common = {
+    checklist: buildChecklist(marks.value, venueBookingIds.value),
+    organiser_comment: text || null,
+    private_note: privateNote.value.trim() || null,
+  };
+  const payload = kind === "approve" ? common : kind === "reject" ? { ...common, booking_id: rejectedBookingId.value } : {
+    ...common, booking_ids: [...bookingIds.value], equipment_request_ids: [...equipmentIds.value],
   };
   try {
     await safety.decide(kind, route.params.id, payload);
-    comment.value = "";
-    bookingIds.value = [];
-    equipmentIds.value = [];
-    rejectedBookingId.value = null;
+    resetForm();
     showToast(confirmations[kind].toast);
     await router.push({ name: "dashboard-safety" });
   } catch {
@@ -53,10 +74,7 @@ async function confirmDecision() {
   }
 }
 watch(() => route.params.id, (id) => {
-  comment.value = "";
-  bookingIds.value = [];
-  equipmentIds.value = [];
-  rejectedBookingId.value = null;
+  resetForm();
   pendingKind.value = null;
   if (id) safety.loadReview(id);
 }, { immediate: true });
@@ -121,9 +139,16 @@ watch(() => route.params.id, (id) => {
         </BauhausCard>
         <BauhausCard background="white" accent="none" class="lg:col-span-2">
           <h2 class="text-2xl font-bold">Safety decision</h2>
-          <label for="safety-comment" class="mt-6 block font-bold">Comment</label>
-          <textarea id="safety-comment" v-model="comment" maxlength="1000" rows="5" aria-describedby="safety-comment-hint" class="mt-2 w-full border-2 border-ink bg-canvas p-3" :disabled="safety.loading" />
-          <p id="safety-comment-hint" class="mt-2 text-sm">Required to request changes or reject. Note any crowd-movement concerns here.</p>
+          <p class="mt-2 text-sm">Mark every factor for each venue and for the whole event before you decide.</p>
+          <div class="mt-6">
+            <SafetyChecklist v-model="marks" :venues="review.venues" :disabled="safety.loading" />
+          </div>
+          <label for="safety-organiser-comment" class="mt-6 block font-bold">Comment for the organiser</label>
+          <textarea id="safety-organiser-comment" v-model="organiserComment" maxlength="1000" rows="4" aria-describedby="safety-organiser-comment-hint" class="mt-2 w-full border-2 border-ink bg-canvas p-3" :disabled="safety.loading" />
+          <p id="safety-organiser-comment-hint" class="mt-2 text-sm">Required to request changes or reject. The organiser sees this with the outcome, so say what needs to change.</p>
+          <label for="safety-private-note" class="mt-6 block font-bold">Private notes (optional)</label>
+          <textarea id="safety-private-note" v-model="privateNote" maxlength="1000" rows="3" aria-describedby="safety-private-note-hint" class="mt-2 w-full border-2 border-ink bg-canvas p-3" :disabled="safety.loading" />
+          <p id="safety-private-note-hint" class="mt-2 text-sm">Only the assigned coordinator and Safety Officers see these; the organiser never does. Note any crowd-movement concerns here.</p>
           <fieldset class="mt-6" :disabled="safety.loading" aria-describedby="safety-changes-hint">
             <legend class="font-bold">For Request changes: what needs changing (optional)</legend>
             <p id="safety-changes-hint" class="mt-2 text-sm">Tick the venues and equipment your comment is about, so the coordinator knows what to revise.</p>
@@ -137,10 +162,12 @@ watch(() => route.params.id, (id) => {
               <input v-model="rejectedBookingId" type="radio" name="rejected-venue" :value="venue.booking_id" :disabled="venue.booking_status !== 'approved'" class="mt-1" />{{ venue.venue_name }}
             </label>
           </fieldset>
+          <p v-if="!complete" class="mt-6 font-bold">{{ missingText }}</p>
+          <p v-if="concern" class="mt-2 text-sm font-medium">Approval isn't available while a factor is marked Concern. Request changes or reject instead.</p>
           <div class="mt-6 flex flex-wrap gap-3">
-            <BauhausButton variant="secondary" aria-label="Approve" :disabled="safety.loading" @click="pendingKind = 'approve'">Approve</BauhausButton>
-            <BauhausButton variant="yellow" aria-label="Request changes" :disabled="safety.loading || !comment.trim()" @click="pendingKind = 'requestChanges'">Request changes</BauhausButton>
-            <BauhausButton variant="primary" aria-label="Reject" :disabled="safety.loading || !comment.trim() || !rejectedBookingId" @click="pendingKind = 'reject'">Reject</BauhausButton>
+            <BauhausButton variant="secondary" aria-label="Approve" :disabled="safety.loading || !approvable" @click="pendingKind = 'approve'">Approve</BauhausButton>
+            <BauhausButton variant="yellow" aria-label="Request changes" :disabled="safety.loading || !complete || !hasComment" @click="pendingKind = 'requestChanges'">Request changes</BauhausButton>
+            <BauhausButton variant="primary" aria-label="Reject" :disabled="safety.loading || !complete || !hasComment || !rejectedBookingId" @click="pendingKind = 'reject'">Reject</BauhausButton>
           </div>
         </BauhausCard>
       </div>

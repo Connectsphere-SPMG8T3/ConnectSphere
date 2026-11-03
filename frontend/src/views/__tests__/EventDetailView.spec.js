@@ -61,6 +61,22 @@ describe("EventDetailView status", () => {
     vi.unstubAllGlobals();
   });
 
+  // CR-108 AC5: the organiser sees the outcome and the officer's comment for them, never the private notes or checklist.
+  it.each(["planning", "safety_review", "confirmed"])("CR-108 shows the outcome and the organiser comment in %s", async (status) => {
+    const el = await mountDetail(eventResponse({ status, latest_safety_decision: { decision: "changes_requested", reason_label: "The Safety Officer asked for changes to the arrangements.", organiser_comment: "Move the stage away from the exit", decided_at: "2026-10-08T02:00:00Z" } }));
+    expect(el.textContent).toContain("The Safety Officer asked for changes to the arrangements.");
+    expect(el.textContent).toContain("Move the stage away from the exit");
+  });
+  it("CR-108 shows only the outcome when the officer left the organiser no comment", async () => {
+    const el = await mountDetail(eventResponse({ status: "planning", latest_safety_decision: { decision: "approved", reason_label: "Approved by the Safety Officer.", organiser_comment: null, decided_at: "2026-10-08T02:00:00Z" } }));
+    expect(el.textContent).toContain("Approved by the Safety Officer.");
+    expect(el.textContent).not.toContain("Comment from the Safety Officer");
+  });
+  it("CR-108 never shows private notes or checklist notes, even if the API sent them", async () => {
+    const el = await mountDetail(eventResponse({ status: "planning", latest_safety_decision: { decision: "changes_requested", reason_label: "The Safety Officer asked for changes to the arrangements.", organiser_comment: "Fix the exits", private_note: "PRIVATE-NOTE", checklist: [{ factor: "layout", rating: "concern", note: "PRIVATE-CHECKLIST-NOTE" }], decided_at: "2026-10-08T02:00:00Z" } }));
+    expect(el.textContent).toContain("Fix the exits");
+    expect(el.textContent).not.toContain("PRIVATE-NOTE"); expect(el.textContent).not.toContain("PRIVATE-CHECKLIST-NOTE");
+  });
   it.each(["planning", "safety_review", "confirmed"])("CR-104 shows only the organiser summary in %s, ignoring a leaked comment", async (status) => {
     const el = await mountDetail(eventResponse({ status, latest_safety_decision: { decision: "changes_requested", reason_label: "The Safety Officer asked for changes to the arrangements.", comment: "PRIVATE-OFFICER-COMMENT", decided_by_name: "PRIVATE-OFFICER-NAME", decided_at: "2026-10-08T02:00:00Z" } }));
     expect(el.textContent).toContain("The Safety Officer asked for changes to the arrangements.");
