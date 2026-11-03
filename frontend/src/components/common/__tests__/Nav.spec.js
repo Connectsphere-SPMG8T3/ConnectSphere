@@ -363,3 +363,31 @@ describe("Nav for venue staff", () => {
     expect(el.querySelector('a[href="/dashboard/venue-staff/requests"]').className).toContain("bg-bauhaus-yellow");
   });
 });
+
+describe("Nav venue calendar link (SCRUM-57)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+  });
+
+  it("links venue staff to the venue calendar and marks it on that page", async () => {
+    const { el } = await mountNav(
+      { id: "u1", role: "venue_staff", roles: ["venue_staff"] },
+      "/venue-calendar/b0000000-0000-4000-8000-000000000001",
+    );
+
+    const link = el.querySelector('a[aria-label="Venue calendar"]');
+    expect(link.getAttribute("href")).toBe("/venue-calendar");
+    expect(link.className).toContain("bg-bauhaus-yellow");
+  });
+
+  it("offers it to nobody acting in another role", async () => {
+    const { el } = await mountNav({
+      id: "u1",
+      role: "event_coordinator",
+      roles: ["event_coordinator", "venue_staff"],
+    });
+
+    expect(el.querySelector('a[aria-label="Venue calendar"]')).toBeNull();
+  });
+});
