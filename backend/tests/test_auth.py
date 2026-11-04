@@ -990,6 +990,22 @@ class TestSignup:
             }
         )
 
+    def test_attendee_signup_never_stores_an_organisation_name(self, client, monkeypatch):
+        """DEFECTS D86 / ACC-R5b: an Attendee has no organisation, even if the request names one."""
+        admin_client = _admin_client_for_signup(
+            monkeypatch,
+            role="attendee",
+            profile_row=NEW_ATTENDEE_PROFILE_ROW,
+        )
+
+        response = client.post(
+            "/api/v1/auth/signup", json={**ATTENDEE_SIGNUP, "organisation_name": "Sneaky Events Ltd"}
+        )
+
+        assert response.status_code == 201
+        [(account,), _] = admin_client.auth.admin.create_user.call_args
+        assert account["user_metadata"]["organisation_name"] is None
+
     @pytest.mark.parametrize("field", ["full_name", "email", "password"])
     @pytest.mark.parametrize("value", [None, "", "   "], ids=["missing", "empty", "blank"])
     def test_attendee_signup_with_a_required_field_left_empty_returns_422(

@@ -21,7 +21,7 @@ Removed on 2026-11-01: story status is in the Product backlog sheet, and work in
 
 | Method and path | Guard | What it does |
 |---|---|---|
-| `POST /auth/signup` | public | Creates an Event Organiser or Attendee account that can log in immediately (SCRUM-80/83). 201 with the profile; 409 if the email has an account; 422 per field and for every role except those two external roles |
+| `POST /auth/signup` | public | Creates an Event Organiser or Attendee account that can log in immediately (SCRUM-80/83). 201 with the profile; 409 if the email has an account; 422 per field and for every role except those two external roles; an `organisation_name` sent for an Attendee is dropped, not stored (D86) |
 | `POST /auth/login` | public | Signs in and returns tokens and profile (`role` = this session's active role, `roles` = every role the account holds) |
 | `POST /auth/refresh` | public (refresh token) | Rotates the session |
 | `GET /auth/me` | authenticated | Returns the current user's profile, including `roles` |
