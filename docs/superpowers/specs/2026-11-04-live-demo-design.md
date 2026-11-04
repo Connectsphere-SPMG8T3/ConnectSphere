@@ -93,3 +93,10 @@ At next week's presentation a grader picks one user story at random and Jie Chin
 - **Defects found while dry-running.** A card that can't be shown cleanly is flagged at the top of the script so Jie Ching can decide before the presentation.
 - **Supabase Auth rate limits** on the many sign-ins the loader makes: sign in once per account and reuse the token.
 - **Teammates writing during the swap window** lose that work on restore (accepted).
+
+## As built (2026-11-04)
+
+- Swapped at 19:21 SGT, from backup `~/connectsphere-backups/2026-11-04-1921-pre-demo` (its rehearsal matched all 34 tables).
+- After the presentation, from `backend/`: `python scripts/demo_db.py restore ~/connectsphere-backups/2026-11-04-1921-pre-demo`. It fails loudly if any table's count differs from the backup.
+- 55 stories have a builder; the other 18 (login, profile, roles, navigation, sign-up, dashboards, venue details, the bell) show seed data or other stories' demo records.
+- The demo script is `~/connectsphere-demo/LIVE_DEMO.pdf` (rendered from `cards.py` in the same folder), outside the repository.

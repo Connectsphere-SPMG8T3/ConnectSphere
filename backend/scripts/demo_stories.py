@@ -727,6 +727,13 @@ def _(ctx):
     change_request(ctx, made["event_id"], "Moving to the afternoon.", starts_at=starts_at, ends_at=ends_at)
     version = call(ctx, COORDINATOR, "GET", f"/events/{made['event_id']}")["version"]
     call(ctx, COORDINATOR, "POST", f"/events/{made['event_id']}/change-request/approve", {"version": version})
+    # Approving sends it back to Planning (37 AC7), where attendees can't open it, so the
+    # notice's link would 404: re-approve the moved booking and confirm it again.
+    call(ctx, COORDINATOR, "POST", f"/venue-bookings/{made['booking_id']}/send-for-re-review", {})
+    call(ctx, "venue_staff", "POST", f"/venue-bookings/{made['booking_id']}/approve")
+    call(ctx, COORDINATOR, "POST", f"/events/{made['event_id']}/send-for-safety-check")
+    safety_approve(ctx, made["event_id"], [made["booking_id"]])
+    expect_status(made["event_id"], "confirmed")
     return {"attendee registered, time changed": made["event_id"]}
 
 
