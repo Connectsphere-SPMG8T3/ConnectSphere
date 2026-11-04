@@ -77,4 +77,12 @@ describe("OrganiserVenueList (CR-111)", () => {
 
     expect(el.querySelector("[data-testid='organiser-venues']")).toBeNull();
   });
+
+  it("shows each venue's preparation stage when the API sends one (CR-109)", async () => {
+    const el = await mount({ venues: [{ ...VENUE, preparation_stage: "in_progress" }, { ...VENUE, booking_id: "b-2" }] });
+
+    const rows = el.querySelectorAll("[data-testid='organiser-venue']");
+    expect(rows[0].textContent).toContain("Venue preparation: In progress");
+    expect(rows[1].textContent).not.toContain("Venue preparation");
+  });
 });

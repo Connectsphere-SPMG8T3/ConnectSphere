@@ -20,6 +20,7 @@ import RejectEventModal from "@/components/events/RejectEventModal.vue";
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
 import EditEventDetailsModal from "@/components/events/EditEventDetailsModal.vue";
 import { showToast } from "@/composables/useToast";
+import { preparationStageLabel } from "@/features/equipment/preparation";
 import { canEditDetails } from "@/features/events/detailsEdit";
 import { canCancelEvent } from "@/features/events/cancellation";
 import { describeChanges } from "@/features/events/changeRequest";
@@ -589,6 +590,15 @@ watch(
                   <span v-if="spacePanels[space.id].booking.status === 'held' && spacePanels[space.id].booking.expires_at" class="text-sm font-bold">
                     Hold expires {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} unless approved.
                   </span>
+                  <span class="basis-full text-sm font-bold">
+                    Venue preparation: {{ preparationStageLabel(spacePanels[space.id].booking.preparation?.stage) }}
+                  </span>
+                  <span
+                    v-if="spacePanels[space.id].booking.preparation?.note"
+                    class="basis-full whitespace-pre-wrap text-sm font-medium"
+                  >
+                    Internal note: {{ spacePanels[space.id].booking.preparation.note }}
+                  </span>
                 </div>
                 <SafetyRejectedNotice
                   v-if="spacePanels[space.id].kind === 'safety-rejected'"
@@ -708,6 +718,12 @@ watch(
             </p>
             <p v-if="venuePanel.booking.status === 'held'" class="mt-3 text-sm font-medium">
               Held for this event's time while venue staff decide.
+            </p>
+            <p class="mt-3 text-sm font-bold">
+              Venue preparation: {{ preparationStageLabel(venuePanel.booking.preparation?.stage) }}
+            </p>
+            <p v-if="venuePanel.booking.preparation?.note" class="mt-1 whitespace-pre-wrap text-sm font-medium">
+              Internal note: {{ venuePanel.booking.preparation.note }}
             </p>
             <p
               v-if="venuePanel.booking.status === 'held' && venuePanel.booking.expires_at"

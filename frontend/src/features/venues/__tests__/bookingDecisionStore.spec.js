@@ -8,7 +8,9 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  venueBookingsApi: { request: vi.fn(), get: vi.fn(), reject: vi.fn(), approve: vi.fn(), restore: vi.fn() },
+  venueBookingsApi: {
+    request: vi.fn(), get: vi.fn(), reject: vi.fn(), approve: vi.fn(), restore: vi.fn(), setPreparation: vi.fn(),
+  },
 }));
 
 const HELD = { id: "b1", status: "held", venue_name: "Innovation Lab", decision: null, history: [] };
@@ -191,6 +193,53 @@ describe("useBookingDecisionStore approve (SCRUM-36)", () => {
 
     expect(venueBookingsApi.approve).not.toHaveBeenCalled();
     expect(venueBookingsApi.reject).not.toHaveBeenCalled();
+  });
+});
+
+describe("useBookingDecisionStore preparation (CR-109)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("saves preparation progress and updates the booking", async () => {
+    const store = signedInVenueStaff();
+    store.booking = { ...HELD, preparation: { stage: "not_started", updated_at: null } };
+    venueBookingsApi.setPreparation.mockResolvedValue({
+      stage: "completed", note: "Doors checked", updated_at: "2031-03-01T02:00:00Z", event_status: "preparation",
+    });
+
+    const ok = await store.setPreparation("b1", { stage: "completed", note: "Doors checked" });
+
+    expect(ok).toBe(true);
+    expect(venueBookingsApi.setPreparation).toHaveBeenCalledWith(
+      "b1", { stage: "completed", note: "Doors checked" }, "access-token",
+    );
+    expect(store.booking.preparation).toMatchObject({ stage: "completed", note: "Doors checked" });
+    expect(store.isPreparing).toBe(false);
+  });
+
+  it("credits whoever just saved, not the previous updater", async () => {
+    const store = signedInVenueStaff();
+    store.booking = { ...HELD, preparation: { stage: "in_progress", updated_by_name: "Earlier Staff" } };
+    venueBookingsApi.setPreparation.mockResolvedValue({
+      stage: "completed", note: null, updated_at: "2031-03-01T02:00:00Z", updated_by_name: "Venue Staff",
+      event_status: "preparation",
+    });
+
+    await store.setPreparation("b1", { stage: "completed", note: null });
+
+    expect(store.booking.preparation.updated_by_name).toBe("Venue Staff");
+  });
+
+  it("reloads the booking when preparation is locked", async () => {
+    const store = signedInVenueStaff();
+    store.booking = HELD;
+    venueBookingsApi.setPreparation.mockRejectedValue(new ApiError("Preparation is locked.", 409));
+    venueBookingsApi.get.mockResolvedValue({ ...HELD, status: "planning" });
+
+    const ok = await store.setPreparation("b1", { stage: "in_progress", note: null });
+
+    expect(ok).toBe(false);
+    expect(store.conflict).toBe(true);
+    expect(store.booking.status).toBe("planning");
   });
 });
 
