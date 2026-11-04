@@ -5693,6 +5693,19 @@ def _(ctx: Context) -> None:
     expect(event_row(event_id)["status"] == "confirmed", "a rejected booking moved the event")
 
 
+@check("TC-VENUE-109-012", "The booking page's history names the stage each preparation update moved from "
+       "and to", needs_db=True)
+def _(ctx: Context) -> None:
+    _, booking_id = prepared_booking(ctx, "VPREP012", "2031-12-24")
+    for stage in ("in_progress", "completed"):
+        expect_status(venue_preparation(ctx, booking_id, stage), 200)
+    response = ctx.client.get(f"{ctx.api}{BOOKINGS}/{booking_id}", headers=ctx.shared("venue_staff").headers)
+    expect_status(response, 200)
+    moves = [(e.get("old_preparation_stage"), e.get("new_preparation_stage"))
+             for e in response.json()["history"] if e["action"] == "preparation"]
+    expect(moves == [("not_started", "in_progress"), ("in_progress", "completed")], f"booking history stages: {moves}")
+
+
 # --- Story 62: an event's change history -------------------------------------------
 # Needs migration 20261030120000 applied. Each check makes its own throwaway event;
 # its history cascades when the run deletes it.

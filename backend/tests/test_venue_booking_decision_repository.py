@@ -120,6 +120,23 @@ def test_list_booking_history_reads_cr99s_table_oldest_first(monkeypatch):
     ]
 
 
+def test_list_booking_history_carries_a_preparation_rows_stages(monkeypatch):
+    """CR-109 AC5: the booking page's history says which stage a preparation update moved
+    from and to, as the event history does, not just "Preparation"."""
+    client = use(monkeypatch, [
+        {"action": "preparation", "from_status": None, "to_status": None, "reason": None,
+         "suggestion_note": None, "old_preparation_stage": "not_started",
+         "new_preparation_stage": "in_progress", "created_at": "2031-03-02T00:00:00+00:00",
+         "actor": {"full_name": "Venue Staff"}},
+    ])
+
+    [entry] = repository.list_booking_history("d1")
+
+    assert "old_preparation_stage" in client.query.calls[0][1][0]
+    assert entry["old_preparation_stage"] == "not_started"
+    assert entry["new_preparation_stage"] == "in_progress"
+
+
 def test_reject_booking_calls_the_database_function_with_every_argument(monkeypatch):
     client = use(monkeypatch, [{"outcome": "ok", "event_id": "e1", "from_status": "held"}])
 

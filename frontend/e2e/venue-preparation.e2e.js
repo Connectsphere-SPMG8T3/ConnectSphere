@@ -67,3 +67,23 @@ test("TC-VENUE-109-007 venue staff see a Planning event's progress read-only, wi
     await expect(panel.getByRole("button", { name: "Save preparation progress" })).toHaveCount(0);
     expect(readThrowawayEvent(event.id).status).toBe("planning");
   });
+
+test("TC-VENUE-109-013 the booking page's history says which stage each preparation update moved between",
+  async ({ page, sharedSessions }) => {
+    const venue = createThrowawayVenue("VPREP-013");
+    const event = createThrowawayEvent("VPREP-013", "2031-12-26 09:00+08", "2031-12-26 12:00+08");
+    const booking = createThrowawayBooking(event, venue.id, "2031-12-26 09:00+08", "2031-12-26 12:00+08", "approved");
+    setThrowawayEventStatus(event, "confirmed");
+
+    await seedSession(page, await sharedSessions("venue_staff"));
+    await page.goto(`/bookings/${booking.id}`);
+    const panel = page.getByTestId("venue-preparation");
+    await panel.getByLabel("Preparation stage").selectOption("in_progress");
+    const sent = page.waitForResponse((r) => r.url().endsWith(`/venue-bookings/${booking.id}/preparation`));
+    await panel.getByRole("button", { name: "Save preparation progress" }).click();
+    expect((await sent).status()).toBe(200);
+
+    // The history is read when the page loads, so open it again to see the saved entry.
+    await page.reload();
+    await expect(page.getByTestId("booking-history")).toContainText("Preparation · Not started → In progress");
+  });
