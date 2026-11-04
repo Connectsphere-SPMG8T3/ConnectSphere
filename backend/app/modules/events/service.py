@@ -807,9 +807,9 @@ def _submission_errors(row: dict) -> list[dict]:
     errors = []
     errors.extend(_withdrawal_cutoff_errors(row))
     has_space_requests = bool(row.get("spaces"))
-    required_fields = ("purpose", "starts_at", "ends_at")
+    required_fields = ("purpose", "starts_at", "ends_at", "expected_attendance")
     if not has_space_requests:
-        required_fields += ("expected_attendance", "layout_preference")
+        required_fields += ("layout_preference",)
     for field in required_fields:
         if row.get(field) in (None, ""):
             errors.append({"loc": ["body", field], "msg": "Field required", "type": "missing"})

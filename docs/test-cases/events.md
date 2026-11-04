@@ -64,7 +64,7 @@ These cases cover the implemented organiser draft and submission workflow. Run t
 | Draft requires only an event name and remains private to its owner (DR-R1, DR-R2) | TC-EVENT-001, TC-EVENT-003, TC-EVENT-004, TC-EVENT-030 |
 | Drafts can be edited and submitted events cannot be discarded (DR-R3, ER-R3) | TC-EVENT-003, TC-EVENT-006, TC-EVENT-007, TC-EVENT-009, TC-EVENT-031, TC-EVENT-032 |
 | Draft reload and update failures are handled without a broken form or false success | TC-EVENT-007, TC-EVENT-008, TC-EVENT-009 |
-| Required event fields and controlled venue requirements are validated | TC-EVENT-010, TC-EVENT-011, TC-EVENT-015, TC-EVENT-016 |
+| Required event fields and controlled venue requirements are validated | TC-EVENT-010, TC-EVENT-011, TC-EVENT-015, TC-EVENT-016, TC-EVENT-045, TC-EVENT-046 |
 | Invalid date/time values are rejected; no lead-time rule beyond tomorrow applies | TC-EVENT-012, TC-EVENT-013, TC-EVENT-014 |
 | Valid submission creates an under-review request visible in the organiser's list | TC-EVENT-020, TC-EVENT-022 |
 | Successful draft saves and submissions provide reusable success feedback | TC-EVENT-033, TC-EVENT-034 |
@@ -217,6 +217,16 @@ Regressions for two defects found during the SCRUM-82 manual pass. Both checks a
 |---|---|---|---|---|---|---|---|---|---|
 | TC-EVENT-043 | DEFECTS D23 | Logged in as `organiser@connectsphere.dev`; fixture `…0201` | Open `/events/e0000000-0000-4000-8000-000000000201`; look at the Registration card. For the labels, use an owned event with registration enabled | — | The timezone line is dark text, readable on the white card. With registration enabled, Capacity, Opens and Closes labels are visible above their values | Browser | Medium | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2353-e2e-1f6e3cb.md)) |
 | TC-EVENT-044 | DEFECTS D24 | Same | Same page; look at the Planning status card | — | "Coordinator: Marcus Lim". Never an account ID; "To be assigned" when no coordinator is assigned | Browser | Medium | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2353-e2e-1f6e3cb.md)) |
+
+## Total expected attendance is required (D86)
+
+Regressions for DEFECTS D86, against §6.2 (QA-19, QA-24) and §9 item 140.
+
+| ID | Story / AC | Preconditions | Steps | Data | Expected | Type | Priority | Created | Last run |
+|---|---|---|---|---|---|---|---|---|---|
+| TC-EVENT-045 | DEFECTS D86, §6.2 | A draft with a purpose, date and times, one complete space, and no total attendance | `POST /events/{id}/submit`; set the attendance; submit again | Space: 20 pax, theatre | `422` naming only `expected_attendance`, and the event stays a draft; after the attendance is set, `200` | Integration | 🔴 | 2026-11-04 | |
+| TC-EVENT-046 | DEFECTS D86, §6.2 | Signed in as `organiser@connectsphere.dev`, on `/events/new` | Fill in every required field and a complete space, leave **Total expected attendance** empty, click **Submit request** | — | "Enter expected attendance of at least 1." shows under the field, no confirmation dialog opens and nothing is sent | E2E | 🔴 | 2026-11-04 | |
+| TC-EVENT-047 | DEFECTS D86, §9 item 140 | Same page | Read the **Total expected attendance** field at desktop and phone width, with and without its error showing | — | The label and "Everyone expected across the whole event. Space numbers don't need to add up to this." read clearly, and the help text sits tidily with the error | Manual | 🟠 | 2026-11-04 | |
 
 ## Event comments (SCRUM-61)
 

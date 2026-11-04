@@ -538,7 +538,7 @@ def test_organiser_can_delete_a_space_request(
     assert deleted == [(SPACE_ID, 1)]
 
 
-def test_space_submission_requires_label_pax_and_layout_but_not_event_level_venue_fields():
+def test_space_submission_requires_attendance_and_space_fields_but_not_event_level_layout():
     starts_at = datetime.now(timezone.utc).replace(microsecond=0) + __import__("datetime").timedelta(days=2)
     event = {
         "purpose": "Planning",
@@ -552,12 +552,18 @@ def test_space_submission_requires_label_pax_and_layout_but_not_event_level_venu
         _validate_submission(event)
 
     assert {tuple(item["loc"]) for item in error.value.detail} == {
+        ("body", "expected_attendance"),
         ("body", "spaces", 0, "label"),
         ("body", "spaces", 0, "expected_pax"),
         ("body", "spaces", 0, "layout_preference"),
     }
 
     event["spaces"] = [{"label": "Main venue", "expected_pax": 10, "layout_preference": "classroom"}]
+    with pytest.raises(HTTPException) as error:
+        _validate_submission(event)
+    assert {tuple(item["loc"]) for item in error.value.detail} == {("body", "expected_attendance")}
+
+    event["expected_attendance"] = 10
     _validate_submission(event)
 
 

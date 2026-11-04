@@ -97,7 +97,7 @@ describe("EventRequestView change mode (story 32)", () => {
     const { el } = await mountLoaded();
 
     expect(el.querySelector("h1").textContent).toContain("Request changes");
-    expect(controlFor(el, "Expected attendance").value).toBe("80");
+    expect(controlFor(el, "Total expected attendance").value).toBe("80");
     for (const text of ["Save draft", "Submit request", "Copy space", "Remove space", "Add space request"]) {
       expect(buttonByText(el, text)).toBeUndefined();
     }
@@ -127,7 +127,7 @@ describe("EventRequestView change mode (story 32)", () => {
       withdrawal_closes_at: "2026-12-01T01:30:00Z",
     }));
 
-    await type(controlFor(el, "Expected attendance"), "120");
+    await type(controlFor(el, "Total expected attendance"), "120");
     await type(controlFor(el, "Expected pax"), "120");
     buttonByText(el, "Send change request").click();
     await nextTick();
@@ -152,7 +152,7 @@ describe("EventRequestView change mode (story 32)", () => {
     eventsApi.requestChange.mockRejectedValue(new ApiError("This event was updated by someone else. Reload.", 409));
     const { el } = await mountLoaded();
 
-    await type(controlFor(el, "Expected attendance"), "120");
+    await type(controlFor(el, "Total expected attendance"), "120");
     buttonByText(el, "Send change request").click();
     await nextTick();
     await type(dialog().querySelector("textarea"), "Sponsor wants more seats");
@@ -160,7 +160,7 @@ describe("EventRequestView change mode (story 32)", () => {
 
     await vi.waitFor(() => expect(dialog().querySelector('[role="alert"]').textContent)
       .toContain("This event was updated by someone else. Reload."));
-    expect(controlFor(el, "Expected attendance").value).toBe("120");
+    expect(controlFor(el, "Total expected attendance").value).toBe("120");
   });
 
   it.each([
