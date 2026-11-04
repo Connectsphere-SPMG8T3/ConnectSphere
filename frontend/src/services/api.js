@@ -155,6 +155,12 @@ export const venueBookingsApi = {
   cancel(bookingId, token) {
     return request(`/venue-bookings/${encodeURIComponent(bookingId)}/cancel`, { method: "POST", token });
   },
+  // CR-109: venue staff record per-booking preparation progress.
+  setPreparation(bookingId, payload, token) {
+    return request(`/venue-bookings/${encodeURIComponent(bookingId)}/preparation`, {
+      method: "PUT", body: payload, token,
+    });
+  },
 };
 
 // SCRUM-113: the notification bell. Every call is scoped by the API to the caller
@@ -309,6 +315,10 @@ export const eventsApi = {
   // SCRUM-33: the coordinator returns a request; the organiser resubmits it.
   returnForAmendment(eventId, payload, token) {
     return request(`/events/${encodeURIComponent(eventId)}/return`, { method: "POST", body: payload, token });
+  },
+  // Story 112: the assigned coordinator edits ordinary details; `payload` is {version, ...changed fields}.
+  editDetails(eventId, payload, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/details`, { method: "PATCH", body: payload, token });
   },
   resubmit(eventId, payload, token) {
     return request(`/events/${encodeURIComponent(eventId)}/resubmit`, { method: "POST", body: payload, token });

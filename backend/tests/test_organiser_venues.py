@@ -116,3 +116,21 @@ def test_internal_details_are_never_part_of_the_shape():
     for secret in ("secret staff note", "internal reason", "staff only", "b-0"):
         assert secret not in dumped
     assert not {"flag", "flag_reason", "replaces_booking_id", "needs_re_review_reason"} & set(venue.model_dump())
+
+
+def test_a_confirmed_event_shows_each_venues_preparation_stage_without_the_note():
+    # CR-109 AC4: the organiser sees each venue's progress stage, never the internal note.
+    venues = build([
+        booking("b-1", preparation={"stage": "in_progress", "note": "staff only note", "updated_at": None}),
+        booking("b-2"),
+    ], status="preparation")
+
+    assert [v.preparation_stage for v in venues] == ["in_progress", "not_started"]
+    assert "staff only note" not in str([v.model_dump() for v in venues])
+
+
+def test_preparation_stage_is_not_shown_before_the_event_is_confirmed():
+    # CR-109 AC1, AC7: progress is kept in Planning but is not part of what the organiser sees.
+    venues = build([booking(preparation={"stage": "completed", "note": None})], status="planning")
+
+    assert venues[0].preparation_stage is None

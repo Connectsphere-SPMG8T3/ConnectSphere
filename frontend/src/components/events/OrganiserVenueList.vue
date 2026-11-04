@@ -1,4 +1,5 @@
 <script setup>
+import { preparationStageLabel } from "@/features/equipment/preparation";
 import { venueWindowLabel } from "@/features/events/organiserVenues";
 
 // CR-111 AC2 to AC4: each venue on the organiser's event, separately. The API sends only
@@ -33,6 +34,9 @@ defineProps({
         </div>
         <p v-if="venue.location" class="mt-1 text-sm">{{ venue.location }}</p>
         <p class="text-sm">{{ venueWindowLabel(venue.starts_at, venue.ends_at, timezone) }}</p>
+        <p v-if="venue.preparation_stage" class="text-sm">
+          Venue preparation: {{ preparationStageLabel(venue.preparation_stage) }}
+        </p>
         <p class="mt-2 text-sm font-bold">{{ venue.next_action }}</p>
       </li>
     </ul>

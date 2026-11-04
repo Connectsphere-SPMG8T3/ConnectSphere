@@ -9,7 +9,9 @@ import { useAuthStore } from "@/stores/auth";
 vi.mock("@/services/api", async (importOriginal) => ({
   ...(await importOriginal()),
   authApi: { login: vi.fn(), refresh: vi.fn(), me: vi.fn(), logout: vi.fn() },
-  venueBookingsApi: { request: vi.fn(), get: vi.fn(), reject: vi.fn(), approve: vi.fn(), restore: vi.fn() },
+  venueBookingsApi: {
+    request: vi.fn(), get: vi.fn(), reject: vi.fn(), approve: vi.fn(), restore: vi.fn(), setPreparation: vi.fn(),
+  },
 }));
 
 function booking(overrides = {}) {
@@ -427,3 +429,69 @@ describe("BookingRequestView re-review (story 37)", () => {
   });
 });
 
+
+describe("BookingRequestView venue preparation (CR-109)", () => {
+  const approved = (status, extra = {}) => booking({
+    status: "approved", event: { ...booking().event, status },
+    preparation: { stage: "in_progress", note: "Doors checked", updated_at: "2031-03-01T02:00:00Z",
+      updated_by_name: "Venue Staff" },
+    ...extra,
+  });
+  const panel = () => document.querySelector('[data-testid="venue-preparation"]');
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    vi.clearAllMocks();
+  });
+  afterEach(() => mountedApps.splice(0).forEach((app) => app.unmount()));
+
+  it.each(["confirmed", "preparation"])("AC1 offers venue staff the form on a %s event", async (status) => {
+    await mountView(approved(status));
+
+    expect(panel().querySelector("#venue-preparation-note")).not.toBeNull();
+    expect(panel().textContent).toContain("Progress: In progress");
+    expect(panel().textContent).toContain("Save preparation progress");
+  });
+
+  it("AC2 saves the chosen stage and trimmed note, and confirms it", async () => {
+    venueBookingsApi.setPreparation.mockResolvedValue({
+      stage: "completed", note: "All set", updated_at: "2031-03-01T03:00:00Z", updated_by_name: "Venue Staff",
+      event_status: "preparation",
+    });
+    await mountView(approved("preparation"));
+    const stage = panel().querySelector("select");
+    stage.value = "completed";
+    stage.dispatchEvent(new Event("change"));
+    const note = panel().querySelector("#venue-preparation-note");
+    note.value = "  All set  ";
+    note.dispatchEvent(new Event("input"));
+    await nextTick();
+
+    [...panel().querySelectorAll("button")].find((b) => b.textContent.includes("Save preparation progress")).click();
+
+    await vi.waitFor(() => expect(toastState.value?.message).toBe("Preparation progress saved."));
+    expect(venueBookingsApi.setPreparation).toHaveBeenCalledWith(
+      "b1", { stage: "completed", note: "All set" }, expect.any(String),
+    );
+    expect(panel().textContent).toContain("Progress: Completed");
+  });
+
+  it("AC7 shows a Planning event's progress read-only, saying why", async () => {
+    await mountView(approved("planning"));
+
+    expect(panel().textContent).toContain("Progress: In progress");
+    expect(panel().textContent).toContain("Venue preparation opens once the Safety Officer has confirmed the event.");
+    expect(panel().querySelector("#venue-preparation-note")).toBeNull();
+    expect(panel().textContent).not.toContain("Save preparation progress");
+  });
+
+  it("AC5 names the stage change in the booking's history", async () => {
+    await mountView(approved("preparation", {
+      history: [{ action: "preparation", old_preparation_stage: "not_started", new_preparation_stage: "in_progress",
+        actor_name: "Venue Staff", at: "2031-03-01T02:00:00Z" }],
+    }));
+
+    expect(document.querySelector('[data-testid="booking-history"]').textContent)
+      .toContain("Preparation · Not started → In progress");
+  });
+});

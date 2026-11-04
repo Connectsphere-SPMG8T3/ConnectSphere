@@ -131,6 +131,7 @@ DB_SCRIPTS = [
     ("registration_withdrawal_checks.sql", "TC-REG-018 (SCRUM-55 withdrawal, cutoff, re-registration and grants)"),
     ("change_request_decision_checks.sql", "TC-CHANGE-024 (story 37 database half: decisions, moves, marks, sends, re-review)"),
     ("technical_preparation_checks.sql", "TC-TPREP-001–006 (CR-110 database half: refusals, Preparation, history, notices, RLS)"),
+    ("venue_preparation_checks.sql", "TC-VENUE-109-010 (CR-109 database half: approved booking only, Preparation, unchanged save, stage history, who, grants)"),
     ("registration_waitlist_checks.sql", "TC-REG-020, 022–028 (SCRUM-86 database half)"),
     ("notification_registration_checks.sql", "TC-NOTIF-017, 018 (SCRUM-53: registration status confirmations, replacement venue)"),
     ("change_history_checks.sql", "TC-HIST-001–007 (story 62 database half: recorded edits, append-only history, RLS)"),
@@ -5554,6 +5555,144 @@ def _(ctx: Context) -> None:
     expect(event["status"] == "confirmed", f"a refused update moved the event to {event['status']}")
 
 
+# --- CR-109 venue preparation per booking ------------------------------------
+# Throwaway venues, events and bookings in 2031; the preparation rows and history
+# cascade when the run deletes the bookings.
+
+def venue_preparation(ctx: Context, booking_id: str, stage: str, note: str | None = None,
+                      session: Session | None = None) -> httpx.Response:
+    session = session or ctx.shared("venue_staff")
+    return ctx.client.put(f"{ctx.api}{BOOKINGS}/{booking_id}/preparation", headers=session.headers,
+                          json={"stage": stage, "note": note})
+
+
+def prepared_booking(ctx: Context, case: str, day: str, status: str = "confirmed",
+                     booking_status: str = "approved") -> tuple[str, str]:
+    venue_id = throwaway_venue(ctx, case)
+    event_id = throwaway_event(ctx, case, f"{day} 09:00+08", f"{day} 12:00+08", status=status)
+    return event_id, booking_at(event_id, venue_id, f"{day} 09:00+08", f"{day} 12:00+08", booking_status)
+
+
+def stored_preparation(booking_id: str) -> dict | None:
+    rows = db_query("select stage::text as stage, note, updated_by from public.event_venue_preparation "
+                    f"where booking_id = '{booking_id}'")
+    return rows[0] if rows else None
+
+
+@check("TC-VENUE-109-001", "Venue Staff records every stage with a note; each update, who and when are in "
+       "the event history", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = prepared_booking(ctx, "VPREP001", "2031-12-15")
+    stages = ("in_preparation", "in_progress", "completed", "not_started")
+    for stage in stages:
+        response = venue_preparation(ctx, booking_id, stage, f"  Note {stage}  ")
+        expect_status(response, 200)
+        body = response.json()
+        expect(body["stage"] == stage and body["note"] == f"Note {stage}", f"response: {body}")
+        expect(body["updated_by_name"], f"the response names nobody as the updater: {body}")
+        stored = stored_preparation(booking_id)
+        expect(stored == {"stage": stage, "note": f"Note {stage}", "updated_by": VENUE_STAFF_ID},
+               f"stored: {stored}")
+    rows = db_query("select action, old_preparation_stage as old, new_preparation_stage as new, actor_id "
+                    f"from public.venue_booking_history where booking_id = '{booking_id}' "
+                    "and action = 'preparation' order by created_at")
+    expect([(r["old"], r["new"]) for r in rows]
+           == list(zip(("not_started", *stages[:-1]), stages)), f"stage history: {rows}")
+    expect(all(r["actor_id"] == VENUE_STAFF_ID for r in rows), f"history actors: {rows}")
+    history = ctx.client.get(f"{ctx.api}/events/{event_id}/history", headers=ctx.shared("event_coordinator").headers)
+    expect_status(history, 200)
+    entries = [e for e in history.json()["entries"] if e.get("kind") == "booking" and e.get("action") == "preparation"]
+    expect(len(entries) == len(stages), f"{len(entries)} preparation entries in the event history")
+    expect(all(e["actor"]["id"] == VENUE_STAFF_ID and e["at"] for e in entries), f"entries: {entries}")
+    # The review of CR-109: each entry names the stage it moved from and to (AC5).
+    moves = sorted((e["old_preparation_stage"], e["new_preparation_stage"]) for e in entries)
+    expect(moves == sorted(zip(("not_started", *stages[:-1]), stages)), f"event history stages: {moves}")
+
+
+@check("TC-VENUE-109-002", "Venue preparation is refused before confirmation and after a return to Planning; "
+       "recorded progress is kept", needs_db=True)
+def _(ctx: Context) -> None:
+    for status in ("planning", "safety_review"):
+        event_id, booking_id = prepared_booking(ctx, f"VPREP002-{status}", "2031-12-16", status=status)
+        response = venue_preparation(ctx, booking_id, "in_progress")
+        expect_status(response, 409)
+        expect_detail(response, "Venue preparation opens once the Safety Officer has confirmed the event.")
+        expect(stored_preparation(booking_id) is None, f"a refused update stored progress for {status}")
+        expect(event_row(event_id)["status"] == status, "a refused update moved the event")
+
+    # AC7: progress recorded while Confirmed survives a return to Planning, locked.
+    event_id, booking_id = prepared_booking(ctx, "VPREP002-returned", "2031-12-17")
+    expect_status(venue_preparation(ctx, booking_id, "in_progress", "Kept note"), 200)
+    db_query(f"update public.events set status = 'planning' where id = '{event_id}'")
+    response = venue_preparation(ctx, booking_id, "completed", "Changed note")
+    expect_status(response, 409)
+    expect(stored_preparation(booking_id) == {"stage": "in_progress", "note": "Kept note", "updated_by": VENUE_STAFF_ID},
+           f"progress after a refused update: {stored_preparation(booking_id)}")
+    seen = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=ctx.shared("event_coordinator").headers).json()
+    kept = [b.get("preparation") for b in seen["venue_bookings"] if b["id"] == booking_id]
+    expect(kept and kept[0] and kept[0]["stage"] == "in_progress", f"the coordinator reads {kept}")
+
+
+@check("TC-VENUE-109-003", "The first venue update on a Confirmed event moves it to Preparation once and tells "
+       "the coordinator and organiser", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = prepared_booking(ctx, "VPREP003", "2031-12-18")
+    response = venue_preparation(ctx, booking_id, "in_progress")
+    expect_status(response, 200)
+    expect(response.json()["event_status"] == "preparation", f"response: {response.json()}")
+    expect(event_row(event_id)["status"] == "preparation", "the event did not move to Preparation")
+    notices = db_query("select recipient_role::text as role from public.notifications "
+                       f"where event_id = '{event_id}' and type = 'preparation_started'")
+    roles = sorted(n["role"] for n in notices)
+    expect(roles == ["event_coordinator", "event_organiser"], f"notified roles: {roles}")
+    expect_status(venue_preparation(ctx, booking_id, "completed"), 200)
+    [moves] = db_query("select count(*) as n from public.event_status_history "
+                       f"where event_id = '{event_id}' and to_status = 'preparation'")
+    expect(int(moves["n"]) == 1, f"{moves['n']} moves to Preparation, expected 1")
+
+
+@check("TC-VENUE-109-004", "The coordinator sees each booking's stage and note; the organiser sees the stage only",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = prepared_booking(ctx, "VPREP004", "2031-12-19")
+    expect_status(venue_preparation(ctx, booking_id, "in_progress", "Internal venue note"), 200)
+    coordinator = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=ctx.shared("event_coordinator").headers)
+    expect_status(coordinator, 200)
+    [seen] = [b["preparation"] for b in coordinator.json()["venue_bookings"] if b["id"] == booking_id]
+    expect(seen["stage"] == "in_progress" and seen["note"] == "Internal venue note", f"coordinator sees {seen}")
+    expect(seen.get("updated_by_name") and "updater" not in seen, f"coordinator's updater: {seen}")
+    organiser = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=ctx.shared("event_organiser").headers)
+    expect_status(organiser, 200)
+    [shown] = [b["preparation"] for b in organiser.json()["venue_bookings"] if b["id"] == booking_id]
+    expect(shown["stage"] == "in_progress" and "note" not in shown, f"organiser sees {shown}")
+    # CR-111's venue list is what the organiser's page shows: the stage only.
+    listed = [v.get("preparation_stage") for v in organiser.json()["organiser_venues"] if v["booking_id"] == booking_id]
+    expect(listed == ["in_progress"], f"organiser's venue list has {listed}")
+    expect("Internal venue note" not in organiser.text, "the note reached the organiser's response")
+
+
+@check("TC-VENUE-109-005", "Only a session acting as Venue Staff can update venue preparation", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = prepared_booking(ctx, "VPREP005", "2031-12-20")
+    for role in ("event_organiser", "event_coordinator", "event_coordinator_lead", "tech_support",
+                 "safety_officer", "attendee"):
+        expect_status(venue_preparation(ctx, booking_id, "completed", session=ctx.shared(role)), 403)
+    # SCRUM-76: the seeded coordinator also holds venue_staff, but acting as coordinator is refused.
+    expect_status(venue_preparation(ctx, booking_id, "completed", session=ctx.login("event_coordinator")), 403)
+    expect(stored_preparation(booking_id) is None, "a refused caller stored progress")
+    expect(event_row(event_id)["status"] == "confirmed", "a refused caller moved the event")
+
+
+@check("TC-VENUE-109-011", "A booking that isn't approved can't record preparation or move the event", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id, booking_id = prepared_booking(ctx, "VPREP011", "2031-12-21", booking_status="rejected")
+    response = venue_preparation(ctx, booking_id, "in_progress", "Should not save")
+    expect_status(response, 409)
+    expect_detail(response, "Only an approved booking can record venue preparation.")
+    expect(stored_preparation(booking_id) is None, "a rejected booking stored progress")
+    expect(event_row(event_id)["status"] == "confirmed", "a rejected booking moved the event")
+
+
 # --- Story 62: an event's change history -------------------------------------------
 # Needs migration 20261030120000 applied. Each check makes its own throwaway event;
 # its history cascades when the run deletes it.
@@ -5625,6 +5764,94 @@ def _(ctx: Context) -> None:
     event_id = throwaway_event(ctx, "HIST010", "2031-12-12 09:00+08", "2031-12-12 12:00+08", status="planning")
     for role in ("venue_staff", "tech_support", "attendee"):
         expect_status(event_history(ctx, event_id, role), 403)
+
+
+# --- Story 112: the assigned coordinator edits an event's ordinary details -----------------
+# Each check makes its own throwaway event (deleted with its history when the run ends).
+def edit_details(ctx: Context, event_id: str, fields: dict, *, version: int | None = None,
+                 session=None) -> httpx.Response:
+    session = session or ctx.shared("event_coordinator")
+    body = {"version": event_version(event_id) if version is None else version, **fields}
+    return ctx.client.patch(f"{ctx.api}/events/{event_id}/details", json=body, headers=session.headers)
+
+
+@check("TC-EDIT-001", "The assigned coordinator edits ordinary details; the status holds and the History records it",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EDIT001", "2031-12-15 09:00+08", "2031-12-15 12:00+08", status="planning")
+    saved = edit_details(ctx, event_id, {"description": "Agreed with the organiser", "accessibility_needs": "Step-free"})
+    expect_status(saved, 200)
+    [row] = db_query(f"select status::text, description, accessibility_needs from public.events where id = '{event_id}'")
+    expect(row["status"] == "planning" and row["description"] == "Agreed with the organiser"
+           and row["accessibility_needs"] == "Step-free", f"stored {row}")
+    for role in ("event_coordinator", "event_organiser"):
+        response = event_history(ctx, event_id, role)
+        expect_status(response, 200)
+        edits = {entry["field"]: entry for entry in response.json()["entries"] if entry["kind"] == "edit"}
+        expect(set(edits) == {"description", "accessibility_needs"}, f"{role} sees edits to {sorted(edits)}")
+        expect(edits["description"]["old_value"] is None
+               and edits["description"]["new_value"] == "Agreed with the organiser", f"{role} sees {edits['description']}")
+        expect((edits["description"]["actor"] or {}).get("id") == COORDINATOR_ID,
+               f"{role} sees the edit made by {edits['description']['actor']}")
+
+
+@check("TC-EDIT-002", "A significant or non-editable field is refused and nothing is saved", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EDIT002", "2031-12-16 09:00+08", "2031-12-16 12:00+08", status="confirmed")
+    before = db_query(f"select starts_at::text, expected_attendance, registration_enabled, version "
+                      f"from public.events where id = '{event_id}'")[0]
+    for field, value in (("starts_at", "2031-12-17T09:00:00+08:00"), ("expected_attendance", 99),
+                         ("registration_enabled", True)):
+        refused = edit_details(ctx, event_id, {"description": "must not save", field: value})
+        expect_status(refused, 422)
+        [error] = refused.json()["detail"]
+        wanted = ("That field can't be edited here." if field == "registration_enabled"
+                  else "Significant changes go through a change request.")
+        expect(error["msg"] == wanted and error["loc"] == ["body", field], f"{field} answered {error}")
+    after = db_query(f"select starts_at::text, expected_attendance, registration_enabled, version, description "
+                     f"from public.events where id = '{event_id}'")[0]
+    expect(after.pop("description") is None and after == before, f"a refused edit changed {before} to {after}")
+    # AC2 holds "at any status": a finished event answers with the same message, not the status conflict.
+    finished = throwaway_event(ctx, "EDIT002c", "2031-12-17 09:00+08", "2031-12-17 12:00+08", status="completed")
+    refused = edit_details(ctx, finished, {"starts_at": "2031-12-18T09:00:00+08:00"})
+    expect_status(refused, 422)
+    expect(refused.json()["detail"][0]["msg"] == "Significant changes go through a change request.",
+           f"a completed event answered {refused.json()['detail']}")
+    # AC3: field errors and a refused field come back in one answer, each under its own field.
+    together = edit_details(ctx, event_id, {"name": "ab", "purpose": "", "starts_at": "2031-12-18T09:00:00+08:00"})
+    expect_status(together, 422)
+    fields = sorted(error["loc"][-1] for error in together.json()["detail"])
+    expect(fields == ["name", "purpose", "starts_at"], f"the 422 named {fields}")
+
+
+@check("TC-EDIT-003", "A stale version is refused with the reload message and the other save stands", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EDIT003", "2031-12-18 09:00+08", "2031-12-18 12:00+08", status="planning")
+    seen = event_version(event_id)
+    expect_status(edit_details(ctx, event_id, {"description": "First save"}, version=seen), 200)
+    stale = edit_details(ctx, event_id, {"description": "Second, from a stale page"}, version=seen)
+    expect_status(stale, 409)
+    expect_detail(stale, "This event was updated by someone else. Reload.")
+    [row] = db_query(f"select description from public.events where id = '{event_id}'")
+    expect(row["description"] == "First save", f"the stale save stored {row['description']!r}")
+
+
+@check("TC-EDIT-004", "Only the assigned coordinator, acting as coordinator, edits; returned and finished events are read-only",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "EDIT004", "2031-12-19 09:00+08", "2031-12-19 12:00+08", status="planning")
+    for role in ("event_organiser", "venue_staff", "tech_support", "attendee", "safety_officer"):
+        expect_status(edit_details(ctx, event_id, {"description": "x"}, session=ctx.shared(role)), 403)
+    unassigned = throwaway_event(ctx, "EDIT004b", "2031-12-20 09:00+08", "2031-12-20 12:00+08",
+                                 status="under_review", assigned=False)
+    expect_status(edit_details(ctx, unassigned, {"description": "x"}), 403)
+    for status in ("returned", "rejected", "cancelled", "completed"):
+        closed = throwaway_event(ctx, f"EDIT004-{status}", "2031-12-21 09:00+08", "2031-12-21 12:00+08", status=status)
+        refused = edit_details(ctx, closed, {"description": "x"})
+        expect_status(refused, 409)
+        expect_detail(refused, "This event can't be edited in its current status.")
+    [row] = db_query(f"select description from public.events where id = '{event_id}'")
+    expect(row["description"] is None, "a refused role changed the description")
 
 
 # --- CR-106: the coordinator asks the Lead to reassign their event ----------------------

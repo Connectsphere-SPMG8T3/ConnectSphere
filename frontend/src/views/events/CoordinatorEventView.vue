@@ -18,7 +18,10 @@ import SafetyDecisionDetails from "@/components/events/SafetyDecisionDetails.vue
 import { useAuthStore } from "@/stores/auth";
 import RejectEventModal from "@/components/events/RejectEventModal.vue";
 import ReturnEventModal from "@/components/events/ReturnEventModal.vue";
+import EditEventDetailsModal from "@/components/events/EditEventDetailsModal.vue";
 import { showToast } from "@/composables/useToast";
+import { preparationStageLabel } from "@/features/equipment/preparation";
+import { canEditDetails } from "@/features/events/detailsEdit";
 import { canCancelEvent } from "@/features/events/cancellation";
 import { describeChanges } from "@/features/events/changeRequest";
 import { canRequestReassignment } from "@/features/events/reassignmentRequest";
@@ -45,6 +48,8 @@ const isSafetyOpen = ref(false);
 const isApproveOpen = ref(false);
 const isRejectOpen = ref(false);
 const isReturnOpen = ref(false);
+// Story 112: editing the event's ordinary details directly.
+const isEditDetailsOpen = ref(false);
 // Story 115: deciding the organiser's cancellation request, or cancelling directly.
 const isApproveCancellationOpen = ref(false);
 const isRejectCancellationOpen = ref(false);
@@ -68,6 +73,11 @@ const showRequestReassignment = computed(() => canRequestReassignment(event.valu
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
 const showReturn = computed(() => canReturn(event.value?.status));
+// AC6: any coordinator can open an event, but only its assigned one can edit it, so the
+// button isn't offered to the rest (the API would answer 403).
+const showEditDetails = computed(
+  () => canEditDetails(event.value?.status) && Boolean(auth.profile?.id) && event.value?.coordinator_id === auth.profile.id,
+);
 const showCancel = computed(() => canCancelEvent(event.value));
 const isReasonOpen = computed(
   () => isRejectCancellationOpen.value || isCancelOpen.value || isRejectChangeOpen.value || isReassignmentOpen.value,
@@ -224,6 +234,22 @@ async function confirmReturn({ message, flaggedFields }) {
   }
 }
 
+async function confirmEditDetails(changes) {
+  try {
+    await review.editDetails(changes);
+    isEditDetailsOpen.value = false;
+    showToast("Event details saved");
+  } catch {
+    // Kept open so the coordinator sees the error beside their edits.
+  }
+}
+
+// AC4: someone else saved first, so show their version instead of overwriting it.
+async function reloadAfterStaleEdit() {
+  isEditDetailsOpen.value = false;
+  await review.load(route.params.id);
+}
+
 async function confirmApproveCancellation() {
   isApproveCancellationOpen.value = false;
   try {
@@ -325,7 +351,7 @@ watch(
             <h1 class="mt-2 break-words text-4xl font-bold leading-tight sm:text-5xl">{{ event.name }}</h1>
           </div>
           <div
-            v-if="showApprove || showReject || showReturn || showCancel || showRequestReassignment || event.status === 'planning'"
+            v-if="showApprove || showReject || showReturn || showCancel || showRequestReassignment || showEditDetails || event.status === 'planning'"
             class="flex flex-wrap gap-3 lg:justify-end"
             data-testid="review-actions"
           >
@@ -382,6 +408,16 @@ watch(
               @click="review.error = null; isReassignmentOpen = true"
             >
               Request reassignment
+            </BauhausButton>
+            <BauhausButton
+              v-if="showEditDetails"
+              size="sm"
+              variant="outline"
+              aria-label="Edit event details"
+              :disabled="review.isActing"
+              @click="review.error = null; isEditDetailsOpen = true"
+            >
+              Edit details
             </BauhausButton>
           </div>
         </div>
@@ -554,6 +590,15 @@ watch(
                   <span v-if="spacePanels[space.id].booking.status === 'held' && spacePanels[space.id].booking.expires_at" class="text-sm font-bold">
                     Hold expires {{ formatHoldExpiry(spacePanels[space.id].booking.expires_at) }} unless approved.
                   </span>
+                  <span class="basis-full text-sm font-bold">
+                    Venue preparation: {{ preparationStageLabel(spacePanels[space.id].booking.preparation?.stage) }}
+                  </span>
+                  <span
+                    v-if="spacePanels[space.id].booking.preparation?.note"
+                    class="basis-full whitespace-pre-wrap text-sm font-medium"
+                  >
+                    Internal note: {{ spacePanels[space.id].booking.preparation.note }}
+                  </span>
                 </div>
                 <SafetyRejectedNotice
                   v-if="spacePanels[space.id].kind === 'safety-rejected'"
@@ -673,6 +718,12 @@ watch(
             </p>
             <p v-if="venuePanel.booking.status === 'held'" class="mt-3 text-sm font-medium">
               Held for this event's time while venue staff decide.
+            </p>
+            <p class="mt-3 text-sm font-bold">
+              Venue preparation: {{ preparationStageLabel(venuePanel.booking.preparation?.stage) }}
+            </p>
+            <p v-if="venuePanel.booking.preparation?.note" class="mt-1 whitespace-pre-wrap text-sm font-medium">
+              Internal note: {{ venuePanel.booking.preparation.note }}
             </p>
             <p
               v-if="venuePanel.booking.status === 'held' && venuePanel.booking.expires_at"
@@ -847,6 +898,17 @@ watch(
       :error="isCancelOpen ? review.error : null"
       @confirm="confirmCancel"
       @cancel="isCancelOpen = false"
+    />
+    <EditEventDetailsModal
+      v-if="event && showEditDetails"
+      :open="isEditDetailsOpen"
+      :event="event"
+      :busy="review.isActing"
+      :error="isEditDetailsOpen ? review.error : null"
+      :conflict="review.editConflict"
+      @confirm="confirmEditDetails"
+      @cancel="isEditDetailsOpen = false"
+      @reload="reloadAfterStaleEdit"
     />
     <ReturnEventModal
       v-if="event"

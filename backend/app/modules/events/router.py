@@ -23,6 +23,7 @@ from app.modules.events.schemas import (
     EventCommentCreate,
     EventCommentsResponse,
     EventCreateRequest,
+    EventDetailsEdit,
     EventHistoryResponse,
     EventAssignRequest,
     EventCancelRequest,
@@ -150,6 +151,11 @@ def add_event_comment(event_id: UUID, body: EventCommentCreate, current_user: Ev
 @router.patch("/{event_id}", response_model=EventResponse)
 def update_event(event_id: UUID, body: EventUpdateRequest, current_user: EventOrganiser) -> EventResponse:
     return service.update(str(event_id), current_user.id, body)
+
+
+@router.patch("/{event_id}/details", response_model=EventResponse)
+def edit_event_details(event_id: UUID, body: EventDetailsEdit, current_user: EventCoordinator) -> EventResponse:
+    return service.edit_details(str(event_id), current_user.id, body)
 
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
