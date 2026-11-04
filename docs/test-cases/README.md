@@ -8,7 +8,7 @@ See [REQUIREMENTS.md](../REQUIREMENTS.md) for the rules each case checks, each s
 
 | File | Stories | ID prefixes |
 |---|---|---|
-| [auth.md](auth.md) | SCRUM-48 login, session, logout; SCRUM-80 Organiser and SCRUM-83 Attendee sign-up | TC-AUTH |
+| [auth.md](auth.md) | SCRUM-48 login, session, logout; SCRUM-50 profile details; SCRUM-80 Organiser and SCRUM-83 Attendee sign-up | TC-AUTH |
 | [roles-and-access.md](roles-and-access.md) | SCRUM-48 routing and data-layer security; SCRUM-74/75/76/78 role switching | TC-RBAC, TC-ROLE, TC-DATA |
 | [venues.md](venues.md) | SCRUM-39 venue search, SCRUM-67 venue profile, SCRUM-19 venue booking request, CR-99 hold expiry, SCRUM-38 booking rejection, CR-98 space-scoped venue selection, CR-94 venue-edit re-check and Unsuitable flag, CR-97 several venues per event, SCRUM-21 booking conflict detection, CR-95 affected bookings and replacements, CR-100 venue defaults and safety details, SCRUM-57 venue availability calendar, SCRUM-85 booking cancellation | TC-VENUE, TC-BOOK, TC-HOLD, TC-SPACE, TC-VCAL, TC-BCAN |
 | [events.md](events.md) | SCRUM-8 request creation, SCRUM-34/52 approve and reject, SCRUM-33 return for amendment, SCRUM-61 comments, CR-98 event-space requirements, Story 43 public event discovery and registration, SCRUM-35 manager registrations, SCRUM-55 withdrawal, SCRUM-56 registered events, SCRUM-86 waitlist, 84 cancellation requests, 115 cancel an event, 32 change requests, 37 deciding change requests and re-review, 62 change history, 112 coordinator edits an event's details | TC-EVENT, TC-REV, TC-AMD, TC-CMT, TC-SAFE, TC-SPACE, TC-REG, TC-CANCEL, TC-CHANGE, TC-HIST, TC-EDIT |
