@@ -128,6 +128,7 @@ DB_SCRIPTS = [
     ("event_cancellation_request_checks.sql", "TC-CANCEL-007, 008 (story 84 database half: superseding, index, RLS)"),
     ("event_cancellation_decision_checks.sql", "TC-CANCEL-018 (story 115 database half: releases, notices, refusals)"),
     ("event_change_request_checks.sql", "TC-CHANGE-007 (story 32 database half: one open per event, closing, RLS)"),
+    ("event_completion_checks.sql", "TC-EVENT-038, 039 (SCRUM-68: completion boundary, history, cron and grants)"),
     ("registration_withdrawal_checks.sql", "TC-REG-018 (SCRUM-55 withdrawal, cutoff, re-registration and grants)"),
     ("change_request_decision_checks.sql", "TC-CHANGE-024 (story 37 database half: decisions, moves, marks, sends, re-review)"),
     ("technical_preparation_checks.sql", "TC-TPREP-001–006 (CR-110 database half: refusals, Preparation, history, notices, RLS)"),
@@ -1739,6 +1740,48 @@ def throwaway_event(ctx: Context, case: str, starts: str, ends: str, *, status: 
         f"'{THROWAWAY_EVENT_PREFIX}{ctx.run_id} {case}', '{starts}', '{ends}') returning id"
     )
     return rows[0]["id"]
+
+
+@check("TC-EVENT-038", "A completed event is visible to its organiser and assigned coordinator", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "68-038-read", "2031-12-22 09:00+08", "2031-12-22 12:00+08",
+                               status="completed")
+    for role in ("event_organiser", "event_coordinator"):
+        response = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=ctx.shared(role).headers)
+        expect_status(response, 200)
+        expect(response.json()["status"] == "completed", f"{role} saw {response.json().get('status')!r}")
+
+
+@check("TC-EVENT-043", "A Completed event refuses edits and arrangements without side effects", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "68-043-closed", "2031-12-23 09:00+08", "2031-12-23 12:00+08",
+                               status="completed")
+    event_query = (
+        "select status::text as status, version, name, starts_at::text as starts_at, ends_at::text as ends_at, "
+        "expected_attendance, description from public.events "
+        f"where id = '{event_id}'"
+    )
+    count_queries = {
+        "history": f"select count(*) as n from public.event_status_history where event_id = '{event_id}'",
+        "notifications": f"select count(*) as n from public.notifications where event_id = '{event_id}'",
+        "venue_bookings": f"select count(*) as n from public.venue_bookings where event_id = '{event_id}'",
+        "equipment_requests": f"select count(*) as n from public.equipment_requests where event_id = '{event_id}'",
+        "change_requests": f"select count(*) as n from public.event_change_requests where event_id = '{event_id}'",
+    }
+    before_event = db_query(event_query)
+    before_counts = {name: db_query(query)[0]["n"] for name, query in count_queries.items()}
+
+    expect_status(edit_details(ctx, event_id, {"description": "must not save"}), 409)
+    expect_status(request_venue(ctx, ctx.shared("event_coordinator"), event_id, HERITAGE_HALL), 409)
+    expect_status(submit_equipment(ctx, ctx.shared("event_coordinator"), event_id,
+                                   [{"equipment_id": PROJECTOR_ID, "quantity": 1}]), 409)
+    expect_status(request_cancellation(ctx, event_id), 409)
+    expect_status(request_change(ctx, event_id, event={"expected_attendance": 120}), 409)
+
+    after_event = db_query(event_query)
+    after_counts = {name: db_query(query)[0]["n"] for name, query in count_queries.items()}
+    expect(after_event == before_event, f"the completed event changed from {before_event} to {after_event}")
+    expect(after_counts == before_counts, f"related records changed from {before_counts} to {after_counts}")
 
 
 def delete_throwaway_bookings(run_id: str) -> int:

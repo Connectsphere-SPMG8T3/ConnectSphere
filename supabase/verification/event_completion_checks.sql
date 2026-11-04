@@ -1,7 +1,8 @@
 -- SCRUM-68 AC2: complete due Confirmed/Preparation events through the lifecycle
 -- function, preserve other statuses, and register one hourly pg_cron job.
 -- Run with `supabase db query --linked -f`. The transaction rolls back all
--- throwaway events and history rows.
+-- verification changes, including any pre-existing due events selected by the
+-- function's global sweep.
 
 begin;
 
@@ -59,8 +60,8 @@ begin
      where id = 'e0000000-0000-4000-8000-0000000009c1';
 
     select public.complete_due_events(c_now) into v_rows;
-    if v_rows <> 2 then
-        raise exception 'EVENT COMPLETION FAIL: the first run completed % events, expected 2', v_rows;
+    if v_rows < 2 then
+        raise exception 'EVENT COMPLETION FAIL: the first run completed % events, expected at least the 2 test events', v_rows;
     end if;
 
     if (select count(*) from public.events
