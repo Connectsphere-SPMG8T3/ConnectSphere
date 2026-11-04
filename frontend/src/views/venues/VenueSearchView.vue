@@ -22,10 +22,11 @@ const router = useRouter();
 const venuesStore = useVenuesStore();
 const sortKey = ref("name");
 // Venues that fail a requirement stay in the list, greyed out after the matches,
-// each with the reasons it was excluded. The sort orders the matches only.
+// each with the reasons it was excluded; inactive venues are not listed (VC-R1).
+// The sort orders the matches only.
 const orderedResults = computed(() => [
   ...sortVenueResults(venuesStore.includedResults, sortKey.value),
-  ...venuesStore.excludedResults,
+  ...venuesStore.listedExcludedResults,
 ]);
 const bookingStore = useVenueBookingStore();
 const authStore = useAuthStore();
@@ -208,7 +209,7 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
           <p v-if="!venuesStore.hasPeriod" class="mt-3 text-xs font-bold text-ink/70">
             Add a date and time to check availability
           </p>
-          <p v-if="venuesStore.excludedCount > 0" class="mt-3 text-xs font-bold text-ink/70">
+          <p v-if="venuesStore.listedExcludedResults.length > 0" class="mt-3 text-xs font-bold text-ink/70">
             Greyed-out venues don't meet every requirement. Each one lists what it is missing.
           </p>
         </div>
@@ -225,7 +226,8 @@ async function confirmRequest(note, acknowledgedWarnings = false) {
       </div>
 
       <p v-if="venuesStore.includedCount === 0" class="mb-8 text-sm font-medium">
-        No venue meets every requirement. The greyed-out venues below show what each one is missing.
+        No venue meets every requirement.
+        <template v-if="venuesStore.listedExcludedResults.length">The greyed-out venues below show what each one is missing.</template>
       </p>
 
       <div class="flex flex-col gap-6">

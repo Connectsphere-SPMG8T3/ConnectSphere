@@ -16,12 +16,12 @@ import VenueGallery from "@/components/venues/VenueGallery.vue";
 import { blockActions, blockSetBy } from "@/features/venues/blockChange";
 import {
   ALL_BOOKING_STATUSES,
-  PENDING_BOOKING_STATUS,
   blockReasonLabel,
   bookingStatusFilterOptions,
   bookingStatusLabel,
   filterBookingRequests,
   formatEventReference,
+  sortBookingRequests,
 } from "@/features/venues/dashboard";
 import { useVenueEditStore } from "@/features/venues/venueEditStore";
 import {
@@ -104,21 +104,18 @@ watch(activeTab, (tab) => {
   if (tab === "history" && route.params.id) venueEditStore.loadHistory(route.params.id);
 });
 
-// Opens on Pending, as the requests page does, unless nothing is pending: a venue whose
-// only commitments are approved would otherwise open on an empty list reading as "nothing booked".
-const bookingStatus = ref(PENDING_BOOKING_STATUS);
-watch(
-  upcomingBookings,
-  (rows) => {
-    bookingStatus.value = rows.some((row) => row.status === "held") ? PENDING_BOOKING_STATUS : ALL_BOOKING_STATUSES;
-  },
-  { immediate: true },
+// Opens on every booking, tentative holds included (SCRUM-67 AC3): a venue with one hold
+// must still show its confirmed bookings. Each venue starts from All statuses again.
+const bookingStatus = ref(ALL_BOOKING_STATUSES);
+watch(() => route.params.id, () => { bookingStatus.value = ALL_BOOKING_STATUSES; });
+const statusOptions = computed(() =>
+  bookingStatusFilterOptions(upcomingBookings.value).map((option) => ({
+    ...option,
+    label: `${option.label} (${option.count})`,
+  })),
 );
-const statusOptions = computed(() => bookingStatusFilterOptions(upcomingBookings.value));
 const visibleBookings = computed(() =>
-  filterBookingRequests(upcomingBookings.value, { status: bookingStatus.value }).sort(
-    (a, b) => new Date(a.period?.starts_at ?? 0) - new Date(b.period?.starts_at ?? 0),
-  ),
+  sortBookingRequests(filterBookingRequests(upcomingBookings.value, { status: bookingStatus.value })),
 );
 
 async function load() {
@@ -542,10 +539,13 @@ watch(() => route.params.id, () => {
           <div id="panel-group-bookings">
             <ul v-if="visibleBookings.length" class="flex flex-col gap-3">
               <li v-for="booking in visibleBookings" :key="booking.id">
-                <!-- Opens the booking itself: its status, who asked and the decision (venue staff and the event's coordinator). -->
-                <RouterLink
-                  :to="{ name: 'booking-request', params: { id: booking.id } }"
-                  class="flex flex-wrap items-center justify-between gap-3 border-2 border-ink px-4 py-3 hover:bg-muted active-press"
+                <!-- Venue staff open the booking itself. Other roles see the row only: the booking page
+                     is limited to staff and the event's assigned coordinator, which the venue page can't tell. -->
+                <component
+                  :is="canEdit ? RouterLink : 'div'"
+                  v-bind="canEdit ? { to: { name: 'booking-request', params: { id: booking.id } } } : {}"
+                  :class="canEdit ? 'hover:bg-muted active-press' : ''"
+                  class="flex flex-wrap items-center justify-between gap-3 border-2 border-ink px-4 py-3"
                 >
                   <span class="min-w-0">
                     <span class="block text-lg font-bold leading-tight">{{ formatEventReference(booking) }}</span>
@@ -556,9 +556,9 @@ watch(() => route.params.id, () => {
                   </span>
                   <span class="flex shrink-0 items-center gap-3">
                     <span class="border-2 border-ink px-3 py-1 text-base font-bold">{{ bookingStatusLabel(booking.status) }}</span>
-                    <span class="text-base font-bold underline decoration-2 underline-offset-4">View booking →</span>
+                    <span v-if="canEdit" class="text-base font-bold underline decoration-2 underline-offset-4">View booking →</span>
                   </span>
-                </RouterLink>
+                </component>
               </li>
             </ul>
             <p v-else class="text-base font-medium text-ink/70">None.</p>

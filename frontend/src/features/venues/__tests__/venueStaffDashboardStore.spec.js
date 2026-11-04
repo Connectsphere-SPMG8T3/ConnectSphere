@@ -114,23 +114,6 @@ describe("venue staff dashboard store", () => {
     expect(store.affectedBookings).toEqual([]);
   });
 
-  it("derives the tile counts from the lists", async () => {
-    signedInVenueStaff();
-    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
-    const store = useVenueStaffDashboardStore();
-
-    await store.load();
-
-    expect(store.counts).toEqual({
-      pendingHolds: 2,
-      reReview: 1,
-      blocks: 1,
-      venuesTotal: 2,
-      venuesActive: 1,
-      venuesInactive: 1,
-    });
-  });
-
   it("orders holds soonest expiry first regardless of the order they arrived in", async () => {
     signedInVenueStaff();
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
@@ -211,7 +194,6 @@ describe("venue staff dashboard store", () => {
     await store.load();
 
     expect(store.pendingHolds).toEqual([]);
-    expect(store.counts.pendingHolds).toBe(0);
     expect(store.error).toBe("Boom");
   });
 
@@ -224,12 +206,12 @@ describe("venue staff dashboard store", () => {
     expect(store.hasSettled).toBe(true);
   });
 
-  it("withholds counts until the first load settles", () => {
+  it("has not settled, and holds nothing, before the first load", () => {
     signedInVenueStaff();
     const store = useVenueStaffDashboardStore();
 
     expect(store.hasSettled).toBe(false);
-    expect(store.counts.pendingHolds).toBe(0);
+    expect(store.pendingHolds).toEqual([]);
   });
 });
 

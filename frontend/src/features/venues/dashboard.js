@@ -56,17 +56,28 @@ export function sortPendingHoldsSoonestExpiryFirst(holds = []) {
 }
 
 /**
- * The venue staff dashboard's status board: Pending requests in the middle, with
- * the bookings flagged because their venue became unavailable (CR-95) before
- * them and the approved ones after (SCRUM-70 AC3). Pending holds nearest their
- * expiry come first, so the one about to lapse is on top; the others run
- * soonest first. A column "needs attention" only while it holds a booking that
- * waits on venue staff.
+ * The venue staff dashboard's status board (SCRUM-70 AC3): the bookings flagged
+ * because their venue became unavailable (CR-95), the pending requests, the
+ * bookings in re-review and the upcoming approved ones. Each booking sits in
+ * exactly one column, Flagged taking priority, so none is listed or counted
+ * twice and a flagged approved booking is not shown as settled. Pending holds
+ * nearest their expiry come first, so the one about to lapse is on top; the
+ * others run soonest first. Approved shows only bookings that have not ended.
+ * A column "needs attention" only while it holds a booking that waits on venue
+ * staff.
  */
-export function bookingStatusColumns({ pendingHolds = [], affectedBookings = [], bookingRequests = [] } = {}) {
-  const startsAt = (booking) => timestamp(booking?.period?.starts_at);
-  const soonestFirst = (rows) =>
-    [...rows].sort((a, b) => startsAt(a) - startsAt(b) || String(a.id).localeCompare(String(b.id)));
+export function bookingStatusColumns(
+  { pendingHolds = [], reReviewBookings = [], affectedBookings = [], bookingRequests = [] } = {},
+  now = new Date(),
+) {
+  const flaggedIds = new Set(affectedBookings.map((booking) => booking.id));
+  const unflagged = (rows) => rows.filter((booking) => !flaggedIds.has(booking.id));
+  const soonestFirst = (rows) => sortBookingRequests(rows, "event_soonest");
+  const pending = unflagged(pendingHolds);
+  const reReview = unflagged(reReviewBookings);
+  const approved = unflagged(bookingRequests).filter(
+    (booking) => booking.status === "approved" && timestamp(booking.period?.ends_at) > now.getTime(),
+  );
   return [
     {
       status: "flagged",
@@ -79,14 +90,21 @@ export function bookingStatusColumns({ pendingHolds = [], affectedBookings = [],
       status: "pending",
       label: "Pending requests",
       description: "Awaiting your approval.",
-      events: sortPendingHoldsSoonestExpiryFirst(pendingHolds),
-      needsAttention: pendingHolds.length > 0,
+      events: sortPendingHoldsSoonestExpiryFirst(pending),
+      needsAttention: pending.length > 0,
+    },
+    {
+      status: "re_review",
+      label: "Re-review",
+      description: "Changed after approval. Decide again.",
+      events: soonestFirst(reReview),
+      needsAttention: reReview.length > 0,
     },
     {
       status: "approved",
       label: "Approved",
-      description: "Confirmed bookings on your venues.",
-      events: soonestFirst(bookingRequests.filter((booking) => booking.status === "approved")),
+      description: "Upcoming confirmed bookings on your venues.",
+      events: soonestFirst(approved),
       needsAttention: false,
     },
   ];
@@ -198,24 +216,6 @@ export function formatEventReference(booking) {
   if (booking?.event_name) return booking.event_name;
   const id = String(booking?.event_id ?? "");
   return id ? `Event ${id.slice(0, 8).toUpperCase()}` : "Unidentified event";
-}
-
-/** The four figures the stat tiles show (REQUIREMENTS §6.21, in priority order). */
-export function summariseVenueStaffDashboard({
-  venues = [],
-  pendingHolds = [],
-  reReviewBookings = [],
-  blocks = [],
-} = {}) {
-  const active = venues.filter((venue) => venue.is_active).length;
-  return {
-    pendingHolds: pendingHolds.length,
-    reReview: reReviewBookings.length,
-    blocks: blocks.length,
-    venuesTotal: venues.length,
-    venuesActive: active,
-    venuesInactive: venues.length - active,
-  };
 }
 
 /**

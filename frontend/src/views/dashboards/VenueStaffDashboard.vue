@@ -22,7 +22,6 @@ import { sectionTone } from "@/components/common/sectionTone";
 import VenueCalendar from "@/components/venues/VenueCalendar.vue";
 import { BOARD_CARD_TONE_CLASSES } from "@/features/events/dashboard";
 import {
-  ALL_BOOKING_STATUSES,
   ALL_VENUE_STATUSES,
   blockReasonLabel,
   bookingStatusColumns,
@@ -31,7 +30,6 @@ import {
   formatEventReference,
   venueStatusFilterOptions,
   venueStatusMeta,
-  waitingDays,
 } from "@/features/venues/dashboard";
 import { useVenueStaffDashboardStore } from "@/features/venues/venueStaffDashboardStore";
 
@@ -40,18 +38,19 @@ const router = useRouter();
 
 onMounted(() => dashboard.load());
 
-// AC3: the pending requests and the flagged bookings wait on venue staff, so they are red;
+// AC3: the pending, re-review and flagged bookings wait on venue staff, so they are red;
 // approved bookings are settled, so they are green.
 const columns = computed(() => bookingStatusColumns(dashboard));
 const boardTotal = computed(() => columns.value.reduce((total, column) => total + column.events.length, 0));
-const CARD_TONES = { flagged: "attention", pending: "attention", approved: "done" };
+const CARD_TONES = { flagged: "attention", pending: "attention", re_review: "attention", approved: "done" };
 
 // A column's title opens the booking requests page: the flagged bookings and the pending
-// requests head that page, and the approved ones are a choice in its Status list.
+// requests head that page, and re-review and approved are choices in its Status list.
+const LINKED_STATUSES = ["re_review", "approved"];
 function openStatus(status) {
   router.push({
     name: "dashboard-venue-staff-requests",
-    query: status === "approved" ? { status } : {},
+    query: LINKED_STATUSES.includes(status) ? { status } : {},
   });
 }
 
@@ -114,20 +113,6 @@ const dayFormatter = new Intl.DateTimeFormat("en-SG", {
 });
 
 const formatDay = (value) => (value ? dayFormatter.format(new Date(value)) : "");
-
-/**
- * How long a request has waited, in words.
- *
- * Worded neutrally because the customer ruled out review deadlines and SLA
- * timers (LC-R4, QA-55, QA-68). The expiry beside it is what now orders the
- * queue (CR-99); age stays as context and is never styled as overdue.
- */
-function waitedFor(hold) {
-  const days = waitingDays(hold);
-  if (days === null) return "";
-  if (days === 0) return "Requested today";
-  return `Waiting ${days} day${days === 1 ? "" : "s"}`;
-}
 
 function venueDetail(row) {
   if (row.status === "blocked") return `Blocked until ${formatDay(row.blockedUntil)}`;

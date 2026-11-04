@@ -51,13 +51,13 @@ const RESPONSE = {
 // Apps from earlier tests would otherwise still react to the shared router.
 const mountedApps = [];
 
-async function mountView(component, { route } = {}) {
+async function mountView(component, { route, role = "event_coordinator" } = {}) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const authStore = useAuthStore();
   authStore.token = "access";
   authStore.refreshToken = "refresh";
-  authStore.profile = { id: "u1", role: "event_coordinator" };
+  authStore.profile = { id: "u1", role };
   authStore.sessionVerified = true;
   const { default: router } = await import("@/router");
   await router.push(route ?? { name: "venue-search", query: {} });
@@ -404,6 +404,30 @@ describe("VenueSearchView", () => {
     expect(el.textContent).toContain("Greyed-out venues don't meet every requirement");
   });
 
+  it("keeps inactive venues out of the list (VC-R1) but greys out other excluded ones", async () => {
+    const HALL_D = { ...HALL_A, id: "b0000000-0000-4000-8000-000000000004", name: "Hall D", is_active: false };
+    venuesApi.search.mockResolvedValue({
+      ...RESPONSE,
+      results: [
+        ...RESPONSE.results,
+        {
+          venue: HALL_D,
+          availability: "unavailable",
+          excluded: true,
+          reasons: [{ code: "inactive", message: "Hall D is inactive" }],
+        },
+      ],
+      excluded_count: 2,
+    });
+    const { default: VenueSearchView } = await import("@/views/venues/VenueSearchView.vue");
+    const { el } = await mountView(VenueSearchView);
+    await settle();
+
+    const names = [...el.querySelectorAll('[data-testid="venue-result"] h3')].map((h) => h.textContent.trim());
+    expect(names).toEqual(["Hall A", "Hall B"]);
+    expect(el.textContent).not.toContain("Hall D");
+  });
+
   it("sorts the matching venues from a Sort by control and keeps excluded ones last", async () => {
     const HALL_C = { ...HALL_A, id: "b0000000-0000-4000-8000-000000000003", name: "Hall C", capacity: 300 };
     venuesApi.search.mockResolvedValue({
@@ -592,9 +616,9 @@ describe("VenueDetailView (SCRUM-67)", () => {
     venuesApi.get.mockResolvedValue(PROFILE);
   });
 
-  async function openProfile() {
+  async function openProfile(role) {
     const { default: VenueDetailView } = await import("@/views/venues/VenueDetailView.vue");
-    const { el } = await mountView(VenueDetailView, { route: { name: "venue-detail", params: { id: HALL_A.id } } });
+    const { el } = await mountView(VenueDetailView, { route: { name: "venue-detail", params: { id: HALL_A.id } }, role });
     await settle();
     return el;
   }
@@ -706,27 +730,38 @@ describe("VenueDetailView (SCRUM-67)", () => {
 
     // The total is stated once, above the Status list, so it is never hidden.
     expect(summary.textContent).toContain("2 upcoming");
-    // Opens on Pending, as the booking requests page does, because a hold is waiting.
-    expect(statusSelect(el).selectedOptions[0].textContent).toContain("Pending");
+    // Opens on every booking, tentative holds included, so nothing confirmed is hidden (AC3).
+    expect(statusSelect(el).selectedOptions[0].textContent).toContain("All statuses");
     expect(summary.textContent).toContain("Annual Town Hall");
-    expect(summary.textContent).not.toContain("Alumni Dinner");
+    expect(summary.textContent).toContain("Alumni Dinner");
     // 05:00Z is 13:00 in Singapore.
     expect(summary.textContent).toMatch(/13:00/);
+
+    await chooseStatus(el, "Pending");
+    expect(summary.textContent).toContain("Annual Town Hall");
+    expect(summary.textContent).not.toContain("Alumni Dinner");
 
     await chooseStatus(el, "Approved");
     expect(summary.textContent).toContain("Alumni Dinner");
     expect(summary.textContent).not.toContain("Annual Town Hall");
-
-    await chooseStatus(el, "All statuses");
-    expect(summary.textContent).toContain("Alumni Dinner");
-    expect(summary.textContent).toContain("Annual Town Hall");
   });
 
-  it("opens on Pending when a hold is waiting, and on All statuses when nothing is pending", async () => {
+  it("lists the bookings soonest first", async () => {
+    const el = await openProfile();
+    const summary = await openTab(el, "Upcoming bookings");
+
+    const [first, second] = [...PROFILE.upcoming_bookings].sort(
+      (a, b) => new Date(a.period.starts_at) - new Date(b.period.starts_at),
+    );
+    const text = summary.textContent;
+    expect(text.indexOf(first.event_name)).toBeLessThan(text.indexOf(second.event_name));
+  });
+
+  it("opens on All statuses whether or not a hold is waiting", async () => {
     venuesApi.get.mockResolvedValue({ ...PROFILE, upcoming_bookings: [PROFILE.upcoming_bookings[0]] });
     let el = await openProfile();
     let summary = await openTab(el, "Upcoming bookings");
-    expect(statusSelect(el).selectedOptions[0].textContent).toContain("Pending");
+    expect(statusSelect(el).selectedOptions[0].textContent).toContain("All statuses");
     expect(summary.textContent).toContain("Annual Town Hall");
 
     document.body.innerHTML = "";
@@ -737,10 +772,9 @@ describe("VenueDetailView (SCRUM-67)", () => {
     expect(summary.textContent).toContain("Alumni Dinner");
   });
 
-  it("links each upcoming booking to its own booking page, labelled with its status", async () => {
-    const el = await openProfile();
+  it("links each upcoming booking to its own booking page for venue staff, labelled with its status", async () => {
+    const el = await openProfile("venue_staff");
     const summary = await openTab(el, "Upcoming bookings");
-    await chooseStatus(el, "All statuses");
 
     const approved = summary.querySelector('a[href="/bookings/d2"]');
     expect(approved.textContent).toContain("Alumni Dinner");
@@ -749,6 +783,16 @@ describe("VenueDetailView (SCRUM-67)", () => {
     const pending = summary.querySelector('a[href="/bookings/d1"]');
     expect(pending.textContent).toContain("Annual Town Hall");
     expect(pending.textContent).toContain("Pending");
+  });
+
+  it("shows the bookings to a coordinator without links to booking pages they may not open", async () => {
+    const el = await openProfile("event_coordinator");
+    const summary = await openTab(el, "Upcoming bookings");
+
+    expect(summary.textContent).toContain("Annual Town Hall");
+    expect(summary.textContent).toContain("Pending");
+    expect(summary.querySelector('a[href^="/bookings/"]')).toBeNull();
+    expect(summary.textContent).not.toContain("View booking");
   });
 
   it("says None rather than going blank on a status with no bookings", async () => {
@@ -761,14 +805,14 @@ describe("VenueDetailView (SCRUM-67)", () => {
     expect(summary.textContent).toContain("None.");
   });
 
-  it("offers the booking requests page's Status choices, Pending first, then only the statuses present", async () => {
+  it("offers the booking requests page's Status choices, each with its count, then only the statuses present", async () => {
     const el = await openProfile();
     await openTab(el, "Upcoming bookings");
 
     expect([...statusSelect(el).options].map((o) => o.textContent.trim())).toEqual([
-      "Pending",
-      "All statuses",
-      "Approved",
+      "Pending (1)",
+      "All statuses (2)",
+      "Approved (1)",
     ]);
   });
 

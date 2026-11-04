@@ -20,7 +20,7 @@ test("TC-VSD-035 the booking status board keeps its columns and headers aligned 
   await page.evaluate(() => document.fonts.ready);
 
   const columns = page.locator("[data-status-group]");
-  await expect(columns).toHaveCount(3);
+  await expect(columns).toHaveCount(4);
   const headers = page.locator("[data-status-group] [data-column-header]");
 
   for (const width of [1440, 1280, 1100, 768, 640, 375, 320]) {

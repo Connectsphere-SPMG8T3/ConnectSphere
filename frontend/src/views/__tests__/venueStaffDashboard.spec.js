@@ -129,15 +129,16 @@ describe("VenueStaffDashboard", () => {
     expect([...el.querySelectorAll("[data-status-group]")].map((column) => column.dataset.statusGroup)).toEqual([
       "flagged",
       "pending",
+      "re_review",
       "approved",
     ]);
-    expect(columnCounts(el)).toEqual({ flagged: "1", pending: "2", approved: "1" });
+    expect(columnCounts(el)).toEqual({ flagged: "1", pending: "2", re_review: "1", approved: "1" });
+    expect(el.querySelector('[data-status-group="re_review"]').textContent).toContain("Grand Ballroom");
     expect(el.querySelector('[data-status-group="approved"]').textContent).toContain("Alumni Dinner");
     expect(el.querySelector('[data-status-group="flagged"]').textContent).toContain("Staff Retreat");
     expect(el.querySelector('[data-status-group="flagged"]').textContent).toContain("Venue free again: ready to restore");
-    // There is no In re-review column, and the legend explains only the colours the board uses.
+    // The legend explains only the colours the board uses.
     expect(el.querySelector("[data-board-legend]").textContent).not.toContain("Blue");
-    expect(el.querySelector('[data-status-group="re_review"]')).toBeNull();
   });
 
   it("carries none of the fabricated metrics it replaced", async () => {
@@ -151,7 +152,7 @@ describe("VenueStaffDashboard", () => {
     expect(el.textContent).not.toContain("Availability Updates Due");
     // The old tile values were 12 / 6 / 2. Assert on the board's own counts rather than on
     // bare digits, which also appear as day numbers in the calendar grid.
-    expect(columnCounts(el)).toEqual({ flagged: "0", pending: "2", approved: "0" });
+    expect(columnCounts(el)).toEqual({ flagged: "0", pending: "2", re_review: "1", approved: "0" });
   });
 
   it("lists every venue with its status, linking to the venue page", async () => {
@@ -266,6 +267,40 @@ describe("VenueStaffDashboard", () => {
     const { default: router } = await import("@/router");
     await vi.waitFor(() => expect(router.currentRoute.value.query).toEqual({ status: "approved" }));
     expect(router.currentRoute.value.name).toBe("dashboard-venue-staff-requests");
+  });
+
+  it("opens the booking requests page on Re-review from the Re-review column", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+
+    const el = await mountDashboard();
+    el.querySelector('[data-status-group="re_review"] button').click();
+
+    const { default: router } = await import("@/router");
+    await vi.waitFor(() => expect(router.currentRoute.value.query).toEqual({ status: "re_review" }));
+    expect(router.currentRoute.value.name).toBe("dashboard-venue-staff-requests");
+  });
+
+  it("shows a flagged booking once, in Flagged only, and leaves past approved bookings out", async () => {
+    const flagged = { id: "d-7", event_id: "e7", event_name: "Staff Retreat", venue_id: "b-5", venue_name: "Rooftop Terrace",
+      period: { starts_at: "2026-10-21T09:00:00+08:00", ends_at: "2026-10-21T12:00:00+08:00" },
+      status: "approved", flag: "affected", restorable: true };
+    venuesApi.venueStaffDashboard.mockResolvedValue({
+      ...PAYLOAD,
+      affected_bookings: [flagged, { ...PAYLOAD.pending_holds[0] }],
+      booking_requests: [
+        ...PAYLOAD.pending_holds,
+        flagged,
+        { id: "d-0", event_id: "e0", event_name: "Last Year's Gala", venue_id: "b-1", venue_name: "Grand Ballroom",
+          period: { starts_at: "2026-03-01T09:00:00+08:00", ends_at: "2026-03-01T12:00:00+08:00" }, status: "approved" },
+      ],
+    });
+
+    const el = await mountDashboard();
+
+    expect(columnCounts(el)).toEqual({ flagged: "2", pending: "1", re_review: "1", approved: "0" });
+    expect(el.querySelector("#booking-status").parentElement.textContent).toContain("4 total");
+    expect(el.querySelector('[data-status-group="approved"]').textContent).not.toContain("Last Year's Gala");
+    expect(el.querySelector('[data-status-group="approved"]').textContent).not.toContain("Staff Retreat");
   });
 
   it("opens the dedicated booking requests page from the Pending requests column", async () => {
