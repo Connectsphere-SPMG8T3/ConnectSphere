@@ -48,7 +48,7 @@ export function emptyCriteria() {
 }
 
 // The store always asks for the excluded venues too and splits them locally,
-// so the "Show excluded" toggle is instant instead of a second request.
+// so the page can list the partial matches without a second request.
 export function criteriaToParams(criteria) {
   const params = { include_excluded: true };
   if (criteria.date && criteria.startTime && criteria.endTime) {
@@ -93,7 +93,6 @@ export const useVenuesStore = defineStore("venues", {
     results: [],
     includedCount: 0,
     excludedCount: 0,
-    showExcluded: false,
     hasSearched: false,
     isLoading: false,
     error: null,
@@ -106,6 +105,10 @@ export const useVenuesStore = defineStore("venues", {
   getters: {
     includedResults: (state) => state.results.filter((result) => !result.excluded),
     excludedResults: (state) => state.results.filter((result) => result.excluded),
+    // The excluded venues the page lists, greyed out (QA2-18 partial matches).
+    // An inactive venue is left out altogether: VC-R1 excludes it from search.
+    listedExcludedResults: (state) =>
+      state.results.filter((result) => result.excluded && !result.reasons.some((reason) => reason.code === "inactive")),
     hasPeriod: (state) => Boolean(state.criteria.date && state.criteria.startTime && state.criteria.endTime),
   },
 

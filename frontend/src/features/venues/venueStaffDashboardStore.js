@@ -2,7 +2,6 @@ import { defineStore } from "pinia";
 
 import {
   sortPendingHoldsSoonestExpiryFirst,
-  summariseVenueStaffDashboard,
   venueStatuses as selectVenueStatuses,
 } from "@/features/venues/dashboard";
 import { toCalendarItems } from "@/features/venues/calendar";
@@ -45,7 +44,6 @@ export const useVenueStaffDashboardStore = defineStore("venueStaffDashboard", {
   }),
 
   getters: {
-    counts: (state) => summariseVenueStaffDashboard(state),
     soonestExpiryHolds: (state) => sortPendingHoldsSoonestExpiryFirst(state.pendingHolds),
     calendarItems: (state) => toCalendarItems(state),
   },

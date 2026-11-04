@@ -88,6 +88,16 @@ describe("VenueDetailView: deactivation (SCRUM-64)", () => {
     document.body.innerHTML = "";
   });
 
+  it("shows a Venues / venue name breadcrumb instead of a back link", async () => {
+    await mountView("event_coordinator", ACTIVE);
+
+    const crumbs = document.querySelector('nav[aria-label="Breadcrumb"]');
+    expect(crumbs.querySelector("a").textContent.trim()).toBe("Venues");
+    expect(crumbs.querySelector("a").getAttribute("href")).toBe("/venues");
+    expect(crumbs.querySelector('[aria-current="page"]').textContent.trim()).toBe(ACTIVE.name);
+    expect(document.body.textContent).not.toContain("Back to venue search");
+  });
+
   it("CR-100 shows both defaults and the recorded safety facts", async () => {
     await mountView("event_coordinator", { ...ACTIVE, setup_minutes: 30, turnaround_minutes: 45,
       emergency_access: "East exit\nCourtyard", restrictions: "No flames" });

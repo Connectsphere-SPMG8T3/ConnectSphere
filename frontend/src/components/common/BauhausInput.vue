@@ -47,6 +47,11 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  // A larger label and messages, for a long form that people read rather than scan.
+  large: {
+    type: Boolean,
+    default: false,
+  },
   // A request to review this field (SCRUM-33), not a validation failure.
   flag: {
     type: String,
@@ -66,7 +71,7 @@ const describedBy = computed(
 
 <template>
   <div class="flex flex-col gap-2">
-    <label :for="inputId" class="text-xs font-bold text-ink">
+    <label :for="inputId" class="font-bold text-ink" :class="large ? 'text-sm' : 'text-xs'">
       {{ label }}<span v-if="required" aria-hidden="true"> *</span>
     </label>
     <input
@@ -88,7 +93,7 @@ const describedBy = computed(
       @blur="$event.currentTarget.style.backgroundColor = ''"
       @input="$emit('update:modelValue', $event.target.value)"
     />
-    <p v-if="hasError" :id="`${inputId}-error`" class="text-xs font-bold text-bauhaus-red">
+    <p v-if="hasError" :id="`${inputId}-error`" class="font-bold text-bauhaus-red" :class="large ? 'text-sm' : 'text-xs'">
       {{ error }}
     </p>
     <p v-if="hasFlag" :id="`${inputId}-flag`" class="border-l-4 border-bauhaus-yellow pl-2 text-xs font-bold text-ink">

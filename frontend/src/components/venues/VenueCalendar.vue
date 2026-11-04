@@ -10,6 +10,9 @@
  */
 import { computed, ref, watch } from "vue";
 
+import SectionHeading from "@/components/common/SectionHeading.vue";
+import { sectionTone } from "@/components/common/sectionTone";
+
 import {
   CALENDAR_KINDS,
   buildMonthGrid,
@@ -247,10 +250,8 @@ function exportCalendar() {
   >
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 id="venue-calendar-heading" class="text-2xl font-bold leading-tight">
-          Calendar
-        </h2>
-        <p class="mt-1 text-xs font-bold text-ink/60">
+        <SectionHeading id="venue-calendar-heading" :tone="sectionTone(1)">Calendar</SectionHeading>
+        <p class="mt-3 text-sm font-bold text-ink/70">
           {{ periodLabel }} · Singapore time
         </p>
       </div>

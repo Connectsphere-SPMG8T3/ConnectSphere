@@ -2,8 +2,11 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 
+import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
+import BauhausIcon from "@/components/common/BauhausIcon.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import ConfirmModal from "@/components/common/ConfirmModal.vue";
 import BlockVenueModal from "@/components/venues/BlockVenueModal.vue";
@@ -11,11 +14,17 @@ import ChangeBlockModal from "@/components/venues/ChangeBlockModal.vue";
 import DeactivateVenueModal from "@/components/venues/DeactivateVenueModal.vue";
 import VenueGallery from "@/components/venues/VenueGallery.vue";
 import { blockActions, blockSetBy } from "@/features/venues/blockChange";
-import { blockReasonLabel, formatEventReference } from "@/features/venues/dashboard";
+import {
+  ALL_BOOKING_STATUSES,
+  blockReasonLabel,
+  bookingStatusFilterOptions,
+  bookingStatusLabel,
+  filterBookingRequests,
+  formatEventReference,
+  sortBookingRequests,
+} from "@/features/venues/dashboard";
 import { useVenueEditStore } from "@/features/venues/venueEditStore";
 import {
-  defaultBookingGroupKey,
-  groupUpcomingBookings,
   lastEditorName,
   stepIndex,
   summariseEditHistoryEntry,
@@ -39,6 +48,10 @@ const facilityLabels = labelFor(FACILITIES);
 const accessibilityLabels = labelFor(ACCESSIBILITY_FEATURES);
 
 const venue = computed(() => venuesStore.selectedVenue);
+const breadcrumbItems = computed(() => [
+  { label: "Venues", to: { name: "venue-search" } },
+  { label: venue.value?.name ?? "Venue" },
+]);
 
 const sgtFormatter = new Intl.DateTimeFormat("en-SG", {
   timeZone: "Asia/Singapore",
@@ -63,10 +76,10 @@ const lastUpdated = computed(() => ({
   by: lastEditorName(venue.value?.updated_by),
 }));
 
-// SCRUM-67 AC3. Counting and grouping live in features/venues/venueProfile.js,
-// so the rules are testable without mounting this view.
-const bookingGroups = computed(() => groupUpcomingBookings(venue.value?.upcoming_bookings));
-const upcomingBookingCount = computed(() => venue.value?.upcoming_bookings?.length ?? 0);
+// SCRUM-67 AC3. The Status choice and its filter are the booking requests page's own
+// (features/venues/dashboard.js), so the two lists name and filter statuses the same way.
+const upcomingBookings = computed(() => venue.value?.upcoming_bookings ?? []);
+const upcomingBookingCount = computed(() => upcomingBookings.value.length);
 
 // Photos first, then a schematic per supported layout (VC-R8).
 const slides = computed(() => venueSlides(venue.value));
@@ -91,32 +104,19 @@ watch(activeTab, (tab) => {
   if (tab === "history" && route.params.id) venueEditStore.loadHistory(route.params.id);
 });
 
-// The booking statuses are tabbed too, one level in. The selection follows the
-// data rather than defaulting to "Confirmed": a venue whose only commitment is
-// a hold would otherwise open on an empty panel reading as "nothing booked".
-const activeGroup = ref(defaultBookingGroupKey(bookingGroups.value));
-watch(bookingGroups, (groups) => {
-  activeGroup.value = defaultBookingGroupKey(groups);
-});
-const currentGroup = computed(
-  () => bookingGroups.value.find((group) => group.key === activeGroup.value) ?? bookingGroups.value[0],
+// Opens on every booking, tentative holds included (SCRUM-67 AC3): a venue with one hold
+// must still show its confirmed bookings. Each venue starts from All statuses again.
+const bookingStatus = ref(ALL_BOOKING_STATUSES);
+watch(() => route.params.id, () => { bookingStatus.value = ALL_BOOKING_STATUSES; });
+const statusOptions = computed(() =>
+  bookingStatusFilterOptions(upcomingBookings.value).map((option) => ({
+    ...option,
+    label: `${option.label} (${option.count})`,
+  })),
 );
-
-function moveGroup(delta) {
-  const keys = bookingGroups.value.map((group) => group.key);
-  const next = stepIndex(keys.indexOf(activeGroup.value), keys.length, delta);
-  activeGroup.value = keys[next];
-}
-
-// Tone → pill class maps are spelled out because Tailwind's scanner cannot see
-// a class built by interpolation. VenueStaffDashboard keeps its own copy; see
-// docs/IMPLEMENTATION_MAP.md §5 for the note on extracting it.
-const pillClasses = {
-  blue: "border-2 border-ink bg-bauhaus-blue text-canvas",
-  yellow: "border-2 border-ink bg-bauhaus-yellow text-ink",
-  red: "border-2 border-ink bg-bauhaus-red text-canvas",
-  plain: "border-2 border-ink bg-canvas text-ink",
-};
+const visibleBookings = computed(() =>
+  sortBookingRequests(filterBookingRequests(upcomingBookings.value, { status: bookingStatus.value })),
+);
 
 async function load() {
   try {
@@ -266,88 +266,94 @@ watch(() => route.params.id, () => {
 
 <template>
   <main class="py-8">
-    <RouterLink
-      :to="{ name: 'venue-search' }"
-      class="mb-8 inline-block text-xs font-bold underline decoration-2 underline-offset-4"
-    >
-      ← Back to venue search
-    </RouterLink>
+    <BauhausBreadcrumb :items="breadcrumbItems" />
 
     <p
       v-if="venuesStore.error && !venue"
       role="alert"
-      class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-sm font-bold text-canvas shadow-hard sm:border-4"
+      class="border-2 border-ink bg-bauhaus-red px-4 py-3 text-base font-bold text-canvas shadow-hard sm:border-4"
     >
       {{ venuesStore.error }}
     </p>
-    <p v-else-if="venuesStore.isLoading && !venue" class="text-sm font-medium">Loading venue…</p>
+    <p v-else-if="venuesStore.isLoading && !venue" class="text-base font-medium">Loading venue…</p>
 
     <template v-if="venue">
-      <VenueGallery :slides="slides" :venue-name="venue.name" data-testid="venue-gallery" />
+      <!-- The venue's details first, then the carousel (beside it on wide screens), both at least 24rem tall and the same height (the carousel stretches to match the details) -->
+      <div class="lg:mb-8 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-stretch lg:gap-8">
+        <BauhausCard background="blue" accent="circle" accent-color="bauhaus-yellow" compact class="mb-8 lg:mb-0 lg:min-h-96">
+          <p class="text-sm font-bold opacity-90">
+            {{ venue.is_active ? "Venue" : "Inactive venue" }}
+          </p>
+          <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">{{ venue.name }}</h1>
+          <p class="mt-3 text-base font-medium"><span class="font-bold">Location:</span> {{ venue.location }}</p>
+          <p v-if="venue.description" class="mt-3 max-w-xl text-base font-medium"><span class="font-bold">Description:</span> {{ venue.description }}</p>
+          <p class="mt-4 text-sm font-bold text-ink/70">
+            Last updated {{ lastUpdated.at }} · by {{ lastUpdated.by }}
+          </p>
+          <div
+            v-if="!venue.is_active"
+            data-testid="venue-inactive-banner"
+            class="mt-4 border-2 border-ink bg-canvas px-4 py-3 text-ink shadow-hard sm:border-4"
+          >
+            <p class="text-sm font-bold">Inactive: {{ inactiveReasonLabel(venue.inactive_reason) }}</p>
+            <p v-if="venue.inactive_note" class="mt-1 text-base font-medium">{{ venue.inactive_note }}</p>
+          </div>
+          <div v-if="canEdit" class="mt-5 border-t-2 border-ink pt-4">
+            <div class="grid w-fit grid-cols-2 gap-3">
+              <BauhausButton :to="{ name: 'venue-edit', params: { id: venue.id } }" size="sm" full-width title="Change this venue's details">
+                <BauhausIcon name="edit" />
+                Edit venue
+              </BauhausButton>
+              <BauhausButton
+                :to="{ name: 'venue-calendar', params: { venueId: venue.id } }"
+                size="sm"
+                variant="outline"
+                full-width
+                title="See when this venue is booked, held or blocked"
+              >
+                <BauhausIcon name="calendar" />
+                View calendar
+              </BauhausButton>
+              <p class="col-span-2 mt-1 text-sm font-bold text-ink/70">Availability</p>
+              <BauhausButton size="sm" variant="outline" full-width title="Take this venue out of use for a period" @click="openBlock">
+                <BauhausIcon name="block" />
+                Block venue
+              </BauhausButton>
+              <BauhausButton
+                v-if="venue.is_active"
+                size="sm"
+                variant="outline"
+                full-width
+                title="Remove this venue from the catalogue"
+                @click="openDeactivate"
+              >
+                <BauhausIcon name="deactivate" />
+                Deactivate venue
+              </BauhausButton>
+              <BauhausButton
+                v-else
+                size="sm"
+                variant="outline"
+                full-width
+                title="Put this venue back in the catalogue"
+                @click="reactivateOpen = true"
+              >
+                <BauhausIcon name="reactivate" />
+                Reactivate venue
+              </BauhausButton>
+            </div>
+          </div>
+          <p
+            v-if="actionError && !deactivateOpen && !blockOpen && !changingBlock"
+            role="alert"
+            class="mt-4 border-2 border-ink bg-bauhaus-red px-3 py-2 text-base font-bold text-canvas"
+          >
+            {{ actionError }}
+          </p>
+        </BauhausCard>
 
-      <BauhausCard background="blue" accent="circle" accent-color="bauhaus-yellow" class="mb-8">
-        <p class="text-xs font-bold opacity-80">
-          {{ venue.is_active ? "Venue" : "Inactive venue" }}
-        </p>
-        <h1 class="mt-2 text-4xl font-bold leading-tight sm:text-5xl">{{ venue.name }}</h1>
-        <p class="mt-3 text-sm font-medium">{{ venue.location }}</p>
-        <p v-if="venue.description" class="mt-3 max-w-xl text-sm font-medium opacity-90">{{ venue.description }}</p>
-        <p class="mt-4 text-xs font-bold text-ink/70">
-          Last updated {{ lastUpdated.at }} · by {{ lastUpdated.by }}
-        </p>
-        <div
-          v-if="!venue.is_active"
-          data-testid="venue-inactive-banner"
-          class="mt-4 border-2 border-ink bg-canvas px-4 py-3 text-ink shadow-hard sm:border-4"
-        >
-          <p class="text-xs font-bold">Inactive: {{ inactiveReasonLabel(venue.inactive_reason) }}</p>
-          <p v-if="venue.inactive_note" class="mt-1 text-sm font-medium">{{ venue.inactive_note }}</p>
-        </div>
-        <div v-if="canEdit" class="mt-4 flex flex-wrap gap-3">
-          <RouterLink
-            :to="{ name: 'venue-edit', params: { id: venue.id } }"
-            class="inline-block border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard hover:bg-muted active-press sm:border-4"
-          >
-            Edit venue
-          </RouterLink>
-          <RouterLink
-            :to="{ name: 'venue-calendar', params: { venueId: venue.id } }"
-            class="inline-block border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard hover:bg-muted active-press sm:border-4"
-          >
-            View calendar
-          </RouterLink>
-          <button
-            v-if="venue.is_active"
-            type="button"
-            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard hover:bg-muted active-press sm:border-4"
-            @click="openDeactivate"
-          >
-            Deactivate venue
-          </button>
-          <button
-            v-else
-            type="button"
-            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard hover:bg-muted active-press sm:border-4"
-            @click="reactivateOpen = true"
-          >
-            Reactivate venue
-          </button>
-          <button
-            type="button"
-            class="border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold text-ink shadow-hard hover:bg-muted active-press sm:border-4"
-            @click="openBlock"
-          >
-            Block venue
-          </button>
-        </div>
-        <p
-          v-if="actionError && !deactivateOpen && !blockOpen && !changingBlock"
-          role="alert"
-          class="mt-4 border-2 border-ink bg-bauhaus-red px-3 py-2 text-sm font-bold text-canvas"
-        >
-          {{ actionError }}
-        </p>
-      </BauhausCard>
+        <VenueGallery :slides="slides" :venue-name="venue.name" class="lg:mb-0" data-testid="venue-gallery" />
+      </div>
 
       <DeactivateVenueModal
         :open="deactivateOpen"
@@ -404,7 +410,7 @@ watch(() => route.params.id, () => {
           :aria-selected="activeTab === tab.key ? 'true' : 'false'"
           :aria-controls="`panel-${tab.key}`"
           :tabindex="activeTab === tab.key ? 0 : -1"
-          class="border-2 border-ink px-4 py-2 text-xs font-bold active-press"
+          class="border-2 border-ink px-4 py-2 text-sm font-bold active-press"
           :class="activeTab === tab.key ? 'bg-ink text-canvas shadow-hard' : 'bg-canvas text-ink hover:bg-muted'"
           @click="activeTab = tab.key"
         >
@@ -420,29 +426,37 @@ watch(() => route.params.id, () => {
         background="white"
         accent="none"
       >
-        <h2 class="mb-4 text-lg font-bold">Capacity &amp; hours</h2>
-        <dl class="grid grid-cols-2 gap-y-2 text-sm">
-          <dt class="text-xs font-bold text-ink/70">Capacity</dt>
-          <dd class="font-medium">{{ venue.capacity }} pax</dd>
-          <dt class="text-xs font-bold text-ink/70">Open</dt>
-          <dd class="font-medium">{{ venue.opens_at.slice(0, 5) }}–{{ venue.closes_at.slice(0, 5) }}</dd>
-          <dt class="text-xs font-bold text-ink/70">Default setup</dt>
-          <dd class="font-medium">{{ venue.setup_minutes }} minutes</dd>
-          <dt class="text-xs font-bold text-ink/70">Default turnaround</dt>
-          <dd class="font-medium">{{ venue.turnaround_minutes }} minutes</dd>
+        <h2 class="mb-5 text-xl font-bold">Capacity &amp; hours</h2>
+        <dl class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div class="border-2 border-ink px-4 py-3">
+            <dt class="text-sm font-bold text-ink/70">Capacity</dt>
+            <dd class="mt-1 text-2xl font-bold leading-tight">{{ venue.capacity }} <span class="text-base">pax</span></dd>
+          </div>
+          <div class="border-2 border-ink px-4 py-3">
+            <dt class="text-sm font-bold text-ink/70">Open</dt>
+            <dd class="mt-1 text-2xl font-bold leading-tight">{{ venue.opens_at.slice(0, 5) }}–{{ venue.closes_at.slice(0, 5) }}</dd>
+          </div>
+          <div class="border-2 border-ink px-4 py-3">
+            <dt class="text-sm font-bold text-ink/70">Default setup</dt>
+            <dd class="mt-1 text-2xl font-bold leading-tight">{{ venue.setup_minutes }} <span class="text-base">minutes</span></dd>
+          </div>
+          <div class="border-2 border-ink px-4 py-3">
+            <dt class="text-sm font-bold text-ink/70">Default turnaround</dt>
+            <dd class="mt-1 text-2xl font-bold leading-tight">{{ venue.turnaround_minutes }} <span class="text-base">minutes</span></dd>
+          </div>
         </dl>
-        <p class="mt-4 text-sm font-medium">Defaults apply to new booking requests only. Existing bookings keep their own times.</p>
-        <h3 class="mb-2 mt-6 text-xs font-bold text-ink/70">Layouts</h3>
+        <p class="mt-4 text-base font-medium text-ink/70">Defaults apply to new booking requests only. Existing bookings keep their own times.</p>
+        <h3 class="mb-2 mt-6 text-base font-bold">Layouts</h3>
         <ul class="flex flex-wrap gap-2">
           <li
             v-for="entry in venue.layouts"
             :key="entry.layout"
-            class="border-2 border-ink bg-bauhaus-yellow px-3 py-1 text-xs font-bold"
+            class="border-2 border-ink bg-bauhaus-yellow px-3 py-1 text-sm font-bold"
           >
             {{ layoutLabels[entry.layout] ?? entry.layout }}
             <span v-if="entry.capacity_for_layout">· {{ entry.capacity_for_layout }} pax</span>
           </li>
-          <li v-if="!venue.layouts.length" class="text-sm font-medium">None recorded</li>
+          <li v-if="!venue.layouts.length" class="text-base font-medium">None recorded</li>
         </ul>
       </BauhausCard>
 
@@ -454,28 +468,34 @@ watch(() => route.params.id, () => {
         background="white"
         accent="none"
       >
-        <h2 class="mb-4 text-lg font-bold">Facilities &amp; access</h2>
-        <h3 class="mb-2 text-xs font-bold text-ink/70">Facilities</h3>
+        <h2 class="mb-5 text-xl font-bold">Facilities &amp; access</h2>
+        <h3 class="mb-2 text-base font-bold">Facilities</h3>
         <ul class="mb-6 flex flex-wrap gap-2">
-          <li v-for="f in venue.facilities" :key="f" class="border-2 border-ink px-3 py-1 text-xs font-bold">
+          <li v-for="f in venue.facilities" :key="f" class="border-2 border-ink px-3 py-1 text-sm font-bold">
             {{ facilityLabels[f] ?? f }}
           </li>
-          <li v-if="!venue.facilities.length" class="text-sm font-medium">None recorded</li>
+          <li v-if="!venue.facilities.length" class="text-base font-medium">None recorded</li>
         </ul>
-        <h3 class="mb-2 text-xs font-bold text-ink/70">Accessibility</h3>
+        <h3 class="mb-2 text-base font-bold">Accessibility</h3>
         <ul class="flex flex-wrap gap-2">
           <li
             v-for="a in venue.accessibility_features"
             :key="a"
-            class="border-2 border-ink px-3 py-1 text-xs font-bold"
+            class="border-2 border-ink px-3 py-1 text-sm font-bold"
           >
             {{ accessibilityLabels[a] ?? a }}
           </li>
-          <li v-if="!venue.accessibility_features.length" class="text-sm font-medium">None recorded</li>
+          <li v-if="!venue.accessibility_features.length" class="text-base font-medium">None recorded</li>
         </ul>
-        <dl class="mt-6 space-y-4 text-sm">
-          <div><dt class="text-xs font-bold text-ink/70">Emergency access</dt><dd class="mt-2 whitespace-pre-wrap break-words font-medium">{{ venue.emergency_access ?? 'Not recorded' }}</dd></div>
-          <div><dt class="text-xs font-bold text-ink/70">Restrictions</dt><dd class="mt-2 whitespace-pre-wrap break-words font-medium">{{ venue.restrictions ?? 'Not recorded' }}</dd></div>
+        <dl class="mt-6 grid gap-4 md:grid-cols-2">
+          <div class="border-2 border-ink px-4 py-3">
+            <dt class="text-base font-bold">Emergency access</dt>
+            <dd class="mt-2 whitespace-pre-wrap break-words text-base font-medium">{{ venue.emergency_access ?? 'Not recorded' }}</dd>
+          </div>
+          <div class="border-2 border-ink px-4 py-3">
+            <dt class="text-base font-bold">Restrictions</dt>
+            <dd class="mt-2 whitespace-pre-wrap break-words text-base font-medium">{{ venue.restrictions ?? 'Not recorded' }}</dd>
+          </div>
         </dl>
       </BauhausCard>
 
@@ -488,13 +508,13 @@ watch(() => route.params.id, () => {
         accent="none"
         data-testid="upcoming-bookings"
       >
-        <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 class="text-lg font-bold">Upcoming bookings</h2>
-          <p class="text-xs font-bold text-ink/70">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-xl font-bold">Upcoming bookings</h2>
+          <p class="border-2 border-ink px-3 py-1 text-base font-bold">
             {{ upcomingBookingCount }} upcoming {{ upcomingBookingCount === 1 ? "booking" : "bookings" }}
           </p>
         </div>
-        <p class="mb-4 text-xs font-medium text-ink/70">
+        <p class="mb-5 text-base font-medium text-ink/70">
           Singapore time. Every booking here occupies the venue, tentative ones included.
         </p>
 
@@ -505,48 +525,43 @@ watch(() => route.params.id, () => {
         />
 
         <template v-else>
-          <div
-            class="mb-4 flex flex-wrap gap-2"
-            role="tablist"
-            aria-label="Booking status"
-            @keydown.left.prevent="moveGroup(-1)"
-            @keydown.right.prevent="moveGroup(1)"
-          >
-            <button
-              v-for="group in bookingGroups"
-              :id="`tab-group-${group.key}`"
-              :key="group.key"
-              type="button"
-              role="tab"
-              :aria-selected="activeGroup === group.key ? 'true' : 'false'"
-              :aria-controls="`panel-group-${group.key}`"
-              :tabindex="activeGroup === group.key ? 0 : -1"
-              class="px-3 py-1.5 text-xs font-bold active-press"
-              :class="[pillClasses[group.tone], activeGroup === group.key ? 'shadow-hard' : 'opacity-60 hover:bg-muted hover:text-ink']"
-              @click="activeGroup = group.key"
-            >
-              {{ group.label }} · {{ group.bookings.length }}
-            </button>
+          <div class="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <BauhausSelect
+              v-model="bookingStatus"
+              label="Status"
+              aria-label="Booking status"
+              :options="statusOptions"
+              :show-placeholder="false"
+              compact
+            />
           </div>
 
-          <div
-            v-if="currentGroup"
-            :id="`panel-group-${currentGroup.key}`"
-            role="tabpanel"
-            :aria-labelledby="`tab-group-${currentGroup.key}`"
-          >
-            <p class="mb-3 text-xs font-medium text-ink/70">{{ currentGroup.detail }}</p>
-            <ul v-if="currentGroup.bookings.length" class="flex flex-col gap-2 text-sm">
-              <li
-                v-for="booking in currentGroup.bookings"
-                :key="booking.id"
-                class="flex flex-wrap items-center gap-x-3 gap-y-1 border-2 border-ink px-3 py-2"
-              >
-                <span class="font-bold">{{ formatEventReference(booking) }}</span>
-                <span class="font-medium">{{ formatPeriod(booking.period) }}</span>
+          <div id="panel-group-bookings">
+            <ul v-if="visibleBookings.length" class="flex flex-col gap-3">
+              <li v-for="booking in visibleBookings" :key="booking.id">
+                <!-- Venue staff open the booking itself. Other roles see the row only: the booking page
+                     is limited to staff and the event's assigned coordinator, which the venue page can't tell. -->
+                <component
+                  :is="canEdit ? RouterLink : 'div'"
+                  v-bind="canEdit ? { to: { name: 'booking-request', params: { id: booking.id } } } : {}"
+                  :class="canEdit ? 'hover:bg-muted active-press' : ''"
+                  class="flex flex-wrap items-center justify-between gap-3 border-2 border-ink px-4 py-3"
+                >
+                  <span class="min-w-0">
+                    <span class="block text-lg font-bold leading-tight">{{ formatEventReference(booking) }}</span>
+                    <span class="mt-1 flex items-center gap-2 text-base font-medium">
+                      <BauhausIcon name="calendar" class="text-ink/70" />
+                      {{ formatPeriod(booking.period) }}
+                    </span>
+                  </span>
+                  <span class="flex shrink-0 items-center gap-3">
+                    <span class="border-2 border-ink px-3 py-1 text-base font-bold">{{ bookingStatusLabel(booking.status) }}</span>
+                    <span v-if="canEdit" class="text-base font-bold underline decoration-2 underline-offset-4">View booking →</span>
+                  </span>
+                </component>
               </li>
             </ul>
-            <p v-else class="text-sm font-medium text-ink/60">None.</p>
+            <p v-else class="text-base font-medium text-ink/70">None.</p>
           </div>
         </template>
       </BauhausCard>
@@ -560,19 +575,27 @@ watch(() => route.params.id, () => {
         accent="none"
         data-testid="upcoming-blocks"
       >
-        <h2 class="mb-4 text-lg font-bold">Blocks</h2>
-        <p class="mb-4 text-xs font-medium text-ink/70">
+        <h2 class="mb-3 text-xl font-bold">Blocks</h2>
+        <p class="mb-5 text-base font-medium text-ink/70">
           Singapore time. Periods venue staff have made unbookable, from now on.
         </p>
-        <ul class="flex flex-col gap-2 text-sm">
-          <li v-for="block in venue.upcoming_blocks" :key="block.id" class="flex flex-wrap items-center gap-3">
-            <span class="border-2 border-ink bg-bauhaus-red px-2 py-0.5 text-xs font-bold text-canvas">
-              {{ blockReasonLabel(block.reason) }}
-            </span>
-            <span class="font-medium">{{ formatPeriod(block.period) }}</span>
-            <span v-if="block.notes" class="text-ink/70">{{ block.notes }}</span>
-            <!-- SCRUM-54 AC1, AC9: venue staff see who set it and when, and change it. -->
-            <span v-if="canEdit" class="basis-full text-xs font-medium text-ink/70 sm:basis-auto">{{ blockSetBy(block) }}</span>
+        <ul class="flex flex-col gap-3">
+          <li
+            v-for="block in venue.upcoming_blocks"
+            :key="block.id"
+            class="flex flex-wrap items-center justify-between gap-3 border-2 border-ink px-4 py-3"
+          >
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="border-2 border-ink bg-bauhaus-red px-3 py-1 text-base font-bold text-canvas">
+                  {{ blockReasonLabel(block.reason) }}
+                </span>
+                <span class="text-lg font-bold leading-tight">{{ formatPeriod(block.period) }}</span>
+              </div>
+              <p v-if="block.notes" class="mt-2 text-base font-medium">{{ block.notes }}</p>
+              <!-- SCRUM-54 AC1, AC9: venue staff see who set it and when, and change it. -->
+              <p v-if="canEdit" class="mt-1 text-base font-medium text-ink/70">{{ blockSetBy(block) }}</p>
+            </div>
             <BauhausButton
               v-if="canEdit && blockActions(block).length"
               type="button"
@@ -584,7 +607,7 @@ watch(() => route.params.id, () => {
               Change
             </BauhausButton>
           </li>
-          <li v-if="!venue.upcoming_blocks.length" class="font-medium">No blocks scheduled.</li>
+          <li v-if="!venue.upcoming_blocks.length" class="border-2 border-ink px-4 py-3 text-base font-medium">No blocks scheduled.</li>
         </ul>
       </BauhausCard>
 
@@ -597,22 +620,26 @@ watch(() => route.params.id, () => {
         accent="none"
         data-testid="edit-history"
       >
-        <h2 class="mb-4 text-lg font-bold">History</h2>
-        <p class="mb-4 text-xs font-medium text-ink/70">Every saved edit to this venue's details, newest first.</p>
+        <h2 class="mb-3 text-xl font-bold">History</h2>
+        <p class="mb-5 text-base font-medium text-ink/70">Every saved edit to this venue's details, newest first.</p>
 
         <BauhausEmptyState
           v-if="!venueEditStore.isLoading && historyEntries.length === 0"
           title="No edits recorded"
           detail="This venue's details have not been changed since it was added."
         />
-        <ul v-else class="flex flex-col gap-3 text-sm">
-          <li v-for="{ entry, diff } in historyEntries" :key="entry.id" class="border-2 border-ink px-3 py-2">
-            <p class="font-bold">
-              {{ formatInstant(entry.at) }} · {{ entry.actor?.full_name ?? "Unknown user" }}
-            </p>
-            <ul class="mt-2 flex flex-col gap-1">
-              <li v-for="change in diff" :key="change.field" class="text-ink/80">
-                <span class="font-bold">{{ change.label }}:</span> {{ change.before }} → {{ change.after }}
+        <ul v-else class="flex flex-col gap-3">
+          <li v-for="{ entry, diff } in historyEntries" :key="entry.id" class="border-2 border-ink">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b-2 border-ink px-4 py-2">
+              <p class="text-base font-bold">{{ entry.actor?.full_name ?? "Unknown user" }}</p>
+              <p class="text-base font-medium text-ink/70">{{ formatInstant(entry.at) }}</p>
+            </div>
+            <ul class="flex flex-col gap-2 px-4 py-3">
+              <li v-for="change in diff" :key="change.field" class="grid gap-1 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-4">
+                <span class="text-base font-bold">{{ change.label }}</span>
+                <span class="text-base font-medium">
+                  <span class="text-ink/70">{{ change.before }}</span> → {{ change.after }}
+                </span>
               </li>
             </ul>
           </li>

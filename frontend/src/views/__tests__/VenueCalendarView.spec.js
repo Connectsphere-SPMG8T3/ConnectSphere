@@ -42,6 +42,7 @@ async function mountView(path) {
     history: createMemoryHistory(),
     routes: [
       { path: "/venue-calendar/:venueId?", name: "venue-calendar", component: VenueCalendarView },
+      { path: "/venues", name: "venue-search", component: { render: () => null } },
       { path: "/venues/:id", name: "venue-detail", component: { render: () => null } },
       { path: "/bookings/:id", name: "booking-request", component: { render: () => null } },
     ],
@@ -73,7 +74,10 @@ describe("VenueCalendarView (SCRUM-57)", () => {
 
     expect(venuesApi.calendar.mock.calls[0][0]).toBe("v2");
     expect(el.querySelector("h1").textContent).toContain("Hall B");
-    expect(el.querySelector('a[href="/venues/v2"]').textContent).toContain("Venue profile");
+    const venueCrumb = el.querySelector('nav[aria-label="Breadcrumb"] a[href="/venues/v2"]');
+    expect(venueCrumb.textContent.trim()).toBe("Hall B");
+    expect(el.textContent).not.toContain("Venue profile");
+    expect(el.querySelector('nav[aria-label="Breadcrumb"] [aria-current="page"]').textContent.trim()).toBe("Calendar");
     expect(venuesApi.search).not.toHaveBeenCalled();
   });
 

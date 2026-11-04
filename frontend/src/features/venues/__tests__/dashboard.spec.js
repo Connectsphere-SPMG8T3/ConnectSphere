@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ALL_VENUE_STATUSES,
+  bookingStatusColumns,
   PENDING_BOOKING_STATUS,
   blockReasonLabel,
   bookingStatusLabel,
@@ -14,7 +15,6 @@ import {
   filterBookingRequests,
   sortPendingHoldsSoonestExpiryFirst,
   sortBookingRequests,
-  summariseVenueStaffDashboard,
   venueStatusFilterOptions,
   venueStatuses,
   waitingDays,
@@ -178,30 +178,6 @@ describe("formatEventReference", () => {
 
   it("says so plainly when there is nothing to go on", () => {
     expect(formatEventReference({})).toBe("Unidentified event");
-  });
-});
-
-describe("summariseVenueStaffDashboard", () => {
-  it("counts each queue and splits venues by their active flag", () => {
-    const summary = summariseVenueStaffDashboard({
-      venues: [venue("b-1", "Grand Ballroom"), venue("b-8", "Old Lecture Theatre", { is_active: false })],
-      pendingHolds: [hold("d-2", "2026-09-03T10:30:00+08:00"), hold("d-4", "2026-08-28T16:15:00+08:00")],
-      reReviewBookings: [hold("d-5", "2026-09-10T11:45:00+08:00")],
-      blocks: [blockOn("b-1", "2026-10-01T00:00:00+08:00", "2026-10-15T00:00:00+08:00")],
-    });
-
-    expect(summary).toEqual({
-      pendingHolds: 2,
-      reReview: 1,
-      blocks: 1,
-      venuesTotal: 2,
-      venuesActive: 1,
-      venuesInactive: 1,
-    });
-  });
-
-  it("returns zeroes for an empty payload", () => {
-    expect(summariseVenueStaffDashboard()).toMatchObject({ pendingHolds: 0, venuesTotal: 0 });
   });
 });
 
@@ -371,5 +347,84 @@ describe("filterVenueStatuses", () => {
     const copy = [...rows];
     filterVenueStatuses(rows, "blocked");
     expect(rows).toEqual(copy);
+  });
+});
+
+describe("bookingStatusColumns", () => {
+  const at = (day) => ({ starts_at: `2031-05-${day}T10:00:00Z`, ends_at: `2031-05-${day}T12:00:00Z` });
+  const now = new Date("2031-05-12T00:00:00Z");
+  const hold = (id, expires) => ({ id, status: "held", expires_at: expires, period: at("20") });
+  const state = {
+    pendingHolds: [hold("h2", "2031-05-09T10:00:00Z"), hold("h1", "2031-05-08T10:00:00Z")],
+    reReviewBookings: [
+      { id: "r2", status: "re_review", period: at("25") },
+      { id: "r1", status: "re_review", period: at("22") },
+    ],
+    affectedBookings: [
+      { id: "f2", status: "approved", flag: "affected", period: at("18") },
+      { id: "f1", status: "held", flag: "affected", period: at("14") },
+    ],
+    bookingRequests: [
+      hold("h1", "2031-05-08T10:00:00Z"),
+      { id: "a2", status: "approved", period: at("20") },
+      { id: "x1", status: "rejected", period: at("21") },
+      { id: "a1", status: "approved", period: at("15") },
+      { id: "old", status: "approved", period: at("01") },
+      { id: "f2", status: "approved", flag: "affected", period: at("18") },
+    ],
+  };
+  const ids = (column) => column.events.map((booking) => booking.id);
+
+  it("has Flagged, Pending, Re-review and Approved columns", () => {
+    expect(bookingStatusColumns(state, now).map((column) => [column.status, column.label])).toEqual([
+      ["flagged", "Flagged bookings"],
+      ["pending", "Pending requests"],
+      ["re_review", "Re-review"],
+      ["approved", "Approved"],
+    ]);
+  });
+
+  it("orders each column: flagged, re-review and approved soonest first, holds nearest expiry first; rejected ones are left out", () => {
+    const [flagged, pending, reReview, approved] = bookingStatusColumns(state, now);
+
+    expect(ids(flagged)).toEqual(["f1", "f2"]);
+    expect(ids(pending)).toEqual(["h1", "h2"]);
+    expect(ids(reReview)).toEqual(["r1", "r2"]);
+    expect(ids(approved)).toEqual(["a1", "a2"]);
+  });
+
+  it("leaves past approved bookings out of Approved but keeps one still running", () => {
+    const running = { id: "now", status: "approved", period: { starts_at: "2031-05-11T23:00:00Z", ends_at: "2031-05-12T01:00:00Z" } };
+    const [, , , approved] = bookingStatusColumns({ ...state, bookingRequests: [...state.bookingRequests, running] }, now);
+
+    expect(ids(approved)).toEqual(["now", "a1", "a2"]);
+  });
+
+  it("shows a flagged booking only in Flagged, and counts it once", () => {
+    const columns = bookingStatusColumns(
+      {
+        ...state,
+        pendingHolds: [...state.pendingHolds, { ...state.affectedBookings[1], expires_at: "2031-05-10T10:00:00Z" }],
+        reReviewBookings: [...state.reReviewBookings, { id: "f3", status: "re_review", period: at("30") }],
+        affectedBookings: [...state.affectedBookings, { id: "f3", status: "re_review", flag: "affected", period: at("30") }],
+      },
+      now,
+    );
+    const everyId = columns.flatMap(ids);
+
+    expect(new Set(everyId).size).toBe(everyId.length);
+    expect(ids(columns[0])).toEqual(["f1", "f2", "f3"]);
+    expect(ids(columns[1])).toEqual(["h1", "h2"]);
+    expect(ids(columns[2])).toEqual(["r1", "r2"]);
+    expect(ids(columns[3])).not.toContain("f2");
+  });
+
+  it("flags a column as needing action only while it holds a booking that needs a decision", () => {
+    expect(bookingStatusColumns(state, now).map((column) => column.needsAttention)).toEqual([true, true, true, false]);
+    expect(bookingStatusColumns({}, now).map((column) => column.needsAttention)).toEqual([false, false, false, false]);
+  });
+
+  it("returns four empty columns for no data", () => {
+    expect(bookingStatusColumns().map((column) => column.events)).toEqual([[], [], [], []]);
   });
 });

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import SafetyChecklist from "@/components/events/SafetyChecklist.vue";
@@ -14,6 +15,10 @@ import { useSafetyDecisionStore } from "@/features/events/safetyDecisionStore";
 
 const route = useRoute();
 const router = useRouter();
+const breadcrumbItems = computed(() => [
+  { label: "Dashboard", to: { name: "dashboard-safety" } },
+  { label: review.value?.event?.name ?? "Event" },
+]);
 const safety = useSafetyDecisionStore();
 // CR-108: the comment the organiser sees and the officer's private notes are separate texts.
 const organiserComment = ref("");
@@ -82,7 +87,7 @@ watch(() => route.params.id, (id) => {
 
 <template>
   <main class="break-words py-8">
-    <BauhausButton variant="outline" class="mb-8" @click="router.push({ name: 'dashboard-safety' })">Back to queue</BauhausButton>
+    <BauhausBreadcrumb :items="breadcrumbItems" />
     <p v-if="safety.error" role="alert" class="mb-6 border-4 border-ink p-4 font-bold">{{ safety.error }}</p>
     <p v-if="safety.loading && !review" class="font-bold">Loading safety review…</p>
     <template v-if="review">

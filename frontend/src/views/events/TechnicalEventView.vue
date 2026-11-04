@@ -1,8 +1,8 @@
 <script setup>
 import { computed, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 
-import BauhausButton from "@/components/common/BauhausButton.vue";
+import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import EquipmentLineArrangement from "@/components/equipment/EquipmentLineArrangement.vue";
@@ -27,7 +27,10 @@ import { useTechnicalEventStore } from "@/features/equipment/technicalEventStore
 // SCRUM-24: Technical Support arrange one event's equipment. Thin by design:
 // the store talks to the API, EquipmentLineArrangement handles each line.
 const route = useRoute();
-const router = useRouter();
+const breadcrumbItems = computed(() => [
+  { label: "Dashboard", to: { name: "dashboard-tech-support" } },
+  { label: view.value?.event?.name ?? "Event" },
+]);
 const store = useTechnicalEventStore();
 
 const view = computed(() => (store.view?.event.id === route.params.id ? store.view : null));
@@ -45,7 +48,7 @@ watch(() => route.params.id, (id) => { if (id) store.load(id); }, { immediate: t
 
 <template>
   <main class="break-words py-8">
-    <BauhausButton variant="outline" class="mb-8" @click="router.push({ name: 'dashboard-tech-support' })">Back to dashboard</BauhausButton>
+    <BauhausBreadcrumb :items="breadcrumbItems" />
     <p v-if="store.error" role="alert" class="mb-6 border-4 border-ink p-4 font-bold">{{ store.error }}</p>
     <p v-if="store.isLoading && !view" class="font-bold" role="status">Loading equipment…</p>
 

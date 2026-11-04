@@ -198,10 +198,10 @@ describe("TechnicalEventView (SCRUM-24)", () => {
     await vi.waitFor(() => expect(document.querySelector('[role="alert"]').textContent).toContain("Event not found."));
   });
 
-  it("Back to dashboard returns to the tech support dashboard", async () => {
+  it("the breadcrumb's Dashboard link returns to the tech support dashboard", async () => {
     const router = await mountView();
 
-    button("Back to dashboard").click();
+    [...document.querySelectorAll('nav[aria-label="Breadcrumb"] a')].find((a) => a.textContent.trim() === "Dashboard").click();
 
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-tech-support"));
   });

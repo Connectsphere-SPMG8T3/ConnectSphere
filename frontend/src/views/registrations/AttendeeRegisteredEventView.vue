@@ -18,6 +18,11 @@ const registration = computed(() =>
   registrationStore.myRegistrations.find(({ event }) => event.id === route.params.id),
 );
 const event = computed(() => registration.value?.event ?? null);
+const breadcrumbItems = computed(() => [
+  { label: "Dashboard", to: { name: "dashboard-attendee" } },
+  { label: "My events", to: { name: "dashboard-attendee", query: { tab: "events" } } },
+  { label: event.value?.name ?? "Event" },
+]);
 const canWithdraw = computed(() => canWithdrawRegistration(registration.value));
 
 onMounted(() => registrationStore.loadMyRegistrations().catch(() => {}));
@@ -66,6 +71,7 @@ async function leaveWaitlist() {
     empty-detail="This event is not in your current registrations."
     :back-to="{ name: 'dashboard-attendee', query: { tab: 'events' } }"
     back-label="Back to My events"
+    :breadcrumb-items="breadcrumbItems"
   >
     <template #sidebar>
       <h2 class="text-lg font-bold">Your registration</h2>

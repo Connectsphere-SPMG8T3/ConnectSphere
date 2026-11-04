@@ -5,10 +5,10 @@
  * that can be shared or bookmarked. With no venue named, it opens the first
  * active one.
  */
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { RouterLink, useRoute, useRouter } from "vue-router";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
-import BauhausCard from "@/components/common/BauhausCard.vue";
+import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import VenueAvailabilityCalendar from "@/components/venues/VenueAvailabilityCalendar.vue";
 import { useVenueCalendarStore } from "@/features/venues/venueCalendarStore";
@@ -16,6 +16,16 @@ import { venuesApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
+const breadcrumbItems = computed(() => {
+  const venue = store.calendar?.venue;
+  return venue
+    ? [
+        { label: "Venues", to: { name: "venue-search" } },
+        { label: venue.name, to: { name: "venue-detail", params: { id: venue.id } } },
+        { label: "Calendar" },
+      ]
+    : [{ label: "Venues", to: { name: "venue-search" } }, { label: "Calendar" }];
+});
 const router = useRouter();
 const auth = useAuthStore();
 const store = useVenueCalendarStore();
@@ -90,26 +100,9 @@ function refresh() {
 
 <template>
   <main class="py-8">
-    <BauhausCard background="yellow" accent="none" class="mb-10">
-      <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-xs font-bold text-ink/70">Venue Staff</p>
-          <h1 class="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
-            {{ store.calendar?.venue?.name ?? "Venue calendar" }}
-          </h1>
-          <p class="mt-3 max-w-2xl text-sm font-medium">
-            When the venue is booked, held or blocked, including each booking's setup and turnaround.
-          </p>
-        </div>
-        <RouterLink
-          v-if="store.venueId"
-          :to="{ name: 'venue-detail', params: { id: store.venueId } }"
-          class="border-2 border-ink bg-canvas px-4 py-3 text-center text-xs font-bold shadow-hard hover:bg-muted active-press sm:border-4"
-        >
-          Venue profile
-        </RouterLink>
-      </div>
-    </BauhausCard>
+    <BauhausBreadcrumb :items="breadcrumbItems" />
+
+    <h1 class="sr-only">{{ store.calendar?.venue?.name ?? "Venue calendar" }}</h1>
 
     <BauhausEmptyState
       v-if="noVenues"
