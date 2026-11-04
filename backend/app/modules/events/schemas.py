@@ -15,9 +15,14 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
-from app.modules.equipment.schemas import ExitConfirmation, TechnicalPreparation, TechnicalPreparationStage
+from app.modules.equipment.schemas import (
+    ExitConfirmation,
+    PreparationStage,
+    TechnicalPreparation,
+    TechnicalPreparationStage,
+)
 from app.modules.events.change_fields import SIGNIFICANT_EVENT_FIELDS
-from app.modules.venues.schemas import Facility, VenueLayout
+from app.modules.venues.schemas import Facility, VenueLayout, VenuePreparation, VenuePreparationStage
 
 
 class EventStatus(str, Enum):
@@ -370,12 +375,15 @@ class EventVenueBooking(BaseModel):
     # Story 37: why an approved change marked it Needs re-review. Absent once sent or never
     # marked, so an unmarked booking keeps the shape it had before.
     needs_re_review_reason: str | None = None
+    preparation: VenuePreparationStage | VenuePreparation | None = None
 
     @model_serializer(mode="wrap")
     def _omit_unmarked(self, handler):
         data = handler(self)
         if self.needs_re_review_reason is None:
             data.pop("needs_re_review_reason", None)
+        if self.preparation is None:
+            data.pop("preparation", None)
         return data
 
 
@@ -578,6 +586,8 @@ class OrganiserVenue(BaseModel):
     status: str
     status_label: str
     next_action: str
+    # CR-109 AC4: the stage only, never the note; set once the event is Confirmed.
+    preparation_stage: str | None = None
 
 
 class HistoryActor(BaseModel):
@@ -809,6 +819,9 @@ class EventHistoryEntry(BaseModel):
     # A venue booking's step (`booking`) names what happened and at which venue.
     action: str | None = None
     venue_name: str | None = None
+    # CR-109 AC5: a venue preparation step names the stage it moved from and to.
+    old_preparation_stage: PreparationStage | None = None
+    new_preparation_stage: PreparationStage | None = None
     # A technical update (`technical`) names its action, the equipment line, if any, and its detail.
     line_label: str | None = None
     detail: str | None = None
@@ -835,6 +848,9 @@ class EventHistoryEntry(BaseModel):
             data.pop("action", None)
         if self.kind not in ("booking", "venue_edit"):
             data.pop("venue_name", None)
+        if self.old_preparation_stage is None and self.new_preparation_stage is None:
+            data.pop("old_preparation_stage", None)
+            data.pop("new_preparation_stage", None)
         if self.kind != "technical":
             data.pop("line_label", None)
             data.pop("detail", None)
