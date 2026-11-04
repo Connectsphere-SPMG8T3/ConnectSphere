@@ -44,9 +44,11 @@ class SignupRequest(BaseModel):
     @field_validator("organisation_name")
     @classmethod
     def _organisation_required_for_organisers(cls, value: str | None, info: ValidationInfo) -> str | None:
-        if info.data.get("role") == "event_organiser" and value is None:
+        role = info.data.get("role")
+        if role == "event_organiser" and value is None:
             raise PydanticCustomError("required", "Organisation name is required.")
-        return value
+        # ACC-R5b: an Attendee has no organisation, so one in the request is dropped, never stored.
+        return None if role == "attendee" else value
 
     @field_validator("password")
     @classmethod

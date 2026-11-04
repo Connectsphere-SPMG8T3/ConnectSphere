@@ -21,7 +21,7 @@ Removed on 2026-11-01: story status is in the Product backlog sheet, and work in
 
 | Method and path | Guard | What it does |
 |---|---|---|
-| `POST /auth/signup` | public | Creates an Event Organiser or Attendee account that can log in immediately (SCRUM-80/83). 201 with the profile; 409 if the email has an account; 422 per field and for every role except those two external roles |
+| `POST /auth/signup` | public | Creates an Event Organiser or Attendee account that can log in immediately (SCRUM-80/83). 201 with the profile; 409 if the email has an account; 422 per field and for every role except those two external roles; an `organisation_name` sent for an Attendee is dropped, not stored (D86) |
 | `POST /auth/login` | public | Signs in and returns tokens and profile (`role` = this session's active role, `roles` = every role the account holds) |
 | `POST /auth/refresh` | public (refresh token) | Rotates the session |
 | `GET /auth/me` | authenticated | Returns the current user's profile, including `roles` |
@@ -191,7 +191,7 @@ The existing registration endpoints above are extended by SCRUM-86: full, enable
 | `/dashboard/attendee/events/:id` | `attendee` (active role) | Standalone detail page using `EventDetailPage.vue`; displays read-only data only when the event is in the caller's current registrations, including completed past events |
 | `/login` | public (a signed-in user goes to their dashboard) | `LoginView`; shows "Account created" and pre-fills the email when arriving from sign-up (history state `signedUpEmail`) |
 | `/signup/organiser`, `/signup/attendee` | public (a signed-in user goes to their dashboard) | Role-specific `SignupView` routes; `/signup` redirects to `/signup/organiser` (SCRUM-80/83) |
-| `/profile/me` | any signed-in user | `ProfileView`; SCRUM-92 edits only full name and optional phone, with email, role, organisation and department read-only |
+| `/profile/me` | any signed-in user | `ProfileView`; SCRUM-92 edits only full name and optional phone, with email, role, organisation and department read-only; SCRUM-50: Organisation shows only for an active Event Organiser and Department only for the five internal staff roles (never for an Attendee), whatever else `profiles` holds |
 | `/dashboard/organiser`, `/coordinator`, `/venue-staff`, `/tech-support`, `/attendee` | that role (`meta.allowedRoles`) | `views/dashboards/*Dashboard.vue`; the Attendee dashboard reads `?tab=overview|events|explore` |
 | `/dashboard/coordinator-lead`, `/dashboard/safety` | `event_coordinator_lead`, `safety_officer` respectively | `CoordinatorLeadDashboard`: CR-101 (replaces the 12 AC12 placeholder). `SafetyDashboard`: CR-103 queue replacing the placeholder on this branch; live verification incomplete |
 | `/lead/events/:id` | `event_coordinator_lead` only | `views/events/LeadEventView.vue` (CR-101 AC3): an event from the Lead dashboard payload with a coordinator picker and a confirmed **Reassign**; an event outside the Lead's scope shows "This event isn't in your scope" CR-106: a yellow banner with who asked and why, and **Decline request** (reason dialog), above the reassign control. SCRUM-81: a **Reassignment history** card below it (`data-testid="reassignment-history"`, `EventStatusHistory` with "No reassignments yet."), loaded beside the dashboard by `loadHistory`; hidden for an event outside the Lead's scope. |
