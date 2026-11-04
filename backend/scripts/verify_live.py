@@ -4755,6 +4755,26 @@ def _(ctx: Context) -> None:
     expect(int(count["n"]) == 0, "the discarded draft is still stored")
 
 
+@check("TC-EVENT-045", "Submit is refused without total attendance, even with every space complete (DEFECTS D86)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "d86-045", "2031-10-08 09:00+08", "2031-10-08 12:00+08", status="draft",
+                               assigned=False)
+    db_query(f"update public.events set purpose = 'live-check' where id = '{event_id}'")
+    db_query("insert into public.event_space_requests (event_id, label, expected_pax, layout_preference) "
+             f"values ('{event_id}', 'Main hall', 20, 'theatre')")
+    owner = ctx.shared("event_organiser")
+    url = f"{ctx.api}/events/{event_id}/submit"
+    refused = ctx.client.post(url, headers=owner.headers)
+    expect_status(refused, 422)
+    fields = [error["loc"][-1] for error in refused.json()["detail"]]
+    expect(fields == ["expected_attendance"], f"refused for: {fields}")
+    [event] = db_query(f"select status from public.events where id = '{event_id}'")
+    expect(event["status"] == "draft", f"the refused event moved to {event['status']}")
+    db_query(f"update public.events set expected_attendance = 20 where id = '{event_id}'")
+    expect_status(ctx.client.post(url, headers=owner.headers), 200)
+
+
 @check("TC-CANCEL-004", "Only the organiser role can request; a blank reason is refused", needs_db=True)
 def _(ctx: Context) -> None:
     event_id = throwaway_event(ctx, "84-004", "2031-10-05 09:00+08", "2031-10-05 12:00+08")

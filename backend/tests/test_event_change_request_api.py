@@ -377,6 +377,7 @@ class TestProposedChanges:
         ({"ends_at": "2099-11-12T09:00:00+08:00"}, [], "ends_at"),
         ({}, [{"id": SPACE_ID, "starts_at": "2099-11-12T09:00:00+08:00",
                "ends_at": "2099-11-12T11:00:00+08:00"}], "starts_at"),
+        ({"expected_attendance": None}, [], "expected_attendance"),
     ])
     def test_a_change_that_breaks_a_submission_rule_is_rejected(self, client, auth_headers, act_as, events,
                                                                 event, spaces, field):
@@ -396,6 +397,16 @@ class TestProposedChanges:
         events["store"][EVENT_ID].update(registration_enabled=True, registration_capacity=80,
                                          registration_opens_at=yesterday,
                                          registration_closes_at="2099-11-11T18:00:00+08:00")
+        act_as()
+
+        response = request_change(client, auth_headers, event={"description": "Two keynotes"})
+
+        assert response.status_code == 201
+
+    def test_a_blank_attendance_from_before_the_rule_does_not_block_an_unrelated_change(
+            self, client, auth_headers, act_as, events):
+        """CR-R19: an event submitted while attendance was optional can still change."""
+        events["store"][EVENT_ID]["expected_attendance"] = None
         act_as()
 
         response = request_change(client, auth_headers, event={"description": "Two keynotes"})

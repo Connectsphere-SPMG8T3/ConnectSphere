@@ -140,7 +140,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
   it("highlights every input behind a flagged field and nothing else", async () => {
     const { el } = await mountForm([returnedEvent({ amendment: null })], returnedEvent());
 
-    expect(controlFor(el, "Expected attendance").dataset.flagged).toBe("true");
+    expect(controlFor(el, "Total expected attendance").dataset.flagged).toBe("true");
     expect(controlFor(el, "Proposed event date").dataset.flagged).toBe("true");
     expect(controlFor(el, "Proposed start time").dataset.flagged).toBe("true");
     expect(controlFor(el, "Purpose").dataset.flagged).toBeUndefined();
@@ -249,7 +249,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     const { el, router } = await mountForm([returnedEvent({ amendment: null })], returnedEvent());
     eventsApi.resubmit.mockResolvedValue(returnedEvent({ status: "under_review", expected_attendance: 60, amendment: null, version: 6 }));
     eventsApi.updateSpace.mockResolvedValue({ id: "space-1", version: 2 });
-    const attendance = controlFor(el, "Expected attendance");
+    const attendance = controlFor(el, "Total expected attendance");
     attendance.value = "60";
     attendance.dispatchEvent(new Event("input"));
     await nextTick();
@@ -294,7 +294,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     await vi.waitFor(() => expect(eventsApi.update).toHaveBeenCalled());
     await nextTick();
     expect(el.querySelector('[data-testid="amendment-banner"]')).not.toBeNull();
-    expect(controlFor(el, "Expected attendance").dataset.flagged).toBe("true");
+    expect(controlFor(el, "Total expected attendance").dataset.flagged).toBe("true");
   });
 
   it("still opens and resubmits a returned request that has no amendment on record", async () => {
@@ -602,10 +602,55 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     expect(el.textContent).toContain("Choose a layout.");
 
     await setValue("Preferred layout", "classroom", "change");
+    await setValue("Total expected attendance", "20");
     buttonByText(el, "Submit request").click();
     await nextTick();
     expect(document.body.textContent).toContain("Submit event request?");
     expect(document.body.textContent).not.toContain("Enter expected attendance of at least 1");
+  });
+
+  it.each([["blank", ""], ["zero", "0"]])("refuses to submit with %s total attendance even when every space is complete", async (_name, attendance) => {
+    const { el } = await mountNewForm();
+    const setValue = async (label, value, eventName = "input") => {
+      const control = controlFor(el, label);
+      control.value = value;
+      control.dispatchEvent(new Event(eventName));
+      await nextTick();
+    };
+    await setValue("Event title", "Attendance required test");
+    await setValue("Purpose", "Test attendance validation");
+    await setValue("Proposed event date", "2026-12-01");
+    await setValue("Proposed start time", "10:00");
+    await setValue("Proposed end time", "12:00");
+    await setValue("Total expected attendance", attendance);
+    await chooseSpacePurpose(el, "Main venue");
+    await setValue("Expected pax", "20");
+    await setValue("Preferred layout", "classroom", "change");
+
+    buttonByText(el, "Submit request").click();
+    await nextTick();
+
+    expect(el.textContent).toContain("Enter expected attendance of at least 1.");
+    expect(controlFor(el, "Total expected attendance").getAttribute("aria-invalid")).toBe("true");
+    expect(document.body.textContent).not.toContain("Submit event request?");
+    expect(eventsApi.submit).not.toHaveBeenCalled();
+  });
+
+  it("saves a draft with no total attendance", async () => {
+    const draft = returnedEvent({ id: "draft-attendance", status: "draft", expected_attendance: null, spaces: [], amendment: null });
+    eventsApi.create.mockResolvedValue(draft);
+    eventsApi.get.mockResolvedValue(draft);
+    const { el } = await mountNewForm();
+    const title = controlFor(el, "Event title");
+    title.value = "Attendance draft test";
+    title.dispatchEvent(new Event("input"));
+    await nextTick();
+
+    buttonByText(el, "Save draft").click();
+
+    await vi.waitFor(() => expect(eventsApi.create).toHaveBeenCalledTimes(1));
+    expect(eventsApi.create.mock.calls[0][0].expected_attendance ?? null).toBeNull();
+    expect(el.textContent).not.toContain("Enter expected attendance of at least 1.");
   });
 
   it("removes a persisted space through the event API", async () => {
@@ -812,6 +857,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     await setValue("Proposed event date", "2099-12-01");
     await setValue("Proposed start time", "10:00");
     await setValue("Proposed end time", "12:00");
+    await setValue("Total expected attendance", "30");
     await chooseSpacePurpose(el, "Main venue");
     await setValue("Expected pax", "30");
     await setValue("Preferred layout", "theatre", "change");
