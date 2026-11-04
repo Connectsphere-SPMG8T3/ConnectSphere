@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
@@ -75,6 +75,14 @@ const breadcrumbItems = computed(() => [
   { label: "Events", to: { name: "dashboard-coordinator", query: { tab: "events" } } },
   { label: event.value?.name ?? "Event" },
 ]);
+const eventNow = ref(Date.now());
+let eventEndTimer;
+const showPastDateAlert = computed(() => {
+  const endTime = Date.parse(event.value?.ends_at ?? "");
+  return Number.isFinite(endTime)
+    && endTime <= eventNow.value
+    && !["confirmed", "preparation"].includes(event.value.status);
+});
 const showRequestReassignment = computed(() => canRequestReassignment(event.value));
 const showApprove = computed(() => canApprove(event.value?.status));
 const showReject = computed(() => canReject(event.value?.status));
@@ -333,6 +341,24 @@ watch(
   },
   { immediate: true },
 );
+
+watch(
+  () => event.value?.ends_at,
+  (endsAt) => {
+    clearTimeout(eventEndTimer);
+    eventNow.value = Date.now();
+    const endTime = Date.parse(endsAt ?? "");
+    if (Number.isFinite(endTime) && endTime > eventNow.value) {
+      eventEndTimer = setTimeout(() => {
+        eventNow.value = Date.now();
+        eventEndTimer = undefined;
+      }, endTime - eventNow.value);
+    }
+  },
+  { immediate: true },
+);
+
+onUnmounted(() => clearTimeout(eventEndTimer));
 </script>
 
 <template>
@@ -427,6 +453,16 @@ watch(
         </div>
         <EventStatusProgress :status="event.status" class="mt-6" />
       </BauhausCard>
+
+      <p
+        v-if="showPastDateAlert"
+        role="status"
+        aria-live="polite"
+        data-testid="event-date-passed"
+        class="mb-8 border-2 border-ink bg-bauhaus-yellow px-4 py-3 text-sm font-bold shadow-hard sm:border-4"
+      >
+        Event date has passed
+      </p>
 
       <BauhausCard v-if="auth.role === 'event_coordinator' && event.status === 'planning' && event.latest_safety_decision" background="white" accent="none" class="mb-8">
         <h2 class="mb-4 text-2xl font-bold">Safety Officer's decision</h2>

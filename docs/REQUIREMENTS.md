@@ -706,6 +706,7 @@ See §5 for the state machine.
 - A status badge with a plain-language explanation, for example "Planning: your coordinator is arranging venue and equipment" (W1 §7). Only `confirmed` may read as "approved" (§5, QA2-8).
 - A **status timeline** from `event_status_history`.
 - Action buttons derived from the transitions allowed for *this user*.
+- **SCRUM-68 AC3:** When an event visible to its assigned coordinator has ended and its status is neither `confirmed` nor `preparation`, the coordinator sees an **“Event date has passed”** alert on the coordinator event detail page. The event stays in its current status. **[Team decision, 2026-11-03]** The event detail page keeps this event-specific warning beside the event's status and schedule.
 
 **Readiness** (QA-17, QA-49, QA-106, QA-118, QA-127, QA-128). The coordinator's event page shows what still blocks **Send for safety check** (SCRUM-82). Once the event is `confirmed`, the organiser sees the confirmed arrangements (SCRUM-82 AC8).
 

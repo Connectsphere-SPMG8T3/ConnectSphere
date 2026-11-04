@@ -260,7 +260,7 @@ class TestRequest:
         assert response.status_code == 409
         assert response.json() == {"detail": "Venue already held for this time by another event."}
 
-    @pytest.mark.parametrize("status", ["under_review", "confirmed", "rejected"])
+    @pytest.mark.parametrize("status", ["under_review", "confirmed", "rejected", "completed"])
     def test_an_event_outside_planning_is_refused_naming_its_status(
         self, client, auth_headers, authenticate_as, booking, status
     ):

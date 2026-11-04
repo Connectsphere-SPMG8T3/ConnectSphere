@@ -121,6 +121,13 @@ begin
     if v_result.outcome is distinct from 'not_planning' then
         raise exception 'BOOKING FAIL: an under-review event was not refused as not_planning (outcome %)', v_result.outcome;
     end if;
+    update public.events set status = 'completed'
+     where id = 'e0000000-0000-4000-8000-0000000019a6';
+    select * into v_result from public.request_venue_booking(
+        'e0000000-0000-4000-8000-0000000019a6', 'b0000000-0000-4000-8000-000000000007', v_coordinator, null, 'x');
+    if v_result.outcome is distinct from 'not_planning' or v_result.booking_id is not null then
+        raise exception 'BOOKING FAIL: a completed event was not refused without a booking (outcome %)', v_result.outcome;
+    end if;
 
     -- AC6: re-checked under the lock, in case the event was reassigned after the API's check.
     select * into v_result from public.request_venue_booking(
