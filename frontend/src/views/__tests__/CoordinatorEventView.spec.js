@@ -58,6 +58,7 @@ const currentStep = (el) => el.querySelector('ol[aria-label="Event progress"] [a
 describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.useRealTimers();
   });
 
   beforeEach(() => {
@@ -127,6 +128,57 @@ describe("CoordinatorEventView (SCRUM-34, SCRUM-52)", () => {
     expect(progress).not.toBeNull();
     expect(progress.querySelector('[aria-current="step"]').textContent).toContain("Under review");
     expect(el.querySelector('[data-testid="status-outcome"]')).toBeNull();
+  });
+
+  it.each(["under_review", "returned", "planning", "safety_review", "rejected", "cancelled", "completed"])(
+    "SCRUM-68 AC3 shows a past-date alert for an overdue %s event",
+    async (status) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-03T12:00:00Z"));
+      const el = await mountView(eventResponse({
+        status,
+        ends_at: "2026-11-03T11:59:00Z",
+      }));
+
+      expect(el.querySelector('[data-testid="event-date-passed"]')?.textContent.trim()).toBe("Event date has passed");
+    },
+  );
+
+  it.each([
+    ["a future Planning event", { status: "planning", ends_at: "2026-11-03T12:01:00Z" }],
+    ["an overdue Confirmed event", { status: "confirmed", ends_at: "2026-11-03T11:59:00Z" }],
+    ["an overdue Preparation event", { status: "preparation", ends_at: "2026-11-03T11:59:00Z" }],
+  ])("SCRUM-68 AC3 hides the past-date alert for %s", async (_, overrides) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-03T12:00:00Z"));
+    const el = await mountView(eventResponse(overrides));
+
+    expect(el.querySelector('[data-testid="event-date-passed"]')).toBeNull();
+  });
+
+  it("SCRUM-68 AC3 shows the alert when the event ends without a page refresh", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-03T12:00:00Z"));
+    const el = await mountView(eventResponse({
+      status: "planning",
+      ends_at: "2026-11-03T12:00:30Z",
+    }));
+
+    expect(el.querySelector('[data-testid="event-date-passed"]')).toBeNull();
+    await vi.advanceTimersByTimeAsync(30_000);
+    await nextTick();
+    expect(el.querySelector('[data-testid="event-date-passed"]')?.textContent.trim()).toBe("Event date has passed");
+  });
+
+  it("SCRUM-68 AC3 treats the exact end-time boundary as past", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-03T12:00:00Z"));
+    const el = await mountView(eventResponse({
+      status: "planning",
+      ends_at: "2026-11-03T12:00:00Z",
+    }));
+
+    expect(el.querySelector('[data-testid="event-date-passed"]')?.textContent.trim()).toBe("Event date has passed");
   });
 
   it("shows the request ID in Request details rather than the top bar", async () => {

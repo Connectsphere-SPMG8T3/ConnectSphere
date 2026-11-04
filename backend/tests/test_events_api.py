@@ -151,7 +151,7 @@ def mock_event_repository(monkeypatch, request):
     monkeypatch.setattr(repository, "update_event", update_event)
     monkeypatch.setattr(repository, "delete_event", delete_event)
     monkeypatch.setattr(repository, "transition_event", transition_event)
-    return {"transition_calls": transition_calls}
+    return {"transition_calls": transition_calls, "store": store}
 
 
 class TestEventDrafts:
@@ -331,6 +331,42 @@ class TestEventDrafts:
         )
 
         assert response.status_code == 409
+
+    def test_completed_event_cannot_be_edited_and_is_unchanged(
+        self, client, auth_headers, authenticate_as, mock_event_repository
+    ):
+        authenticate_as("event_organiser")
+        event = mock_event_repository["store"][EVENT_ID]
+        event.update(COMPLETE_REQUEST, status="completed")
+        before = deepcopy(event)
+
+        response = client.patch(
+            f"/api/v1/events/{EVENT_ID}",
+            json={"name": "Changed after completion"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 409
+        assert mock_event_repository["store"][EVENT_ID] == before
+
+    def test_completed_status_is_visible_to_the_owner_and_assigned_coordinator(
+        self, client, auth_headers, authenticate_as, mock_event_repository
+    ):
+        organiser_id = "11111111-1111-1111-1111-111111111111"
+        coordinator_id = "44444444-4444-4444-4444-444444444444"
+        mock_event_repository["store"][EVENT_ID].update(
+            COMPLETE_REQUEST, status="completed", coordinator_id=coordinator_id
+        )
+
+        authenticate_as("event_organiser", user_id=organiser_id)
+        organiser_response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+        authenticate_as("event_coordinator", user_id=coordinator_id)
+        coordinator_response = client.get(f"/api/v1/events/{EVENT_ID}", headers=auth_headers)
+
+        assert organiser_response.status_code == 200
+        assert organiser_response.json()["status"] == "completed"
+        assert coordinator_response.status_code == 200
+        assert coordinator_response.json()["status"] == "completed"
 
     def test_submitted_event_cannot_be_discarded(self, client, auth_headers, authenticate_as):
         authenticate_as("event_organiser")
