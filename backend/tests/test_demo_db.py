@@ -80,3 +80,36 @@ def test_swap_refuses_backup_older_than_an_hour(tmp_path):
     with pytest.raises(SystemExit, match="older than an hour"):
         demo_db.require_fresh_backup(backup)
     demo_db.require_fresh_backup(write_backup(tmp_path / "c", {"public.events": []}))
+
+
+FK_EVENT = ("public.event_status_history", ["event_id"], "public.events", ["id"])
+
+
+def test_check_backup_passes_a_complete_consistent_backup(tmp_path):
+    backup = write_backup(tmp_path / "b", {"public.events": [{"id": "e1"}],
+                                           "public.event_status_history": [{"id": "h1", "event_id": "e1"}]})
+    assert demo_db.check_backup(backup, [FK_EVENT]) == []
+
+
+def test_check_backup_finds_a_row_whose_parent_is_missing(tmp_path):
+    """Tables are read one by one, so a write mid-backup can leave a child without its parent."""
+    backup = write_backup(tmp_path / "b", {"public.events": [{"id": "e1"}],
+                                           "public.event_status_history": [{"id": "h1", "event_id": "e2"}]})
+    assert demo_db.check_backup(backup, [FK_EVENT]) == [
+        "public.event_status_history: 1 row(s) point at a missing public.events"]
+
+
+def test_check_backup_ignores_null_references(tmp_path):
+    backup = write_backup(tmp_path / "b", {"public.events": [],
+                                           "public.event_status_history": [{"id": "h1", "event_id": None}]})
+    assert demo_db.check_backup(backup, [FK_EVENT]) == []
+
+
+def test_check_backup_reports_a_missing_or_short_file(tmp_path):
+    backup = write_backup(tmp_path / "b", {"public.events": [{"id": "e1"}], "public.venues": [{"id": "v1"}]})
+    (backup / "public.venues.json").unlink()
+    (backup / "public.events.json").write_text("[]")
+    assert demo_db.check_backup(backup, []) == [
+        "public.events: file has 0 rows, _counts.json says 1",
+        "public.venues: no backup file",
+    ]

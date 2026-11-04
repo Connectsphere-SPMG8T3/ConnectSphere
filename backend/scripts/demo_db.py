@@ -110,6 +110,49 @@ def _dollar_tag(text: str) -> str:
             return tag
 
 
+def foreign_keys() -> list[tuple[str, list[str], str, list[str]]]:
+    """Every foreign key between backed-up tables: (child, columns, parent, columns)."""
+    rows = db_query(
+        "select c.conrelid::regclass::text as child, c.confrelid::regclass::text as parent, "
+        "(select json_agg(a.attname order by k.n) from unnest(c.conkey) with ordinality k(attnum, n) "
+        " join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum) as child_cols, "
+        "(select json_agg(a.attname order by k.n) from unnest(c.confkey) with ordinality k(attnum, n) "
+        " join pg_attribute a on a.attrelid = c.confrelid and a.attnum = k.attnum) as parent_cols "
+        "from pg_constraint c where c.contype = 'f' "
+        "and c.connamespace in ('public'::regnamespace, 'auth'::regnamespace)")
+
+    def qualified(name: str) -> str:
+        return name if "." in name else f"public.{name}"
+
+    return [(qualified(r["child"]), r["child_cols"], qualified(r["parent"]), r["parent_cols"]) for r in rows]
+
+
+def check_backup(backup_dir: Path, fks: list[tuple[str, list[str], str, list[str]]]) -> list[str]:
+    """Problems that would make a restore lose or corrupt data, found before anything is
+    wiped: a table file missing or not matching _counts.json, or a row whose foreign key
+    points at a row the backup doesn't have. Tables are read one at a time, so a write
+    during the backup can leave such an orphan, and the restore doesn't check keys."""
+    counts = json.loads((backup_dir / "_counts.json").read_text())
+    tables, problems = {}, []
+    for table, expected in sorted(counts.items()):
+        path = backup_dir / f"{table}.json"
+        if not path.exists():
+            problems.append(f"{table}: no backup file")
+            continue
+        tables[table] = json.loads(path.read_text())
+        if len(tables[table]) != expected:
+            problems.append(f"{table}: file has {len(tables[table])} rows, _counts.json says {expected}")
+    for child, child_cols, parent, parent_cols in fks:
+        if child not in tables or parent not in tables or parent in REFERENCE_TABLES:
+            continue
+        keys = {tuple(row.get(c) for c in parent_cols) for row in tables[parent]}
+        refs = [tuple(row.get(c) for c in child_cols) for row in tables[child]]
+        missing = [r for r in refs if None not in r and r not in keys]
+        if missing:
+            problems.append(f"{child}: {len(missing)} row(s) point at a missing {parent}")
+    return problems
+
+
 def compare_counts(expected: dict[str, int], actual: dict[str, int]) -> list[str]:
     return [f"{t}: expected {n}, found {actual.get(t)}" for t, n in expected.items() if actual.get(t) != n]
 
@@ -161,6 +204,9 @@ def main() -> int:
         return 0
 
     expected = json.loads((backup_dir / "_counts.json").read_text())
+    if problems := check_backup(backup_dir, foreign_keys()):
+        print("\n".join(problems))
+        raise SystemExit("backup is incomplete or inconsistent; nothing was wiped")
     restore = restore_sql(backup_dir, tables, generated_columns())
     if args.command == "rehearse":
         [row] = run_sql(f"begin;\n{restore}{counts_query(everything)}rollback;\n")
