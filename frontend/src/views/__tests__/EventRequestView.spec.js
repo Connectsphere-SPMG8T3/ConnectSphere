@@ -637,6 +637,9 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
   });
 
   it("saves a draft with no total attendance", async () => {
+    const draft = returnedEvent({ id: "draft-attendance", status: "draft", expected_attendance: null, spaces: [], amendment: null });
+    eventsApi.create.mockResolvedValue(draft);
+    eventsApi.get.mockResolvedValue(draft);
     const { el } = await mountNewForm();
     const title = controlFor(el, "Event title");
     title.value = "Attendance draft test";
@@ -644,8 +647,9 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     await nextTick();
 
     buttonByText(el, "Save draft").click();
-    await nextTick();
 
+    await vi.waitFor(() => expect(eventsApi.create).toHaveBeenCalledTimes(1));
+    expect(eventsApi.create.mock.calls[0][0].expected_attendance ?? null).toBeNull();
     expect(el.textContent).not.toContain("Enter expected attendance of at least 1.");
   });
 

@@ -218,15 +218,28 @@ Regressions for two defects found during the SCRUM-82 manual pass. Both checks a
 | TC-EVENT-043 | DEFECTS D23 | Logged in as `organiser@connectsphere.dev`; fixture `…0201` | Open `/events/e0000000-0000-4000-8000-000000000201`; look at the Registration card. For the labels, use an owned event with registration enabled | — | The timezone line is dark text, readable on the white card. With registration enabled, Capacity, Opens and Closes labels are visible above their values | Browser | Medium | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2353-e2e-1f6e3cb.md)) |
 | TC-EVENT-044 | DEFECTS D24 | Same | Same page; look at the Planning status card | — | "Coordinator: Marcus Lim". Never an account ID; "To be assigned" when no coordinator is assigned | Browser | Medium | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2353-e2e-1f6e3cb.md)) |
 
-## Total expected attendance is required (D86)
+## Require total expected attendance on submit (116)
 
 Regressions for DEFECTS D86, against §6.2 (QA-19, QA-24) and §9 item 140.
 
-| ID | Story / AC | Preconditions | Steps | Data | Expected | Type | Priority | Created | Last run |
-|---|---|---|---|---|---|---|---|---|---|
-| TC-EVENT-045 | DEFECTS D86, §6.2 | A draft with a purpose, date and times, one complete space, and no total attendance | `POST /events/{id}/submit`; set the attendance; submit again | Space: 20 pax, theatre | `422` naming only `expected_attendance`, and the event stays a draft; after the attendance is set, `200` | Integration | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1019-api-db-78ab129.md) |
-| TC-EVENT-046 | DEFECTS D86, §6.2 | Signed in as `organiser@connectsphere.dev`, on `/events/new` | Fill in every required field and a complete space, leave **Total expected attendance** empty, click **Submit request** | — | "Enter expected attendance of at least 1." shows under the field, no confirmation dialog opens and nothing is sent | E2E | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1020-e2e-78ab129.md) |
-| TC-EVENT-047 | DEFECTS D86 | Same page | Read the **Total expected attendance** field at desktop and phone width, with and without its error showing | — | The label reads clearly and the error sits tidily under the field | Manual | 🟠 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1025-manual-bdc0fe9.md) |
+**Preconditions:** signed in as `organiser@connectsphere.dev`. TC-EVENT-045 runs on a throwaway draft, so it changes no seeded data.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-EVENT-045 | AC1 — the API refuses a submission with no total attendance, even with a complete space | Integration | A draft with a purpose, date and times, one complete space, and no total attendance | `POST /events/{id}/submit`; set the attendance; submit again | Space: 20 pax, theatre | `422` naming only `expected_attendance`, and the event stays a draft; after the attendance is set, `200` | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1019-api-db-78ab129.md) |
+| TC-EVENT-046 | AC1, AC3 — the form refuses to submit with no total attendance | E2E | On `/events/new` | Fill in every required field and a complete space, leave **Total expected attendance** empty, click **Submit request** | — | "Enter expected attendance of at least 1." shows under the field, no confirmation dialog opens and nothing is sent | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1020-e2e-78ab129.md) |
+| TC-EVENT-047 | AC3 — the label and error read well | Manual | On `/events/new` | Read the **Total expected attendance** field at desktop and phone width, with and without its error showing | — | The label reads clearly and the error sits tidily under the field | 🟠 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1103-manual-836585b.md) |
+
+### Traceability — 116
+
+| Acceptance criterion | Covered by | Automated equivalent / coverage gap |
+|---|---|---|
+| AC1 An event request can't be submitted without a total expected attendance of at least 1, even when every space has its own expected pax; the form shows the error and the API refuses | TC-EVENT-045, 046 | `test_event_spaces_api.py::test_space_submission_requires_attendance_and_space_fields_but_not_event_level_layout`; `EventRequestView.spec.js` "refuses to submit with blank/zero total attendance". Gap: 0 is tested on the form only; on the API it relies on `ge=1` and the database check. |
+| AC2 A draft can still be saved with the attendance blank | Automated only | `EventRequestView.spec.js` "saves a draft with no total attendance" (asserts the save is sent with no attendance). |
+| AC3 The field on the request form is labelled "Total expected attendance" | TC-EVENT-046, 047 | `EventRequestView.spec.js` and `EventChangeRequest.spec.js` find the field by this label. |
+| AC4 An event already submitted without an attendance can still take unrelated changes | Automated only | `test_event_change_request_api.py::test_a_blank_attendance_from_before_the_rule_does_not_block_an_unrelated_change`. `test_a_change_that_breaks_a_submission_rule_is_rejected` covers the opposite case: a change that blanks the attendance is refused. |
+
+**Automated tests:** TC-EVENT-045 runs in `backend/scripts/verify_live.py`, and TC-EVENT-046 in `frontend/e2e/event-attendance-required.e2e.js`. TC-EVENT-047 stays manual because it judges layout and wording.
 
 ## Event comments (SCRUM-61)
 
