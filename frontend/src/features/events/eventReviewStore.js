@@ -41,6 +41,10 @@ export const useEventReviewStore = defineStore("eventReview", {
     event: null, history: [], safetyDecisions: [], historyEventId: null, isLoading: false, isActing: false, error: null,
     // Story 37 Q1: what approving the open change would do, worked out on the server now.
     changeImpact: null,
+    // Story 112: the last coordinator edit was refused as a conflict (409): someone else saved
+    // first, or the event left the statuses it can be edited in. Either way the page is out of
+    // date, so the dialog offers a reload; it decides on the status, not the message's wording.
+    editConflict: false,
   }),
 
   actions: {
@@ -273,6 +277,43 @@ export const useEventReviewStore = defineStore("eventReview", {
         // The request already went through; the page catches up on the next load.
       }
       return this.event;
+    },
+
+    // Story 112: the edit's answer is the bare event row. It goes onto the page at once (new
+    // version included, so the next edit isn't stale) and the dialog can close; the whole event
+    // (spaces, readiness, open requests) and the history that now holds the edit are read again
+    // in the background. The edit stands if either read fails.
+    async editDetails(changes) {
+      if (this.isActing) return this.event;
+      const auth = useAuthStore();
+      const { id: eventId, version } = this.event;
+      this.isActing = true;
+      this.error = null;
+      this.editConflict = false;
+      let saved;
+      try {
+        saved = await auth.withSession((token) => eventsApi.editDetails(eventId, { version, ...changes }, token));
+      } catch (error) {
+        this.error = error.message;
+        this.editConflict = error.status === 409;
+        throw error;
+      } finally {
+        this.isActing = false;
+      }
+      if (this.historyEventId === eventId) this.event = { ...this.event, ...saved };
+      this.refreshAfterEdit(eventId);
+      return this.event;
+    },
+
+    async refreshAfterEdit(eventId) {
+      const auth = useAuthStore();
+      try {
+        const event = await auth.withSession((token) => eventsApi.get(eventId, token));
+        if (this.historyEventId === eventId) this.event = event;
+        await this.loadHistory(eventId);
+      } catch {
+        // The edit already went through; the page catches up on the next load.
+      }
     },
 
     async returnForAmendment(message, flaggedFields) {

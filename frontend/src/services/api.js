@@ -316,6 +316,10 @@ export const eventsApi = {
   returnForAmendment(eventId, payload, token) {
     return request(`/events/${encodeURIComponent(eventId)}/return`, { method: "POST", body: payload, token });
   },
+  // Story 112: the assigned coordinator edits ordinary details; `payload` is {version, ...changed fields}.
+  editDetails(eventId, payload, token) {
+    return request(`/events/${encodeURIComponent(eventId)}/details`, { method: "PATCH", body: payload, token });
+  },
   resubmit(eventId, payload, token) {
     return request(`/events/${encodeURIComponent(eventId)}/resubmit`, { method: "POST", body: payload, token });
   },

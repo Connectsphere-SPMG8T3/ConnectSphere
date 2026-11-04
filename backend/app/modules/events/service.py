@@ -31,6 +31,7 @@ from app.modules.events.schemas import (
     BookingImpact,
     ChangeImpact,
     EquipmentShortfall,
+    EventDetailsEdit,
     SafetyDecision,
     SafetyDecisionSummary,
     SafetyHistoryItem,
@@ -1176,6 +1177,36 @@ def update(event_id: str, organiser_id: str, body: EventUpdateRequest) -> EventR
         updated = repository.update_event(event_id, values, row["version"])
     if not updated:
         raise EventConflictError()
+    return _with_amendment(updated)
+
+
+# Story 112 AC1: the ordinary details the assigned coordinator edits directly. Contact
+# details are not here: events hold none (REQUIREMENTS §6.7 team decision).
+_COORDINATOR_EDITABLE_FIELDS = ("name", "purpose", "description", "accessibility_needs")
+# Where the coordinator still has work, except a returned request, which is the organiser's
+# to edit and resubmit (SCRUM-33).
+_COORDINATOR_EDIT_STATUSES = tuple(s for s in ACTIVE_COORDINATOR_STATUSES if s != "returned")
+
+
+def edit_details(event_id: str, coordinator_id: str, body: EventDetailsEdit) -> EventResponse:
+    """Story 112: the assigned coordinator edits ordinary details without a status change
+    or a re-review. The body is already known to hold only the four editable fields
+    (`EventDetailsEdit` refuses the rest at every status, AC2). The save is `edit_event`,
+    so the version check (AC4) and the history entry (AC5) share one transaction."""
+    row = _assigned_event(event_id, coordinator_id)
+    if row.get("status") not in _COORDINATOR_EDIT_STATUSES:
+        raise EventConflictError("This event can't be edited in its current status.")
+    values = {field: getattr(body, field) for field in _COORDINATOR_EDITABLE_FIELDS
+              if field in body.model_fields_set}
+    if not values:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[{"loc": ["body"], "msg": "Nothing to change.", "type": "value_error"}],
+        )
+    updated = repository.edit_event(event_id, coordinator_id, values, body.version,
+                                    list(_COORDINATOR_EDIT_STATUSES))
+    if not updated:
+        raise EventConflictError(STALE_EVENT_MESSAGE)
     return _with_amendment(updated)
 
 
