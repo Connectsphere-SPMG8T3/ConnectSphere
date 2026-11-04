@@ -18,6 +18,7 @@ import {
   ALL_BOOKING_STATUSES,
   blockReasonLabel,
   bookingStatusFilterOptions,
+  UPCOMING_BOOKING_STATUSES,
   bookingStatusLabel,
   filterBookingRequests,
   formatEventReference,
@@ -109,7 +110,7 @@ watch(activeTab, (tab) => {
 const bookingStatus = ref(ALL_BOOKING_STATUSES);
 watch(() => route.params.id, () => { bookingStatus.value = ALL_BOOKING_STATUSES; });
 const statusOptions = computed(() =>
-  bookingStatusFilterOptions(upcomingBookings.value).map((option) => ({
+  bookingStatusFilterOptions(upcomingBookings.value, UPCOMING_BOOKING_STATUSES).map((option) => ({
     ...option,
     label: `${option.label} (${option.count})`,
   })),
