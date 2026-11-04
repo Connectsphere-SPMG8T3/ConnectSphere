@@ -13,82 +13,46 @@
  * were defect D8.
  */
 import { computed, onMounted, ref } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 
-import BauhausSummaryCard from "@/components/common/BauhausSummaryCard.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
+import SectionHeading from "@/components/common/SectionHeading.vue";
+import EventStatusBoard from "@/components/events/EventStatusBoard.vue";
+import { sectionTone } from "@/components/common/sectionTone";
 import VenueCalendar from "@/components/venues/VenueCalendar.vue";
+import { BOARD_CARD_TONE_CLASSES } from "@/features/events/dashboard";
 import {
-  ALL_BOOKING_STATUSES,
   ALL_VENUE_STATUSES,
   blockReasonLabel,
+  bookingStatusColumns,
+  formatHoldExpiry,
   filterVenueStatuses,
   formatEventReference,
   venueStatusFilterOptions,
   venueStatusMeta,
-  waitingDays,
 } from "@/features/venues/dashboard";
 import { useVenueStaffDashboardStore } from "@/features/venues/venueStaffDashboardStore";
 
 const dashboard = useVenueStaffDashboardStore();
+const router = useRouter();
 
 onMounted(() => dashboard.load());
 
-// Until the first load settles, a count is not something the dashboard can
-// stand behind, so it shows an em dash rather than a confident zero.
-const show = (value) => (dashboard.hasSettled ? value : "—");
+// AC3: the pending, re-review and flagged bookings wait on venue staff, so they are red;
+// approved bookings are settled, so they are green.
+const columns = computed(() => bookingStatusColumns(dashboard));
+const boardTotal = computed(() => columns.value.reduce((total, column) => total + column.events.length, 0));
+const CARD_TONES = { flagged: "attention", pending: "attention", re_review: "attention", approved: "done" };
 
-const counts = computed(() => dashboard.counts);
-
-// The four widgets REQUIREMENTS §6.21 asks for, in its priority order. Each
-// tile's colour is the one the calendar uses for the same thing, so red means
-// blocked, yellow means waiting on a decision, and blue means re-review
-// wherever they appear on the page.
-const tiles = computed(() => [
-  {
-    key: "holds",
-    label: "Pending requests",
-    value: show(counts.value.pendingHolds),
-    detail: "Awaiting your approval",
-    // The tile counts a list that is further down the same page, so it takes
-    // you there. A plain fragment link, not a scroll handler: it works from
-    // the keyboard, survives a middle-click, and needs no JavaScript.
-    href: "/dashboard/venue-staff/requests",
-    background: "yellow",
-    accent: "circle",
-    accentColor: "bauhaus-red",
-  },
-  {
-    key: "reReview",
-    label: "In re-review",
-    value: show(counts.value.reReview),
-    detail: "Changed after approval",
-    // Story 37: the same list, opened on the bookings an approved change sent back.
-    href: "/dashboard/venue-staff/requests?status=re_review",
-    background: "blue",
-    accent: "square",
-    accentColor: "bauhaus-yellow",
-  },
-  {
-    key: "blocks",
-    label: "Active & upcoming blocks",
-    value: show(counts.value.blocks),
-    detail: "Across all venues",
-    background: "red",
-    accent: "triangle",
-    accentColor: "ink",
-  },
-  {
-    key: "venues",
-    label: "Venues",
-    value: show(counts.value.venuesTotal),
-    detail: dashboard.hasSettled
-      ? `${counts.value.venuesActive} active · ${counts.value.venuesInactive} inactive`
-      : "Loading the catalogue",
-    background: "white",
-    accent: "none",
-  },
-]);
+// A column's title opens the booking requests page: the flagged bookings and the pending
+// requests head that page, and re-review and approved are choices in its Status list.
+const LINKED_STATUSES = ["re_review", "approved"];
+function openStatus(status) {
+  router.push({
+    name: "dashboard-venue-staff-requests",
+    query: LINKED_STATUSES.includes(status) ? { status } : {},
+  });
+}
 
 // AC2 asks for every venue's status at a glance; with the whole catalogue in
 // one panel, "at a glance" needs a way to ask for just the venues in one
@@ -150,20 +114,6 @@ const dayFormatter = new Intl.DateTimeFormat("en-SG", {
 
 const formatDay = (value) => (value ? dayFormatter.format(new Date(value)) : "");
 
-/**
- * How long a request has waited, in words.
- *
- * Worded neutrally because the customer ruled out review deadlines and SLA
- * timers (LC-R4, QA-55, QA-68). The expiry beside it is what now orders the
- * queue (CR-99); age stays as context and is never styled as overdue.
- */
-function waitedFor(hold) {
-  const days = waitingDays(hold);
-  if (days === null) return "";
-  if (days === 0) return "Requested today";
-  return `Waiting ${days} day${days === 1 ? "" : "s"}`;
-}
-
 function venueDetail(row) {
   if (row.status === "blocked") return `Blocked until ${formatDay(row.blockedUntil)}`;
   if (row.status === "block_scheduled") {
@@ -193,56 +143,53 @@ function emptyDetail(clearText) {
       {{ dashboard.error }}
     </p>
 
-    <div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-      <!-- Only the one tile that leads anywhere is a link, and it says so on
-           hover rather than carrying a standing label: the tiles are read as a
-           row of figures, and a permanent instruction on one of them competes
-           with the figure it sits under. `group` drives the cue below; the
-           shadow on hover and focus is the same one every other clickable card
-           on the page uses, so the affordance is not new vocabulary. -->
-      <component
-        :is="tile.href ? 'a' : 'div'"
-        v-for="tile in tiles"
-        :key="tile.key"
-        :href="tile.href"
-        class="block"
-        :class="tile.href
- ? 'group transition-shadow hover:shadow-hard focus-visible:shadow-hard active-press'
- : ''"
+    <p v-if="!dashboard.hasSettled" role="status" class="mb-8 border-2 border-ink bg-canvas px-4 py-3 text-sm font-medium shadow-hard sm:border-4">
+      Loading bookings...
+    </p>
+    <section v-else class="mb-10" aria-labelledby="booking-status">
+      <div class="mb-4 flex items-baseline justify-between gap-3">
+        <SectionHeading id="booking-status" :tone="sectionTone(0)">Booking status</SectionHeading>
+        <p class="text-sm font-medium text-ink/70">{{ boardTotal }} total</p>
+      </div>
+
+      <EventStatusBoard
+        :columns="columns"
+        item-key="id"
+        :legend="['red', 'green']"
+        item-label="bookings"
+        @open-status="openStatus"
       >
-        <BauhausSummaryCard
-          :label="tile.label"
-          :value="tile.value"
-          :background="tile.background"
-          :accent="tile.accent"
-          :accent-color="tile.accentColor"
-          :class="tile.href ? 'group-hover:bg-muted group-focus-visible:bg-muted' : ''"
-        >
-          <template #detail>
-            {{ tile.detail }}
-            <!-- Opacity keeps the cue in the accessible name at rest. -->
-            <span
-              v-if="tile.href"
-              class="font-bold text-ink opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        <template #card="{ event, column, cardClass }">
+          <RouterLink
+            :to="{ name: 'booking-request', params: { id: event.id } }"
+            :class="[cardClass, BOARD_CARD_TONE_CLASSES[CARD_TONES[column.status]]]"
+          >
+            <p class="text-sm font-bold">{{ formatEventReference(event) }}</p>
+            <p class="text-sm font-medium text-ink/75">{{ event.venue_name }}</p>
+            <p class="text-xs text-ink/75">{{ formatPeriod(event.period) }}</p>
+            <p v-if="column.status === 'pending'" class="mt-1 text-xs font-bold">
+              Expires {{ formatHoldExpiry(event.expires_at) ?? "—" }}
+            </p>
+            <p
+              v-if="column.status === 'flagged' && event.restorable"
+              class="mt-1 inline-block border-2 border-ink bg-bauhaus-yellow px-2 py-0.5 text-xs font-bold"
             >
-              See the list ↓
-            </span>
-          </template>
-        </BauhausSummaryCard>
-      </component>
-    </div>
+              Venue free again: ready to restore
+            </p>
+          </RouterLink>
+        </template>
+      </EventStatusBoard>
+    </section>
 
     <div class="mb-6">
       <VenueCalendar :items="dashboard.calendarItems" :has-settled="dashboard.hasSettled" />
     </div>
 
     <section aria-labelledby="all-venues">
-        <h2 id="all-venues" class="mb-1 text-2xl font-bold leading-tight sm:text-3xl">
-          All venues
-        </h2>
+        <SectionHeading id="all-venues" :tone="sectionTone(2)">All venues</SectionHeading>
         <!-- Not "my venues": staff work as one pool and allocation is not
              tracked, so every venue is this person's to manage (AUTH-R5). -->
-        <p class="mb-4 text-xs font-medium text-ink/60">
+        <p class="mb-4 mt-3 text-sm font-medium text-ink/70">
           Venue staff work as one pool, so every venue is yours to manage.
         </p>
 
@@ -256,7 +203,7 @@ function emptyDetail(clearText) {
             v-for="option in filterOptions"
             :key="option.key"
             type="button"
-            class="border-2 border-ink px-3 py-2 text-xs font-bold active-press"
+            class="border-2 border-ink px-3 py-2 text-sm font-bold active-press"
             :class="activeFilter === option.key ? 'bg-ink text-canvas' : 'bg-canvas text-ink hover:bg-muted'"
             :aria-pressed="activeFilter === option.key"
             @click="venueFilter = option.key"
@@ -281,10 +228,10 @@ function emptyDetail(clearText) {
                 <span class="text-base font-bold leading-tight">
                   {{ row.venue.name }}
                 </span>
-                <span class="mt-1 text-xs font-medium text-ink/60">{{ venueDetail(row) }}</span>
+                <span class="mt-1 text-sm font-medium text-ink/70">{{ venueDetail(row) }}</span>
               </span>
               <span
-                class="shrink-0 px-3 py-1 text-xs font-bold"
+                class="shrink-0 px-3 py-1 text-sm font-bold"
                 :class="pillClasses[venueStatusMeta(row.status).tone]"
               >
                 {{ venueStatusMeta(row.status).label }}

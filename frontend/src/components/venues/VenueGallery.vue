@@ -13,7 +13,7 @@
  * letting staff verify current information must not let a generic diagram be
  * read as a survey of the actual room.
  */
-import { computed, ref, watch } from "vue";
+import { computed, watch } from "vue";
 
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import VenueLayoutDiagram from "@/components/venues/VenueLayoutDiagram.vue";
@@ -22,9 +22,14 @@ import { stepIndex } from "@/features/venues/venueProfile";
 const props = defineProps({
   slides: { type: Array, default: () => [] },
   venueName: { type: String, default: "" },
+  // The small version for a search result card: a fixed-size frame beside the
+  // venue's details, a one-line caption, and no dots.
+  compact: { type: Boolean, default: false },
 });
 
-const index = ref(0);
+// The slide shown. A parent can bind it (`v-model:index`) to jump to a slide, as
+// the search result card does when a layout is chosen; on its own it keeps its place.
+const index = defineModel("index", { type: Number, default: 0 });
 
 // A different venue (or a shorter list after a refresh) must not leave the
 // index pointing past the end, which would render a blank frame.
@@ -54,7 +59,8 @@ const step = (delta) => {
 <template>
   <section
     v-if="count"
-    class="mb-8 border-2 border-ink bg-canvas shadow-hard sm:border-4"
+    class="border-2 border-ink bg-canvas"
+    :class="compact ? '' : 'mb-8 lg:flex lg:flex-col'"
     role="group"
     aria-roledescription="carousel"
     :aria-label="`${venueName} gallery`"
@@ -66,7 +72,10 @@ const step = (delta) => {
          full-width container makes the slide taller than the rest of the page
          put together on a desktop. The schematic scales within it and centres;
          a photo crops to fill. -->
-    <div class="relative flex h-44 items-center justify-center overflow-hidden bg-canvas sm:h-56 lg:h-64">
+    <div
+      class="relative flex items-center justify-center overflow-hidden bg-canvas"
+      :class="compact ? 'h-40' : 'h-44 sm:h-56 lg:h-auto lg:min-h-0 lg:flex-1'"
+    >
       <img
         v-if="current.kind === 'photo'"
         :src="current.url"
@@ -78,7 +87,8 @@ const step = (delta) => {
       <button
         v-if="count > 1"
         type="button"
-        class="absolute left-3 top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas px-3 py-2 text-sm font-bold hover:bg-muted active-press"
+        class="absolute top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas text-sm font-bold hover:bg-muted active-press"
+        :class="compact ? 'left-2 px-2 py-1' : 'left-3 px-3 py-2'"
         aria-label="Previous slide"
         @click="step(-1)"
       >
@@ -87,7 +97,8 @@ const step = (delta) => {
       <button
         v-if="count > 1"
         type="button"
-        class="absolute right-3 top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas px-3 py-2 text-sm font-bold hover:bg-muted active-press"
+        class="absolute top-1/2 -translate-y-1/2 border-2 border-ink bg-canvas text-sm font-bold hover:bg-muted active-press"
+        :class="compact ? 'right-2 px-2 py-1' : 'right-3 px-3 py-2'"
         aria-label="Next slide"
         @click="step(1)"
       >
@@ -95,11 +106,21 @@ const step = (delta) => {
       </button>
     </div>
 
-    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t-2 border-ink px-4 py-3 sm:border-t-4">
+    <div v-if="compact" class="border-t-2 border-ink px-3 py-2">
+      <div class="flex items-baseline justify-between gap-2">
+        <p class="text-xs font-bold">{{ caption }}</p>
+        <p class="shrink-0 text-xs font-medium text-ink/70" aria-live="polite">{{ index + 1 }} of {{ count }}</p>
+      </div>
+      <p v-if="current.kind === 'layout'" class="mt-0.5 text-xs font-medium text-ink/70">
+        Schematic, not this room's floor plan
+      </p>
+    </div>
+
+    <div v-else class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t-2 border-ink px-4 py-3">
       <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <p class="text-xs font-bold" aria-live="polite">{{ index + 1 }} of {{ count }}</p>
+        <p class="text-sm font-bold" aria-live="polite">{{ index + 1 }} of {{ count }}</p>
         <p v-if="caption" class="text-sm font-bold">{{ caption }}</p>
-        <p v-if="current.kind === 'layout'" class="text-xs font-medium text-ink/60">
+        <p v-if="current.kind === 'layout'" class="text-sm font-medium text-ink/70">
           Schematic arrangement — not this room's floor plan{{
             current.usesVenueCapacity ? "; capacity is the venue figure, not measured for this layout" : ""
           }}
@@ -120,6 +141,13 @@ const step = (delta) => {
       </ul>
     </div>
   </section>
+
+  <div
+    v-else-if="compact"
+    class="flex h-full min-h-40 items-center justify-center border-2 border-ink bg-canvas p-4 text-center text-xs font-bold text-ink/70"
+  >
+    No images on file
+  </div>
 
   <BauhausEmptyState
     v-else

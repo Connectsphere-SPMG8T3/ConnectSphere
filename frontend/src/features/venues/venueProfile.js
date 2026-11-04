@@ -50,7 +50,7 @@ export function venueSlides(venue) {
 }
 
 /**
- * How the profile groups the bookings that occupy a venue (§6.14).
+ * How a booking that occupies a venue is worded (§6.14, VC-R6).
  *
  * The wording follows `CONTEXT.md`: an approved booking is the confirmed one,
  * a hold is the tentative one. `re_review` is neither — it is a settled
@@ -83,45 +83,6 @@ export const BOOKING_GROUPS = [
     tone: "red",
   },
 ];
-
-const KNOWN_STATUSES = new Set(BOOKING_GROUPS.flatMap((group) => group.statuses));
-
-const startsAt = (booking) => {
-  const parsed = new Date(booking?.period?.starts_at ?? NaN).getTime();
-  return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
-};
-
-const soonestFirst = (bookings) => [...bookings].sort((a, b) => startsAt(a) - startsAt(b));
-
-/**
- * The venue's upcoming bookings, split into the groups above (AC3).
- *
- * Every group comes back even when empty, so the profile can state "none"
- * instead of hiding the question. A status this module does not recognise —
- * a new enum value that shipped ahead of this list — is collected into a
- * trailing group rather than dropped: a booking nobody can see is the one way
- * this screen could actively mislead someone planning around the venue.
- */
-export function groupUpcomingBookings(bookings = []) {
-  const list = Array.isArray(bookings) ? bookings : [];
-  const groups = BOOKING_GROUPS.map((group) => ({
-    ...group,
-    bookings: soonestFirst(list.filter((booking) => group.statuses.includes(booking?.status))),
-  }));
-
-  const unrecognised = list.filter((booking) => !KNOWN_STATUSES.has(booking?.status));
-  if (unrecognised.length > 0) {
-    groups.push({
-      key: "other",
-      statuses: [],
-      label: "Other",
-      detail: "Occupies the venue; status not recognised by this page.",
-      tone: "plain",
-      bookings: soonestFirst(unrecognised),
-    });
-  }
-  return groups;
-}
 
 /**
  * Who last edited the profile (AC2).
@@ -365,19 +326,4 @@ export function summariseEditHistoryEntry(entry) {
       before: formatHistoryValue(field, before[field]),
       after: formatHistoryValue(field, after[field]),
     }));
-}
-
-/**
- * Which booking group the Upcoming bookings tab should open on.
- *
- * The first group that actually has something, rather than always `confirmed`.
- * A venue whose only commitment is a hold would otherwise open on an empty
- * "Confirmed" panel, which reads as "nothing booked" — the precise misreading
- * the counts on the tabs exist to prevent. Falls back to the first group when
- * every one is empty, so the tab row still has a selection.
- */
-export function defaultBookingGroupKey(groups) {
-  const list = Array.isArray(groups) ? groups : [];
-  const occupied = list.find((group) => group.bookings?.length > 0);
-  return occupied?.key ?? list[0]?.key ?? BOOKING_GROUPS[0].key;
 }

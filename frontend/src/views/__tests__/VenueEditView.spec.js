@@ -20,6 +20,7 @@ async function mount() {
   const auth = useAuthStore(); auth.token = "access"; auth.profile = { id: "staff", role: "venue_staff" };
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: "/venues/:id/edit", name: "venue-edit", component: { template: "<div />" } },
+    { path: "/venues", name: "venue-search", component: { template: "<div />" } },
     { path: "/venues/:id", name: "venue-detail", component: { template: "<div />" } },
   ] });
   await router.push("/venues/v1/edit");

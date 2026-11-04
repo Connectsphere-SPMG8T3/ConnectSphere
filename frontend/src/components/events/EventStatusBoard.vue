@@ -1,4 +1,6 @@
 <script setup>
+import { computed } from "vue";
+
 import { BOARD_CARD_CLASSES } from "@/features/events/dashboard";
 
 // The status board shared by the coordinator and organiser dashboards: one
@@ -6,35 +8,35 @@ import { BOARD_CARD_CLASSES } from "@/features/events/dashboard";
 // dashboard renders its own cards through the `card` slot, which receives the
 // event, its column and `cardClass` (the base card styling; add a tone from
 // `BOARD_CARD_TONE_CLASSES`).
-defineProps({
+const props = defineProps({
   // [{ status, label, description, events, needsAttention }]
   columns: { type: Array, required: true },
   // The event field that keys each card.
   itemKey: { type: String, default: "event_id" },
+  // Which colours the legend explains: a board that never uses blue or grey can leave them out.
+  legend: { type: Array, default: () => ["red", "blue", "grey", "green"] },
+  // What a column's items are called, in its "View all ... " label.
+  itemLabel: { type: String, default: "events" },
 });
 
 defineEmits(["open-status"]);
 
 const cardClass = BOARD_CARD_CLASSES;
+
+const LEGEND_ENTRIES = [
+  { key: "red", swatch: "border-l-bauhaus-red bg-bauhaus-red/10", text: "Red: needs your action" },
+  { key: "blue", swatch: "border-l-bauhaus-blue bg-bauhaus-blue/10", text: "Blue: you can edit" },
+  { key: "grey", swatch: "border-l-ink/40 bg-muted", text: "Grey: waiting on others" },
+  { key: "green", swatch: "border-l-bauhaus-green bg-bauhaus-green/10", text: "Green: confirmed" },
+];
+const legendEntries = computed(() => LEGEND_ENTRIES.filter((entry) => props.legend.includes(entry.key)));
 </script>
 
 <template>
   <ul data-board-legend class="mb-4 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium">
-    <li class="flex items-center gap-2">
-      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink border-l-bauhaus-red bg-bauhaus-red/10"></span>
-      Red: needs your action
-    </li>
-    <li class="flex items-center gap-2">
-      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink border-l-bauhaus-blue bg-bauhaus-blue/10"></span>
-      Blue: you can edit
-    </li>
-    <li class="flex items-center gap-2">
-      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink border-l-ink/40 bg-muted"></span>
-      Grey: waiting on others
-    </li>
-    <li class="flex items-center gap-2">
-      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink border-l-bauhaus-green bg-bauhaus-green/10"></span>
-      Green: confirmed
+    <li v-for="entry in legendEntries" :key="entry.key" class="flex items-center gap-2">
+      <span aria-hidden="true" class="h-4 w-4 shrink-0 border-2 border-l-8 border-ink" :class="entry.swatch"></span>
+      {{ entry.text }}
     </li>
   </ul>
 
@@ -63,7 +65,7 @@ const cardClass = BOARD_CARD_CLASSES;
               :class="column.needsAttention
                 ? 'hover:text-bauhaus-yellow focus-visible:outline-canvas'
                 : 'hover:text-bauhaus-red focus-visible:outline-ink'"
-              :aria-label="`View all ${column.label} events`"
+              :aria-label="`View all ${column.label} ${itemLabel}`"
               @click="$emit('open-status', column.status)"
             >
               {{ column.label }}

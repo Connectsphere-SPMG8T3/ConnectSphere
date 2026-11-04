@@ -21,6 +21,18 @@ describe("SectionHeading", () => {
     document.body.innerHTML = "";
   });
 
+  it("renders as the heading level asked for, so a page title can use it as an h1", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const app = createApp({ render: () => h(SectionHeading, { id: "find", tone: "red", as: "h1" }, () => "Find a venue") });
+    app.mount(el);
+    mounted.push(app);
+    await nextTick();
+
+    expect(el.querySelector("h1").id).toBe("find");
+    expect(el.querySelector("h2")).toBeNull();
+  });
+
   it("is an h2 with the given id and text on a black-bordered colour block", async () => {
     const heading = await mountHeading({ id: "past-events", tone: "blue" });
     expect(heading.dataset.tone).toBe("blue");

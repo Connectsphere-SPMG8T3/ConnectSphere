@@ -88,9 +88,9 @@ describe("EventDetailView status", () => {
     expect(el.textContent).not.toContain("UNEXPECTED-SUMMARY"); expect(el.textContent).not.toContain("PRIVATE-COMMENT");
   });
 
-  it("goes back to the Events view of the organiser dashboard", async () => {
+  it("the breadcrumb's Events link opens the Events view of the organiser dashboard", async () => {
     const el = await mountDetail(eventResponse({ status: "planning" }));
-    const back = [...el.querySelectorAll("button")].find((node) => node.textContent.trim() === "Back to events");
+    const back = [...el.querySelectorAll('nav[aria-label="Breadcrumb"] a')].find((node) => node.textContent.trim() === "Events");
     expect(back).toBeTruthy();
     expect(el.textContent).not.toContain("Back to requests");
 

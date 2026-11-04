@@ -4,9 +4,7 @@ import {
   BOOKING_GROUPS,
   VENUE_PROFILE_TABS,
   countBookings,
-  defaultBookingGroupKey,
   editFormToPayload,
-  groupUpcomingBookings,
   lastEditorName,
   stepIndex,
   INACTIVE_REASONS,
@@ -27,47 +25,6 @@ const booking = (id, status, startHour) => ({
     starts_at: `2026-10-10T0${startHour}:00:00Z`,
     ends_at: `2026-10-10T0${startHour + 1}:00:00Z`,
   },
-});
-
-describe("groupUpcomingBookings (SCRUM-67 AC3)", () => {
-  it("splits occupying bookings into confirmed, tentative and re-review", () => {
-    const groups = groupUpcomingBookings([
-      booking("1", "held", 1),
-      booking("2", "approved", 2),
-      booking("3", "re_review", 3),
-      booking("4", "approved", 4),
-    ]);
-
-    expect(groups.map((g) => [g.key, g.bookings.map((b) => b.id)])).toEqual([
-      ["confirmed", ["2", "4"]],
-      ["tentative", ["1"]],
-      ["reReview", ["3"]],
-    ]);
-  });
-
-  it("orders each group soonest first, whatever order the API sent", () => {
-    const groups = groupUpcomingBookings([booking("late", "approved", 8), booking("early", "approved", 2)]);
-
-    expect(groups[0].bookings.map((b) => b.id)).toEqual(["early", "late"]);
-  });
-
-  it("returns every group even when empty, so the profile can say 'none'", () => {
-    const groups = groupUpcomingBookings([]);
-
-    expect(groups).toHaveLength(BOOKING_GROUPS.length);
-    expect(groups.every((g) => g.bookings.length === 0)).toBe(true);
-  });
-
-  it("tolerates a missing list", () => {
-    expect(groupUpcomingBookings().every((g) => g.bookings.length === 0)).toBe(true);
-  });
-
-  it("never silently drops a booking whose status it does not recognise", () => {
-    const groups = groupUpcomingBookings([booking("1", "approved", 1), booking("9", "invented", 2)]);
-    const shown = groups.flatMap((g) => g.bookings.map((b) => b.id));
-
-    expect(shown).toContain("9");
-  });
 });
 
 describe("lastEditorName (SCRUM-67 AC2)", () => {
@@ -135,29 +92,6 @@ describe("stepIndex (photo carousel)", () => {
 
   it("handles a single photo without moving", () => {
     expect(stepIndex(0, 1, 1)).toBe(0);
-  });
-});
-
-describe("defaultBookingGroupKey", () => {
-  it("opens on the first group that actually has bookings", () => {
-    const groups = groupUpcomingBookings([booking("1", "held", 1)]);
-
-    expect(defaultBookingGroupKey(groups)).toBe("tentative");
-  });
-
-  it("prefers the earlier group when several have bookings", () => {
-    const groups = groupUpcomingBookings([booking("1", "held", 1), booking("2", "approved", 2)]);
-
-    expect(defaultBookingGroupKey(groups)).toBe("confirmed");
-  });
-
-  it("falls back to the first group when everything is empty", () => {
-    expect(defaultBookingGroupKey(groupUpcomingBookings([]))).toBe("confirmed");
-  });
-
-  it("tolerates being given nothing", () => {
-    expect(defaultBookingGroupKey([])).toBe(BOOKING_GROUPS[0].key);
-    expect(defaultBookingGroupKey()).toBe(BOOKING_GROUPS[0].key);
   });
 });
 

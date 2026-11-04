@@ -1,6 +1,5 @@
 <script setup>
 import { computed, ref } from "vue";
-import { RouterLink } from "vue-router";
 
 import BauhausButton from "@/components/common/BauhausButton.vue";
 import BauhausCard from "@/components/common/BauhausCard.vue";
@@ -23,6 +22,14 @@ const fieldErrors = ref({});
 const formError = ref("");
 
 const roleLabel = computed(() => ROLE_LABELS[profile.value?.role] ?? profile.value?.role);
+const initials = computed(() =>
+  (profile.value?.full_name ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0].toUpperCase())
+    .join(""),
+);
 // SCRUM-50 AC3: the active role decides which detail shows. Organisers have an organisation,
 // internal staff a department, attendees neither, whatever else the profile row holds.
 const showOrganisation = computed(() => profile.value?.role === "event_organiser");
@@ -84,21 +91,29 @@ async function saveProfile() {
   <main class="py-8">
     <h1 class="mb-8 text-4xl font-bold leading-tight sm:text-5xl">My profile</h1>
 
-    <BauhausCard v-if="profile" background="white" accent="circle" accent-color="bauhaus-blue">
+    <BauhausCard v-if="profile" background="white" accent="none">
       <div class="flex flex-col gap-6">
         <div class="flex flex-wrap items-center justify-between gap-4">
-          <h2 class="text-2xl font-bold">{{ profile.full_name }}</h2>
-          <div class="flex flex-wrap items-center gap-3">
-            <span class="border-2 border-ink bg-bauhaus-yellow px-3 py-1 text-xs font-bold sm:border-4">
-              {{ roleLabel }}
+          <div class="flex items-center gap-4">
+            <span
+              class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-bauhaus-blue text-lg font-bold text-canvas sm:h-16 sm:w-16 sm:border-4 sm:text-xl"
+              aria-hidden="true"
+            >
+              {{ initials }}
             </span>
-            <BauhausButton v-if="!isEditing" size="sm" variant="outline" @click="startEditing">
-              Edit profile
-            </BauhausButton>
+            <div class="flex flex-col items-start gap-2">
+              <h2 class="text-2xl font-bold leading-tight">{{ profile.full_name }}</h2>
+              <span class="border-2 border-ink bg-bauhaus-yellow px-3 py-1 text-xs font-bold">
+                {{ roleLabel }}
+              </span>
+            </div>
           </div>
+          <BauhausButton v-if="!isEditing" size="sm" variant="outline" @click="startEditing">
+            Edit profile
+          </BauhausButton>
         </div>
 
-        <form v-if="isEditing" class="flex flex-col gap-5" novalidate @submit.prevent="saveProfile">
+        <form v-if="isEditing" class="flex flex-col gap-5 border-t-2 border-ink pt-6" novalidate @submit.prevent="saveProfile">
           <div
             v-if="formError"
             role="alert"
@@ -130,27 +145,27 @@ async function saveProfile() {
           </div>
         </form>
 
-        <dl v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <dl v-else class="grid grid-cols-1 gap-4 border-t-2 border-ink pt-6 sm:grid-cols-2">
           <div>
-            <dt class="text-xs font-bold text-ink/60">Email</dt>
+            <dt class="text-sm font-medium text-ink/60">Email</dt>
             <dd class="text-base font-medium">{{ profile.email }}</dd>
           </div>
           <div v-if="showOrganisation && profile.organisation_name">
-            <dt class="text-xs font-bold text-ink/60">Organisation</dt>
+            <dt class="text-sm font-medium text-ink/60">Organisation</dt>
             <dd class="text-base font-medium">{{ profile.organisation_name }}</dd>
           </div>
           <div v-if="showDepartment && profile.department">
-            <dt class="text-xs font-bold text-ink/60">Department</dt>
+            <dt class="text-sm font-medium text-ink/60">Department</dt>
             <dd class="text-base font-medium">{{ profile.department }}</dd>
           </div>
           <div>
-            <dt class="text-xs font-bold text-ink/60">Phone</dt>
+            <dt class="text-sm font-medium text-ink/60">Phone</dt>
             <dd class="text-base font-medium">
               {{ formatSingaporePhoneNumber(profile.phone_number) || "Not provided" }}
             </dd>
           </div>
           <div v-if="authStore.hasMultipleRoles">
-            <dt class="text-xs font-bold text-ink/60">All roles</dt>
+            <dt class="text-sm font-medium text-ink/60">All roles</dt>
             <dd class="mt-1 flex flex-wrap gap-2">
               <span
                 v-for="label in allRoleLabels"
@@ -162,13 +177,6 @@ async function saveProfile() {
             </dd>
           </div>
         </dl>
-
-        <RouterLink
-          :to="authStore.dashboardPath"
-          class="mt-2 inline-block w-fit border-2 border-ink bg-canvas px-4 py-2 text-xs font-bold shadow-hard hover:bg-muted sm:border-4"
-        >
-          &larr; Back to Dashboard
-        </RouterLink>
       </div>
     </BauhausCard>
   </main>

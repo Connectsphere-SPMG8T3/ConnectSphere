@@ -1,6 +1,7 @@
 <script setup>
 import { RouterLink } from "vue-router";
 
+import BauhausBreadcrumb from "@/components/common/BauhausBreadcrumb.vue";
 import BauhausEmptyState from "@/components/common/BauhausEmptyState.vue";
 import PublicFooter from "@/components/common/PublicFooter.vue";
 import PublicHeader from "@/components/common/PublicHeader.vue";
@@ -15,6 +16,8 @@ defineProps({
   showHeader: { type: Boolean, default: true },
   backTo: { type: [String, Object], required: true },
   backLabel: { type: String, required: true },
+  // A breadcrumb trail above the event, for use inside the app shell where the public header is hidden.
+  breadcrumbItems: { type: Array, default: null },
 });
 </script>
 
@@ -28,6 +31,7 @@ defineProps({
 
     <main class="py-8" data-testid="event-details-page">
       <div class="mx-auto max-w-5xl px-5 py-8 sm:px-10 sm:py-12">
+        <BauhausBreadcrumb v-if="breadcrumbItems" :items="breadcrumbItems" />
         <p v-if="loading" role="status" class="py-8 text-sm font-bold">Loading event…</p>
         <p v-else-if="error" role="alert" class="border-2 border-ink bg-bauhaus-red px-5 py-4 font-bold text-canvas">
           {{ error }}
