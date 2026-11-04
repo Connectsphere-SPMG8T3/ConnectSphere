@@ -83,6 +83,8 @@ def test_load_names_the_story_that_failed(sql, registry):
     demo_data.STORIES["CR-99"] = demo_data.Story("CR-99", "title", broken)
     with pytest.raises(SystemExit, match="CR-99: expected 201, got 409"):
         demo_data.load(object())
+    # What it made before failing is deleted, or the next --load would skip it as loaded.
+    assert any("delete from public.events" in s and "Demo · CR-99 · %" in s for s in sql)
 
 
 def test_unknown_story_id_is_refused(sql, registry):

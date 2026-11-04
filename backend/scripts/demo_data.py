@@ -124,6 +124,7 @@ def load(ctx: Context, ids: list[str] | None = None) -> dict[str, dict]:
         try:
             built[item.id] = item.build(ctx)
         except (CheckFailed, CheckBlocked, httpx.HTTPError) as error:
+            delete_story(item.id)  # or the next --load would skip it as already loaded
             raise SystemExit(f"{item.id}: {error}") from error
         LOADED_FILE.parent.mkdir(parents=True, exist_ok=True)
         LOADED_FILE.write_text(json.dumps(built, indent=1, ensure_ascii=False))

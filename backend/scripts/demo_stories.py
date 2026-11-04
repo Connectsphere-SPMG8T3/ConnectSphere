@@ -9,7 +9,7 @@ the demo script.
 from datetime import datetime, timedelta
 
 from scripts.demo_data import demo_email, demo_name, demo_start, story
-from scripts.verify_live import SEEDED_PASSWORD, CheckFailed, Context, Session, db_query
+from scripts.verify_live import SEEDED_PASSWORD, SGT, CheckFailed, Context, Session, db_query
 
 ORGANISER = "a0000000-0000-4000-8000-000000000001"
 COORDINATOR = "a0000000-0000-4000-8000-000000000002"
@@ -510,3 +510,229 @@ def _(ctx):
     block(ctx, "57", GRAND_BALLROOM, starts_at, ends_at, reason="safety")
     return {"Grand Ballroom, week of 30 Jan 2027": GRAND_BALLROOM, "approved": approved["event_id"],
             "held": held["event_id"], "affected": affected["event_id"]}
+
+
+# --- 4d: equipment -------------------------------------------------------------------
+
+
+def demo_equipment(story_id: str, label: str, kind: str, total: int, location: str | None = None,
+                   outages: tuple = ()) -> str:
+    """An equipment item of the story's own, with (quantity, start, end) outages."""
+    where = f"'{location}'" if location else "null"
+    [row] = db_query("insert into public.equipment (name, equipment_type, total_quantity, status, storage_location) "
+                     f"values ('{demo_name(story_id, label)}', '{kind}', {total}, 'active', {where}) returning id")
+    for quantity, start_at, end_at in outages:
+        db_query("insert into public.equipment_unavailability (equipment_id, quantity, start_at, end_at, reason) "
+                 f"values ('{row['id']}', {quantity}, '{start_at}', '{end_at}', 'Under repair')")
+    return row["id"]
+
+
+def sgt(day: int, hour: int) -> str:
+    return demo_start(day, hour, 0)[0]
+
+
+@story("23", "Equipment Availability Checking")
+def _(ctx):
+    return {"Speaker x3, no outages": demo_equipment("23", "Speaker", "audio", 3, "DEMO Store B")}
+
+
+@story("23-R", "Reopened: Equipment Availability Checking")
+def _(ctx):
+    projector = demo_equipment("23-R", "Projector", "projector", 7, "DEMO Store A",
+                               outages=((2, sgt(3, 8), sgt(7, 18)),))
+    microphone = demo_equipment("23-R", "Microphone", "audio", 4, None, outages=((4, sgt(3, 8), sgt(5, 18)),))
+    speaker = demo_equipment("23-R", "Speaker", "audio", 3, "DEMO Store B",
+                             outages=((3, sgt(4, 9), sgt(4, 10)), (3, sgt(4, 12), sgt(4, 13))))
+    return {"Projector 7 (2 out 4-8 Dec)": projector, "Microphone 4 (all out 4-6 Dec)": microphone,
+            "Speaker 3 (out 09-10 and 12-13 on 5 Dec)": speaker}
+
+
+@story("24", "Equipment Reservation")
+def _(ctx):
+    mixer = demo_equipment("24", "Audio mixer", "audio", 2, "DEMO Store B")
+    made = build_event(ctx, "24", "Battle of the bands", "venue_approved", day=34, equipment=())
+    lines = request_equipment(ctx, COORDINATOR, made["event_id"], ((PROJECTOR, 2), (mixer, 3)))
+    return {"planning, two pending lines": made["event_id"], "projector line": lines[0], "mixer line (3 of 2)": lines[1]}
+
+
+@story("45", "Record and Submit Event Equipment Request")
+def _(ctx):
+    made = build_event(ctx, "45", "Film screening", "venue_approved", day=35, equipment=())
+    return {"planning, venue approved, no equipment": made["event_id"]}
+
+
+@story("44", "Modify/remove equipment requirements")
+def _(ctx):
+    made = build_event(ctx, "44", "Cultural night", "venue_approved", day=36, equipment=())
+    lines = request_equipment(ctx, COORDINATOR, made["event_id"], ((PROJECTOR, 2), (WIRELESS_MICS, 4)))
+    call(ctx, "tech_support", "POST", f"/equipment/requests/{lines[0]}/reserve")
+    return {"planning, projector reserved, mics pending": made["event_id"]}
+
+
+@story("CR-110", "Record technical preparation progress")
+def _(ctx):
+    made = build_event(ctx, "CR-110", "Esports tournament", "confirmed", day=37,
+                       equipment=((PROJECTOR, 2), (PA_SYSTEMS, 1)))
+    return {"confirmed, equipment reserved": made["event_id"]}
+
+
+# --- 4e: status, safety, change and cancel -------------------------------------------
+
+
+@story("82", "Send event for safety check once essential arrangements are approved")
+def _(ctx):
+    ready = build_event(ctx, "82", "Ready for safety", "ready", day=38)
+    blocked = build_event(ctx, "82", "Not ready (kit pending)", "venue_approved", day=39, equipment=())
+    request_equipment(ctx, COORDINATOR, blocked["event_id"], ((PROJECTOR, 1),))
+    return {"planning, all ready": ready["event_id"], "planning, equipment pending": blocked["event_id"]}
+
+
+@story("CR-103", "Safety review queue")
+def _(ctx):
+    first = build_event(ctx, "CR-103", "Marathon expo", "safety_review", day=40, attendance=60)
+    second = build_event(ctx, "CR-103", "Drone light show", "safety_review", day=41, attendance=50)
+    return {"in queue (older)": first["event_id"], "in queue (newer)": second["event_id"]}
+
+
+@story("CR-104", "Record the operational safety decision")
+def _(ctx):
+    approve = build_event(ctx, "CR-104", "Approve: Book fair", "safety_review", day=42)
+    reject = build_event(ctx, "CR-104", "Reject venue: Fire dance", "safety_review", day=43)
+    return {"to approve": approve["event_id"], "to reject the venue": reject["event_id"]}
+
+
+@story("CR-108", "Safety review checklist and organiser comments")
+def _(ctx):
+    made = build_event(ctx, "CR-108", "Night market", "safety_review", day=44, attendance=75, layout="reception",
+                       facilities=())
+    return {"in safety review": made["event_id"]}
+
+
+@story("32", "Request Changes to Event Arrangements")
+def _(ctx):
+    made = build_event(ctx, "32", "Graduation dinner", "confirmed", day=45, equipment=())
+    return {"confirmed": made["event_id"]}
+
+
+def change_request(ctx: Context, event_id: str, reason: str, **changes) -> None:
+    version = call(ctx, "event_organiser", "GET", f"/events/{event_id}")["version"]
+    call(ctx, "event_organiser", "POST", f"/events/{event_id}/change-request",
+         {"reason": reason, "version": version, "event": changes})
+
+
+@story("37", "Review and Process Event Change Requests")
+def _(ctx):
+    made = build_event(ctx, "37", "Open house", "confirmed", day=46)
+    starts_at, ends_at = demo_start(46, 13, 3)
+    change_request(ctx, made["event_id"], "The keynote speaker can only come in the afternoon.",
+                   starts_at=starts_at, ends_at=ends_at, expected_attendance=50)
+    return {"confirmed, change request open": made["event_id"]}
+
+
+@story("84", "Request cancellation of my event")
+def _(ctx):
+    made = build_event(ctx, "84", "Book club social", "held", day=47, equipment=())
+    return {"planning, holds Innovation Lab": made["event_id"]}
+
+
+@story("115", "Cancel an event")
+def _(ctx):
+    requested = build_event(ctx, "115", "Cancel on request: Bake sale", "confirmed", day=48,
+                            equipment=((PROJECTOR, 1),))
+    call(ctx, "event_organiser", "POST", f"/events/{requested['event_id']}/cancellation-request",
+         {"reason": "Our sponsor pulled out."})
+    direct = build_event(ctx, "115", "Cancel directly: Quiz night", "held", day=49, equipment=())
+    return {"confirmed, cancellation requested": requested["event_id"], "planning, to cancel": direct["event_id"]}
+
+
+# --- 4f: attendees and notifications -------------------------------------------------
+
+
+def open_registration(capacity: int, *, waitlist: bool = False, day: int) -> dict:
+    """Registration until the day before the event, opening tomorrow: submitting refuses
+    an opening date that isn't after today. `open_now` then opens it for the demo."""
+    tomorrow = datetime.combine(datetime.now(SGT).date() + timedelta(days=1), datetime.min.time(), SGT)
+    closes = demo_start(day - 1, 23, 0)[0]
+    return {"registration_enabled": True, "registration_capacity": capacity,
+            "registration_opens_at": tomorrow.isoformat(), "registration_closes_at": closes,
+            "withdrawal_closes_at": closes, "waitlist_enabled": waitlist, "re_registration_allowed": True}
+
+
+def open_now(event_id: str) -> None:
+    """Moves a demo event's registration opening to now, so attendees can register today."""
+    db_query(f"update public.events set registration_opens_at = now() - interval '1 minute' where id = '{event_id}'")
+
+
+def register(ctx: Context, who: str, event_id: str) -> None:
+    call(ctx, who, "POST", f"/public/events/{event_id}/registrations")
+
+
+@story("43", "Register for a Confirmed Event")
+def _(ctx):
+    made = build_event(ctx, "43", "Open-air concert", "confirmed", day=50, equipment=(),
+                       **open_registration(30, day=50))
+    open_now(made["event_id"])
+    return {"confirmed, registration open (30)": made["event_id"]}
+
+
+@story("86", "Join the waiting list and accept a freed place")
+def _(ctx):
+    made = build_event(ctx, "86", "Masterclass with a chef", "confirmed", day=51, equipment=(),
+                       **open_registration(2, waitlist=True, day=51))
+    open_now(made["event_id"])
+    for extra, name in (("a", "Aisha Rahman"), ("b", "Ben Koh")):
+        register(ctx, demo_attendee(ctx, "86", extra, name), made["event_id"])
+    return {"full (2/2), waitlist on": made["event_id"], "registered": "demo+86-a, demo+86-b"}
+
+
+@story("55", "Withdraw Registration")
+def _(ctx):
+    made = build_event(ctx, "55", "Yoga in the park", "confirmed", day=52, equipment=(),
+                       **open_registration(20, day=52))
+    open_now(made["event_id"])
+    register(ctx, "attendee", made["event_id"])
+    return {"attendee registered": made["event_id"]}
+
+
+@story("56", "View Registered Events")
+def _(ctx):
+    first = build_event(ctx, "56", "Photography walk", "confirmed", day=53, equipment=(),
+                        **open_registration(20, day=53))
+    open_now(first["event_id"])
+    second = build_event(ctx, "56", "Jazz evening", "confirmed", day=54, hour=17, equipment=(),
+                         **open_registration(20, day=54))
+    open_now(second["event_id"])
+    register(ctx, "attendee", first["event_id"])
+    register(ctx, "attendee", second["event_id"])
+    return {"registered": first["event_id"], "registered too": second["event_id"]}
+
+
+@story("35", "View registrations for events I manage")
+def _(ctx):
+    made = build_event(ctx, "35", "Robotics workshop", "confirmed", day=55, equipment=(),
+                       **open_registration(2, waitlist=True, day=55))
+    open_now(made["event_id"])
+    for extra, name in (("a", "Chloe Ng"), ("b", "Daniel Lee"), ("c", "Priya Nair")):
+        register(ctx, demo_attendee(ctx, "35", extra, name), made["event_id"])
+    return {"2 registered, 1 waitlisted": made["event_id"]}
+
+
+@story("53", "Receive notifications about my events")
+def _(ctx):
+    made = build_event(ctx, "53", "Startup networking", "confirmed", day=56, equipment=(),
+                       **open_registration(20, day=56))
+    open_now(made["event_id"])
+    register(ctx, "attendee", made["event_id"])
+    starts_at, ends_at = demo_start(56, 14, 3)
+    change_request(ctx, made["event_id"], "Moving to the afternoon.", starts_at=starts_at, ends_at=ends_at)
+    version = call(ctx, COORDINATOR, "GET", f"/events/{made['event_id']}")["version"]
+    call(ctx, COORDINATOR, "POST", f"/events/{made['event_id']}/change-request/approve", {"version": version})
+    return {"attendee registered, time changed": made["event_id"]}
+
+
+@story("90", "Receive reminders for upcoming events and incomplete arrangements", time_relative=True)
+def _(ctx):
+    made = build_event(ctx, "90", "Starts in 2 days", "held", day=2, relative=True, equipment=())
+    request_equipment(ctx, COORDINATOR, made["event_id"], ((PROJECTOR, 1),))
+    sent = db_query("select public.send_staff_arrangement_reminders() as n")[0]["n"]
+    return {"planning, hold + kit pending": made["event_id"], "reminders sent": sent}
