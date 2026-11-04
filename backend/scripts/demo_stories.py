@@ -314,3 +314,199 @@ def _(ctx):
 def _(ctx):
     made = build_event(ctx, "112", "Data science meetup", "planning", day=16)
     return {"planning": made["event_id"]}
+
+
+# --- 4c: venues ----------------------------------------------------------------------
+
+
+def demo_venue(story_id: str, label: str, *, capacity: int, layouts: dict[str, int | None],
+               facilities: tuple = (), setup: int = 0, turnaround: int = 0,
+               accessibility: tuple = ("wheelchair_access",)) -> str:
+    """A venue of the story's own (there is no endpoint to create one), active and
+    open 08:00–22:00, last updated by venue staff like the seeded catalogue."""
+    features = "{" + ",".join(accessibility) + "}"
+    [row] = db_query(
+        "insert into public.venues (name, location, capacity, opens_at, closes_at, is_active, "
+        "accessibility_features, setup_minutes, turnaround_minutes, emergency_access, updated_by) values "
+        f"('{demo_name(story_id, label)}', 'Demo Campus, Block D', {capacity}, '08:00', '22:00', true, "
+        f"'{features}', {setup}, {turnaround}, 'Two exits to the courtyard', "
+        "'a0000000-0000-4000-8000-000000000003') returning id")
+    venue_id = row["id"]
+    for layout, layout_capacity in layouts.items():
+        db_query("insert into public.venue_layouts (venue_id, layout, capacity_for_layout) values "
+                 f"('{venue_id}', '{layout}', {layout_capacity if layout_capacity else 'null'})")
+    for facility in facilities:
+        db_query(f"insert into public.venue_facilities (venue_id, facility) values ('{venue_id}', '{facility}')")
+    return venue_id
+
+
+def block(ctx: Context, story_id: str, venue_id: str, starts_at: str, ends_at: str,
+          reason: str = "maintenance") -> str:
+    """A venue block whose detail carries the story's demo name, so a reset deletes it."""
+    return call(ctx, "venue_staff", "POST", f"/venues/{venue_id}/blocks", {
+        "starts_at": starts_at, "ends_at": ends_at, "reason": reason,
+        "detail": demo_name(story_id, f"{reason} block"), "confirm": True})["block"]["id"]
+
+
+@story("39", "View Venue Catalogue")
+def _(ctx):
+    made = build_event(ctx, "39", "Booked into Auditorium A", "held", day=17, hour=14, venue=AUDITORIUM_A,
+                       layout="theatre", equipment=())
+    starts_at, ends_at = demo_start(17, 13, 5)
+    block(ctx, "39", SEMINAR_ROOM_1, starts_at, ends_at)
+    return {"holds Auditorium A 14:00-17:00": made["event_id"], "Seminar Room 1 blocked 13:00-18:00": SEMINAR_ROOM_1}
+
+
+@story("18", "Venue Suitability Checking")
+def _(ctx):
+    made = build_event(ctx, "18", "Guest lecture", "planning", day=18, attendance=120, layout="theatre",
+                       facilities=("projector", "microphone"), venue=None, equipment=())
+    return {"planning, 120 theatre, projector + mic": made["event_id"]}
+
+
+@story("19", "Venue Booking Request")
+def _(ctx):
+    made = build_event(ctx, "19", "Robotics showcase", "planning", day=19, hour=14, attendance=100,
+                       layout="theatre", facilities=(), venue=None, equipment=())
+    other = build_event(ctx, "19", "Already in Heritage Hall", "held", day=19, hour=13, attendance=100,
+                        layout="theatre", facilities=(), venue=HERITAGE_HALL, equipment=())
+    return {"planning, no venue": made["event_id"], "holds Heritage Hall 13:00-16:00": other["event_id"]}
+
+
+@story("21", "Booking Conflict Detection")
+def _(ctx):
+    venue = demo_venue("21", "Buffer Studio", capacity=80, layouts={"classroom": None},
+                       facilities=("projector",), setup=30, turnaround=45)
+    booked = build_event(ctx, "21", "Booked 10:00-12:00", "venue_approved", day=20, hours=2, venue=venue,
+                         equipment=())
+    overlaps = build_event(ctx, "21", "Wants 13:00 (overlaps)", "planning", day=20, hour=13, hours=2,
+                           venue=None, equipment=())
+    touches = build_event(ctx, "21", "Wants 13:15 (touches)", "planning", day=20, hour=13, hours=2,
+                          venue=None, equipment=())
+    starts_at, ends_at = demo_start(20, 13, 2)
+    db_query(f"update public.events set starts_at = '{starts_at}'::timestamptz + interval '15 minutes', "
+             f"ends_at = '{ends_at}'::timestamptz + interval '15 minutes' where id = '{touches['event_id']}'")
+    return {"Buffer Studio (setup 30, turnaround 45)": venue, "approved 10:00-12:00": booked["event_id"],
+            "13:00 request (refused)": overlaps["event_id"], "13:15 request (allowed)": touches["event_id"]}
+
+
+@story("36", "Approve a venue booking request")
+def _(ctx):
+    made = build_event(ctx, "36", "Wellness week opener", "held", day=21, venue=SEMINAR_ROOM_1, equipment=(),
+                       accessibility_needs="Lift access")
+    return {"held at Seminar Room 1": made["booking_id"], "event": made["event_id"]}
+
+
+@story("38", "Reject a venue booking request")
+def _(ctx):
+    made = build_event(ctx, "38", "Chess tournament", "held", day=22, equipment=())
+    return {"held at Innovation Lab": made["booking_id"], "event": made["event_id"]}
+
+
+@story("85", "Cancel a held or approved venue booking")
+def _(ctx):
+    made = build_event(ctx, "85", "Photography exhibition", "confirmed", day=23, equipment=())
+    return {"confirmed, approved booking": made["event_id"]}
+
+
+@story("CR-97", "Book more than one venue for an event")
+def _(ctx):
+    made = multi_space_event(ctx, "CR-97", "Education summit", "venue_approved", day=24, attendance=170,
+                             spaces=[("Plenary", 150, "theatre", AUDITORIUM_A),
+                                     ("Workshop room", 20, "classroom", None)])
+    return {"planning, Plenary booked, Workshop room not": made["event_id"]}
+
+
+@story("CR-98", "Propose multiple event spaces")
+def _(ctx):
+    made = build_event(ctx, "CR-98", "Music festival", "draft", day=25, attendance=200, layout=None,
+                       facilities=(), venue=None, equipment=())
+    call(ctx, "event_organiser", "POST", f"/events/{made['event_id']}/spaces",
+         {"label": "Main stage", "expected_pax": 120, "layout_preference": "theatre"})
+    return {"draft, 200 expected, one 120-pax space": made["event_id"]}
+
+
+@story("CR-99", "Expire tentative venue holds")
+def _(ctx):
+    live = build_event(ctx, "CR-99", "Hold to extend", "held", day=26, equipment=())
+    lapsed = build_event(ctx, "CR-99", "Hold that expired", "held", day=26, hour=15, venue=SEMINAR_ROOM_1,
+                         equipment=())
+    db_query(f"update public.venue_bookings set expires_at = now() + interval '1 second' "
+             f"where id = '{lapsed['booking_id']}'")
+    return {"held, extendable": live["booking_id"], "expired hold": lapsed["booking_id"]}
+
+
+@story("51", "Block venue for maintenance or operational reasons")
+def _(ctx):
+    made = build_event(ctx, "51", "Board game night", "venue_approved", day=27, venue=HERITAGE_HALL,
+                       layout="theatre", facilities=(), equipment=())
+    return {"approved at Heritage Hall": made["event_id"]}
+
+
+@story("54", "Remove or shorten a venue block early")
+def _(ctx):
+    made = build_event(ctx, "54", "Debate finals", "venue_approved", day=28, venue=ROOFTOP_TERRACE,
+                       layout="reception", facilities=(), equipment=())
+    starts_at, _ = demo_start(28, 8, 1)
+    _, ends_at = demo_start(28, 18, 1)
+    block(ctx, "54", ROOFTOP_TERRACE, starts_at, ends_at, reason="safety")
+    return {"affected by a safety block 08:00-19:00": made["event_id"]}
+
+
+@story("CR-94", "Flag bookings affected by venue changes")
+def _(ctx):
+    venue = demo_venue("CR-94", "Garden Room", capacity=80, layouts={"classroom": None},
+                       facilities=("projector", "wifi"))
+    made = build_event(ctx, "CR-94", "Poetry reading", "venue_approved", day=29, attendance=60, venue=venue,
+                       equipment=())
+    return {"Garden Room (80, projector)": venue, "approved, 60 pax, needs projector": made["event_id"]}
+
+
+@story("CR-95", "Rearrange bookings affected by venue unavailability")
+def _(ctx):
+    made = build_event(ctx, "CR-95", "Science fair", "confirmed", day=30, equipment=())
+    starts_at, ends_at = demo_start(30, 8, 12)
+    block(ctx, "CR-95", INNOVATION_LAB, starts_at, ends_at, reason="equipment_failure")
+    return {"confirmed, booking affected": made["event_id"]}
+
+
+@story("CR-100", "Set venue buffer times and safety details")
+def _(ctx):
+    return {"venue": demo_venue("CR-100", "Studio Theatre", capacity=90, layouts={"theatre": None},
+                                facilities=("sound_system",))}
+
+
+@story("63", "Update venue capacity and facilities information")
+def _(ctx):
+    venue = demo_venue("63", "Riverside Room", capacity=100, layouts={"classroom": None},
+                       facilities=("projector", "whiteboard"))
+    made = build_event(ctx, "63", "Coding bootcamp", "held", day=31, attendance=80, venue=venue, equipment=())
+    return {"Riverside Room (100)": venue, "held, 80 pax": made["event_id"]}
+
+
+@story("64", "Deactivate a venue from the catalogue")
+def _(ctx):
+    venue = demo_venue("64", "Annex Hall", capacity=120, layouts={"classroom": None}, facilities=("projector",))
+    made = build_event(ctx, "64", "Language exchange", "venue_approved", day=32, venue=venue, equipment=())
+    return {"Annex Hall": venue, "approved booking": made["event_id"]}
+
+
+@story("CR-109", "Record venue preparation progress")
+def _(ctx):
+    made = build_event(ctx, "CR-109", "Art auction", "confirmed", day=33, equipment=())
+    return {"confirmed": made["event_id"], "booking": made["booking_id"]}
+
+
+@story("57", "View venue availability calendar")
+def _(ctx):
+    approved = build_event(ctx, "57", "Confirmed booking", "venue_approved", day=60, venue=GRAND_BALLROOM,
+                           equipment=())
+    held = build_event(ctx, "57", "Tentative hold", "held", day=61, venue=GRAND_BALLROOM, equipment=())
+    starts_at, ends_at = demo_start(62, 9, 8)
+    block(ctx, "57", GRAND_BALLROOM, starts_at, ends_at, reason="renovation")
+    affected = build_event(ctx, "57", "Affected booking", "venue_approved", day=63, venue=GRAND_BALLROOM,
+                           equipment=())
+    starts_at, ends_at = demo_start(63, 9, 4)
+    block(ctx, "57", GRAND_BALLROOM, starts_at, ends_at, reason="safety")
+    return {"Grand Ballroom, week of 30 Jan 2027": GRAND_BALLROOM, "approved": approved["event_id"],
+            "held": held["event_id"], "affected": affected["event_id"]}
