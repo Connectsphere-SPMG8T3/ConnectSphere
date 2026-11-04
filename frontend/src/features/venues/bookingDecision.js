@@ -4,6 +4,8 @@
  * booking's time reads. No I/O.
  */
 
+import { preparationStageLabel } from "@/features/equipment/preparation";
+
 // Mirrors the API's BOOKING_NOTE_MAX_LENGTH (AC2, AC3).
 export const REJECTION_TEXT_MAX_LENGTH = 1000;
 
@@ -86,6 +88,9 @@ const HISTORY_ACTION_LABELS = {
   re_review_approved: "Re-approved",
   re_review_rejected: "Rejected after re-review",
   cancelled: "Cancelled by the coordinator",
+  // CR-109 venue preparation.
+  preparation: "Preparation",
+  preparation_note_updated: "Preparation note updated",
 };
 
 /** One history row's action as a person reads it; an unknown one is spelled out rather than hidden. */
@@ -94,4 +99,11 @@ export function historyActionLabel(action) {
   if (HISTORY_ACTION_LABELS[action]) return HISTORY_ACTION_LABELS[action];
   const words = String(action).replace(/_/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** CR-109 AC5: a history row's action, with the stage a preparation update moved from and to. */
+export function bookingHistoryText(entry) {
+  const label = historyActionLabel(entry.action);
+  if (!entry.old_preparation_stage || !entry.new_preparation_stage) return label;
+  return `${label} · ${preparationStageLabel(entry.old_preparation_stage)} → ${preparationStageLabel(entry.new_preparation_stage)}`;
 }

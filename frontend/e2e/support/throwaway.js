@@ -144,6 +144,11 @@ export function setThrowawayEventStatus(event, status) {
   query(`update public.events set status = '${status}' where id = '${event.id}'`);
 }
 
+/** Another user's save, as far as a page holding the old version can tell (story 112 AC4). */
+export function bumpThrowawayEventVersion(event) {
+  query(`update public.events set version = version + 1 where id = '${event.id}'`);
+}
+
 /** The organiser's open cancellation request on a throwaway event (story 115). It is
  * deleted with the event when the run ends (requests cascade). */
 export function createThrowawayCancellationRequest(event, reason) {

@@ -1,4 +1,4 @@
-# Authentication — sign-up, login, profile, session, logout (SCRUM-48, SCRUM-80, SCRUM-83, SCRUM-92)
+# Authentication — sign-up, login, profile, session, logout (SCRUM-48, SCRUM-50, SCRUM-80, SCRUM-83, SCRUM-92)
 
 Epic SCRUM-7. Shared environment, seeded accounts and the priority key are in [README.md](README.md). The role-based access control and data-layer cases for the same story are in [roles-and-access.md](roles-and-access.md).
 
@@ -158,3 +158,25 @@ These cases cover edits to the authenticated user's own profile. Live and browse
 | AC1 — edit own name and phone and see saved values | TC-AUTH-053, TC-AUTH-055, TC-AUTH-056 |
 | AC2 — email, role and organisation cannot be changed, including by direct API request | TC-AUTH-054, TC-AUTH-056 |
 | AC3 — invalid values are refused with a field-specific message; valid phone numbers normalize consistently | TC-AUTH-053, TC-AUTH-054, TC-AUTH-055, TC-AUTH-056 |
+
+## Profile details — SCRUM-50
+
+These cases cover what the signed-in user sees on `/profile/me`. TC-AUTH-019 (above) covers AC1. TC-AUTH-057 to 060 are automated in `frontend/e2e/profile.e2e.js` against the seeded accounts; they read data only. The browser pass for them is how the page looks and reads at desktop and phone width. AC4 (communication preferences) was removed with PO approval, so it has no case.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-AUTH-057 | The profile shows full name, email, phone number and current role | E2E | Seed data applied; signed in as the Event Coordinator; on the dashboard | 1. Open My profile. 2. Check the name, the role badge, Email and Phone. | `coordinator@connectsphere.dev` / `Cs1234` | Name Marcus Lim; role badge Event Coordinator; Email coordinator@connectsphere.dev; Phone as stored on the account, shown as `+65 ########` for a valid number. All four are visible without scrolling or clicking Edit. | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1037-e2e-0976a09.md); manual · Pass · [run](runs/2026-11-04-1050-manual-c1d4fe4.md) |
+| TC-AUTH-058 | Internal staff see their department and no organisation | E2E | Seed data applied; signed in as each internal staff account in turn (Event Coordinator, Event Coordinator Lead, Venue Staff, Technical Support, Safety Officer) | 1. Open My profile. 2. Look for Department and Organisation in the details. | `coordinator@connectsphere.dev`, `coordinator.lead@connectsphere.dev`, `venue.staff@connectsphere.dev`, `tech.support@connectsphere.dev`, `safety.officer@connectsphere.dev` / `Cs1234` | Department shows Event Planning, Event Planning, Venue Operations, Technical Services and Operational Safety respectively. No Organisation field is shown. | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1037-e2e-0976a09.md); manual · Pass · [run](runs/2026-11-04-1050-manual-c1d4fe4.md) |
+| TC-AUTH-059 | An Event Organiser sees their organisation and no department | E2E | Seed data applied; signed in as the Event Organiser | 1. Open My profile. 2. Look for Organisation and Department in the details. | `organiser@connectsphere.dev` / `Cs1234` | Organisation shows Tan & Partners Events. No Department field is shown. | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1037-e2e-0976a09.md); manual · Pass · [run](runs/2026-11-04-1050-manual-c1d4fe4.md) |
+| TC-AUTH-060 | An Attendee sees neither a department nor an organisation | E2E | Seed data applied; signed in as the Attendee | 1. Open My profile. 2. Look for Organisation and Department in the details. | `attendee@connectsphere.dev` / `Cs1234` | Neither Organisation nor Department is shown. Name, email, phone (as stored, shown as `+65 ########`) and role are still shown (AC2). | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1037-e2e-0976a09.md); manual · Pass · [run](runs/2026-11-04-1050-manual-c1d4fe4.md) |
+
+### Traceability — SCRUM-50
+
+| SCRUM-50 acceptance criterion | Covered by |
+|---|---|
+| AC1 — signed in, my own profile is shown | TC-AUTH-019 |
+| AC2 — full name, email, phone number and current role | TC-AUTH-057, TC-AUTH-060 |
+| AC3 — staff see a department, an Event Organiser sees an organisation, Attendees see neither | TC-AUTH-058, TC-AUTH-059, TC-AUTH-060 |
+| AC4 — removed with PO approval (release 1 notifications are in-app only; DEFECTS D7) | No case |
+
+Unit coverage: `frontend/src/views/__tests__/ProfileView.spec.js` covers AC2 (name, email, phone, the "Not provided" state, and the badge following the active role of a multi-role account) and AC3 (Department and Organisation chosen by the active role, with both fields populated, for all seven roles; DEFECTS D86). `backend/tests/test_auth.py::TestMe` covers AC1 (`test_me_looks_up_only_the_callers_own_profile`: the profile read is scoped to the verified token's id) and the fields `/auth/me` returns for each of the seven roles, including a null phone number.

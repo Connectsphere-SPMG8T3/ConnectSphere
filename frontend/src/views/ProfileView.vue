@@ -30,6 +30,10 @@ const initials = computed(() =>
     .map((word) => word[0].toUpperCase())
     .join(""),
 );
+// SCRUM-50 AC3: the active role decides which detail shows. Organisers have an organisation,
+// internal staff a department, attendees neither, whatever else the profile row holds.
+const showOrganisation = computed(() => profile.value?.role === "event_organiser");
+const showDepartment = computed(() => !["event_organiser", "attendee"].includes(profile.value?.role));
 const allRoleLabels = computed(() => authStore.roles.map((role) => ROLE_LABELS[role] ?? role));
 
 function startEditing() {
@@ -146,11 +150,11 @@ async function saveProfile() {
             <dt class="text-sm font-medium text-ink/60">Email</dt>
             <dd class="text-base font-medium">{{ profile.email }}</dd>
           </div>
-          <div v-if="profile.organisation_name">
+          <div v-if="showOrganisation && profile.organisation_name">
             <dt class="text-sm font-medium text-ink/60">Organisation</dt>
             <dd class="text-base font-medium">{{ profile.organisation_name }}</dd>
           </div>
-          <div v-if="profile.department">
+          <div v-if="showDepartment && profile.department">
             <dt class="text-sm font-medium text-ink/60">Department</dt>
             <dd class="text-base font-medium">{{ profile.department }}</dd>
           </div>

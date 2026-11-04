@@ -206,6 +206,24 @@ class TestBookingEntries:
         assert booking["action"] == "approved"
         assert booking["venue_name"] == "Hall A"
         assert booking["actor"]["full_name"] == "Priya Nair"
+        assert "old_preparation_stage" not in booking and "new_preparation_stage" not in booking
+
+    def test_a_preparation_update_names_the_stage_it_moved_from_and_to(
+        self, client, auth_headers, act_as, monkeypatch, history
+    ):
+        """CR-109 AC5: the coordinator reads the stage change, not just that one happened."""
+        row = {"id": "b2", "action": "preparation", "venue_name": "Hall A", "reason": None,
+               "old_preparation_stage": "not_started", "new_preparation_stage": "in_progress",
+               "actor": {"id": "a0000000-0000-4000-8000-000000000003", "full_name": "Priya Nair"},
+               "at": "2026-10-30T05:00:00+00:00"}
+        monkeypatch.setattr(venues_service, "event_booking_history", lambda event_id: [dict(row)])
+        act_as("event_coordinator", COORDINATOR["id"])
+
+        booking = read_history(client, auth_headers)[0]
+
+        assert booking["action"] == "preparation"
+        assert booking["old_preparation_stage"] == "not_started"
+        assert booking["new_preparation_stage"] == "in_progress"
 
     def test_the_organiser_never_gets_booking_entries(self, client, auth_headers, act_as, booking_history):
         act_as("event_organiser", ORGANISER_ID)

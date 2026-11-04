@@ -17,6 +17,7 @@ import { showToast } from "@/composables/useToast";
 import { FLAG_TEXT, flaggedFormKeys } from "@/features/events/amendment";
 import { canRequestChange, describeChanges, diffProposal, hasChanges } from "@/features/events/changeRequest";
 import { getEarliestEventDate, getRegistrationClosingError, getRegistrationOpeningError, getSingaporeDateString, isEventDateAfterToday } from "@/features/events/dateValidation";
+import { eventNameError, eventPurposeError } from "@/features/events/eventTextRules";
 import { EVENT_TIMEZONES, toZonedIso } from "@/features/events/timezones";
 import { FACILITIES, LAYOUTS, emptyEvent, emptySpace, eventToPayload, spaceToPayload, useEventsStore } from "@/stores/events";
 
@@ -157,8 +158,8 @@ function handleBeforeUnload(event) {
 
 function validateSubmission() {
   const errors = {};
-  if (!form.name.trim()) errors.name = "Enter an event title.";
-  else if (form.name.trim().length < 3) errors.name = "Use at least 3 characters.";
+  const nameError = eventNameError(form.name);
+  if (nameError) errors.name = nameError;
   if (form.withdrawalClosesAt) {
     if (!form.date || !form.startTime) {
       errors.withdrawalClosesAt = "Set the event start time before the withdrawal cutoff.";
@@ -172,7 +173,8 @@ function validateSubmission() {
     }
   }
   if (intent.value === "submit") {
-    if (!form.purpose.trim()) errors.purpose = "Enter the event purpose.";
+    const purposeError = eventPurposeError(form.purpose);
+    if (purposeError) errors.purpose = purposeError;
     if (!form.date) errors.date = "Enter the event date.";
     else if (!isEventDateAfterToday(form.date, getSingaporeDateString(new Date(), form.eventTimezone))) {
       errors.date = "Event date must be after today.";

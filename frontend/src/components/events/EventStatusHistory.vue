@@ -4,7 +4,7 @@ import { historyEntryText } from "@/features/equipment/technical";
 import { fieldLabel } from "@/features/events/amendment";
 import { describeChanges } from "@/features/events/changeRequest";
 import { STATUS_LABELS } from "@/features/events/dashboard";
-import { historyActionLabel } from "@/features/venues/bookingDecision";
+import { bookingHistoryText } from "@/features/venues/bookingDecision";
 import { summariseEditHistoryEntry } from "@/features/venues/venueProfile";
 
 defineProps({
@@ -60,7 +60,7 @@ function heading(entry) {
   if (entry.kind === "safety_decision") {
     return `Safety check: ${SAFETY_DECISION_LABELS[entry.decision] ?? entry.decision}`;
   }
-  if (entry.kind === "booking") return `${entry.venue_name ?? "A venue"}: ${historyActionLabel(entry.action)}`;
+  if (entry.kind === "booking") return `${entry.venue_name ?? "A venue"}: ${bookingHistoryText(entry)}`;
   if (entry.kind === "technical") return `Equipment: ${historyEntryText(entry)}`;
   if (entry.kind === "venue_edit") return `${entry.venue_name ?? "A venue"} details changed`;
   if (entry.kind === "change_requested") return "Change requested";

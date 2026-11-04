@@ -19,6 +19,7 @@ export const useBookingDecisionStore = defineStore("bookingDecision", {
     isApproving: false,
     isRejecting: false,
     isRestoring: false,
+    isPreparing: false,
     error: null,
     conflict: false,
   }),
@@ -95,6 +96,36 @@ export const useBookingDecisionStore = defineStore("bookingDecision", {
         return false;
       } finally {
         this.isRestoring = false;
+      }
+    },
+
+    async setPreparation(bookingId, payload) {
+      if (this.isPreparing) return false;
+      const auth = useAuthStore();
+      this.isPreparing = true;
+      this.error = null;
+      this.conflict = false;
+      try {
+        const updated = await auth.withSession((token) =>
+          venueBookingsApi.setPreparation(bookingId, payload, token),
+        );
+        this.booking = {
+          ...this.booking,
+          preparation: {
+            stage: updated.stage,
+            note: updated.note,
+            updated_at: updated.updated_at,
+            updated_by_name: updated.updated_by_name ?? null,
+          },
+        };
+        return true;
+      } catch (error) {
+        this.error = error.message;
+        this.conflict = error.status === 409;
+        if (this.conflict) await this.load(bookingId);
+        return false;
+      } finally {
+        this.isPreparing = false;
       }
     },
   },
