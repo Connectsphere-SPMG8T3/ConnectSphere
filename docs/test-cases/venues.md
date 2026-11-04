@@ -19,6 +19,8 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 | TC-VENUE-109-009 | Preparation updates read clearly in the event history and notifications | Manual | TC-VENUE-109-006 done | As the coordinator open the event's history; as the coordinator and organiser open notifications | — | History shows each preparation update with Venue Staff's name and time, in wording a person understands; both see the "preparation started" notice once. | 🟡 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-1910-manual-9fc85c5.md) |
 | TC-VENUE-109-010 | The database half: only the approved booking takes progress, the move to Preparation, the unchanged save, stage history, who, grants | SQL | — | Run `supabase/verification/venue_preparation_checks.sql` | Rejected, cancelled, released, expired, held and re-review bookings on a Confirmed event | Each inactive booking gives `booking_not_active` and leaves the event Confirmed with no progress or history; the approved booking's first update moves it to Preparation and names the updater; an unchanged save writes nothing; history carries the old and new stage; only `service_role` can execute. Prints VENUE PREPARATION CHECKS PASSED. | 🔴 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-2013-api-db-2b9274e.md) |
 | TC-VENUE-109-011 | A booking that isn't approved can't record preparation | Integration | A Confirmed event with a rejected booking | `PUT /api/v1/venue-bookings/{booking_id}/preparation` as Venue Staff | `in_progress`, a note | 409 "Only an approved booking can record venue preparation."; nothing stored; the event stays Confirmed. | 🟠 | 2026-11-03 | 2026-11-03 · Pass · [run](runs/2026-11-03-2013-api-db-2b9274e.md) |
+| TC-VENUE-109-012 | The booking page's history names each preparation update's stages | Integration | Confirmed event with an approved booking | Save `in_progress` then `completed` as Venue Staff, then `GET /api/v1/venue-bookings/{booking_id}` | — | The history's two `preparation` entries carry `not_started → in_progress` and `in_progress → completed` (D87). | 🟡 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1118-api-db-41e1cd2.md) |
+| TC-VENUE-109-013 | The booking page's history says which stage an update moved between | E2E | Confirmed event with an approved booking | As Venue Staff open `/bookings/{id}`, save In progress, reload | `in_progress` | The History card reads "Preparation · Not started → In progress", not just "Preparation" (D87). | 🟡 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1121-e2e-41e1cd2.md) |
 
 ### Traceability — CR-109
 
@@ -28,11 +30,11 @@ Shared environment, seeded accounts and the priority key are in [README.md](READ
 | AC2 Progress per venue booking, four stages, optional internal note; [Assumption, REQUIREMENTS §9] the approved booking only | TC-VENUE-109-001, 010, 011; `pytest` `TestVenuePreparation` |
 | AC3 The first update on a Confirmed event moves it to Preparation; coordinator and organiser told | TC-VENUE-109-003, 006, 010 |
 | AC4 The coordinator sees stage and note; the organiser the stage only | TC-VENUE-109-004, 006, 008; `pytest` `TestPreparationOnTheEventPage`, `test_organiser_venues.py` |
-| AC5 Each update, who and when in the event history | TC-VENUE-109-001, 009, 010; `pytest` `TestBookingEntries.test_a_preparation_update_names_the_stage_it_moved_from_and_to`; Vitest `bookingDecision.spec.js` (`bookingHistoryText`), `EventStatusHistory.spec.js` |
+| AC5 Each update, who and when in the event history | TC-VENUE-109-001, 009, 010, 012, 013; `pytest` `test_list_booking_history_carries_a_preparation_rows_stages`; `pytest` `TestBookingEntries.test_a_preparation_update_names_the_stage_it_moved_from_and_to`; Vitest `bookingDecision.spec.js` (`bookingHistoryText`), `EventStatusHistory.spec.js` |
 | AC6 Only Venue Staff; others 403 | TC-VENUE-109-005; `pytest` `test_every_other_active_role_is_forbidden` |
 | AC7 Back in Planning, progress is kept but locked | TC-VENUE-109-002, 007, 008, 010 |
 
-`backend/scripts/verify_live.py` automates TC-VENUE-109-001–005 and 011 and runs TC-VENUE-109-010; `frontend/e2e/venue-preparation.e2e.js` automates 006 and 007. TC-VENUE-109-008 and 009 are manual.
+`backend/scripts/verify_live.py` automates TC-VENUE-109-001–005, 011 and 012 and runs TC-VENUE-109-010; `frontend/e2e/venue-preparation.e2e.js` automates 006, 007 and 013. TC-VENUE-109-008 and 009 are manual.
 
 ## Venue Staff request history (SCRUM-70-R)
 

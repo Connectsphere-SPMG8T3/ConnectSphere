@@ -883,13 +883,14 @@ def get_last_move(booking_id: str) -> dict | None:
 
 
 def list_booking_history(booking_id: str) -> list[dict]:
-    """CR-99's history of one booking, oldest first, with each actor's name.
-    A null actor is the system (the expiry job)."""
+    """CR-99's history of one booking, oldest first, with each actor's name and, on a
+    CR-109 preparation update, the stages it moved between. A null actor is the system
+    (the expiry job)."""
     response = (
         get_supabase_admin_client()
         .table("venue_booking_history")
-        .select("action, from_status, to_status, reason, suggestion_note, created_at, "
-                "actor:profiles!venue_booking_history_actor_id_fkey(full_name)")
+        .select("action, from_status, to_status, reason, suggestion_note, old_preparation_stage, "
+                "new_preparation_stage, created_at, actor:profiles!venue_booking_history_actor_id_fkey(full_name)")
         .eq("booking_id", booking_id)
         .order("created_at")
         .execute()
@@ -903,6 +904,8 @@ def list_booking_history(booking_id: str) -> list[dict]:
             "reason": row.get("reason"),
             "suggestion": row.get("suggestion_note"),
             "at": datetime.fromisoformat(row["created_at"]),
+            # CR-109 AC5: a preparation update's stages, only on the rows that have them.
+            **{key: row[key] for key in ("old_preparation_stage", "new_preparation_stage") if row.get(key)},
         }
         for row in response.data or []
     ]
