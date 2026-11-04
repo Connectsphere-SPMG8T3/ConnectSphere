@@ -8,6 +8,7 @@ import {
   bookingStatusLabel,
   filterVenueStatuses,
   bookingStatusFilterOptions,
+  UPCOMING_BOOKING_STATUSES,
   expiryInputBounds,
   expiryInputToIso,
   formatEventReference,
@@ -134,10 +135,30 @@ describe("booking request history", () => {
 
   it("returns select-compatible values for each status option", () => {
     expect(bookingStatusFilterOptions(requests).map((option) => option.value)).toEqual([
-      "pending",
       "all",
+      "pending",
+      "re_review",
       "approved",
       "rejected",
+      "expired",
+    ]);
+  });
+
+  it("offers every status even when no request has it, with a zero count (D88)", () => {
+    const options = bookingStatusFilterOptions([]);
+    expect(options.map((option) => option.label)).toEqual([
+      "All statuses", "Pending", "Re-review", "Approved", "Rejected", "Expired",
+    ]);
+    expect(options.every((option) => option.count === 0)).toBe(true);
+  });
+
+  it("limits the choices to the statuses it is given, still All statuses first (D88)", () => {
+    const options = bookingStatusFilterOptions(requests, UPCOMING_BOOKING_STATUSES);
+    expect(options.map((option) => [option.value, option.count])).toEqual([
+      ["all", 3],
+      ["pending", 1],
+      ["re_review", 0],
+      ["approved", 1],
     ]);
   });
 

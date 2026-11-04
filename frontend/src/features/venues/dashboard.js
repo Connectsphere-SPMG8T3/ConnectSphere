@@ -31,6 +31,8 @@ export const BOOKING_STATUS_LABELS = {
 export const ALL_BOOKING_STATUSES = "all";
 export const PENDING_BOOKING_STATUS = "pending";
 export const BOOKING_STATUS_ORDER = ["held", "re_review", "approved", "rejected", "expired"];
+/** The statuses that occupy the venue, so the only ones an upcoming booking can have (D88). */
+export const UPCOMING_BOOKING_STATUSES = ["held", "re_review", "approved"];
 
 export const blockReasonLabel = (reason) => BLOCK_REASON_LABELS[reason] ?? String(reason ?? "").replace(/_/g, " ");
 export const bookingStatusLabel = (status) => BOOKING_STATUS_LABELS[status] ?? String(status ?? "").replace(/_/g, " ");
@@ -155,23 +157,24 @@ export function waitingDays(booking, now = new Date()) {
   return Math.max(days, 0);
 }
 
-export function bookingStatusFilterOptions(rows = []) {
+/**
+ * The Status choices, always the same set so the control doesn't change shape with the data (D88):
+ * All statuses first, then each of `statuses` in order, counted (0 when none). A hold reads Pending.
+ */
+export function bookingStatusFilterOptions(rows = [], statuses = BOOKING_STATUS_ORDER) {
   const counts = new Map();
   for (const row of rows) counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
   return [
-    {
-      key: PENDING_BOOKING_STATUS,
-      value: PENDING_BOOKING_STATUS,
-      label: "Pending",
-      count: counts.get("held") ?? 0,
-    },
     { key: ALL_BOOKING_STATUSES, value: ALL_BOOKING_STATUSES, label: "All statuses", count: rows.length },
-    ...BOOKING_STATUS_ORDER.filter((status) => status !== "held" && counts.has(status)).map((status) => ({
-      key: status,
-      value: status,
-      label: bookingStatusLabel(status),
-      count: counts.get(status),
-    })),
+    ...statuses.map((status) => {
+      const value = status === "held" ? PENDING_BOOKING_STATUS : status;
+      return {
+        key: value,
+        value,
+        label: status === "held" ? "Pending" : bookingStatusLabel(status),
+        count: counts.get(status) ?? 0,
+      };
+    }),
   ];
 }
 

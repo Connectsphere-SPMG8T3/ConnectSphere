@@ -805,13 +805,14 @@ describe("VenueDetailView (SCRUM-67)", () => {
     expect(summary.textContent).toContain("None.");
   });
 
-  it("offers the booking requests page's Status choices, each with its count, then only the statuses present", async () => {
+  it("always offers All statuses first, then every status an upcoming booking can have, each with its count (D88)", async () => {
     const el = await openProfile();
     await openTab(el, "Upcoming bookings");
 
     expect([...statusSelect(el).options].map((o) => o.textContent.trim())).toEqual([
-      "Pending (1)",
       "All statuses (2)",
+      "Pending (1)",
+      "Re-review (0)",
       "Approved (1)",
     ]);
   });
