@@ -1,4 +1,4 @@
-"""Auth API tests, including Attendee signup (SCRUM-83) and profile editing (SCRUM-92)."""
+"""Auth API tests, including Attendee signup (SCRUM-83), profile details (SCRUM-50) and profile editing (SCRUM-92)."""
 
 import threading
 import time
@@ -91,9 +91,12 @@ def _authenticate_requests_as_test_user(
     *,
     session_active_role: dict | None = None,
     user_roles: list[dict] | None = None,
+    profile_row: dict | None = None,
 ) -> MagicMock:
     anon_client = _make_anon_client_with_claims(_valid_claims())
-    admin_client = _make_table_mock(PROFILE_ROW, session_active_role=session_active_role, user_roles=user_roles)
+    admin_client = _make_table_mock(
+        profile_row or PROFILE_ROW, session_active_role=session_active_role, user_roles=user_roles
+    )
     monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
     monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
     monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
@@ -363,36 +366,62 @@ class TestMe:
         assert response.status_code == 503
 
     @pytest.mark.parametrize(
-        ("overrides", "expected"),
+        "overrides",
         [
             # SCRUM-50 AC3: internal staff carry a department, and no organisation.
-            (
-                {"department": "Event Planning", "organisation_name": None, "phone_number": "+6590000002"},
-                {"department": "Event Planning", "organisation_name": None, "phone_number": "+6590000002"},
-            ),
-            # SCRUM-50 AC3: an Event Organiser carries an organisation, and no department.
-            (
-                {"department": None, "organisation_name": "Tan & Partners Events", "phone_number": None},
-                {"department": None, "organisation_name": "Tan & Partners Events", "phone_number": None},
-            ),
+            {"role": "event_coordinator", "department": "Event Planning", "organisation_name": None},
+            {"role": "venue_staff", "department": "Venue Operations", "organisation_name": None},
+            {"role": "tech_support", "department": "Technical Services", "organisation_name": None},
+            {"role": "safety_officer", "department": "Operational Safety", "organisation_name": None},
+            {"role": "event_coordinator_lead", "department": "Event Planning", "organisation_name": None},
+            # An Event Organiser carries an organisation, and no department.
+            {"role": "event_organiser", "department": None, "organisation_name": "Tan & Partners Events"},
+            # An Attendee carries neither.
+            {"role": "attendee", "department": None, "organisation_name": None},
         ],
     )
-    def test_me_returns_name_phone_department_and_organisation(self, client, monkeypatch, overrides, expected):
-        """SCRUM-50 AC2/AC3: the profile page shows what the API returns, so /auth/me must carry each field."""
-        row = {**PROFILE_ROW, **overrides}
-        anon_client = _make_anon_client_with_claims(_valid_claims())
-        admin_client = _make_table_mock(row)
-        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
-        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
-        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
+    def test_me_returns_the_profile_details_for_each_role(self, client, monkeypatch, overrides):
+        """SCRUM-50 AC1/AC2/AC3: /auth/me returns the caller's own name, email, phone, role and role-specific detail."""
+        row = {**PROFILE_ROW, "phone_number": "+6590000002", **overrides}
+        _authenticate_requests_as_test_user(monkeypatch, profile_row=row, user_roles=[{"role": overrides["role"]}])
 
         response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"})
 
         assert response.status_code == 200
         body = response.json()
+        assert body["id"] == TEST_USER_ID
+        assert body["email"] == TEST_EMAIL
         assert body["full_name"] == PROFILE_ROW["full_name"]
-        for field, value in expected.items():
-            assert body[field] == value
+        assert body["phone_number"] == "+6590000002"
+        assert body["role"] == overrides["role"]
+        assert body["department"] == overrides["department"]
+        assert body["organisation_name"] == overrides["organisation_name"]
+
+    def test_me_looks_up_only_the_callers_own_profile(self, client, monkeypatch):
+        """SCRUM-50 AC1: the profile is read by the verified token's subject, not by anything the client sends."""
+        anon_client = _make_anon_client_with_claims(_valid_claims())
+        admin_client = _make_table_mock(PROFILE_ROW)
+        monkeypatch.setattr("app.core.security.get_supabase_anon_client", lambda: anon_client)
+        monkeypatch.setattr("app.core.security.get_supabase_admin_client", lambda: admin_client)
+        monkeypatch.setattr(auth_service_module, "get_supabase_admin_client", lambda: admin_client)
+
+        response = client.get(
+            "/api/v1/auth/me?id=99999999-9999-9999-9999-999999999999",
+            headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"},
+        )
+
+        assert response.status_code == 200
+        profile_ids = {call.args[1] for call in admin_client.table("profiles").eq.call_args_list if call.args[0] == "id"}
+        assert profile_ids == {TEST_USER_ID}
+
+    def test_me_returns_a_null_phone_number_when_none_is_stored(self, client, monkeypatch):
+        """SCRUM-50 AC2: a profile without a phone number is returned with null, not an error."""
+        _authenticate_requests_as_test_user(monkeypatch, profile_row={**PROFILE_ROW, "phone_number": None})
+
+        response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {FAKE_ACCESS_TOKEN}"})
+
+        assert response.status_code == 200
+        assert response.json()["phone_number"] is None
 
     def test_me_returns_roles_held_by_the_account(self, client, monkeypatch):
         """SCRUM-74: the dropdown needs exactly the roles in user_roles, not a hardcoded set."""

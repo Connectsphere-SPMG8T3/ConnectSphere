@@ -264,51 +264,79 @@ describe("ProfileView", () => {
     expect(el.textContent).toContain("Event Coordinator");
   });
 
-  // SCRUM-50 AC3: internal staff see a department, organisers an organisation, attendees neither.
-  it("shows the department and no organisation for internal staff", async () => {
-    const { el } = await mountProfileView({
-      id: "u2",
-      full_name: "Marcus Lim",
-      email: "coordinator@connectsphere.dev",
-      role: "event_coordinator",
-      roles: ["event_coordinator"],
-      department: "Event Planning",
-      organisation_name: null,
-    });
-
-    expect(el.textContent).toContain("Department");
-    expect(el.textContent).toContain("Event Planning");
-    expect(el.textContent).not.toContain("Organisation");
-  });
-
-  it("shows the organisation and no department for an Event Organiser", async () => {
-    const { el } = await mountProfileView({
-      id: "u1",
-      full_name: "Olivia Tan",
-      email: "organiser@connectsphere.dev",
-      role: "event_organiser",
-      roles: ["event_organiser"],
-      organisation_name: "Tan & Partners Events",
-      department: null,
-    });
-
-    expect(el.textContent).toContain("Organisation");
-    expect(el.textContent).toContain("Tan & Partners Events");
-    expect(el.textContent).not.toContain("Department");
-  });
-
-  it("shows neither a department nor an organisation for an Attendee", async () => {
+  it("shows that no phone number was provided", async () => {
     const { el } = await mountProfileView({
       id: "u3",
       full_name: "Siti Rahman",
       email: "attendee@connectsphere.dev",
+      phone_number: null,
       role: "attendee",
       roles: ["attendee"],
-      organisation_name: null,
-      department: null,
     });
 
-    expect(el.textContent).not.toContain("Department");
-    expect(el.textContent).not.toContain("Organisation");
+    expect(el.textContent).toContain("Not provided");
+  });
+
+  it("shows the active role in the badge, not every role the account holds", async () => {
+    const { el } = await mountProfileView({
+      id: "u1",
+      full_name: "Marcus Lim",
+      email: "coordinator@connectsphere.dev",
+      role: "venue_staff",
+      roles: ["event_coordinator", "venue_staff"],
+    });
+
+    const badge = [...el.querySelectorAll("span")].find((node) => node.textContent.trim() === "Venue Staff");
+    expect(badge.className).toContain("bg-bauhaus-yellow");
+    const coordinatorBadge = [...el.querySelectorAll("span")].find(
+      (node) => node.textContent.trim() === "Event Coordinator",
+    );
+    expect(coordinatorBadge.className).not.toContain("bg-bauhaus-yellow");
+  });
+
+  // SCRUM-50 AC3: internal staff see a department, organisers an organisation, attendees neither.
+  // Both fields are populated in every case, so these prove the role decides what shows, not
+  // whether a field happens to be null.
+  it.each([
+    ["event_coordinator", { department: true, organisation: false }],
+    ["event_coordinator_lead", { department: true, organisation: false }],
+    ["venue_staff", { department: true, organisation: false }],
+    ["tech_support", { department: true, organisation: false }],
+    ["safety_officer", { department: true, organisation: false }],
+    ["event_organiser", { department: false, organisation: true }],
+    ["attendee", { department: false, organisation: false }],
+  ])("shows the right details for %s when both fields hold a value", async (role, shown) => {
+    const { el } = await mountProfileView({
+      id: "u2",
+      full_name: "Marcus Lim",
+      email: "someone@connectsphere.dev",
+      role,
+      roles: [role],
+      department: "Event Planning",
+      organisation_name: "Tan & Partners Events",
+    });
+
+    expect(el.textContent.includes("Department")).toBe(shown.department);
+    expect(el.textContent.includes("Event Planning")).toBe(shown.department);
+    expect(el.textContent.includes("Organisation")).toBe(shown.organisation);
+    expect(el.textContent.includes("Tan & Partners Events")).toBe(shown.organisation);
+  });
+
+  it("follows the active role for an account that holds several roles", async () => {
+    const profile = {
+      id: "u1",
+      full_name: "Olivia Tan",
+      email: "organiser@connectsphere.dev",
+      roles: ["event_organiser", "attendee"],
+      organisation_name: "Tan & Partners Events",
+    };
+
+    const asAttendee = await mountProfileView({ ...profile, role: "attendee" });
+    expect(asAttendee.el.textContent).not.toContain("Organisation");
+    expect(asAttendee.el.textContent).not.toContain("Tan & Partners Events");
+
+    document.body.innerHTML = "";
+    const asOrganiser = await mountProfileView({ ...profile, role: "event_organiser" });
+    expect(asOrganiser.el.textContent).toContain("Tan & Partners Events");
   });
 });
