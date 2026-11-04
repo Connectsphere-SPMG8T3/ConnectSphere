@@ -61,9 +61,11 @@ def demo_name(story_id: str, label: str) -> str:
     return f"{DEMO_PREFIX}{story_id} · {label}"
 
 
-def demo_email(story_id: str) -> str:
-    """The address a sign-up story's card has the presenter type, deleted on reset."""
-    return f"demo+{story_id.lower()}{DEMO_EMAIL_DOMAIN}"
+def demo_email(story_id: str, extra: str | None = None) -> str:
+    """The address a sign-up story's card has the presenter type, or with `extra` an
+    attendee a story signs up itself (demo+86-a@…). Both are deleted on reset."""
+    suffix = f"-{extra}" if extra else ""
+    return f"demo+{story_id.lower()}{suffix}{DEMO_EMAIL_DOMAIN}"
 
 
 def today_sgt() -> date:
@@ -102,7 +104,8 @@ def delete_story(story_id: str) -> int:
     deleted = len(db_query(f"delete from public.events where name like '{pattern}' returning id"))
     db_query(f"delete from public.equipment where name like '{pattern}'")
     db_query(f"delete from public.venues where name like '{pattern}'")
-    db_query(f"delete from auth.users where email = '{demo_email(story_id)}'")
+    db_query(f"delete from auth.users where email = '{demo_email(story_id)}' "
+             f"or email like '{demo_email(story_id, '%')}'")
     return deleted
 
 
@@ -141,6 +144,8 @@ def main() -> int:
     parser.add_argument("--api", default="http://localhost:8000/api/v1")
     args = parser.parse_args()
 
+    import scripts.demo_stories  # noqa: F401  registers the stories
+
     with httpx.Client(timeout=30) as client:
         ctx = Context(api=args.api, client=client)
         try:
@@ -152,4 +157,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Through the imported module, so the stories register in the registry main() reads.
+    from scripts.demo_data import main as registered_main
+    raise SystemExit(registered_main())

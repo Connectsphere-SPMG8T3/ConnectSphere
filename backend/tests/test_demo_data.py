@@ -95,7 +95,7 @@ def test_reset_deletes_only_that_story(sql, registry):
     add("55")
     demo_data.reset(object(), ["55"])
     deletes = [s for s in sql if s.lstrip().lower().startswith("delete")]
-    assert deletes and all("Demo · 55 · %" in s or "demo+55@" in s for s in deletes)
+    assert deletes and all("Demo · 55 · %" in s or "demo+55@" in s or "demo+55-%" in s for s in deletes)
     assert built == ["55"]
 
 
@@ -109,3 +109,10 @@ def test_delete_story_removes_bookings_before_events(sql):
 def test_delete_story_removes_its_sign_up_account(sql):
     demo_data.delete_story("CR-99")
     assert any("delete from auth.users" in s and "demo+cr-99@connectsphere.dev" in s for s in sql)
+
+
+def test_delete_story_removes_its_extra_attendee_accounts(sql):
+    """Waitlist and registration stories sign up demo+<id>-a@…, demo+<id>-b@… attendees."""
+    demo_data.delete_story("86")
+    assert any("delete from auth.users" in s and "demo+86-%@connectsphere.dev" in s for s in sql)
+    assert demo_data.demo_email("86", "a") == "demo+86-a@connectsphere.dev"
