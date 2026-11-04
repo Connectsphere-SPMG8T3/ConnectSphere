@@ -119,3 +119,45 @@ def test_the_coordinator_is_unassigned_until_one_is_assigned_then_named(client, 
     assert bodies[0]["coordinator"] is None and bodies[0]["coordinator_id"] is None
     assert bodies[1]["coordinator"]["full_name"] == "Marcus Lim"
     assert bodies[2]["coordinator"]["full_name"] == "Priya Nair"
+
+
+# AC5 (CR-109 AC4): each venue's preparation stage, once the event is Confirmed, never the note.
+def preparation(stage, note="secret staff preparation note"):
+    return {"stage": stage, "note": note, "updated_at": "2026-11-10T09:00:00+08:00",
+            "updater": {"full_name": "Venue Staff Member"}}
+
+
+def test_each_venue_shows_its_preparation_stage_once_the_event_is_in_preparation(
+        client, auth_headers, authenticate_as, monkeypatch):
+    bookings = [booking_row("b-1", preparation=preparation("in_progress")), booking_row("b-2")]
+
+    response = read(client, auth_headers, authenticate_as, monkeypatch, event_row("preparation"), bookings)
+
+    assert response.status_code == 200
+    assert [v["preparation_stage"] for v in response.json()["organiser_venues"]] == ["in_progress", "not_started"]
+
+
+def test_a_confirmed_event_with_nothing_recorded_shows_not_started(client, auth_headers, authenticate_as, monkeypatch):
+    response = read(client, auth_headers, authenticate_as, monkeypatch, event_row("confirmed"), [booking_row()])
+
+    assert response.json()["organiser_venues"][0]["preparation_stage"] == "not_started"
+
+
+def test_the_preparation_note_and_who_saved_it_never_reach_the_organiser(
+        client, auth_headers, authenticate_as, monkeypatch):
+    bookings = [booking_row(preparation=preparation("completed"))]
+
+    response = read(client, auth_headers, authenticate_as, monkeypatch, event_row("preparation"), bookings)
+
+    assert response.json()["organiser_venues"][0]["preparation_stage"] == "completed"
+    assert "secret staff preparation note" not in response.text
+    assert "Venue Staff Member" not in response.text
+
+
+def test_no_preparation_stage_while_the_event_is_back_in_planning(client, auth_headers, authenticate_as, monkeypatch):
+    # CR-109 AC7: progress is kept when the event returns to Planning, but it isn't shown until confirmed again.
+    bookings = [booking_row(preparation=preparation("completed"))]
+
+    response = read(client, auth_headers, authenticate_as, monkeypatch, event_row("planning"), bookings)
+
+    assert response.json()["organiser_venues"][0]["preparation_stage"] is None
