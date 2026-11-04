@@ -226,7 +226,7 @@ Regressions for DEFECTS D86, against §6.2 (QA-19, QA-24) and §9 item 140.
 |---|---|---|---|---|---|---|---|---|---|
 | TC-EVENT-045 | DEFECTS D86, §6.2 | A draft with a purpose, date and times, one complete space, and no total attendance | `POST /events/{id}/submit`; set the attendance; submit again | Space: 20 pax, theatre | `422` naming only `expected_attendance`, and the event stays a draft; after the attendance is set, `200` | Integration | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1019-api-db-78ab129.md) |
 | TC-EVENT-046 | DEFECTS D86, §6.2 | Signed in as `organiser@connectsphere.dev`, on `/events/new` | Fill in every required field and a complete space, leave **Total expected attendance** empty, click **Submit request** | — | "Enter expected attendance of at least 1." shows under the field, no confirmation dialog opens and nothing is sent | E2E | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1020-e2e-78ab129.md) |
-| TC-EVENT-047 | DEFECTS D86, §9 item 140 | Same page | Read the **Total expected attendance** field at desktop and phone width, with and without its error showing | — | The label and "Everyone expected across the whole event. Space numbers don't need to add up to this." read clearly, and the help text sits tidily with the error | Manual | 🟠 | 2026-11-04 | |
+| TC-EVENT-047 | DEFECTS D86 | Same page | Read the **Total expected attendance** field at desktop and phone width, with and without its error showing | — | The label reads clearly and the error sits tidily under the field | Manual | 🟠 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1025-manual-bdc0fe9.md) |
 
 ## Event comments (SCRUM-61)
 

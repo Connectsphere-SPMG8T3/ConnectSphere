@@ -512,10 +512,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnl
             <BauhausInput v-model="form.endTime" label="Proposed end time" type="time" required :error="fieldErrors.endTime" :flag="flagFor('endTime')" />
           </div>
           <div class="sm:col-span-2 grid gap-6 sm:grid-cols-2">
-            <div>
-              <BauhausInput v-model="form.expectedAttendance" label="Total expected attendance" type="number" required :error="fieldErrors.expectedAttendance" :flag="flagFor('expectedAttendance')" />
-              <p class="mt-2 text-sm font-medium text-ink/70">Everyone expected across the whole event. Space numbers don't need to add up to this.</p>
-            </div>
+            <BauhausInput v-model="form.expectedAttendance" label="Total expected attendance" type="number" required :error="fieldErrors.expectedAttendance" :flag="flagFor('expectedAttendance')" />
           </div>
           <div class="sm:col-span-2 border-4 border-ink bg-bauhaus-yellow/20 p-4 shadow-hard sm:p-6">
             <div class="flex flex-wrap items-start justify-between gap-3">

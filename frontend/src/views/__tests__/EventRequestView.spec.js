@@ -649,12 +649,6 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     expect(el.textContent).not.toContain("Enter expected attendance of at least 1.");
   });
 
-  it("explains that space numbers need not add up to the total attendance", async () => {
-    const { el } = await mountNewForm();
-
-    expect(el.textContent).toContain("Everyone expected across the whole event. Space numbers don't need to add up to this.");
-  });
-
   it("removes a persisted space through the event API", async () => {
     const spaces = [
       { id: "space-1", version: 1, label: "Main venue", expected_pax: 40, layout_preference: "theatre", facilities_required: [] },
