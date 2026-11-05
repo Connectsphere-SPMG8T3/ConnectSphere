@@ -115,7 +115,7 @@ Plain `pytest` and `npm test` don't measure coverage, so day-to-day runs of a si
 
 The backend has no exclusions.
 
-**Where the gaps are** (2026-10-06; the backend reached 100% on `chore/mutation-test-gaps`, 2026-11-05):
+**Where the gaps are** (2026-10-06; both stacks reached 100% on `chore/mutation-test-gaps`, 2026-11-05):
 
 - **Backend.** Most of the 130 uncovered lines are in the three repository modules: venues 44%, equipment 62%, events 66%. These are the Supabase query wrappers that the mocked tests replace. Covering them honestly means tests against a real database (item 3), not more mocks. Two smaller gaps:
   - `app/db/session.py` (0%) was imported nowhere, so it was deleted.
