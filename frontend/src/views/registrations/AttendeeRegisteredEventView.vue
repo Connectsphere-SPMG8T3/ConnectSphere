@@ -25,7 +25,10 @@ const breadcrumbItems = computed(() => [
 ]);
 const canWithdraw = computed(() => canWithdrawRegistration(registration.value));
 
-onMounted(() => registrationStore.loadMyRegistrations().catch(() => {}));
+onMounted(() => {
+  registrationStore.registrationActionError = null;
+  registrationStore.loadMyRegistrations().catch(() => {});
+});
 
 async function withdrawRegistration() {
   if (!registration.value || !canWithdrawRegistration(registration.value) || registrationStore.isWithdrawing) return;
@@ -96,8 +99,8 @@ async function leaveWaitlist() {
           timeZone: event.event_timezone,
         }).format(new Date(registration.invitation_expires_at)) }}.
       </p>
-      <p v-if="registrationStore.myRegistrationsError" role="alert" class="mt-4 text-sm font-bold">
-        {{ registrationStore.myRegistrationsError }}
+      <p v-if="registrationStore.registrationActionError" role="alert" class="mt-4 text-sm font-bold">
+        {{ registrationStore.registrationActionError }}
       </p>
       <BauhausButton
         v-if="registration.status === 'invited'"

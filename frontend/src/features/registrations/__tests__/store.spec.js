@@ -226,7 +226,8 @@ describe("registration store failures", () => {
 
     await expect(store[action]("registration-1")).rejects.toBe(failure);
 
-    expect(store.myRegistrationsError).toBe(shown);
+    expect(store.registrationActionError).toBe(shown);
+    expect(store.myRegistrationsError).toBeNull();
     expect(store.isUpdatingRegistration).toBe(false);
   });
 });

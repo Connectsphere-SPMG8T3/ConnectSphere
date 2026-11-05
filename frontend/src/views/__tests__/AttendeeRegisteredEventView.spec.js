@@ -1,4 +1,4 @@
-import { createPinia, setActivePinia } from "pinia";
+import { createPinia, getActivePinia, setActivePinia } from "pinia";
 import { createApp, h, nextTick } from "vue";
 import { RouterView } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -341,21 +341,57 @@ describe("AttendeeRegisteredEventView invitation", () => {
     expect(el.textContent).toContain("20 Oct 2099");
   });
 
-  it("shows why accepting failed", async () => {
+  const expectInvitationStillOpen = (el) => {
+    expect(el.textContent).toContain("Completed Design Forum");
+    expect(button(el, "Accept invitation")).toBeTruthy();
+    expect(button(el, "Decline invitation")).toBeTruthy();
+  };
+
+  it("keeps the invitation open and shows why accepting failed (D90)", async () => {
     registrationsApi.acceptInvitation.mockRejectedValue(new Error("This invitation has expired."));
     const el = await openInvitation();
 
     button(el, "Accept").click();
 
     await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent).toContain("This invitation has expired."));
+    expectInvitationStillOpen(el);
   });
 
-  it("shows why declining failed", async () => {
+  it("keeps the invitation open and shows why declining failed (D90)", async () => {
     registrationsApi.leaveWaitlist.mockRejectedValue(new Error("Waitlist entry not found."));
     const el = await openInvitation();
 
     button(el, "Decline").click();
 
     await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent).toContain("Waitlist entry not found."));
+    expectInvitationStillOpen(el);
+  });
+
+  it("still replaces the page when the registrations can't be loaded", async () => {
+    registrationsApi.myRegistrations.mockRejectedValue(new Error("Service unavailable"));
+
+    const { el } = await mountAt("/dashboard/attendee/events/event-1");
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent).toContain("Service unavailable"));
+    expect(button(el, "Accept invitation")).toBeUndefined();
+  });
+
+  it("doesn't carry a failed action over to the next visit (D90)", async () => {
+    registrationsApi.acceptInvitation.mockRejectedValue(new Error("This invitation has expired."));
+    const el = await openInvitation();
+    button(el, "Accept").click();
+    await vi.waitFor(() => expect(el.textContent).toContain("This invitation has expired."));
+    const { useRegistrationStore } = await import("@/features/registrations/store");
+    const store = useRegistrationStore();
+    mountedApps.splice(0).forEach((app) => app.unmount());
+
+    const { default: View } = await import("@/views/registrations/AttendeeRegisteredEventView.vue");
+    const { default: router } = await import("@/router");
+    const next = document.createElement("div");
+    const app = createApp(View).use(getActivePinia()).use(router);
+    app.mount(next);
+    mountedApps.push(app);
+
+    expect(store.registrationActionError).toBeNull();
   });
 });
