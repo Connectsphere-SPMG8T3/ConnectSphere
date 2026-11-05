@@ -16,6 +16,9 @@ export const useRegistrationStore = defineStore("registrations", {
     isUpdatingRegistration: false,
     error: null,
     myRegistrationsError: null,
+    // A failed accept or decline, shown beside the invitation. Kept apart from
+    // the load error, which replaces the page (D90).
+    registrationActionError: null,
   }),
 
   actions: {
@@ -114,7 +117,7 @@ export const useRegistrationStore = defineStore("registrations", {
     async acceptInvitation(registrationId) {
       const auth = useAuthStore();
       this.isUpdatingRegistration = true;
-      this.myRegistrationsError = null;
+      this.registrationActionError = null;
       try {
         const result = await auth.withSession((token) =>
           registrationsApi.acceptInvitation(registrationId, token),
@@ -122,7 +125,7 @@ export const useRegistrationStore = defineStore("registrations", {
         await this.loadMyRegistrations();
         return result;
       } catch (error) {
-        this.myRegistrationsError = error.message || "The invitation could not be accepted.";
+        this.registrationActionError = error.message || "The invitation could not be accepted.";
         throw error;
       } finally {
         this.isUpdatingRegistration = false;
@@ -132,12 +135,12 @@ export const useRegistrationStore = defineStore("registrations", {
     async leaveWaitlist(registrationId) {
       const auth = useAuthStore();
       this.isUpdatingRegistration = true;
-      this.myRegistrationsError = null;
+      this.registrationActionError = null;
       try {
         await auth.withSession((token) => registrationsApi.leaveWaitlist(registrationId, token));
         await this.loadMyRegistrations();
       } catch (error) {
-        this.myRegistrationsError = error.message || "You could not leave the waitlist.";
+        this.registrationActionError = error.message || "You could not leave the waitlist.";
         throw error;
       } finally {
         this.isUpdatingRegistration = false;

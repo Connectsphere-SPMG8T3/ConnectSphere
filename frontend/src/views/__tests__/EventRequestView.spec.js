@@ -930,3 +930,158 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
     ]);
   });
 });
+
+describe("EventRequestView leaving and required details", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(TODAY);
+    document.body.innerHTML = "";
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.useRealTimers();
+  });
+
+  const draft = (overrides = {}) => returnedEvent({ status: "draft", amendment: null, ...overrides });
+  const edit = async (el, label, value) => {
+    const control = controlFor(el, label);
+    control.value = value;
+    control.dispatchEvent(new Event("input"));
+    await nextTick();
+  };
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore" }).format(TODAY);
+  const rename = async (el) => {
+    const name = el.querySelector("input");
+    name.value = "New name";
+    name.dispatchEvent(new Event("input"));
+    await nextTick();
+  };
+
+  it("leaves at once when nothing has changed", async () => {
+    const { el, router } = await mountForm([], draft());
+
+    buttonByText(el, "Cancel").click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-organiser"));
+    expect(document.querySelector('[aria-label="Leave page"]')).toBeNull();
+  });
+
+  it("asks before leaving unsaved changes, and can stay", async () => {
+    const { el, router } = await mountForm([], draft());
+    await rename(el);
+
+    buttonByText(el, "Cancel").click();
+    await nextTick();
+    document.querySelector('[aria-label="Stay on page"]').click();
+    await nextTick();
+
+    expect(document.querySelector('[aria-label="Leave page"]')).toBeNull();
+    expect(router.currentRoute.value.name).toBe("event-new");
+  });
+
+  it("leaves unsaved changes once confirmed", async () => {
+    const { el, router } = await mountForm([], draft());
+    await rename(el);
+
+    buttonByText(el, "Cancel").click();
+    await nextTick();
+    document.querySelector('[aria-label="Leave page"]').click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("dashboard-organiser"));
+  });
+
+  it("warns the browser only when there are unsaved changes", async () => {
+    const { el } = await mountForm([], draft());
+    const unload = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+
+    expect(unload()).toBe(false);
+    await rename(el);
+    expect(unload()).toBe(true);
+  });
+
+  it("explains each schedule problem on the field it belongs to", async () => {
+    const { el } = await mountForm([], returnedEvent({ amendment: null }));
+    await edit(el, "Proposed event date", today);
+    await edit(el, "Proposed start time", "12:00");
+    await edit(el, "Proposed end time", "11:00");
+
+    buttonByText(el, "Resubmit").click();
+    await nextTick();
+
+    expect(el.textContent).toContain("Event date must be after today.");
+    expect(el.textContent).toContain("End time must be after the start time.");
+  });
+
+  it("asks for the registration details when registration is on", async () => {
+    const event = returnedEvent({ amendment: null, registration_enabled: true });
+    const { el } = await mountForm([], event);
+
+    buttonByText(el, "Resubmit").click();
+    await nextTick();
+
+    expect(el.textContent).toContain("Enter a registration capacity.");
+    expect(el.textContent).toContain("Enter when registration should open.");
+    expect(el.textContent).toContain("Enter when registration should close.");
+  });
+
+  it("refuses registration that opens today", async () => {
+    const { el } = await mountForm([], returnedEvent({
+      amendment: null, registration_enabled: true, registration_capacity: 40,
+      registration_closes_at: "2026-11-30T01:00:00Z",
+    }));
+    await edit(el, "Registration opens", `${today}T09:00`);
+
+    buttonByText(el, "Resubmit").click();
+    await nextTick();
+
+    expect(eventsApi.resubmit).not.toHaveBeenCalled();
+    expect(el.textContent).toContain("Registration opening date must be after today.");
+  });
+
+  it("keeps the resubmit dialog open when the server refuses", async () => {
+    eventsApi.resubmit.mockRejectedValue(new Error("Conflict."));
+    eventsApi.updateSpace.mockResolvedValue({ id: "space-1", version: 2 });
+    const { el, router } = await mountForm([], returnedEvent({ amendment: null }));
+
+    buttonByText(el, "Resubmit").click();
+    await nextTick();
+    const note = document.querySelector("#resubmit-note");
+    note.value = "Updated";
+    note.dispatchEvent(new Event("input"));
+    await nextTick();
+    document.querySelector('button[aria-label="Resubmit request"]').click();
+
+    await vi.waitFor(() => expect(eventsApi.resubmit).toHaveBeenCalled());
+    await nextTick();
+    expect(document.querySelector('button[aria-label="Resubmit request"]')).not.toBeNull();
+    expect(router.currentRoute.value.name).toBe("event-new");
+  });
+
+  it("shows why the request could not be opened", async () => {
+    eventsApi.get.mockRejectedValue(new Error("Event not found."));
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const auth = useAuthStore();
+    auth.token = "access";
+    auth.refreshToken = "refresh";
+    auth.profile = { id: "organiser-1", full_name: "Priya Nair", role: "event_organiser" };
+    auth.sessionVerified = true;
+    const { default: router } = await import("@/router");
+    await router.push({ name: "event-new", query: { id: "event-1" } });
+    const { default: View } = await import("@/views/events/EventRequestView.vue");
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const app = createApp(View).use(pinia).use(router);
+    app.mount(el);
+    mountedApps.push(app);
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Event not found."));
+  });
+});

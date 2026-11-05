@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { equipmentApi } from "@/services/api";
+import { ApiError, equipmentApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
@@ -329,6 +329,78 @@ describe("TechSupportDashboard availability check items (D47)", () => {
     equipmentApi.requestList.mockResolvedValue({ lines: [] });
     equipmentApi.catalogue.mockResolvedValue({ items: CATALOGUE });
     equipmentApi.checkEquipmentAvailability.mockResolvedValue({ sufficient: true, items: [] });
+  });
+
+  async function readyForm() {
+    const { el } = await mountDashboard({ tab: "availability" });
+    await vi.waitFor(() => expect(pickers(el)[0].options).toHaveLength(3));
+    return el;
+  }
+
+  async function setWindow(el, start, end) {
+    const [startAt, endAt] = el.querySelectorAll('input[type="datetime-local"]');
+    startAt.value = start;
+    startAt.dispatchEvent(new Event("input"));
+    endAt.value = end;
+    endAt.dispatchEvent(new Event("input"));
+    await nextTick();
+  }
+
+  const check = async (el) => {
+    button(el, "Check").click();
+    await settle();
+  };
+
+  it("keeps the last row and removes any other", async () => {
+    const el = await readyForm();
+
+    button(el, "Remove").click();
+    await nextTick();
+    expect(pickers(el)).toHaveLength(1);
+
+    button(el, "Add item").click();
+    await nextTick();
+    expect(pickers(el)).toHaveLength(2);
+    button(el, "Remove").click();
+    await nextTick();
+    expect(pickers(el)).toHaveLength(1);
+  });
+
+  it("refuses a window that doesn't end after it starts", async () => {
+    const el = await readyForm();
+    await setWindow(el, "2031-05-01T10:00", "2031-05-01T10:00");
+
+    await check(el);
+
+    expect(el.textContent).toContain("End time must be later than the start time.");
+    expect(equipmentApi.checkEquipmentAvailability).not.toHaveBeenCalled();
+  });
+
+  it("refuses a quantity below one", async () => {
+    const el = await readyForm();
+    await setWindow(el, "2031-05-01T10:00", "2031-05-01T12:00");
+    const quantity = el.querySelector('input[type="number"]');
+    quantity.value = "0";
+    quantity.dispatchEvent(new Event("input"));
+    await nextTick();
+
+    await check(el);
+
+    expect(el.textContent).toContain("Choose equipment and enter a quantity of at least 1 for every item.");
+  });
+
+  it.each([
+    [new ApiError("Nope", 403), "Access denied. Only Technical Support Staff can check equipment availability."],
+    [new ApiError("Service unavailable", 503), "Service unavailable"],
+    [new Error("Failed to fetch"), "Unable to check equipment availability. Please try again."],
+  ])("explains a failed check", async (failure, message) => {
+    equipmentApi.checkEquipmentAvailability.mockRejectedValue(failure);
+    const el = await readyForm();
+    await setWindow(el, "2031-05-01T10:00", "2031-05-01T12:00");
+
+    await check(el);
+
+    await vi.waitFor(() => expect(el.textContent).toContain(message));
   });
 
   it("offers every item in the live catalogue, not a fixed list", async () => {

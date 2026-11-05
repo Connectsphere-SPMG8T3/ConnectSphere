@@ -738,3 +738,102 @@ describe("CoordinatorEventView technical preparation (CR-110 AC4)", () => {
     expect(el.querySelector('[data-testid="technical-preparation-summary"]')).toBeNull();
   });
 });
+
+describe("CoordinatorEventView refused decisions", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  const refused = new ApiError("The request changed. Reload.", 409);
+  const TWO_SPACES = [
+    { id: "space-a", label: "Main hall", expected_pax: 50, layout_preference: "theatre", facilities_required: [], is_primary: false },
+    { id: "space-b", label: "Breakout room", expected_pax: 20, layout_preference: "classroom", facilities_required: [], is_primary: false },
+  ];
+  const alertShown = (el) =>
+    vi.waitFor(() => expect(el.textContent).toContain("The request changed. Reload."));
+
+  it("shows why an approval was refused", async () => {
+    eventsApi.approve.mockRejectedValue(refused);
+    const el = await mountView(eventResponse());
+
+    button("Approve request").click();
+    await nextTick();
+    button("Approve").click();
+
+    await alertShown(el);
+  });
+
+  it("keeps the reject dialog open with the reason typed", async () => {
+    eventsApi.reject.mockRejectedValue(refused);
+    await mountView(eventResponse());
+
+    button("Open reject dialog").click();
+    await nextTick();
+    const reason = document.querySelector("#reject-reason");
+    reason.value = "Not suitable";
+    reason.dispatchEvent(new Event("input"));
+    await nextTick();
+    button("Reject request").click();
+
+    await vi.waitFor(() => expect(eventsApi.reject).toHaveBeenCalled());
+    await nextTick();
+    expect(document.querySelector("#reject-reason").value).toBe("Not suitable");
+  });
+
+  it("keeps the return dialog open with the message typed", async () => {
+    eventsApi.returnForAmendment.mockRejectedValue(refused);
+    await mountView(eventResponse());
+
+    button("Open return dialog").click();
+    await nextTick();
+    const message = document.querySelector("#return-message");
+    message.value = "Please add a purpose";
+    message.dispatchEvent(new Event("input"));
+    await nextTick();
+    const buttons = document.querySelectorAll('[role="dialog"] button');
+    buttons[buttons.length - 1].click();
+
+    await vi.waitFor(() => expect(eventsApi.returnForAmendment).toHaveBeenCalled());
+    await nextTick();
+    expect(document.querySelector("#return-message").value).toBe("Please add a purpose");
+  });
+
+  it("shows why the primary venue could not be changed", async () => {
+    eventsApi.setPrimarySpace.mockRejectedValue(refused);
+    const el = await mountView(eventResponse({ status: "planning", spaces: TWO_SPACES }));
+
+    el.querySelector('button[aria-label="Make Breakout room the primary venue"]').click();
+
+    await alertShown(el);
+  });
+
+  it("shows venue staff's internal preparation note to the coordinator", async () => {
+    const booking = {
+      id: "b1", venue_id: "v1", venue_name: "Hall A", status: "approved",
+      preparation: { stage: "in_progress", note: "Chairs arrive at nine" },
+    };
+
+    const el = await mountView(eventResponse({ status: "preparation", venue_booking: booking, venue_bookings: [booking] }));
+
+    expect(el.textContent).toContain("Internal note: Chairs arrive at nine");
+  });
+
+  it("shows the note on a space's own booking too", async () => {
+    const booking = {
+      id: "b1", event_space_request_id: "space-a", venue_id: "v1", venue_name: "Hall A", status: "approved",
+      preparation: { stage: "in_progress", note: "Chairs arrive at nine" },
+    };
+
+    const el = await mountView(eventResponse({
+      status: "preparation", spaces: TWO_SPACES, venue_booking: booking, venue_bookings: [booking],
+    }));
+
+    expect(el.textContent).toContain("Internal note: Chairs arrive at nine");
+  });
+});

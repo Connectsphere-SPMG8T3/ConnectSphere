@@ -346,3 +346,27 @@ describe("VenueDetailView: blocking (SCRUM-51)", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 });
+
+describe("VenueDetailView failure", () => {
+  it("shows why the venue could not be loaded", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const authStore = useAuthStore();
+    authStore.token = "access";
+    authStore.refreshToken = "refresh";
+    authStore.profile = { id: "s1", role: "venue_staff", full_name: "Val Staff" };
+    authStore.sessionVerified = true;
+    authStore.withSession = () => Promise.reject(new Error("Venue not found."));
+    const { default: router } = await import("@/router");
+    await router.push(`/venues/${VENUE_ID}`);
+    await router.isReady();
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const app = createApp(VenueDetailView).use(pinia).use(router);
+    app.mount(el);
+    apps.push(app);
+    await drain();
+
+    expect(el.querySelector('[role="alert"]').textContent).toContain("Venue not found.");
+  });
+});

@@ -391,3 +391,22 @@ describe("Nav venue calendar link (SCRUM-57)", () => {
     expect(el.querySelector('a[aria-label="Venue calendar"]')).toBeNull();
   });
 });
+
+describe("Nav signing out", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("ends the session and returns to the sign-in page", async () => {
+    authApi.logout.mockResolvedValue(null);
+    const { el, router, authStore } = await mountNav({ id: "c1", role: "event_coordinator", full_name: "Marcus Lim" });
+
+    el.querySelector('button[aria-label="Logout"]').click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("login"));
+    expect(authApi.logout).toHaveBeenCalledWith("access");
+    expect(authStore.isAuthenticated).toBe(false);
+  });
+});

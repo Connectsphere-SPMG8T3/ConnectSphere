@@ -636,3 +636,56 @@ def test_an_organiser_does_not_see_a_bookings_flag_or_what_it_replaces(monkeypat
     response = service.read(EVENT_ID, event['coordinator_id'], 'event_coordinator')
     for shown in [response.venue_booking, *response.venue_bookings]:
         assert (shown.flag, shown.flag_reason) == (flag, booking['flag_reason'])
+
+
+@pytest.fixture()
+def requested_rows(monkeypatch):
+    """Reads that find only the event and space in the request, so the ownership check
+    fails if a route looks up anything else."""
+    space = {
+        "id": SPACE_ID, "event_id": EVENT_ID, "label": "Existing room", "expected_pax": 10,
+        "layout_preference": "classroom", "facilities_required": [], "starts_at": None, "ends_at": None,
+        "version": 1,
+    }
+    monkeypatch.setattr(repository, "get_event", lambda event_id: event_row() if event_id == EVENT_ID else None)
+    monkeypatch.setattr(repository, "get_space", lambda space_id: dict(space) if space_id == SPACE_ID else None)
+    return space
+
+
+def test_creating_a_space_checks_ownership_of_the_requested_event(
+    client, auth_headers, authenticate_as, monkeypatch, requested_rows
+):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    monkeypatch.setattr(repository, "create_space", lambda event_id, values: requested_rows)
+
+    response = client.post(
+        f"/api/v1/events/{EVENT_ID}/spaces",
+        json={"label": "Room", "expected_pax": 10, "layout_preference": "classroom"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+
+
+def test_updating_a_space_checks_ownership_of_the_requested_space(
+    client, auth_headers, authenticate_as, monkeypatch, requested_rows
+):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    monkeypatch.setattr(repository, "update_space", lambda space_id, values, version: requested_rows)
+
+    response = client.patch(
+        f"/api/v1/events/{EVENT_ID}/spaces/{SPACE_ID}", json={"label": "Renamed"}, headers=auth_headers
+    )
+
+    assert response.status_code == 200
+
+
+def test_deleting_a_space_checks_ownership_of_the_requested_space(
+    client, auth_headers, authenticate_as, monkeypatch, requested_rows
+):
+    authenticate_as("event_organiser", user_id=ORGANISER_ID)
+    monkeypatch.setattr(repository, "delete_space", lambda space_id, version: True)
+
+    response = client.delete(f"/api/v1/events/{EVENT_ID}/spaces/{SPACE_ID}", headers=auth_headers)
+
+    assert response.status_code == 204

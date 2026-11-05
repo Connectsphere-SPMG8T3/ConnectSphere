@@ -203,3 +203,89 @@ describe("useVenueEditStore", () => {
     });
   });
 });
+
+describe("venue edit store when the venue changes mid-request", () => {
+  let store;
+  let resolve;
+  let reject;
+
+  const pending = () =>
+    new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    signedInVenueStaff();
+    store = useVenueEditStore();
+  });
+
+  it("ignores a venue that arrives after another was opened", async () => {
+    venuesApi.get.mockReturnValueOnce(pending());
+    const first = store.load("venue-1");
+    store.venueId = "venue-2";
+
+    resolve(VENUE);
+    await first;
+
+    expect(store.venue).toBeNull();
+  });
+
+  it("ignores a failed load after another venue was opened", async () => {
+    venuesApi.get.mockReturnValueOnce(pending());
+    const first = store.load("venue-1");
+    store.venueId = "venue-2";
+
+    reject(new Error("Gone"));
+    await first;
+
+    expect(store.error).toBeNull();
+  });
+
+  it("clears one venue's history before reading another's", async () => {
+    store.venueId = "venue-1";
+    store.history = [{ id: "old" }];
+    venuesApi.history.mockReturnValueOnce(pending());
+
+    const reading = store.loadHistory("venue-2");
+    expect(store.history).toEqual([]);
+
+    resolve({ entries: [{ id: "new" }] });
+    await expect(reading).resolves.toEqual([{ id: "new" }]);
+  });
+
+  it("passes on a failed history read for the open venue", async () => {
+    store.venueId = "venue-1";
+    venuesApi.history.mockRejectedValueOnce(new Error("Gone"));
+
+    await expect(store.loadHistory("venue-1")).rejects.toThrow("Gone");
+  });
+
+  it("ignores a failed history read after another venue was opened", async () => {
+    store.venueId = "venue-1";
+    store.history = [{ id: "current" }];
+    venuesApi.history.mockReturnValueOnce(pending());
+    const reading = store.loadHistory("venue-1");
+    store.venueId = "venue-2";
+
+    reject(new Error("Gone"));
+
+    await expect(reading).resolves.toEqual([{ id: "current" }]);
+  });
+
+  it("keeps the current history when an older read answers late", async () => {
+    store.venueId = "venue-1";
+    store.history = [{ id: "current" }];
+    venuesApi.history.mockReturnValueOnce(pending());
+    const reading = store.loadHistory("venue-1");
+    store.venueId = "venue-2";
+    store.history = [{ id: "other" }];
+
+    resolve({ entries: [{ id: "late" }] });
+
+    await expect(reading).resolves.toEqual([{ id: "other" }]);
+    expect(store.history).toEqual([{ id: "other" }]);
+  });
+});

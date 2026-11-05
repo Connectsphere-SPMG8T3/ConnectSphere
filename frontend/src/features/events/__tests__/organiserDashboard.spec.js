@@ -226,3 +226,15 @@ describe("organiser dashboard grouping and actions", () => {
     expect(getOrganiserAction(event({ status: "confirmed" }))).toEqual({ kind: "view", label: "View event" });
   });
 });
+
+describe("organiser board edge cases", () => {
+  it("keeps the order for a sort field it doesn't know", () => {
+    const events = [{ name: "B", status: "draft" }, { name: "A", status: "draft" }];
+
+    expect(sortOrganiserEvents(events, { field: "unknown" }).map((event) => event.name)).toEqual(["B", "A"]);
+  });
+
+  it("has no highlight for a status it doesn't group", () => {
+    expect(organiserBoardTone({ status: "cancelled" })).toBe("plain");
+  });
+});

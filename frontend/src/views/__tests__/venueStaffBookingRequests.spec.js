@@ -3,7 +3,7 @@ import { createApp, nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import VenueStaffBookingRequestsView from "@/views/venues/VenueStaffBookingRequestsView.vue";
-import { venueBookingsApi, venuesApi } from "@/services/api";
+import { ApiError, venueBookingsApi, venuesApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
 vi.mock("@/services/api", async (importOriginal) => ({
@@ -205,6 +205,45 @@ describe("VenueStaffBookingRequestsView", () => {
     el.querySelector('[data-testid="hold-expiry-booking-held"]').parentElement.querySelector("button").click();
     await nextTick();
     expect(el.querySelector('input[type="datetime-local"]')).toBeTruthy();
+  });
+
+  async function openExpiryForm() {
+    const { el } = await mountPage();
+    el.querySelector('[data-testid="hold-expiry-booking-held"]').parentElement.querySelector("button").click();
+    await nextTick();
+    return el;
+  }
+
+  it("closes the expiry form without saving on Cancel", async () => {
+    const el = await openExpiryForm();
+
+    [...el.querySelectorAll("button")].find((node) => node.textContent.trim() === "Cancel").click();
+    await nextTick();
+
+    expect(el.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(venueBookingsApi.changeExpiry).not.toHaveBeenCalled();
+  });
+
+  it("closes the expiry form once the new time is saved", async () => {
+    venueBookingsApi.changeExpiry.mockResolvedValue({});
+    const el = await openExpiryForm();
+
+    el.querySelector('input[type="datetime-local"]').closest("form").dispatchEvent(new Event("submit"));
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+      await nextTick();
+    }
+
+    expect(venueBookingsApi.changeExpiry).toHaveBeenCalled();
+    expect(el.querySelector('input[type="datetime-local"]')).toBeNull();
+  });
+
+  it("shows why the requests could not be loaded", async () => {
+    venuesApi.venueStaffDashboard.mockRejectedValue(new ApiError("Service unavailable", 503));
+
+    const { el } = await mountPage();
+
+    expect(el.querySelector('[role="alert"]').textContent).toContain("Service unavailable");
   });
 });
 
