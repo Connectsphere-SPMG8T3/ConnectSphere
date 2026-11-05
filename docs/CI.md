@@ -4,7 +4,7 @@
 
 This file is the single reference for ConnectSphere's automated checks. It sits apart from `DEFINITION_OF_DONE.md` (which says what *a task* must clear) because CI is a standing property of the repository that changes on its own schedule.
 
-_Last updated: 2026-10-17 — §3: the manual **Mutation testing** workflow, which runs only from the Actions tab and never gates a PR (`chore/mutation-testing`). 2026-10-16 — §3: mutation testing added as a local, non-gating practice (`chore/mutation-testing`, see `MUTATION_TESTING.md`). 2026-10-06 — §1, §4 item 2: both jobs now measure coverage, fail below a floor, and publish a summary and the reports (`chore/coverage-reporting`). Earlier the same day — §4 item 2: the team's coverage target (100% of `backend/app/` and `frontend/src/`, exclusions stated) and how CI will get there; Definition of Done references now point at its new sections and `DEVELOPMENT_WORKFLOW.md` (`chore/docs-scrum-playbook`). 2026-09-28 — §1: both jobs upload a JUnit report as a run artifact, kept 90 days, as the unit suites' execution record (`docs/test-cases/runs/README.md`). 2026-09-27 — §3: Playwright specs and a live-check script now exist, run locally rather than in CI (`chore/automated-live-checks`). 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
+_Last updated: 2026-11-05 — §1 Cost: the repository is public, so Actions runs are free (`chore/mutation-test-gaps`). 2026-10-17 — §3: the manual **Mutation testing** workflow, which runs only from the Actions tab and never gates a PR (`chore/mutation-testing`). 2026-10-16 — §3: mutation testing added as a local, non-gating practice (`chore/mutation-testing`, see `MUTATION_TESTING.md`). 2026-10-06 — §1, §4 item 2: both jobs now measure coverage, fail below a floor, and publish a summary and the reports (`chore/coverage-reporting`). Earlier the same day — §4 item 2: the team's coverage target (100% of `backend/app/` and `frontend/src/`, exclusions stated) and how CI will get there; Definition of Done references now point at its new sections and `DEVELOPMENT_WORKFLOW.md` (`chore/docs-scrum-playbook`). 2026-09-28 — §1: both jobs upload a JUnit report as a run artifact, kept 90 days, as the unit suites' execution record (`docs/test-cases/runs/README.md`). 2026-09-27 — §3: Playwright specs and a live-check script now exist, run locally rather than in CI (`chore/automated-live-checks`). 2026-09-22 — first version, written when `.github/workflows/ci.yml` was added on `chore/ci-pipeline` (PR #25). Same day: recorded the decision not to point CI at the hosted Supabase project (§4 item 3), after checking the live plan and project count._
 
 ---
 
@@ -38,7 +38,7 @@ Neither job reads a repository secret, and nothing in CI touches the hosted Supa
 
 ### Cost
 
-GitHub Free includes 2,000 Actions minutes/month for private repositories; Linux runners bill at $0.006/minute beyond that. A full run bills **2 minutes** — GitHub rounds each job up to a whole minute separately. At roughly 20 PRs a month with a few pushes each, that is about 160 minutes, under 10% of the allowance.
+The repository is public, so runs on GitHub's standard runners are free and don't use a monthly minutes allowance.
 
 ---
 
