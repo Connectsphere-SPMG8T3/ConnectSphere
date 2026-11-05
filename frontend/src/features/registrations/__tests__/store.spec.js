@@ -208,3 +208,25 @@ describe("registration discovery store", () => {
     expect(store.myRegistrations).toEqual([]);
   });
 });
+describe("registration store failures", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ["acceptInvitation", "acceptInvitation", "Invitation expired.", "Invitation expired."],
+    ["acceptInvitation", "acceptInvitation", "", "The invitation could not be accepted."],
+    ["leaveWaitlist", "leaveWaitlist", "Not on the waitlist.", "Not on the waitlist."],
+    ["leaveWaitlist", "leaveWaitlist", "", "You could not leave the waitlist."],
+  ])("%s shows why it failed and rethrows", async (action, apiCall, message, shown) => {
+    const failure = new Error(message);
+    registrationsApi[apiCall].mockRejectedValue(failure);
+    const store = useRegistrationStore();
+
+    await expect(store[action]("registration-1")).rejects.toBe(failure);
+
+    expect(store.myRegistrationsError).toBe(shown);
+    expect(store.isUpdatingRegistration).toBe(false);
+  });
+});

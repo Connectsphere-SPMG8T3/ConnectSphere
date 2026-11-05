@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import CoordinatorDashboard from "@/views/dashboards/CoordinatorDashboard.vue";
 import { ApiError, eventsApi } from "@/services/api";
@@ -486,5 +486,42 @@ describe("CoordinatorDashboard", () => {
 
       expect(el.querySelectorAll("[data-event-card]").length).toBe(3);
     });
+  });
+});
+
+describe("CoordinatorDashboard filters", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    localStorage.clear();
+    vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-30T12:00:00+08:00"));
+    eventsApi.coordinatorDashboard.mockResolvedValue(PAYLOAD);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("flips the sort direction and clears it with the other filters", async () => {
+    const { el, router } = await mountDashboard("/dashboard/coordinator?tab=events&status=planning");
+    const direction = () => el.querySelector('button[aria-label^="Toggle sort direction"]');
+    const before = direction().getAttribute("aria-label");
+
+    direction().click();
+    await flush();
+    expect(direction().getAttribute("aria-label")).not.toBe(before);
+
+    [...el.querySelectorAll("button")].find((node) => node.textContent.trim() === "Clear").click();
+    await flush();
+
+    expect(direction().getAttribute("aria-label")).toBe(before);
+    await vi.waitFor(() => expect(router.currentRoute.value.query.status).toBeUndefined());
+  });
+
+  it("explains an empty board when this server has no dashboard", async () => {
+    eventsApi.coordinatorDashboard.mockRejectedValue(new ApiError("Not found", 404));
+
+    const { el } = await mountDashboard("/dashboard/coordinator?tab=events");
+
+    expect(el.textContent).toContain("The coordinator dashboard endpoint isn't available on this server.");
   });
 });

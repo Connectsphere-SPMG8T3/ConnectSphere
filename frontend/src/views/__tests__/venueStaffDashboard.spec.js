@@ -434,6 +434,20 @@ describe("VenueStaffDashboard", () => {
     expect(spanning).toHaveLength(1);
   });
 
+  it("returns from the week view to the month that week sits in", async () => {
+    venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
+    const el = await mountDashboard();
+    const view = (label) => [...el.querySelectorAll("button")].find((b) => b.textContent.trim() === label);
+
+    view("Week").click();
+    await nextTick();
+    view("Month").click();
+    await nextTick();
+
+    expect(view("Month").getAttribute("aria-pressed")).toBe("true");
+    expect(el.textContent).toContain("October 2026");
+  });
+
   it("switches to a week view that names the items instead of dotting them", async () => {
     venuesApi.venueStaffDashboard.mockResolvedValue(PAYLOAD);
 

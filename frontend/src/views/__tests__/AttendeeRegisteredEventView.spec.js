@@ -308,3 +308,54 @@ describe("Attendee registered event details", () => {
     );
   });
 });
+
+describe("AttendeeRegisteredEventView invitation", () => {
+  const invited = () => ({
+    ...registration("event-1", { starts_at: "2099-10-24T09:00:00Z", ends_at: "2099-10-24T12:00:00Z" }, "invited"),
+    invitation_expires_at: "2099-10-20T04:00:00Z",
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    registrationsApi.myRegistrations.mockResolvedValue({ registrations: [invited()] });
+    registrationsApi.directory.mockResolvedValue({ events: [] });
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  async function openInvitation() {
+    const { el } = await mountAt("/dashboard/attendee/events/event-1");
+    await vi.waitFor(() => expect(el.textContent).toContain("Accept by"));
+    return el;
+  }
+
+  const button = (el, text) => [...el.querySelectorAll("button")].find((node) => node.textContent.includes(text));
+
+  it("says when the invitation must be accepted by, in the event's timezone", async () => {
+    const el = await openInvitation();
+
+    expect(el.textContent).toContain("20 Oct 2099");
+  });
+
+  it("shows why accepting failed", async () => {
+    registrationsApi.acceptInvitation.mockRejectedValue(new Error("This invitation has expired."));
+    const el = await openInvitation();
+
+    button(el, "Accept").click();
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent).toContain("This invitation has expired."));
+  });
+
+  it("shows why declining failed", async () => {
+    registrationsApi.leaveWaitlist.mockRejectedValue(new Error("Waitlist entry not found."));
+    const el = await openInvitation();
+
+    button(el, "Decline").click();
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent).toContain("Waitlist entry not found."));
+  });
+});

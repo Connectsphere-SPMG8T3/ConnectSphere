@@ -508,3 +508,49 @@ describe("EventDetailView technical preparation (CR-110 AC4)", () => {
     expect(el.textContent).not.toContain("Technical preparation");
   });
 });
+
+describe("EventDetailView failures", () => {
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  async function mountFailing(setup) {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const authStore = useAuthStore();
+    authStore.token = "access";
+    authStore.refreshToken = "refresh";
+    authStore.profile = { id: "organiser-1", full_name: "Priya Nair", role: "event_organiser" };
+    authStore.sessionVerified = true;
+    setup();
+    const { default: router } = await import("@/router");
+    await router.push({ name: "event-detail", params: { id: "event-1" } });
+    const { default: EventDetailView } = await import("@/views/events/EventDetailView.vue");
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const app = createApp(EventDetailView).use(pinia).use(router);
+    app.mount(el);
+    mountedApps.push(app);
+    return el;
+  }
+
+  it("shows why the event could not be loaded and skips its history", async () => {
+    eventsApi.history.mockClear();
+    const el = await mountFailing(() => eventsApi.get.mockRejectedValue(new Error("Event not found.")));
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent).toContain("Event not found."));
+    expect(eventsApi.history).not.toHaveBeenCalled();
+  });
+
+  it("still shows the request when its history can't be read", async () => {
+    eventsApi.listComments.mockResolvedValue({ comments: [] });
+    const el = await mountFailing(() => {
+      eventsApi.get.mockResolvedValue(eventResponse());
+      eventsApi.history.mockRejectedValue(new Error("History unavailable."));
+    });
+
+    await vi.waitFor(() => expect(eventsApi.history).toHaveBeenCalled());
+    await vi.waitFor(() => expect(el.textContent).toContain(eventResponse().name));
+  });
+});

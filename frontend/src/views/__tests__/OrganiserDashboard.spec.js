@@ -615,3 +615,40 @@ describe("OrganiserDashboard", () => {
     expect(el.textContent).not.toContain("No submitted requests");
   });
 });
+
+describe("OrganiserDashboard clearing filters", () => {
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  it("puts the sort back and clears the search", async () => {
+    eventsApi.list.mockResolvedValue([]);
+    const { el, router } = await mountDashboard();
+    await router.push({ name: "dashboard-organiser", query: { tab: "events" } });
+    await settle();
+    const direction = () => el.querySelector('button[aria-label^="Toggle sort direction"]');
+    const before = direction().getAttribute("aria-label");
+
+    direction().click();
+    await nextTick();
+    expect(direction().getAttribute("aria-label")).not.toBe(before);
+
+    [...el.querySelectorAll("button")].find((node) => node.textContent.trim() === "Clear").click();
+    await nextTick();
+
+    expect(direction().getAttribute("aria-label")).toBe(before);
+  });
+
+  it("opens a request that isn't editable on its detail page", async () => {
+    eventsApi.list.mockResolvedValue(EVENT_RESPONSES);
+    const { el, router } = await mountDashboard();
+    await router.push({ name: "dashboard-organiser", query: { tab: "events" } });
+    await settle();
+
+    [...el.querySelectorAll("button")].find((node) => node.textContent.includes("View event")).click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-detail"));
+  });
+});

@@ -61,3 +61,15 @@ describe("event date minimum", () => {
     expect(getEarliestEventDate()).toBe(expectedTomorrow);
   });
 });
+describe("timezones.getEarliestEventDate", () => {
+  // Timezones behind UTC are wrong today: DEFECTS D91.
+  it("is the day after today in a timezone ahead of UTC", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2031-05-01T20:00:00Z"));
+    const { getEarliestEventDate: earliest } = await import("@/features/events/timezones");
+
+    expect(earliest("Asia/Singapore")).toBe("2031-05-03");
+    expect(earliest("Pacific/Kiritimati")).toBe("2031-05-03");
+    vi.useRealTimers();
+  });
+});

@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { eventsApi, venueBookingsApi, venuesApi } from "@/services/api";
+import { ApiError, eventsApi, venueBookingsApi, venuesApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { useVenuesStore } from "@/features/venues/venueSearchStore";
 import { criteriaFromEvent, criteriaFromSpace, venuePanelState } from "@/features/venues/bookingRequest";
@@ -1005,5 +1005,37 @@ describe("VenueSearchView suitability (SCRUM-18)", () => {
 
     await vi.waitFor(() => expect(venuesApi.search).toHaveBeenCalled());
     expect(venuesApi.search.mock.calls.at(-1)[0]).not.toHaveProperty("event_id");
+  });
+});
+
+describe("VenueSearchView reset and failure", () => {
+  const view = async () => (await import("@/views/venues/VenueSearchView.vue")).default;
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    localStorage.clear();
+    vi.clearAllMocks();
+    venuesApi.search.mockResolvedValue({ results: [] });
+  });
+
+  it("clears the criteria and searches again", async () => {
+    const { el, venuesStore } = await mountView(await view());
+    await vi.waitFor(() => expect(venuesStore.isLoading).toBe(false));
+    venuesStore.criteria.location = "Bukit Timah";
+    await nextTick();
+    venuesApi.search.mockClear();
+
+    [...el.querySelectorAll("button")].find((node) => node.textContent.trim() === "Clear").click();
+    await vi.waitFor(() => expect(venuesApi.search).toHaveBeenCalled());
+
+    expect(venuesStore.criteria.location).toBe("");
+  });
+
+  it("shows why the search failed", async () => {
+    venuesApi.search.mockRejectedValue(new ApiError("Service unavailable", 503));
+
+    const { el } = await mountView(await view());
+
+    await vi.waitFor(() => expect(el.querySelector('[role="alert"]').textContent).toContain("Service unavailable"));
   });
 });
