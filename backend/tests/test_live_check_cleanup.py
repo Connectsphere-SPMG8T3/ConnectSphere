@@ -99,3 +99,47 @@ def test_each_name_a_run_gives_its_rows_is_deleted_by_that_run(sql, table, name)
 
     patterns = [p for s in deletes(sql) for p in like_patterns(s, table)]
     assert any(p.match(name) for p in patterns), f"no {table} delete matches {name!r}"
+
+
+def venue_conditions(statements):
+    """The `where` condition of each delete on public.venues, in the order sent."""
+    return [s.split(" where ", 1)[1].removesuffix(" returning id")
+            for s in statements if s.lower().startswith("delete from public.venues ")]
+
+
+def test_every_venue_sweep_deletes_that_venues_bookings_first(sql):
+    """DEFECTS D85: a stale throwaway venue held a booking from an event not named
+    live-check, and the venue delete hit the bookings foreign key (on delete restrict),
+    so no run could start. Each venue delete must first clear the bookings on exactly
+    the venues it is about to delete, whichever event they belong to."""
+    verify_live.cleanup_throwaway_data(RUN_ID)
+
+    conditions = venue_conditions(sql)
+    assert conditions, "the cleanup deleted no venues"
+    for condition in conditions:
+        venue_delete = next(i for i, s in enumerate(sql)
+                            if s.lower().startswith("delete from public.venues ") and condition in s)
+        bookings_delete = (f"delete from public.venue_bookings where venue_id in "
+                           f"(select id from public.venues where {condition})")
+        assert bookings_delete in sql[:venue_delete], f"venues deleted before their bookings: {condition}"
+
+
+def test_a_failing_cleanup_step_is_reported_and_the_rest_still_run(monkeypatch, capsys):
+    """DEFECTS D85: one leftover row must not stop every run. A step that fails is named
+    with the database's error, and the steps after it still run."""
+    sent = []
+
+    def db_query(statement):
+        sent.append(statement)
+        if statement.lower().startswith("delete from public.venues "):
+            raise verify_live.CheckFailed("database query failed: violates foreign key constraint")
+        return []
+
+    monkeypatch.setattr(verify_live, "db_query", db_query)
+
+    left_over = verify_live.cleanup_throwaway_data(RUN_ID)
+
+    assert any(s.lower().startswith("delete from auth.users") for s in sent), "later steps were skipped"
+    assert left_over["bookings"] == 0 and left_over["venues"] == 0
+    out = capsys.readouterr().out
+    assert "cleanup" in out.lower() and "violates foreign key constraint" in out

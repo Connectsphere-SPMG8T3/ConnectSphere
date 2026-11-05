@@ -1801,8 +1801,17 @@ def delete_throwaway_bookings(run_id: str) -> int:
     # CR-94's throwaway venues, named like its events: their layouts, facilities and
     # edit history cascade.
     venues = mine_or_stale("name", f"{THROWAWAY_EVENT_PREFIX}{run_id} %", f"{THROWAWAY_EVENT_PREFIX}%")
-    db_query(f"delete from public.venues where {venues}")
+    delete_venues(venues)
     return deleted
+
+
+def delete_venues(venues: str) -> int:
+    """Deletes the venues matching `venues`, after every booking on them (that foreign
+    key restricts), whichever event the booking belongs to. The stale pattern above
+    also matches SCRUM-64's "live-check venue …" names, and a booking from an event
+    not named live-check once stopped every run (DEFECTS D85)."""
+    db_query(f"delete from public.venue_bookings where venue_id in (select id from public.venues where {venues})")
+    return len(db_query(f"delete from public.venues where {venues} returning id"))
 
 
 THROWAWAY_VENUE_PREFIX = "live-check venue "
@@ -1824,8 +1833,7 @@ def delete_throwaway_venues(run_id: str) -> int:
     (STALE_AFTER), their bookings first (that foreign key restricts). Layouts,
     facilities and edit history cascade."""
     venues = mine_or_stale("name", f"{THROWAWAY_VENUE_PREFIX}{run_id} %", f"{THROWAWAY_VENUE_PREFIX}%")
-    db_query(f"delete from public.venue_bookings where venue_id in (select id from public.venues where {venues})")
-    return len(db_query(f"delete from public.venues where {venues} returning id"))
+    return delete_venues(venues)
 
 
 def venue_version(venue_id: str) -> int:
@@ -6231,11 +6239,20 @@ def delete_throwaway_accounts(run_id: str) -> int:
 
 
 def cleanup_throwaway_data(run_id: str) -> dict[str, int]:
-    """Delete owned events before accounts whose registrations reference them."""
-    bookings = delete_throwaway_bookings(run_id)
-    venues = delete_throwaway_venues(run_id)
-    accounts = delete_throwaway_accounts(run_id)
-    return {"accounts": accounts, "bookings": bookings, "venues": venues}
+    """Delete owned events before accounts whose registrations reference them.
+
+    A step that fails is reported and counted as 0, and the later steps still run,
+    so one leftover row can't stop every run for everyone (DEFECTS D85)."""
+    counts = {}
+    for kind, step in (("bookings", delete_throwaway_bookings),
+                       ("venues", delete_throwaway_venues),
+                       ("accounts", delete_throwaway_accounts)):
+        try:
+            counts[kind] = step(run_id)
+        except CheckFailed as error:
+            print(f"  (cleanup of throwaway {kind} failed, carrying on: {error})")
+            counts[kind] = 0
+    return counts
 
 
 def run_db_checks(keyword: str | None) -> list[Result]:
