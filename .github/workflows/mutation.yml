@@ -26,8 +26,8 @@ jobs:
   backend:
     name: Backend (mutmut)
     runs-on: ubuntu-latest
-    # A full run takes ~2 minutes on a laptop; the limit only stops a hung run.
-    timeout-minutes: 30
+    # A full run takes about 40 minutes here; the limit only stops a hung run.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: backend
