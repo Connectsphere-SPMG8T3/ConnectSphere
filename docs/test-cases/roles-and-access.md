@@ -74,6 +74,23 @@ These require direct database access (e.g. the Supabase SQL editor or MCP `execu
 | TC-DATA-013 | RLS follows the session's active role, not the account's default (SCRUM-76 AC2, AC4) | Migration `20260920100000` applied; seed applied | Run `supabase/verification/active_role_checks.sql` (rolled back) | an account defaulting to `venue_staff` that also holds `attendee` | Prints `ACTIVE ROLE CHECKS PASSED`: a session switched to attendee resolves `attendee` and reads zero `venues` rows; an un-switched session and a token with no `session_id` fall back to `venue_staff`; another account's session id is never honoured. | 🔴 |
 | TC-DATA-014 | RLS denies a held-but-inactive staff role through a **real** token (SCRUM-76 AC2, AC3) | Migration `20260920100000` applied; backend running; a throwaway account created like the seed's (an `auth.users` row plus `auth.identities`), whose `user_roles` holds `venue_staff` and `attendee` and whose `profiles.role` is `venue_staff` | 1. `POST /auth/login`. 2. `GET <supabase>/rest/v1/venues?select=id` with `apikey: <publishable key>` and `Authorization: Bearer <that access token>`. 3. `POST /auth/active-role` with `{"role":"attendee"}`, then repeat step 2 and `GET /api/v1/venues`. 4. Switch back to `venue_staff` and repeat. 5. Delete the account (`delete from auth.users where id = ...` cascades everything it owned). | the account's own token | Step 2: all venues. Step 3: **0 rows** from PostgREST and **403** from the API, although the account still holds `venue_staff`. Step 4: all venues and 200 again. Proves the token's own `session_id` claim reaches `private.current_user_role()`, which simulated claims cannot. Run on 2026-09-20: 8, 0/403, 8. | 🔴 |
 
+## Equipment write policies follow the active role (DEFECTS D19)
+
+The direct-database safety net on `equipment`, `equipment_unavailability` and `equipment_reservations`. The API uses the secret key and checks `require_roles` itself, so this case runs against the database, not the UI.
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-DATA-015 | Equipment table writes follow the session's active role, not the JWT's `app_metadata` role (D19, SCRUM-76) | Integration | Migration `20261105120000` applied | Run `supabase/verification/equipment_rls_checks.sql` (rolled back) | an account defaulting to `event_coordinator` that also holds `tech_support`, switched to `tech_support`, with no `app_metadata` role claim; an account defaulting to `tech_support` switched to `attendee`, whose token carries `app_metadata.role = tech_support` | Prints `EQUIPMENT RLS CHECKS PASSED`: the first session can insert, update and delete on all three tables; the second is refused every insert (RLS error) and its updates and deletes touch 0 rows. | 🔴 | 2026-11-05 | — |
+
+### Traceability — DEFECTS D19
+
+| Expected behaviour (DEFECTS D19, SCRUM-76 AC2) | Covered by |
+|---|---|
+| A session acting as tech support may write to the equipment tables, whatever the account's default role | TC-DATA-015 |
+| A session acting as another role is refused, even when the account holds tech support or the token carries an `app_metadata` role claim | TC-DATA-015 |
+
+`backend/scripts/verify_live.py` runs TC-DATA-015 with the other database checks.
+
 ## Traceability — SCRUM-74/75/78
 
 The SCRUM-48 matrix, which also cites TC-RBAC-* and TC-DATA-*, is in [auth.md](auth.md#traceability--scrum-48).
