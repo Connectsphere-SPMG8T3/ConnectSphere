@@ -125,6 +125,7 @@ DB_SCRIPTS = [
     ("equipment_availability_checks.sql", "TC-EQR-038 (23-R: condition, event window, reference location)"),
     ("equipment_reservation_checks.sql", "TC-EQR-016–020, 022–025 (SCRUM-24 database half)"),
     ("equipment_line_change_checks.sql", "TC-EQR-044–053 (SCRUM-44 database half: edits, removals, notices, history)"),
+    ("equipment_rls_checks.sql", "TC-DATA-015 (D19: equipment write policies follow the active role)"),
     ("event_cancellation_request_checks.sql", "TC-CANCEL-007, 008 (story 84 database half: superseding, index, RLS)"),
     ("event_cancellation_decision_checks.sql", "TC-CANCEL-018 (story 115 database half: releases, notices, refusals)"),
     ("event_change_request_checks.sql", "TC-CHANGE-007 (story 32 database half: one open per event, closing, RLS)"),
