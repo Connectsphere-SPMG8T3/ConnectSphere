@@ -2157,6 +2157,26 @@ def _(ctx: Context) -> None:
                                           json={**payload, field: value}), 422)
 
 
+@check("TC-BLOCK-031", "D89 editing a venue with an upcoming block saves and returns the block whole", needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id = throwaway_venue(ctx, "B031")
+    staff = ctx.shared("venue_staff")
+    expect_status(create_block(ctx, staff, venue_id, "2031-09-05T09:00:00+08:00", "2031-09-05T12:00:00+08:00"), 200)
+    url = f"{ctx.api}/venues/{venue_id}"
+    response = ctx.client.get(url, headers=staff.headers)
+    expect_status(response, 200)
+    venue = response.json()
+    payload = {key: venue[key] for key in (
+        "name", "location", "opens_at", "closes_at", "layouts", "facilities", "accessibility_features",
+        "setup_minutes", "turnaround_minutes", "emergency_access", "restrictions")}
+    payload.update(capacity=60, description="TC-BLOCK-031 edit", version=venue["version"])
+    body = edit_venue(ctx, venue_id, payload)
+    expect(body["saved"] is True and body["venue"]["capacity"] == 60, f"the edit was not returned: {body}")
+    [block] = body["venue"]["upcoming_blocks"]
+    expect(block["reason"] == "maintenance" and block["created_by"]["id"] == VENUE_STAFF_ID,
+           f"the block came back without its management fields: {block}")
+
+
 @check("TC-VENUE-093", "CR-100 only the active Venue Staff role can edit", needs_db=True)
 def _(ctx: Context) -> None:
     require_venue_buffer_migration()
