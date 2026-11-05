@@ -243,6 +243,7 @@ class TestDirectCancel:
         assert response.status_code == 200
         assert response.json()["status"] == "cancelled"
         [call] = events["calls"]
+        assert call["actor_id"] == COORDINATOR_ID
         assert call["from_statuses"] == ["confirmed", "planning", "preparation"]
         assert call["reason"] == COORDINATOR_REASON
         assert call["require_open_request"] is False

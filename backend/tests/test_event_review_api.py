@@ -156,6 +156,7 @@ class TestReject:
         assert response.status_code == 200
         assert response.json()["status"] == "rejected"
         [call] = events["calls"]
+        assert call["actor_id"] == COORDINATOR_ID
         assert call["from_statuses"] == ["planning", "under_review"]
         assert call["to_status"] == "rejected"
         assert call["reason"] == "Venue unavailable on that date"

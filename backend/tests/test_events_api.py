@@ -212,6 +212,7 @@ class TestEventDrafts:
         response = client.get("/api/v1/events", headers=auth_headers)
 
         assert response.status_code == 200
+        assert [event["id"] for event in response.json()] == [EVENT_ID]
         assert all(event["organiser_id"] == "11111111-1111-1111-1111-111111111111" for event in response.json())
 
     def test_organiser_can_create_an_independent_draft_from_their_event(
