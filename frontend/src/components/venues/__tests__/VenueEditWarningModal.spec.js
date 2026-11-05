@@ -83,3 +83,23 @@ describe("VenueEditWarningModal (CR-94)", () => {
     expect(items()[0].textContent).toContain("Event e0000000");
   });
 });
+
+describe("VenueEditWarningModal failure", () => {
+  afterEach(() => {
+    mounted.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = "";
+  });
+
+  it("shows why the save failed beside the warnings", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const app = createApp({
+      render: () => h(VenueEditWarningModal, { open: true, warnings: [unsuitable], error: "Could not save." }),
+    });
+    app.mount(el);
+    mounted.push(app);
+    await nextTick();
+
+    expect(document.body.querySelector('[role="alert"]').textContent).toContain("Could not save.");
+  });
+});

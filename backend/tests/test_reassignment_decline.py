@@ -140,3 +140,12 @@ def test_the_rpc_rechecks_the_outcome(client, auth_headers, as_lead, data):
     as_lead()
 
     assert decline(client, auth_headers).status_code == 404
+
+
+def test_the_scope_check_reads_the_requested_event(client, auth_headers, as_lead, data, monkeypatch):
+    reads = []
+    monkeypatch.setattr(repository, "get_lead_event", lambda event_id: reads.append(event_id) or data.event)
+    as_lead()
+
+    assert decline(client, auth_headers).status_code == 200
+    assert reads == [EVENT]

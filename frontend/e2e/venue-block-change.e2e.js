@@ -64,3 +64,19 @@ test("TC-BLOCK-027 a coordinator sees the block but not who set it, and no Chang
   await expect(blocks).not.toContainText("Set by");
   await expect(blocks.getByRole("button", { name: /Change block/ })).toHaveCount(0);
 });
+
+test("TC-BLOCK-032 venue staff edit a venue with an upcoming block and land on its profile (D89)", async ({
+  page,
+  sharedSessions,
+}) => {
+  const venue = createThrowawayVenue("B032");
+  createThrowawayBlock(venue.id, "2031-09-24T09:00:00+08:00", "2031-09-24T12:00:00+08:00");
+  await seedSession(page, await sharedSessions("venue_staff"));
+
+  await page.goto(`/venues/${venue.id}/edit`);
+  await page.getByLabel("Default setup (minutes)").fill("30");
+  await page.getByRole("button", { name: "Save changes" }).click();
+
+  await expect(page).toHaveURL(`/venues/${venue.id}`);
+  await expect(page.locator("#panel-capacity")).toContainText("30 minutes");
+});

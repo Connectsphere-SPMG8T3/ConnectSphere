@@ -991,7 +991,7 @@ class TestSignup:
         )
 
     def test_attendee_signup_never_stores_an_organisation_name(self, client, monkeypatch):
-        """DEFECTS D86 / ACC-R5b: an Attendee has no organisation, even if the request names one."""
+        """DEFECTS D93 / ACC-R5b: an Attendee has no organisation, even if the request names one."""
         admin_client = _admin_client_for_signup(
             monkeypatch,
             role="attendee",

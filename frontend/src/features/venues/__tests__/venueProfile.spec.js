@@ -367,3 +367,15 @@ describe("formatVenueInstant", () => {
     expect(formatVenueInstant("2031-04-30T02:30:00Z")).toBe("30 Apr 2031, 10:30");
   });
 });
+
+describe("edit history of a list that wasn't stored as one", () => {
+  it.each([
+    ["facilities", "Facilities"],
+    ["accessibility_features", "Accessibility"],
+  ])("reads %s as empty rather than failing", (field) => {
+    const [change] = summariseEditHistoryEntry({ before: { [field]: "not a list" }, after: { [field]: ["other"] } });
+
+    expect(change.before).toBe("None");
+    expect(change.after).toBe("other");
+  });
+});

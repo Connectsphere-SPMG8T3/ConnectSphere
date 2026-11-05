@@ -215,6 +215,15 @@ _BLOCK_MANAGEMENT_FIELDS = {
 }
 
 
+def _upcoming_blocks(venue_id: str, now: datetime, *, manages_blocks: bool) -> list[VenueBlock]:
+    """A venue's coming blocks, read as `VenueBlock` (SCRUM-54); a plain summary takes
+    its defaults. Anyone but Venue Staff sees each block's period and reason only."""
+    return [
+        VenueBlock.model_validate({**b.model_dump(), **({} if manages_blocks else _BLOCK_MANAGEMENT_FIELDS)})
+        for b in repository.list_upcoming_blocks(venue_id, now)
+    ]
+
+
 def get_venue(venue_id: str, *, manages_blocks: bool = True) -> VenueDetail:
     """The full venue profile: attributes, who last touched them, and what is
     already booked (SCRUM-67).
@@ -235,12 +244,7 @@ def get_venue(venue_id: str, *, manages_blocks: bool = True) -> VenueDetail:
         booking.event_name = names.get(booking.event_id)
     return VenueDetail(
         **venue.model_dump(),
-        # Read as `VenueBlock` (SCRUM-54); a plain summary takes its defaults.
-        # Anyone else reading the profile sees each block's period and reason only.
-        upcoming_blocks=[
-            VenueBlock.model_validate({**b.model_dump(), **({} if manages_blocks else _BLOCK_MANAGEMENT_FIELDS)})
-            for b in repository.list_upcoming_blocks(venue_id, now)
-        ],
+        upcoming_blocks=_upcoming_blocks(venue_id, now, manages_blocks=manages_blocks),
         upcoming_bookings=bookings,
     )
 
@@ -454,12 +458,7 @@ def update_venue(venue_id: str, actor_id: str, body: VenueUpdateRequest) -> Venu
         booking.event_name = (contexts_by_event.get(booking.event_id) or EventPlanningContext()).name
     venue = VenueDetail(
         **updated.model_dump(),
-        # Read as `VenueBlock` (SCRUM-54); a plain summary takes its defaults.
-        # Anyone else reading the profile sees each block's period and reason only.
-        upcoming_blocks=[
-            VenueBlock.model_validate({**b.model_dump(), **({} if manages_blocks else _BLOCK_MANAGEMENT_FIELDS)})
-            for b in repository.list_upcoming_blocks(venue_id, now)
-        ],
+        upcoming_blocks=_upcoming_blocks(venue_id, now, manages_blocks=True),
         upcoming_bookings=bookings,
     )
     return VenueUpdateResponse(saved=True, venue=venue, warnings=warnings)

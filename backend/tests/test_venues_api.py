@@ -22,6 +22,7 @@ from app.modules.venues.schemas import (
     LayoutOption,
     Occupant,
     Period,
+    VenueBlock,
     VenueLayout,
     VenueProfile,
     VenueStaffBlock,
@@ -693,6 +694,28 @@ class TestVenueEdit:
 
         monkeypatch.setattr(repository, "update_venue", _update_venue)
         return calls
+
+    def test_editing_a_venue_with_an_upcoming_block_returns_the_saved_venue_and_the_block(
+        self, client, auth_headers, authenticate_as, profile, monkeypatch
+    ):
+        """D89: only Venue Staff reach this endpoint, so the block comes back whole."""
+        block = VenueBlock(
+            id="b0000000-0000-4000-8000-000000000001",
+            period=Period(starts_at=datetime(2031, 5, 1, tzinfo=timezone.utc), ends_at=datetime(2031, 5, 2, tzinfo=timezone.utc)),
+            reason="maintenance",
+            created_by=Editor(id="a0000000-0000-4000-8000-000000000050", full_name="Vera Staff"),
+            change_note="Fixed early",
+        )
+        monkeypatch.setattr(repository, "list_upcoming_blocks", lambda venue_id, since: [block])
+        authenticate_as("venue_staff")
+
+        response = client.patch(f"/api/v1/venues/{HALL_A_ID}", json=VALID_EDIT_PAYLOAD, headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["saved"] is True
+        [returned] = response.json()["venue"]["upcoming_blocks"]
+        assert returned["reason"] == "maintenance"
+        assert returned["created_by"]["full_name"] == "Vera Staff" and returned["change_note"] == "Fixed early"
 
     def test_venue_staff_can_save_an_edit_with_no_affected_bookings(self, client, auth_headers, authenticate_as, profile):
         actor = authenticate_as("venue_staff")

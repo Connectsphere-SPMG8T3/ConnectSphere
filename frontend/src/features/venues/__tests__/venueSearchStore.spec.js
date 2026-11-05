@@ -202,3 +202,17 @@ describe("venue search context (SCRUM-18)", () => {
     expect(store.setContext(null)).toBe(false);
   });
 });
+
+describe("resetting the search form", () => {
+  it("clears the criteria and their field errors", () => {
+    setActivePinia(createPinia());
+    const store = useVenuesStore();
+    store.criteria.location = "Bukit Timah";
+    store.fieldErrors = { location: "Too long" };
+
+    store.resetCriteria();
+
+    expect(store.criteria).toEqual(emptyCriteria());
+    expect(store.fieldErrors).toEqual({});
+  });
+});

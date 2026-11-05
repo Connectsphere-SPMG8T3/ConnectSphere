@@ -55,6 +55,15 @@ def test_an_event_never_reassigned_has_an_empty_history(data):
     assert service.reassignment_history(EVENT, LEAD).entries == []
 
 
+def test_the_scope_check_reads_the_requested_event(data, monkeypatch):
+    reads = []
+    monkeypatch.setattr(repository, "get_lead_event", lambda event_id: reads.append(event_id) or data.event)
+
+    service.reassignment_history(EVENT, LEAD)
+
+    assert reads == [EVENT]
+
+
 def test_reads_reassignments_only_not_the_status_or_other_history(data):
     service.reassignment_history(EVENT, LEAD)
     assert data.status_history_reads == []

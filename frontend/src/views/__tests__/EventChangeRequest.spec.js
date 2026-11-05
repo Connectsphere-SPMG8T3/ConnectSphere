@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
-import { createApp, nextTick } from "vue";
+import { createApp, h, nextTick } from "vue";
+import { RouterView } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, eventsApi } from "@/services/api";
@@ -172,5 +173,78 @@ describe("EventRequestView change mode (story 32)", () => {
 
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-detail"));
     expect(eventsApi.requestChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("EventRequestView change form guards", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  it("shows why the event could not be loaded", async () => {
+    eventsApi.get.mockRejectedValue(new Error("Event not found."));
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const auth = useAuthStore();
+    auth.token = "access";
+    auth.refreshToken = "refresh";
+    auth.profile = { id: "organiser-1", full_name: "Priya Nair", role: "event_organiser" };
+    auth.sessionVerified = true;
+    const { default: router } = await import("@/router");
+    await router.push({ name: "event-request-change", params: { id: "event-1" } });
+    const { default: View } = await import("@/views/events/EventRequestView.vue");
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const app = createApp(View).use(pinia).use(router);
+    app.mount(el);
+    mountedApps.push(app);
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Event not found."));
+  });
+
+  it("asks before a navigation away loses unsaved changes", async () => {
+    eventsApi.get.mockResolvedValue(plannedEvent());
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const auth = useAuthStore();
+    auth.token = "access";
+    auth.refreshToken = "refresh";
+    auth.profile = { id: "organiser-1", full_name: "Priya Nair", role: "event_organiser" };
+    auth.sessionVerified = true;
+    const { default: router } = await import("@/router");
+    await router.push({ name: "event-request-change", params: { id: plannedEvent().id } });
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    // The leave guard only registers under a RouterView.
+    const app = createApp({ render: () => h(RouterView) }).use(pinia).use(router);
+    app.mount(el);
+    mountedApps.push(app);
+    await vi.waitFor(() => expect(el.querySelector("input")?.value).toBe(plannedEvent().name));
+    await type(el.querySelector("input"), "A new name");
+
+    await router.push({ name: "dashboard-organiser" });
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Leave page"]')).not.toBeNull());
+
+    expect(document.querySelector('[aria-label="Leave page"]')).not.toBeNull();
+    expect(router.currentRoute.value.name).toBe("event-request-change");
+  });
+
+  it("names the space a change leaves incomplete instead of opening the dialog", async () => {
+    const { el } = await mountLoaded();
+    const pax = [...el.querySelectorAll("label")].filter((node) => node.textContent.trim().startsWith("Expected"))
+      .map((node) => document.getElementById(node.getAttribute("for"))).at(-1);
+    await type(pax, "0");
+
+    buttonByText(el, "Send change request").click();
+    await nextTick();
+
+    expect(dialog()).toBeNull();
+    expect(el.textContent).toContain("Enter expected pax");
   });
 });

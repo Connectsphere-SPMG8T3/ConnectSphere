@@ -1,3 +1,4 @@
+import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const STORAGE_KEY = "connectsphere.sidebarCollapsed";
@@ -35,5 +36,31 @@ describe("useSidebarState", () => {
 
   it("never starts with the phone menu open", async () => {
     expect((await load()).isMobileOpen.value).toBe(false);
+  });
+});
+
+describe("useSidebarState persistence", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("saves a change of choice", async () => {
+    const { isCollapsed } = await load();
+
+    isCollapsed.value = false;
+    await nextTick();
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBe("false");
+  });
+
+  it("keeps working when storage is blocked", async () => {
+    const { isCollapsed } = await load();
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Blocked");
+    });
+
+    isCollapsed.value = false;
+    await nextTick();
+
+    expect(isCollapsed.value).toBe(false);
+    setItem.mockRestore();
   });
 });
