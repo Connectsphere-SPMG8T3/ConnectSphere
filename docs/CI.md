@@ -115,10 +115,10 @@ Plain `pytest` and `npm test` don't measure coverage, so day-to-day runs of a si
 
 The backend has no exclusions.
 
-**Where the gaps are** (2026-10-06):
+**Where the gaps are** (2026-10-06; the backend reached 100% on `chore/mutation-test-gaps`, 2026-11-05):
 
 - **Backend.** Most of the 130 uncovered lines are in the three repository modules: venues 44%, equipment 62%, events 66%. These are the Supabase query wrappers that the mocked tests replace. Covering them honestly means tests against a real database (item 3), not more mocks. Two smaller gaps:
-  - `app/db/session.py` (0%) is imported nowhere. Delete it rather than test it.
+  - `app/db/session.py` (0%) was imported nowhere, so it was deleted.
   - The `/health` endpoint in `app/main.py` has no test.
 - **Frontend.** These files are at 0%: `App.vue`, `components/common/Toast.vue` and `services/supabase.js`. `LoginView.vue`, `VenueSearchView.vue`, `services/api.js` and `stores/auth.js` are at 67–74%. The function figure (74%) is lower than the line figure mostly because of event handlers that no test triggers.
 
