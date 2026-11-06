@@ -471,7 +471,7 @@ Venue selection and booking for each proposed space are downstream of CR-98's co
 | AC1 The occupied window is start − setup to end + turnaround, per booking | TC-BOOK-037, TC-BOOK-039, TC-BOOK-040 |
 | AC2 Refused on overlapping an approved, re-review or unexpired held booking, naming the event | TC-BOOK-037, TC-BOOK-038, TC-BOOK-040, TC-BOOK-041, TC-BOOK-042; `pytest` `test_venue_booking_request_api.py` (conflict cases); Vitest `api.spec.js`, `venueBookingStore.spec.js`, `bookingRequest.spec.js`, `RequestVenueModal.spec.js` |
 | AC3 Touching windows don't conflict | TC-BOOK-037, TC-BOOK-040 |
-| AC4 Search shows an occupied venue as unavailable, and a request for it is refused, including through a direct API call | `venue_conflicts` is used by search and both request paths (TC-BOOK-037–040; `pytest` `test_venues_api.py::test_search_takes_its_occupants_from_the_single_conflict_check`), approval (TC-BOOK-056), re-review (TC-CHANGE-016) and blocking (TC-BLOCK-010). |
+| AC4 Search shows an occupied venue as unavailable, and a request for it is refused, however it is made | `venue_conflicts` is used by search and both request paths (TC-BOOK-037–040; `pytest` `test_venues_api.py::test_search_takes_its_occupants_from_the_single_conflict_check`), approval (TC-BOOK-056), re-review (TC-CHANGE-016) and blocking (TC-BLOCK-010). |
 | AC5 Expired holds and rejected, cancelled or released bookings are ignored | TC-BOOK-040 |
 | AC6 Each venue booking on a multi-venue event is checked separately | TC-BOOK-038, TC-BOOK-040 (space path) |
 | AC7 Different venues never conflict | TC-BOOK-040 |
