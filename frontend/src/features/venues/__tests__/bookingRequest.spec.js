@@ -68,6 +68,12 @@ describe("venuePanelState for an affected booking (CR-95 AC3, AC4)", () => {
     },
   );
 
+  it("offers a replacement on a preparation event (CR-95 AC7, D95)", () => {
+    const event = { status: "preparation", venue_booking: affected(), venue_bookings: [affected()] };
+
+    expect(venuePanelState(event)).toMatchObject({ kind: "affected", canReplace: true });
+  });
+
   it("does not offer a replacement on an event in any other status", () => {
     const event = { status: "returned", venue_bookings: [affected()] };
 

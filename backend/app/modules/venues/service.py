@@ -916,7 +916,7 @@ def _prepare_replacement(replaces_id: str, event: dict, space_id: str | None) ->
         or row["status"] not in ("held", "approved")
     ):
         raise BookingConflictError(BOOKING_REFUSALS["replaced_booking_invalid"], None)
-    if event["status"] in ("safety_review", "confirmed"):
+    if event["status"] in ("safety_review", "confirmed", "preparation"):
         events_service.return_to_planning(event["id"], reason_code="arrangement_flagged")
 
 

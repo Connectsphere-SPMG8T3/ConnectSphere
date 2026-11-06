@@ -56,7 +56,7 @@ export function criteriaFromSpace(space, event) {
  */
 // The venue changes that mean a coordinator may still arrange a replacement:
 // the event is in planning, or has gone on and will be returned to it (CR-95 AC7).
-const REPLACEABLE_EVENT_STATUSES = ["planning", "safety_review", "confirmed"];
+const REPLACEABLE_EVENT_STATUSES = ["planning", "safety_review", "confirmed", "preparation"];
 const LIVE_BOOKING_STATUSES = ["held", "approved"];
 
 // Flags that need another venue: the venue became unavailable (CR-95), or an approved

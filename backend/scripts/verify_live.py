@@ -115,6 +115,7 @@ DB_SCRIPTS = [
     ("coordinator_assignment_checks.sql", "TC-ASSIGN-010 (SCRUM-12 database half: assign_event, exclusive Lead role)"),
     ("venue_deactivation_checks.sql", "TC-VENUE-070 (SCRUM-64 database half); D33"),
     ("booking_conflict_checks.sql", "TC-BOOK-040 (SCRUM-21 database half: occupied window, venue_conflicts)"),
+    ("booking_buffer_recheck_checks.sql", "TC-VENUE-113 (CR-94 AC8: bookings from before setup and turnaround)"),
     ("venue_block_flag_checks.sql", "TC-BOOK-043, 044 (CR-95: a block flags the bookings it overlaps; organiser notice)"),
     ("venue_replacement_checks.sql", "TC-BOOK-045 (CR-95: request a replacement for an affected booking)"),
     ("venue_release_checks.sql", "TC-BOOK-046 (CR-95: release the original when its replacement is approved)"),
@@ -3144,6 +3145,28 @@ def _(ctx: Context) -> None:
     # SCRUM-76: the seeded coordinator also holds venue_staff, but acting as coordinator is refused.
     expect_status(approve_booking(ctx, ctx.login("event_coordinator"), booking_id), 403)
     expect(booking_status(booking_id) == "held", "a refused caller changed the booking")
+
+
+@check("TC-BOOK-062", "A replacement request returns a Preparation event to Planning and holds the new venue",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    venue_id, _ = cr94_venue(ctx, "BOOK062")
+    replacement_venue, _ = cr94_venue(ctx, "BOOK062 replacement")
+    event_id, booking_id = cr94_booking(ctx, "BOOK062", venue_id)
+    expect_status(approve_booking(ctx, ctx.shared("venue_staff"), booking_id), 200)
+    db_query(
+        "update public.venue_bookings set flag = 'affected', flag_reason = 'Venue unavailable: Maintenance', "
+        f"flagged_at = now() where id = '{booking_id}';"
+        f"update public.events set status = 'preparation' where id = '{event_id}'"
+    )
+    response = ctx.client.post(
+        f"{ctx.api}{BOOKINGS}", headers=ctx.shared("event_coordinator").headers,
+        json={"event_id": event_id, "venue_id": replacement_venue, "replaces_booking_id": booking_id})
+    expect_status(response, 201)
+    [event] = db_query(f"select status::text from public.events where id = '{event_id}'")
+    expect(event["status"] == "planning", f"the event is {event['status']}, expected planning")
+    [original] = db_query(f"select status::text, flag::text from public.venue_bookings where id = '{booking_id}'")
+    expect(original == {"status": "approved", "flag": "affected"}, f"the original booking changed: {original}")
 
 
 @check("TC-BOOK-061", "Approving a replacement and restoring its original at the same instant: exactly one wins",

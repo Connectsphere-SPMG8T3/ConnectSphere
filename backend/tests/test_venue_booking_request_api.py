@@ -738,6 +738,19 @@ class TestReplacement:
         assert replacement["returned"] == [(EVENT_ID, "arrangement_flagged")]
         assert replacement["order"] == ["return", "request"]
 
+    def test_a_preparation_event_returns_to_planning_before_the_request(
+        self, client, auth_headers, authenticate_as, replacement
+    ):
+        """CR-95 AC7, D95."""
+        authenticate_as("event_coordinator", user_id=COORDINATOR_ID)
+        replacement["event"]["status"] = "preparation"
+
+        response = post(client, auth_headers, replaces_booking_id=AFFECTED_BOOKING_ID)
+
+        assert response.status_code == 201
+        assert replacement["returned"] == [(EVENT_ID, "arrangement_flagged")]
+        assert replacement["order"] == ["return", "request"]
+
     def test_a_replacement_for_a_space_links_that_spaces_booking(
         self, client, auth_headers, authenticate_as, replacement, monkeypatch
     ):
