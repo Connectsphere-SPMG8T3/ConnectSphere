@@ -62,7 +62,7 @@ A change conforms when:
 ## Links
 
 - `docs/REQUIREMENTS.md` §2 (the access matrix), §3.2 (the container decisions table), ACC-R4
-- `docs/archive/2026-09-13-design-review.md`, recommendation 4: "these checks are the real security boundary"
+- [`docs/archive/2026-09-13-design-review.md`](https://github.com/chasingsunsets/ConnectSphere/blob/91fec10aab05070169286fbbed5268fef9cf6930/docs/archive/2026-09-13-design-review.md), recommendation 4: "these checks are the real security boundary"
 - `docs/BUILD_LOG.md` §4.11: SCRUM-76, enforcing by active role at both layers
 - `backend/app/core/security.py` (`get_current_user`, `require_roles`)
 - [ADR-0001](0001-modular-monolith-backend.md), [ADR-0002](0002-supabase-client-only-data-access.md), [ADR-0005](0005-supabase-as-the-platform.md), [ADR-0007](0007-postgres-functions-own-multi-table-writes.md)

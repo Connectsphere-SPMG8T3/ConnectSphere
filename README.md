@@ -14,7 +14,7 @@ For the full business context (the roles and the architectural reasoning behind 
 
 ## Getting started
 
-See [Run instructions](#run-instructions) below for the full local setup.
+This is the short version. For the full walkthrough, see [docs/SETUP.md](docs/SETUP.md). [Run instructions](#run-instructions) below lists the commands for quick reference.
 
 ### Prerequisites
 
@@ -48,6 +48,8 @@ supabase link --project-ref vuiryrzzyfecjqftwicj
 supabase db push
 psql "$DATABASE_URL" -f supabase/seed.sql
 ```
+
+`DATABASE_URL` is your Supabase project's Postgres connection string. It isn't in `.env.example`, because only `psql` uses it, not the app.
 
 ### 3. Run the backend
 
@@ -87,13 +89,20 @@ npm run dev
 
 The app is served at `http://localhost:5173`.
 
-### 5. Run backend tests
+### 5. Run the tests
 
-With the virtualenv active:
+Backend, with the virtualenv active:
 
 ```bash
 cd backend
 pytest
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm test
 ```
 
 To measure coverage, run `pytest --cov` here, or `npm run test:coverage` in `frontend/`. Use the full suite each time: CI fails a run that drops below the floor in [docs/CI.md](docs/CI.md) §4 item 2.
@@ -102,11 +111,14 @@ To measure coverage, run `pytest --cov` here, or `npm run test:coverage` in `fro
 
 | Step | Command | Notes |
 |------|---------|-------|
-| Migrate DB | `supabase db push` | Creates `user_role` enum, `public.profiles`, trigger, RLS policies |
+| Migrate DB | `supabase db push` | Run from the repo root; applies everything in `supabase/migrations/` |
 | Seed test accounts | `psql "$DATABASE_URL" -f supabase/seed.sql` | Creates 9 accounts covering all 7 roles, see below |
 | Start backend | `uvicorn app.main:app --reload --port 8000` | Run from `backend/` |
 | Start frontend | `npm run dev` | Run from `frontend/` |
-| Run tests | `pytest` | Run from `backend/` |
+| Run backend tests | `pytest` | Run from `backend/` |
+| Run frontend tests | `npm test` | Run from `frontend/` |
+| Live API + database checks | `python scripts/verify_live.py` | Run from `backend/`, with the backend running and `supabase login` done |
+| Live browser checks | `npm run test:e2e` | Run from `frontend/`, with both servers running; first time, run `npx playwright install chromium` |
 
 ### Seeded test accounts
 

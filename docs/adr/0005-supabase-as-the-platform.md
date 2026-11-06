@@ -81,6 +81,6 @@ ConnectSphere's own user data lives in `public.profiles` and `user_roles`, linke
 
 - `docs/PROJECT_OVERVIEW.md` §5: the architecture narrative, the auth flow and the SDK traps
 - `docs/REQUIREMENTS.md` §3.2: the container decisions table ("Authentication: Supabase Auth; the API verifies JWTs via JWKS")
-- `docs/archive/2026-09-13-design-review.md`: "Authentication is delegated to Supabase Auth"
+- [`docs/archive/2026-09-13-design-review.md`](https://github.com/chasingsunsets/ConnectSphere/blob/91fec10aab05070169286fbbed5268fef9cf6930/docs/archive/2026-09-13-design-review.md): "Authentication is delegated to Supabase Auth"
 - `backend/app/db/supabase.py`, `backend/app/core/security.py`
 - [ADR-0002](0002-supabase-client-only-data-access.md), [ADR-0003](0003-signup-via-admin-api-without-email-confirmation.md), [ADR-0004](0004-notification-delivery.md), [ADR-0006](0006-api-enforces-access-rls-is-a-safety-net.md), [ADR-0007](0007-postgres-functions-own-multi-table-writes.md)
