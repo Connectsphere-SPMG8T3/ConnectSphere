@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import pytest
 
-from app.modules.events import repository
+from app.modules.events import repository, service
 
 SGT = timezone(timedelta(hours=8))
 EVENT_ID = "e0000000-0000-4000-8000-000000000001"
@@ -236,6 +236,195 @@ class TestEventDrafts:
         assert body["ends_at"] is None
         assert body["coordinator_id"] is None
         assert body["submitted_at"] is None
+
+    @pytest.mark.parametrize(
+        "source_status",
+        [
+            "draft",
+            "submitted",
+            "under_review",
+            "returned",
+            "planning",
+            "safety_review",
+            "confirmed",
+            "preparation",
+            "rejected",
+            "cancelled",
+            "completed",
+        ],
+    )
+    def test_organiser_can_clone_an_owned_event_in_any_lifecycle_status(
+        self, client, auth_headers, authenticate_as, mock_event_repository, source_status
+    ):
+        authenticate_as("event_organiser")
+        source = mock_event_repository["store"][EVENT_ID]
+        source["status"] = source_status
+
+        response = client.post(f"/api/v1/events/{EVENT_ID}/clone", headers=auth_headers)
+
+        assert response.status_code == 201
+        assert response.json()["id"] != EVENT_ID
+        assert response.json()["status"] == "draft"
+        assert source["status"] == source_status
+
+    def test_clone_copies_space_requirements_but_not_schedules_or_registration_dates(
+        self, client, auth_headers, authenticate_as, mock_event_repository, monkeypatch
+    ):
+        authenticate_as("event_organiser")
+        source = mock_event_repository["store"][EVENT_ID]
+        source.update(
+            registration_enabled=True,
+            registration_capacity=120,
+            registration_opens_at=sgt_at(EVENT_DAY - timedelta(days=10), 9),
+            registration_closes_at=sgt_at(EVENT_DAY - timedelta(days=1), 18),
+            withdrawal_closes_at=sgt_at(EVENT_DAY, 10),
+            status="confirmed",
+            coordinator_id="44444444-4444-4444-4444-444444444444",
+            submitted_at=sgt_at(EVENT_DAY - timedelta(days=2), 9),
+            bookings=[{"id": "booking-1"}],
+            reservations=[{"id": "reservation-1"}],
+            registrations=[{"id": "registration-1"}],
+            notifications=[{"id": "notification-1"}],
+            comments=[{"id": "comment-1"}],
+            history=[{"id": "history-1"}],
+        )
+        source["spaces"] = [
+            {
+                "id": "f0000000-0000-4000-8000-000000000101",
+                "event_id": EVENT_ID,
+                "label": "Main hall",
+                "expected_pax": 100,
+                "layout_preference": "theatre",
+                "facilities_required": ["projector"],
+                "starts_at": sgt_at(EVENT_DAY, 14),
+                "ends_at": sgt_at(EVENT_DAY, 17),
+                "version": 4,
+                "is_primary": True,
+            },
+            {
+                "id": "f0000000-0000-4000-8000-000000000102",
+                "event_id": EVENT_ID,
+                "label": "Breakout room",
+                "expected_pax": 20,
+                "layout_preference": "classroom",
+                "facilities_required": ["whiteboard"],
+                "starts_at": None,
+                "ends_at": None,
+                "version": 2,
+                "is_primary": False,
+            },
+        ]
+        source_snapshot = deepcopy(source)
+        space_inserts = []
+        created_event_values = []
+        create_event = repository.create_event
+
+        def capture_event_values(organiser_id, values):
+            created_event_values.append(deepcopy(values))
+            return create_event(organiser_id, values)
+
+        def create_space(event_id, values):
+            space_id = f"f0000000-0000-4000-8000-00000000010{len(space_inserts) + 3}"
+            space_inserts.append((event_id, deepcopy(values)))
+            return {
+                **values,
+                "id": space_id,
+                "event_id": event_id,
+                "starts_at": None,
+                "ends_at": None,
+                "version": 1,
+                "is_primary": False,
+            }
+
+        monkeypatch.setattr(repository, "create_event", capture_event_values)
+        monkeypatch.setattr(repository, "create_space", create_space)
+
+        response = client.post(f"/api/v1/events/{EVENT_ID}/clone", headers=auth_headers)
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["id"] != EVENT_ID
+        assert body["status"] == "draft"
+        assert body["coordinator_id"] is None
+        assert body["submitted_at"] is None
+        assert body["registration_enabled"] is True
+        assert body["registration_capacity"] == 120
+        assert body["registration_opens_at"] is None
+        assert body["registration_closes_at"] is None
+        assert body["withdrawal_closes_at"] is None
+        excluded_fields = {
+            "status",
+            "coordinator_id",
+            "submitted_at",
+            "bookings",
+            "reservations",
+            "registrations",
+            "notifications",
+            "comments",
+            "history",
+        }
+        assert len(created_event_values) == 1
+        assert excluded_fields.isdisjoint(created_event_values[0])
+        assert len(body["spaces"]) == 2
+        assert [space["label"] for space in body["spaces"]] == ["Main hall", "Breakout room"]
+        assert [space["expected_pax"] for space in body["spaces"]] == [100, 20]
+        assert [space["layout_preference"] for space in body["spaces"]] == ["theatre", "classroom"]
+        assert [space["facilities_required"] for space in body["spaces"]] == [
+            ["projector"],
+            ["whiteboard"],
+        ]
+        assert all(space["event_id"] == body["id"] for space in body["spaces"])
+        assert all(space["id"] not in {source_space["id"] for source_space in source["spaces"]}
+                   for space in body["spaces"])
+        assert all(space["version"] == 1 for space in body["spaces"])
+        assert all(space["starts_at"] is None and space["ends_at"] is None for space in body["spaces"])
+        assert all(not space["is_primary"] for space in body["spaces"])
+        assert [values for _, values in space_inserts] == [
+            {
+                "label": "Main hall",
+                "expected_pax": 100,
+                "layout_preference": "theatre",
+                "facilities_required": ["projector"],
+            },
+            {
+                "label": "Breakout room",
+                "expected_pax": 20,
+                "layout_preference": "classroom",
+                "facilities_required": ["whiteboard"],
+            },
+        ]
+        assert source == source_snapshot
+
+    def test_clone_removes_partial_draft_when_copying_spaces_fails(
+        self, authenticate_as, mock_event_repository, monkeypatch
+    ):
+        authenticate_as("event_organiser")
+        source = mock_event_repository["store"][EVENT_ID]
+        source["spaces"] = [{"label": "Main hall"}, {"label": "Breakout room"}]
+        created_spaces = []
+        deleted_events = []
+
+        def create_space(event_id, values):
+            if created_spaces:
+                raise RuntimeError("space insert failed")
+            space = {"id": "f0000000-0000-4000-8000-000000000103", "event_id": event_id, **values}
+            created_spaces.append(space)
+            return space
+
+        def delete_event(event_id):
+            deleted_events.append(event_id)
+            del mock_event_repository["store"][event_id]
+
+        monkeypatch.setattr(repository, "create_space", create_space)
+        monkeypatch.setattr(repository, "delete_event", delete_event)
+
+        with pytest.raises(RuntimeError, match="space insert failed"):
+            service.clone(EVENT_ID, "11111111-1111-1111-1111-111111111111")
+
+        assert len(created_spaces) == 1
+        assert deleted_events == ["e0000000-0000-4000-8000-000000000003"]
+        assert "e0000000-0000-4000-8000-000000000003" not in mock_event_repository["store"]
+        assert source["spaces"] == [{"label": "Main hall"}, {"label": "Breakout room"}]
 
     def test_cloned_draft_can_be_edited_and_submitted_without_changing_source(
         self, client, auth_headers, authenticate_as

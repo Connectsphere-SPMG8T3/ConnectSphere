@@ -96,6 +96,28 @@ describe("organiser event sorting", () => {
     expect(sortOrganiserEvents(events, { field: "name", direction: "desc" }).map((item) => item.id)).toEqual(["z", "a"]);
   });
 
+  it("sorts each field in both directions and returns the same order on repeat", () => {
+    const events = [
+      event({ id: "a", name: "Beta", status: "draft", date: "2026-10-10" }),
+      event({ id: "b", name: "Alpha", status: "confirmed", date: "2026-10-11" }),
+      event({ id: "missing", name: "Charlie", status: "under_review", date: "" }),
+    ];
+    const cases = [
+      [{ field: "date", direction: "asc" }, ["a", "b", "missing"]],
+      [{ field: "date", direction: "desc" }, ["missing", "b", "a"]],
+      [{ field: "name", direction: "asc" }, ["b", "a", "missing"]],
+      [{ field: "name", direction: "desc" }, ["missing", "a", "b"]],
+      [{ field: "status", direction: "asc" }, ["a", "missing", "b"]],
+      [{ field: "status", direction: "desc" }, ["b", "missing", "a"]],
+    ];
+
+    cases.forEach(([options, expected]) => {
+      const sorted = sortOrganiserEvents(events, options).map((item) => item.id);
+      expect(sorted).toEqual(expected);
+      expect(sortOrganiserEvents(events, options).map((item) => item.id)).toEqual(sorted);
+    });
+  });
+
   it("sorts by lifecycle status with a stable event-id tie breaker", () => {
     const events = [
       event({ id: "b", status: "confirmed" }),

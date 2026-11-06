@@ -119,6 +119,13 @@ CLONE_FIELDS = (
     "waitlist_enabled",
 )
 
+CLONE_SPACE_FIELDS = (
+    "label",
+    "expected_pax",
+    "layout_preference",
+    "facilities_required",
+)
+
 
 class EventNotFoundError(HTTPException):
     def __init__(self) -> None:
@@ -953,7 +960,19 @@ def create(organiser_id: str, body: EventCreateRequest) -> EventResponse:
 def clone(event_id: str, organiser_id: str) -> EventResponse:
     source = _owned_event(event_id, organiser_id)
     values = {field: source.get(field) for field in CLONE_FIELDS}
-    return _to_response(repository.create_event(organiser_id, values))
+    cloned = repository.create_event(organiser_id, values)
+    try:
+        cloned["spaces"] = [
+            repository.create_space(
+                cloned["id"],
+                {field: space.get(field) for field in CLONE_SPACE_FIELDS},
+            )
+            for space in source.get("spaces") or []
+        ]
+        return _to_response(cloned)
+    except Exception:
+        repository.delete_event(cloned["id"])
+        raise
 
 
 def list_owned(organiser_id: str) -> list[EventResponse]:
