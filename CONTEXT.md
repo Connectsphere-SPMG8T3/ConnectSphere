@@ -61,3 +61,81 @@ _Avoid_: Registration, register, account creation, onboarding
 **Registration**:
 An attendee's place on a specific event, in one of the statuses registered, waitlisted, invited, withdrawn or cancelled. Never used for creating an account.
 _Avoid_: Sign-up, booking, RSVP, enrolment
+
+### Event lifecycle
+
+**Cancellation request**:
+An organiser's open request, with a reason, to cancel their own event. It releases nothing until the assigned coordinator decides it.
+_Avoid_: Cancel request, withdrawal
+
+**Direct cancellation**:
+The assigned coordinator cancelling an event without an organiser request. It is allowed only in Confirmed or Preparation, only before the event's start time, and not while a cancellation request is open.
+_Avoid_: Coordinator cancel, forced cancel
+
+**Cancelled**:
+The terminal status of an event that has been cancelled, either by an approved cancellation request or by direct cancellation. Its arrangements are released.
+_Avoid_: Deleted, withdrawn
+
+**Rejected**:
+The terminal status of an event request a coordinator declined before it was confirmed. It is not the word for a cancellation request being declined; that is a **rejected cancellation request**.
+_Avoid_: Cancelled (for a declined request)
+
+**Release**:
+Freeing an event's arrangements (venue bookings, equipment reservations, registrations) so their capacity is available again. Release happens on cancellation and rejection, never automatically on a change.
+_Avoid_: Delete, unbook, drop
+
+**Arrangements**:
+The venue bookings, equipment reservations and registrations an event holds.
+
+### Changes to an event
+
+**Change request**:
+An organiser's request, with a reason, to change details of their own event after submitting it. Nothing changes until the assigned coordinator approves it; it is approved or rejected as a whole.
+_Avoid_: Edit request, amendment (an amendment is what an organiser does to a request returned to them)
+
+**Significant change**:
+A change to the date or time, the attendance, or the venue or equipment requirements. Approving one sends a confirmed event back through the safety check. Any other change is an **ordinary change**.
+_Avoid_: Major change, material change
+
+**Needs re-review**:
+An arrangement an approved change touched in a way its staff had already approved, such as a booking whose time or layout changed. It keeps its hold or reservation and counts as not ready until the coordinator sends it for re-review. It is not a reset.
+_Avoid_: Flagged, reset, unconfirmed
+
+**Send for re-review**:
+The coordinator handing an arrangement that needs re-review to venue staff or technical support, optionally with a note.
+_Avoid_: Resubmit, re-request
+
+**Under re-review**:
+An arrangement with venue staff or technical support again after an approved change. It still holds the venue or equipment until they approve it again or reject it. It can happen any number of times.
+_Avoid_: Pending, re-requested
+
+### Readiness and preparation
+
+**Technical status**:
+Whether an event's equipment arrangements are ready for the safety check: Ready, Pending, Issue or Not required. Nobody sets it; it follows from the equipment lines and the exit check. It is not the same as **technical preparation**.
+_Avoid_: Technical readiness (in conversation), technical progress
+
+**Preparation**:
+The event status after Confirmed, entered automatically when venue staff or technical support record the first preparation update on a Confirmed event. An event back in Planning and confirmed again enters it again on its next update.
+_Avoid_: Prepping, in progress (as a status)
+
+**Technical preparation**:
+Technical support's own record of how far they are with setting up an event's technical arrangements once it is Confirmed, as one **preparation stage** for the whole event plus an internal note. It never changes the **technical status**. It can be updated only while the event is Confirmed or in Preparation; at any other status it is kept but locked.
+_Avoid_: Technical status, technical readiness, tech sign-off
+
+**Venue preparation**:
+The same record kept by venue staff, one per venue booking.
+
+**Preparation stage**:
+One of Not started, In preparation, In progress or Completed. Stages can be set in any order, including back from Completed. The organiser sees the stage, never the note.
+_Avoid_: Preparation status, progress status
+
+### Change history
+
+**Change history**:
+The record of what changed on an event, who changed it and when, read together from every part of the event that keeps its own record. Its entries are never edited or removed.
+_Avoid_: Audit log, activity log, change log
+
+**History entry**:
+One recorded change in an event's **change history**: a status change, an edit to a field with its old and new value, a decision, or a preparation update.
+_Avoid_: Log line, audit record

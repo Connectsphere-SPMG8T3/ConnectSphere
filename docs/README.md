@@ -20,6 +20,7 @@ Every file here has one job, and its name says which. Start with the question yo
 | [`adr/`](adr/) | Why did we make architecture decision X? One numbered record per decision | A new file per decision; accepted ones aren't rewritten |
 | [`test-cases/`](test-cases/README.md) | How do I test feature X by hand? One file per area, `TC-*` IDs | New cases per story |
 | [`test-cases/runs/`](test-cases/runs/README.md) | When was it last tested, and what passed? One file per run | A new file per run |
+| [`superpowers/`](superpowers/) | How was story X designed and planned? Dated design specs and implementation plans for some stories | Kept for the record |
 | [`archive/`](archive/) | Dated snapshots kept for the record, no longer updated | Never |
 
 The repo root also has [`CONTEXT.md`](../CONTEXT.md), the domain glossary (Block, Hold, Availability, Suitability, …), and [`AGENTS.md`](../AGENTS.md), the workflow every contributor and AI agent follows.
@@ -58,4 +59,4 @@ Files were renamed on 2026-09-28. Jira comments, commits and older log entries s
 | `PROJECT_REVIEW.md` §A1, §A3, Part B | [`archive/2026-09-13-design-review.md`](archive/2026-09-13-design-review.md) |
 | `PROJECT_REVIEW.md` Part C, §C1–§C4 | [`ROADMAP.md`](ROADMAP.md), same labels |
 | `TEST_CASES.md` | [`test-cases/`](test-cases/README.md), same `TC-*` IDs |
-| `HANDOFF_SPRINT1.md`, `superpowers/`, `proposals/` | Removed; retrieve them from git history (e.g. `git show 36aa9a7:docs/HANDOFF_SPRINT1.md`) |
+| `HANDOFF_SPRINT1.md`, `proposals/` | Removed; retrieve them from git history (e.g. `git show 36aa9a7:docs/HANDOFF_SPRINT1.md`) |
