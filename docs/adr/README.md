@@ -19,10 +19,11 @@ Not every choice needs one. Business rules, UI choices and **[Team decision]** /
 | [0001](0001-modular-monolith-backend.md) | Build the backend as a modular monolith | Accepted |
 | [0002](0002-supabase-client-only-data-access.md) | Access Postgres through the Supabase client only | Accepted; Scope narrowed by 0007 |
 | [0003](0003-signup-via-admin-api-without-email-confirmation.md) | Create sign-up accounts through the admin API, already confirmed | Accepted |
-| [0004](0004-notification-delivery.md) | Deliver in-app notifications by polling the API every 10 seconds | Proposed |
+| [0004](0004-notification-delivery.md) | Deliver in-app notifications by polling the API every 10 seconds | Accepted |
 | [0005](0005-supabase-as-the-platform.md) | Build on Supabase as the platform | Accepted |
 | [0006](0006-api-enforces-access-rls-is-a-safety-net.md) | The API enforces access; RLS is a safety net | Accepted |
 | [0007](0007-postgres-functions-own-multi-table-writes.md) | Postgres guarantees integrity; multi-table writes are single database functions | Accepted |
+| [0008](0008-event-history-read-from-source-tables.md) | An event's change history is read from its source tables, not copied into one table | Accepted |
 
 ## Writing one
 
