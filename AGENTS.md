@@ -34,7 +34,7 @@ Before exploring or changing code, ask the developer which kind of work this is 
    - **Suggest planning first.** In Claude Code, recommend switching to plan mode before any code is written. In other tools, write the plan out and get the developer's agreement. The plan maps every acceptance criterion to the files, tests, and verification that will satisfy it, and names anything from `docs/IMPLEMENTATION_MAP.md` it will reuse.
    - Branch: `feature/scrum-<n>-<short-slug>`, or `feature/cr-<n>-<short-slug>` for a `CR-<n>` ID.
 2. **Fix**
-   - Ask for the defect ID from `docs/DEFECTS.md` (D1, D2, …), or the observed vs expected behaviour and how to reproduce it. A fix is also a Bug fix PBI in the backlog. Ask for its ID if one exists.
+   - Ask for the defect ID from `docs/DEFECTS.md` (D1, D2, …), or the observed vs expected behaviour and how to reproduce it. A fix has no row in the Product backlog: its record is its `docs/DEFECTS.md` row, linked to the PBI it affects. If the work would change a rule or an acceptance criterion, it's a story instead: a new PBI linked to the original, with an ID ending in `-R`.
    - Reproduce the defect first, then write a failing regression test before changing code.
    - Branch: `fix/<short-slug>`.
 

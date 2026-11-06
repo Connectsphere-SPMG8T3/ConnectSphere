@@ -6,7 +6,7 @@ Aim for about 1–2k characters for a fix and 3–5k for a story. CI shows test 
 
 ## <PBI ID> — <story title>
 
-<!-- For a fix: "## Dn — <defect summary>" and the backlog's Bug fix PBI ID if there is one.
+<!-- For a fix: "## Dn — <defect summary>" and the PBI it affects.
      2–4 sentences: what a user can now do, or what was wrong.
      Migration? Say whether it's already applied to the shared project, and when. -->
 
