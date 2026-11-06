@@ -42,9 +42,17 @@ These cases cover the implemented organiser draft and submission workflow. Run t
 
 | ID | Title | Preconditions | Test Steps | Test Input | Expected Result | Priority |
 |----|-------|----------------|------------|-------------|------------------|----------|
-| TC-EVENT-020 | Valid event request is submitted | Logged in as Event Organiser; draft contains all required fields | Click **Submit request** and inspect the response/list | Name, purpose, future event date/time, selected timezone, attendance, layout, and optional requirements | The request is stored, has a unique reference, appears in the organiser's event list with **Under Review** status, and the confirmation identifies the submitted event. | 🔴 |
+| TC-EVENT-020 | Valid event request is submitted | Logged in as Event Organiser; draft contains all required fields | Click **Submit request**, confirm, and inspect the success confirmation | Name, purpose, future event date/time, selected timezone, attendance, layout, and optional requirements | The request is stored and a success confirmation is shown. | 🔴 |
 | TC-EVENT-021 | Duplicate submission is refused | A valid event is already submitted | Click **Submit request** again or repeat the API request | Same event ID | The second attempt returns `409 Conflict`; no duplicate event is created and the original status is unchanged. | 🔴 |
 | TC-EVENT-022 | Submitted details can be retrieved by authorised users | A valid event request exists | Reload the organiser's event list and open the event detail page | Submitted event ID | The stored name, purpose, date/time, attendance, venue requirements, accessibility needs, equipment needs, and registration settings are returned and displayed. | 🔴 |
+
+### Acceptance-criterion coverage
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-EVENT-048 | Organiser can enter all required event details | Manual | Logged in as Event Organiser; on `/events/new` | 1. Enter the event details from Test Input. 2. Complete the space requirements and enable registration, then fill its settings. 3. Check that the values remain visible before submitting. | Unique event title; purpose and description; date 14 days ahead; `Asia/Singapore`; `14:00–17:00`; attendance `40`; one **Main venue** space for `40` with **Theatre** layout and **Projector**; accessibility `Step-free entry`; equipment `Projector`; registration enabled, capacity `40`, opens 7 days ahead at `09:00` and closes 1 day before the event at `17:00`. | Every supplied required value is accepted and remains visible in its field; space and enabled registration details can also be entered. No submission is required for this case. | 🔴 | 2026-11-05 | 2026-11-05 · Pass · [run](runs/2026-11-05-1837-manual-14b4ab4.md) |
+| TC-EVENT-049 | Incomplete request cannot be submitted | Manual | Logged in as Event Organiser; on `/events/new` | 1. Enter valid values for every required request and space field except **Total expected attendance**. 2. Click **Submit request** and check that the request has not been submitted. | Leave **Total expected attendance** blank; provide valid values for every other required field. | Submission does not succeed: the form remains open, no success confirmation is shown, and the event is not submitted. | 🔴 | 2026-11-05 | |
+| TC-EVENT-050 | Submitted request appears in the organiser list | Manual | A successfully submitted request exists for the signed-in organiser | 1. Open `/dashboard/organiser`. 2. Locate the request by its unique reference and inspect its row. | The request created by TC-EVENT-020 | The request appears in the organiser's list with status **Under Review** and the same unique reference. | 🔴 | 2026-11-05 | 2026-11-05 · Pass · [run](runs/2026-11-05-1837-manual-14b4ab4.md) |
 
 ### Data integrity and security
 
@@ -61,16 +69,36 @@ These cases cover the implemented organiser draft and submission workflow. Run t
 
 | SCRUM-8 acceptance criterion / rule | Covered by |
 |---|---|
+| AC1 The organiser can enter all required event details | TC-EVENT-048 |
+| AC2 Submission is permitted only when all required fields are complete | TC-EVENT-014, TC-EVENT-049 |
+| AC3 Missing or invalid fields block submission with actionable messages | TC-EVENT-010 to TC-EVENT-016, TC-EVENT-036, TC-EVENT-045, TC-EVENT-046 |
+| AC4 A successful submission shows a confirmation | TC-EVENT-020 |
+| AC5 The submitted request appears in the organiser's list with status and reference | TC-EVENT-050 |
+| AC6 Submitted details are stored and retrievable by authorised users | TC-EVENT-022 |
+| AC7 Only Event Organisers can submit requests | TC-EVENT-005 |
 | Draft requires only an event name and remains private to its owner (DR-R1, DR-R2) | TC-EVENT-001, TC-EVENT-003, TC-EVENT-004, TC-EVENT-030 |
 | Drafts can be edited and submitted events cannot be discarded (DR-R3, ER-R3) | TC-EVENT-003, TC-EVENT-006, TC-EVENT-007, TC-EVENT-009, TC-EVENT-031, TC-EVENT-032 |
 | Draft reload and update failures are handled without a broken form or false success | TC-EVENT-007, TC-EVENT-008, TC-EVENT-009 |
 | Required event fields and controlled venue requirements are validated | TC-EVENT-010, TC-EVENT-011, TC-EVENT-015, TC-EVENT-016, TC-EVENT-045, TC-EVENT-046 |
 | Invalid date/time values are rejected; no lead-time rule beyond tomorrow applies | TC-EVENT-012, TC-EVENT-013, TC-EVENT-014 |
-| Valid submission creates an under-review request visible in the organiser's list | TC-EVENT-020, TC-EVENT-022 |
 | Successful draft saves and submissions provide reusable success feedback | TC-EVENT-033, TC-EVENT-034 |
 | Unsaved event-request navigation requires reusable confirmation | TC-EVENT-035 |
 | Duplicate submission returns `409` (ER-R4) | TC-EVENT-021 |
 | Only Event Organisers can create requests; ownership is enforced server-side (AUTH-R1, S-R1) | TC-EVENT-005, TC-EVENT-030 |
+
+### Automated live coverage — SCRUM-8 and SCRUM-9
+
+The API runner covers TC-EVENT-003, 004, 005, 006, 010-017, 021, 022, 030-032. Playwright covers TC-EVENT-001, 002, 007-009, 020, 036, 046, and 049. See the [API run](runs/2026-11-05-2016-api-db-14b4ab4.md), [initial browser run](runs/2026-11-05-2018-e2e-14b4ab4.md), [initial TC-EVENT-020 run](runs/2026-11-05-2053-e2e-14b4ab4.md), and [passing TC-EVENT-020 run](runs/2026-11-05-2055-e2e-14b4ab4.md).
+
+The initial focused browser run failed because its status locator matched both the toast and the dashboard loading message. The locator was narrowed to the success toast, and the recorded rerun passed. TC-EVENT-020 verifies a successful submission confirmation; TC-EVENT-050 separately checks the organiser-list status and reference.
+
+The developer reported TC-EVENT-033, TC-EVENT-034, and TC-EVENT-035 as passing in the [manual run](runs/2026-11-05-2109-manual-14b4ab4.md).
+
+### Submit a draft (story 9 AC4)
+
+| ID | Title | Type | Preconditions | Test Steps | Test Input | Expected Result | Priority | Created | Last run |
+|----|-------|------|----------------|------------|-------------|------------------|----------|---------|----------|
+| TC-EVENT-051 | Submitted draft leaves the Drafts list | Manual | Signed in as Event Organiser; a complete saved draft with a unique title exists | 1. Open `/dashboard/organiser` and locate the draft under **Drafts**. 2. Open it for editing, click **Submit request**, and confirm submission. 3. Return to the organiser dashboard's **Events** view and check **Drafts** and **Requests**. | Account #1; complete saved draft; unique event title | The event is no longer in **Drafts** and appears once under **Requests** with status **Under Review**. | 🔴 | 2026-11-05 | 2026-11-05 · Pass · [run](runs/2026-11-05-1837-manual-14b4ab4.md) |
 
 ### Discard a draft (story 9 AC6, D81)
 
@@ -88,7 +116,7 @@ Story 9 (draft event requests) was built inside SCRUM-8, so its cases are the SC
 | AC1 The organiser can save a draft at any point, even with required fields missing | TC-EVENT-001, TC-EVENT-002, TC-EVENT-010 |
 | AC2 Drafts appear in the organiser's event list marked "Draft", separate from submitted requests | TC-EVENT-001, TC-ORG-001 |
 | AC3 A draft can be reopened and edited later; saved values are kept | TC-EVENT-003, TC-EVENT-007, TC-EVENT-009, TC-EVENT-031 |
-| AC4 Submitting a draft runs story 8's required-field checks; once submitted it is no longer a draft | TC-EVENT-010 to TC-EVENT-016, TC-EVENT-020 |
+| AC4 Submitting a draft runs story 8's required-field checks; once submitted it is no longer a draft | TC-EVENT-010 to TC-EVENT-016 (required-field checks), TC-EVENT-051 (submitted draft leaves Drafts) |
 | AC5 Drafts are visible only to their organiser, not to coordinators or in the Lead's unassigned queue | TC-EVENT-004, TC-EVENT-030, TC-DASH-011, TC-DASH-013, TC-ASSIGN-006 |
 | AC6 The organiser can discard a draft | TC-EVENT-037, TC-EVENT-038, TC-EVENT-006 (a submitted event can't be); `TestEventDrafts::test_draft_can_be_discarded_by_its_owner`, `::test_another_organisers_draft_cannot_be_discarded`, `::test_only_an_organiser_can_discard_a_draft`; `EventRequestView.spec.js` and `events.spec.js` (D81) |
 

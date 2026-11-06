@@ -57,7 +57,11 @@ it("flags only a disposable booking for the safety follow-up browser check", () 
 describe("run-scoped cleanup", () => {
   function deletesSent(cleanup) {
     execFileSync.mockClear();
-    execFileSync.mockReturnValue('{"rows": []}');
+    execFileSync.mockImplementation((_command, args) =>
+      args.at(-1).startsWith("select ")
+        ? '{"rows": [{"events": 0, "bookings": 0, "equipment": 0, "accounts": 0}]}'
+        : '{"rows": []}',
+    );
     cleanup();
     return execFileSync.mock.calls.map((call) => call[1].at(-1)).filter((sql) => /^\s*delete/i.test(sql));
   }
@@ -76,6 +80,33 @@ describe("run-scoped cleanup", () => {
       expect(sql).toContain(throwaway.RUN_ID);
       expect(sql).toContain(`interval '${throwaway.STALE_AFTER}'`);
     }
+  });
+
+  it("verifies owned events and accounts are gone after cleanup", () => {
+    execFileSync.mockImplementation((_command, args) =>
+      args.at(-1).startsWith("select ")
+        ? '{"rows": [{"events": 0, "bookings": 0, "equipment": 0, "accounts": 0}]}'
+        : '{"rows": []}',
+    );
+
+    throwaway.deleteThrowawayEvents();
+    throwaway.deleteThrowawayAccounts();
+
+    const checks = execFileSync.mock.calls
+      .map((call) => call[1].at(-1))
+      .filter((sql) => /^\s*select/i.test(sql));
+    expect(checks).toHaveLength(2);
+    expect(checks.every((sql) => sql.includes(throwaway.RUN_ID))).toBe(true);
+  });
+
+  it("fails cleanup verification when a throwaway event remains", () => {
+    execFileSync.mockImplementation((_command, args) =>
+      args.at(-1).startsWith("select ")
+        ? '{"rows": [{"events": 1, "bookings": 0, "equipment": 0, "accounts": 0}]}'
+        : '{"rows": []}',
+    );
+
+    expect(() => throwaway.deleteThrowawayEvents()).toThrow(/cleanup left/);
   });
 
   it("waits longer than any run before treating another run's rows as left over", () => {

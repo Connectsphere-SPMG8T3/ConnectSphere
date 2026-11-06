@@ -2,7 +2,7 @@
 // saved, so this creates no data. Case: docs/test-cases/events.md.
 import { expect, seedSession, test } from "./support/fixtures.js";
 
-test("TC-EVENT-046 the request form refuses to submit without total attendance", async ({ page, sharedSessions }) => {
+test("TC-EVENT-046 TC-EVENT-049 the request form refuses to submit without total attendance", async ({ page, sharedSessions }) => {
   await seedSession(page, await sharedSessions("event_organiser"));
   await page.goto("/events/new");
   const writes = [];

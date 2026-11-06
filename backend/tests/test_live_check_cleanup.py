@@ -19,6 +19,8 @@ def sql(monkeypatch):
 
     def db_query(statement):
         sent.append(statement)
+        if statement.lstrip().lower().startswith("select"):
+            return [{"events": 0, "accounts": 0}]
         return []
 
     monkeypatch.setattr(verify_live, "db_query", db_query)
@@ -76,6 +78,18 @@ def test_throwaway_events_are_deleted_before_attendee_accounts(sql):
     assert event_delete < account_delete
 
 
+def test_cleanup_fails_if_this_runs_events_remain(monkeypatch):
+    def db_query(statement):
+        if statement.lstrip().lower().startswith("select"):
+            return [{"events": 1, "accounts": 0}]
+        return []
+
+    monkeypatch.setattr(verify_live, "db_query", db_query)
+
+    with pytest.raises(verify_live.CheckFailed, match="cleanup left 1 events"):
+        verify_live.cleanup_throwaway_data(RUN_ID)
+
+
 def like_patterns(statement, table):
     """The `like` patterns a delete on `table` uses for rows of any age, as regular
     expressions. Patterns limited to long-left-over rows don't count: a run's own
@@ -131,6 +145,8 @@ def test_a_failing_cleanup_step_is_reported_and_the_rest_still_run(monkeypatch, 
 
     def db_query(statement):
         sent.append(statement)
+        if statement.lstrip().lower().startswith("select"):
+            return [{"events": 0, "accounts": 0}]
         if statement.lower().startswith("delete from public.venues "):
             raise verify_live.CheckFailed("database query failed: violates foreign key constraint")
         return []

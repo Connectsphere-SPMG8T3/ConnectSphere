@@ -1743,6 +1743,382 @@ def throwaway_event(ctx: Context, case: str, starts: str, ends: str, *, status: 
     return rows[0]["id"]
 
 
+def event_schedule(days: int = 30, zone: ZoneInfo = SGT, start_time: dt.time = dt.time(14),
+                   end_time: dt.time = dt.time(17)) -> tuple[dt.datetime, dt.datetime]:
+    event_day = dt.datetime.now(zone).date() + dt.timedelta(days=days)
+    starts_at = dt.datetime.combine(event_day, start_time, zone)
+    ends_day = event_day + dt.timedelta(days=end_time <= start_time)
+    ends_at = dt.datetime.combine(ends_day, end_time, zone)
+    return starts_at, ends_at
+
+
+def event_request_payload(ctx: Context, case: str, *, days: int = 30, zone: ZoneInfo = SGT,
+                          start_time: dt.time = dt.time(14), end_time: dt.time = dt.time(17),
+                          name: str | None = None, registration: bool = False) -> dict:
+    starts_at, ends_at = event_schedule(days, zone, start_time, end_time)
+    payload = {
+        "name": name or f"{THROWAWAY_EVENT_PREFIX}{ctx.run_id} {case}",
+        "event_timezone": zone.key,
+        "purpose": "Live-check event request",
+        "description": "Throwaway request for Story 8/9 verification.",
+        "starts_at": starts_at.isoformat(),
+        "ends_at": ends_at.isoformat(),
+        "expected_attendance": 40,
+        "layout_preference": "theatre",
+        "facilities_required": ["projector"],
+        "accessibility_needs": "Step-free access",
+        "preliminary_equipment_needs": "Projector",
+        "registration_enabled": registration,
+    }
+    if registration:
+        payload.update(
+            registration_capacity=40,
+            registration_opens_at=dt.datetime.combine(
+                starts_at.date() - dt.timedelta(days=7), dt.time(9), zone
+            ).isoformat(),
+            registration_closes_at=dt.datetime.combine(
+                starts_at.date() - dt.timedelta(days=1), dt.time(17), zone
+            ).isoformat(),
+        )
+    return payload
+
+
+def create_event_draft(ctx: Context, case: str, *, session: Session | None = None,
+                       payload: dict | None = None) -> dict:
+    owner = session or ctx.shared("event_organiser")
+    response = ctx.client.post(
+        f"{ctx.api}/events",
+        headers=owner.headers,
+        json=payload or {"name": f"{THROWAWAY_EVENT_PREFIX}{ctx.run_id} {case}"},
+    )
+    expect_status(response, 201)
+    event = response.json()
+    expect(event["status"] == "draft", f"created event is {event.get('status')!r}, not draft")
+    return event
+
+
+def submit_event(ctx: Context, event_id: str, *, session: Session | None = None,
+                 payload: dict | None = None) -> httpx.Response:
+    owner = session or ctx.shared("event_organiser")
+    url = f"{ctx.api}/events/{event_id}/submit"
+    if payload is None:
+        return ctx.client.post(url, headers=owner.headers)
+    return ctx.client.post(url, headers=owner.headers, json=payload)
+
+
+def submission_errors(response: httpx.Response) -> list[dict]:
+    detail = response.json().get("detail", [])
+    expect(isinstance(detail, list), f"expected field errors, got {detail!r}")
+    return detail
+
+
+@check("TC-EVENT-005", "Only the organiser role can create event requests")
+def _(ctx: Context) -> None:
+    payload = {"name": f"{THROWAWAY_EVENT_PREFIX}{ctx.run_id} 8-005"}
+    for role in ("event_coordinator", "venue_staff", "tech_support", "attendee"):
+        response = ctx.client.post(
+            f"{ctx.api}/events", headers=ctx.shared(role).headers, json=payload
+        )
+        expect_status(response, 403)
+
+
+@check("TC-EVENT-010", "Submission reports every missing required field and keeps the draft", needs_db=True)
+def _(ctx: Context) -> None:
+    event = create_event_draft(ctx, "8-010")
+    owner = ctx.shared("event_organiser")
+    response = submit_event(ctx, event["id"], session=owner)
+    expect_status(response, 422)
+    fields = {error["loc"][-1] for error in submission_errors(response)}
+    required = {"purpose", "starts_at", "ends_at", "expected_attendance", "layout_preference"}
+    expect(required <= fields, f"missing required-field errors: {sorted(required - fields)}")
+    current = ctx.client.get(f"{ctx.api}/events/{event['id']}", headers=owner.headers)
+    expect_status(current, 200)
+    expect(current.json()["status"] == "draft", "an invalid submission changed the event status")
+
+
+@check("TC-EVENT-011", "Event title and purpose limits reject invalid values and accept boundaries",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event = create_event_draft(ctx, "8-011")
+    owner = ctx.shared("event_organiser")
+    url = f"{ctx.api}/events/{event['id']}"
+    original_name = event["name"]
+
+    for value in ("ab", "x" * 151):
+        response = ctx.client.patch(url, headers=owner.headers, json={"name": value})
+        expect_status(response, 422)
+        expect(any(error["loc"][-1] == "name" for error in submission_errors(response)),
+               f"invalid title length {len(value)} was not reported on name")
+
+    for value in ("abc", "x" * 150):
+        response = ctx.client.patch(url, headers=owner.headers, json={"name": value})
+        expect_status(response, 200)
+        expect(response.json()["name"] == value, f"valid title length {len(value)} was not saved")
+        restored = ctx.client.patch(url, headers=owner.headers, json={"name": original_name})
+        expect_status(restored, 200)
+
+    for length, expected_status in ((501, 422), (500, 200)):
+        value = "p" * length
+        response = ctx.client.patch(url, headers=owner.headers, json={"purpose": value})
+        expect_status(response, expected_status)
+        if expected_status == 422:
+            expect(any(error["loc"][-1] == "purpose" for error in submission_errors(response)),
+                   "overlong purpose was not reported on purpose")
+        else:
+            expect(response.json()["purpose"] == value, "500-character purpose was not saved")
+
+
+@check("TC-EVENT-012", "Submission rejects an event dated today in its selected timezone", needs_db=True)
+def _(ctx: Context) -> None:
+    zone = ZoneInfo("Asia/Bangkok")
+    event = create_event_draft(ctx, "8-012")
+    owner = ctx.shared("event_organiser")
+    payload = event_request_payload(ctx, "8-012", days=0, zone=zone,
+                                   start_time=dt.time(23, 59), end_time=dt.time(0, 59))
+    response = submit_event(ctx, event["id"], session=owner, payload=payload)
+    expect_status(response, 422)
+    errors = submission_errors(response)
+    expect(any(error["loc"][-1] == "starts_at"
+               and error["msg"] == "Event date must be after today." for error in errors),
+           f"today-date error missing: {errors}")
+
+
+@check("TC-EVENT-013", "Submission rejects equal and earlier end times", needs_db=True)
+def _(ctx: Context) -> None:
+    event = create_event_draft(ctx, "8-013")
+    owner = ctx.shared("event_organiser")
+    base = event_request_payload(ctx, "8-013")
+    event_day = dt.datetime.fromisoformat(base["starts_at"]).date()
+    for start_time, end_time in (
+        (dt.time(14), dt.time(14)),
+        (dt.time(17), dt.time(14)),
+    ):
+        payload = {
+            **base,
+            "starts_at": dt.datetime.combine(event_day, start_time, SGT).isoformat(),
+            "ends_at": dt.datetime.combine(event_day, end_time, SGT).isoformat(),
+        }
+        response = submit_event(
+            ctx,
+            event["id"],
+            session=owner,
+            payload=payload,
+        )
+        expect_status(response, 422)
+        errors = submission_errors(response)
+        expect(any(error["loc"][-1] == "ends_at"
+                   and error["msg"] == "End time must be after start time." for error in errors),
+               f"end-time error missing: {errors}")
+
+
+@check("TC-EVENT-014", "A request one day ahead is accepted", needs_db=True)
+def _(ctx: Context) -> None:
+    event = create_event_draft(ctx, "8-014")
+    response = submit_event(
+        ctx, event["id"],
+        payload=event_request_payload(ctx, "8-014", days=1),
+    )
+    expect_status(response, 200)
+    expect(response.json()["status"] == "submitted",
+           f"tomorrow's request was not submitted: {response.json().get('status')!r}")
+
+
+@check("TC-EVENT-015", "Enabled registration rejects invalid capacity and schedule settings", needs_db=True)
+def _(ctx: Context) -> None:
+    event = create_event_draft(ctx, "8-015")
+    owner = ctx.shared("event_organiser")
+    base = event_request_payload(ctx, "8-015", registration=True)
+    starts_at = dt.datetime.fromisoformat(base["starts_at"])
+    ends_at = dt.datetime.fromisoformat(base["ends_at"])
+    opening = dt.datetime.combine(starts_at.date() - dt.timedelta(days=7), dt.time(9), SGT)
+    closing = dt.datetime.combine(starts_at.date() - dt.timedelta(days=1), dt.time(17), SGT)
+    today = dt.datetime.now(SGT).date()
+    cases = (
+        ({**base, "registration_capacity": 0}, "registration_capacity", None),
+        ({**base, "registration_opens_at": None}, "registration_opens_at",
+         "Registration opening time is required when registration is enabled."),
+        ({**base, "registration_closes_at": None}, "registration_closes_at",
+         "Registration closing time is required when registration is enabled."),
+        ({**base, "registration_closes_at": opening.isoformat()}, "registration_closes_at",
+         "Registration closing time must be after opening time."),
+        ({**base, "registration_closes_at": dt.datetime.combine(today, dt.time(18), SGT).isoformat()},
+         "registration_closes_at", "Registration closing date must be after today."),
+        ({**base, "registration_closes_at": (ends_at + dt.timedelta(minutes=1)).isoformat()},
+         "registration_closes_at", "Registration closing time cannot be after the event end time."),
+    )
+    for payload, field_name, expected_message in cases:
+        response = submit_event(ctx, event["id"], session=owner, payload=payload)
+        expect_status(response, 422)
+        errors = submission_errors(response)
+        matching = [error for error in errors if error["loc"][-1] == field_name]
+        expect(bool(matching), f"registration error for {field_name} missing: {errors}")
+        if expected_message:
+            expect(any(error["msg"] == expected_message for error in matching),
+                   f"unexpected registration error for {field_name}: {matching}")
+
+
+@check("TC-EVENT-016", "Unknown layout and facility values are rejected", needs_db=True)
+def _(ctx: Context) -> None:
+    event = create_event_draft(ctx, "8-016")
+    owner = ctx.shared("event_organiser")
+    base = event_request_payload(ctx, "8-016")
+    for field_name, value in (("layout_preference", "cinema"),
+                              ("facilities_required", ["jacuzzi"])):
+        response = submit_event(ctx, event["id"], session=owner, payload={**base, field_name: value})
+        expect_status(response, 422)
+        errors = submission_errors(response)
+        expect(any(field_name in error["loc"] for error in errors),
+               f"controlled-list error for {field_name} missing: {errors}")
+
+
+@check("TC-EVENT-017", "The selected timezone is stored and preserves local event times", needs_db=True)
+def _(ctx: Context) -> None:
+    zone = ZoneInfo("Asia/Bangkok")
+    event = create_event_draft(ctx, "8-017")
+    owner = ctx.shared("event_organiser")
+    payload = event_request_payload(ctx, "8-017", zone=zone)
+    submitted = submit_event(ctx, event["id"], session=owner, payload=payload)
+    expect_status(submitted, 200)
+    response = submitted.json()
+    expect(response["event_timezone"] == zone.key, f"stored timezone is {response['event_timezone']!r}")
+    starts_at = dt.datetime.fromisoformat(response["starts_at"]).astimezone(zone)
+    ends_at = dt.datetime.fromisoformat(response["ends_at"]).astimezone(zone)
+    expect((starts_at.hour, starts_at.minute, ends_at.hour, ends_at.minute) == (14, 0, 17, 0),
+           f"local schedule changed: {starts_at.isoformat()}–{ends_at.isoformat()}")
+    fetched = ctx.client.get(f"{ctx.api}/events/{event['id']}", headers=owner.headers)
+    expect_status(fetched, 200)
+    expect(fetched.json()["event_timezone"] == zone.key, "timezone did not persist on event read")
+
+
+@check("TC-EVENT-021", "A duplicate submission is refused without changing the original", needs_db=True)
+def _(ctx: Context) -> None:
+    owner = ctx.shared("event_organiser")
+    event = create_event_draft(ctx, "8-021", payload=event_request_payload(ctx, "8-021"))
+    first = submit_event(ctx, event["id"], session=owner)
+    expect_status(first, 200)
+    duplicate = submit_event(ctx, event["id"], session=owner)
+    expect_status(duplicate, 409)
+    current = ctx.client.get(f"{ctx.api}/events/{event['id']}", headers=owner.headers)
+    expect_status(current, 200)
+    expect(current.json()["status"] == first.json()["status"] == "submitted",
+           "duplicate submission changed the original status")
+
+
+@check("TC-EVENT-022", "Submitted request details are returned to the owning organiser", needs_db=True)
+def _(ctx: Context) -> None:
+    owner = ctx.shared("event_organiser")
+    event = create_event_draft(
+        ctx, "8-022", payload=event_request_payload(ctx, "8-022", registration=True)
+    )
+    submitted = submit_event(ctx, event["id"], session=owner)
+    expect_status(submitted, 200)
+    fetched = ctx.client.get(f"{ctx.api}/events/{event['id']}", headers=owner.headers)
+    expect_status(fetched, 200)
+    response = fetched.json()
+    for field in ("name", "purpose", "description", "event_timezone", "starts_at", "ends_at",
+                  "expected_attendance", "layout_preference", "facilities_required",
+                  "accessibility_needs", "preliminary_equipment_needs", "registration_enabled",
+                  "registration_capacity", "registration_opens_at", "registration_closes_at"):
+        expect(response[field] == submitted.json()[field],
+               f"{field} differed between submit and read")
+
+
+@check("TC-EVENT-032", "A submitted request cannot be hard-deleted and remains retrievable", needs_db=True)
+def _(ctx: Context) -> None:
+    owner = ctx.shared("event_organiser")
+    event = create_event_draft(ctx, "8-032", payload=event_request_payload(ctx, "8-032"))
+    expect_status(submit_event(ctx, event["id"], session=owner), 200)
+    deleted = ctx.client.delete(f"{ctx.api}/events/{event['id']}", headers=owner.headers)
+    expect_status(deleted, 409)
+    fetched = ctx.client.get(f"{ctx.api}/events/{event['id']}", headers=owner.headers)
+    expect_status(fetched, 200)
+    expect(fetched.json()["status"] == "submitted", "the submitted record did not remain available")
+
+
+@check("TC-EVENT-006", "A submitted request cannot be directly edited or discarded", needs_db=True)
+def _(ctx: Context) -> None:
+    owner = ctx.shared("event_organiser")
+    event = create_event_draft(ctx, "9-006", payload=event_request_payload(ctx, "9-006"))
+    submitted = submit_event(ctx, event["id"], session=owner)
+    expect_status(submitted, 200)
+    deleted = ctx.client.delete(f"{ctx.api}/events/{event['id']}", headers=owner.headers)
+    expect_status(deleted, 409)
+    edited = ctx.client.patch(
+        f"{ctx.api}/events/{event['id']}",
+        headers=owner.headers,
+        json={"name": "live-check attempted edit"},
+    )
+    expect_status(edited, 409)
+    fetched = ctx.client.get(f"{ctx.api}/events/{event['id']}", headers=owner.headers)
+    expect_status(fetched, 200)
+    expect(fetched.json()["name"] == submitted.json()["name"]
+           and fetched.json()["status"] == submitted.json()["status"],
+           "a refused edit or discard changed the submitted request")
+
+
+@check("TC-EVENT-003, TC-EVENT-031", "A draft persists and remains editable after signing out",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    first_session = ctx.shared("event_organiser")
+    event = create_event_draft(ctx, "9-003", session=first_session)
+    ctx.client.post(f"{ctx.api}/auth/logout", headers=first_session.headers)
+    next_session = ctx.login("event_organiser")
+    fetched = ctx.client.get(f"{ctx.api}/events/{event['id']}", headers=next_session.headers)
+    expect_status(fetched, 200)
+    expect(fetched.json()["name"] == event["name"] and fetched.json()["status"] == "draft",
+           "the draft did not persist after signing out")
+    updated = ctx.client.patch(
+        f"{ctx.api}/events/{event['id']}",
+        headers=next_session.headers,
+        json={"name": f"{THROWAWAY_EVENT_PREFIX}{ctx.run_id} 9-003-updated"},
+    )
+    expect_status(updated, 200)
+    expect(updated.json()["status"] == "draft", "editing the draft changed its status")
+
+
+@check("TC-EVENT-004, TC-EVENT-030", "Organiser event lists and draft endpoints enforce ownership",
+       creates_accounts=True, needs_db=True)
+def _(ctx: Context) -> None:
+    second_email = ctx.throwaway_email("9-004")
+    expect_status(ctx.signup(
+        role="event_organiser",
+        full_name="Live Check Organiser",
+        email=second_email,
+        password=THROWAWAY_PASSWORD,
+        organisation_name="Live Check Org",
+    ), 201)
+    first = ctx.shared("event_organiser")
+    second = ctx.login("event_organiser", email=second_email, password=THROWAWAY_PASSWORD)
+    first_event = create_event_draft(ctx, "9-004-a", session=first)
+    second_event = create_event_draft(ctx, "9-004-b", session=second)
+
+    for owner, other_event, own_event in (
+        (first, second_event, first_event),
+        (second, first_event, second_event),
+    ):
+        listed = ctx.client.get(f"{ctx.api}/events", headers=owner.headers)
+        expect_status(listed, 200)
+        ids = {row["id"] for row in listed.json()}
+        expect(own_event["id"] in ids and other_event["id"] not in ids,
+               "an organiser's list included another organiser's draft or omitted their own")
+        expect_status(
+            ctx.client.get(f"{ctx.api}/events/{other_event['id']}", headers=owner.headers), 404
+        )
+
+    denied_read = ctx.client.get(f"{ctx.api}/events/{second_event['id']}", headers=first.headers)
+    denied_update = ctx.client.patch(
+        f"{ctx.api}/events/{second_event['id']}",
+        headers=first.headers,
+        json={"name": "attempted cross-owner edit"},
+    )
+    denied_delete = ctx.client.delete(f"{ctx.api}/events/{second_event['id']}", headers=first.headers)
+    for response in (denied_read, denied_update, denied_delete):
+        expect_status(response, 404)
+    owner_read = ctx.client.get(f"{ctx.api}/events/{second_event['id']}", headers=second.headers)
+    expect_status(owner_read, 200)
+    expect(owner_read.json()["name"] == second_event["name"], "a refused cross-owner write changed the draft")
+
+
 @check("TC-EVENT-038", "A completed event is visible to its organiser and assigned coordinator", needs_db=True)
 def _(ctx: Context) -> None:
     event_id = throwaway_event(ctx, "68-038-read", "2031-12-22 09:00+08", "2031-12-22 12:00+08",
@@ -6252,6 +6628,16 @@ def cleanup_throwaway_data(run_id: str) -> dict[str, int]:
         except CheckFailed as error:
             print(f"  (cleanup of throwaway {kind} failed, carrying on: {error})")
             counts[kind] = 0
+    [remaining] = db_query(
+        "select "
+        f"(select count(*) from public.events where name like '{THROWAWAY_EVENT_PREFIX}{run_id} %') as events, "
+        f"(select count(*) from auth.users where email like '{THROWAWAY_PREFIX}{run_id}-%{THROWAWAY_DOMAIN}') as accounts"
+    )
+    if remaining["events"] or remaining["accounts"]:
+        raise CheckFailed(
+            f"throwaway cleanup left {remaining['events']} events and {remaining['accounts']} accounts "
+            f"for run {run_id}"
+        )
     return counts
 
 
