@@ -2234,6 +2234,119 @@ def request_venue(ctx: Context, session: Session, event_id: str, venue_id: str, 
                            json={"event_id": event_id, "venue_id": venue_id, "note": note})
 
 
+# --- Venue search (SCRUM-39): read-only, against the seeded catalogue --------------------
+
+SEARCH_PERIOD = {"starts_at": "2026-10-10T14:00:00+08:00", "ends_at": "2026-10-10T17:00:00+08:00"}
+
+
+def venue_search(ctx: Context, **params) -> httpx.Response:
+    return ctx.client.get(f"{ctx.api}/venues", headers=ctx.shared("event_coordinator").headers,
+                          params={"include_excluded": "true", **params})
+
+
+def search_result(body: dict, name: str) -> dict:
+    return next(result for result in body["results"] if result["venue"]["name"] == name)
+
+
+def search_reasons(result: dict) -> list[str]:
+    return [reason["message"] for reason in result["reasons"]]
+
+
+@check("TC-VENUE-002", "A search returns only the venues that fit and are free")
+def _(ctx: Context) -> None:
+    response = venue_search(ctx, **SEARCH_PERIOD, min_capacity=150, facilities="projector")
+    expect_status(response, 200)
+    matches = {r["venue"]["name"]: r["availability"] for r in response.json()["results"] if not r["excluded"]}
+    expect(matches == {"Auditorium A": "available", "Grand Ballroom": "available"}, f"the matches are {matches}")
+
+
+@check("TC-VENUE-005", "A block ending at the search start doesn't exclude; one overlapping by a minute does")
+def _(ctx: Context) -> None:
+    touching = venue_search(ctx, starts_at="2026-10-10T12:00:00+08:00", ends_at="2026-10-10T15:00:00+08:00",
+                            location="Marina")
+    expect_status(touching, 200)
+    ballroom = search_result(touching.json(), "Grand Ballroom")
+    expect(ballroom["availability"] == "available" and not ballroom["excluded"], f"a touching block: {ballroom}")
+    overlapping = venue_search(ctx, starts_at="2026-10-10T11:59:00+08:00", ends_at="2026-10-10T13:00:00+08:00",
+                               location="Marina")
+    expect_status(overlapping, 200)
+    ballroom = search_result(overlapping.json(), "Grand Ballroom")
+    expect(ballroom["availability"] == "unavailable" and ballroom["excluded"], f"an overlapping block: {ballroom}")
+    expect("Blocked: maintenance 10 Oct 08:00–12:00" in search_reasons(ballroom), f"reasons: {ballroom['reasons']}")
+
+
+@check("TC-VENUE-006", "A chosen layout's capacity is used, and equal capacity passes")
+def _(ctx: Context) -> None:
+    response = venue_search(ctx, min_capacity=100, layout="banquet")
+    expect_status(response, 200)
+    body = response.json()
+    terrace = search_result(body, "Rooftop Terrace")
+    expect(terrace["excluded"], "Rooftop Terrace matched on its overall capacity")
+    expect("Banquet capacity 80 is below the required 100" in search_reasons(terrace), f"reasons: {terrace['reasons']}")
+    for name in ("Grand Ballroom", "Heritage Hall"):
+        expect(not search_result(body, name)["excluded"], f"{name} was excluded")
+
+
+@check("TC-VENUE-007", "Layout and accessibility filters are strict")
+def _(ctx: Context) -> None:
+    response = venue_search(ctx, layout="u_shape", accessibility="hearing_loop")
+    expect_status(response, 200)
+    body = response.json()
+    expect(body["included_count"] == 0, f"{body['included_count']} venues matched")
+    reasons = {message for result in body["results"] for message in search_reasons(result)}
+    expect({"U shape layout is not supported", "Missing accessibility features: hearing loop"} <= reasons,
+           f"reasons: {reasons}")
+
+
+@check("TC-VENUE-010", "Venue staff can search; organisers, attendees and tech support get 403")
+def _(ctx: Context) -> None:
+    expect_status(ctx.client.get(f"{ctx.api}/venues", headers=ctx.shared("venue_staff").headers), 200)
+    for role in ("event_organiser", "attendee", "tech_support"):
+        response = ctx.client.get(f"{ctx.api}/venues", headers=ctx.shared(role).headers)
+        expect_status(response, 403)
+        expect(response.json()["detail"] == "This action requires one of the following roles: event_coordinator, "
+               "venue_staff.", f"{role}: {response.text}")
+
+
+@check("TC-VENUE-011", "An unknown venue is 404 and a malformed id is 422")
+def _(ctx: Context) -> None:
+    headers = ctx.shared("event_coordinator").headers
+    unknown = ctx.client.get(f"{ctx.api}/venues/b0000000-0000-4000-8000-0000000000ff", headers=headers)
+    expect_status(unknown, 404)
+    expect(unknown.json()["detail"] == "Venue not found.", unknown.text)
+    expect_status(ctx.client.get(f"{ctx.api}/venues/not-a-uuid", headers=headers), 422)
+
+
+@check("TC-VENUE-020", "A period must be a timezone-aware pair with its end after its start")
+def _(ctx: Context) -> None:
+    for params in ({"starts_at": "2026-10-10T14:00:00+08:00"},
+                   {"starts_at": "2026-10-10T17:00:00+08:00", "ends_at": "2026-10-10T14:00:00+08:00"},
+                   {"starts_at": "2026-10-10T14:00:00", "ends_at": "2026-10-10T17:00:00"}):
+        response = venue_search(ctx, **params)
+        expect_status(response, 422)
+        expect(response.json()["detail"][0]["msg"], f"no rule named for {params}")
+
+
+@check("TC-VENUE-021", "Unknown filter values are refused")
+def _(ctx: Context) -> None:
+    for params in ({"facilities": "jacuzzi"}, {"layout": "cinema"}, {"min_capacity": 0}):
+        expect_status(venue_search(ctx, **params), 422)
+
+
+@check("TC-VENUE-022", "A search response has its agreed shape")
+def _(ctx: Context) -> None:
+    response = ctx.client.get(f"{ctx.api}/venues", headers=ctx.shared("event_coordinator").headers,
+                              params=SEARCH_PERIOD)
+    expect_status(response, 200)
+    body = response.json()
+    expect(body["criteria"]["starts_at"] == SEARCH_PERIOD["starts_at"], f"criteria: {body['criteria']}")
+    expect(len(body["results"]) == body["included_count"] and body["excluded_count"] > 0,
+           "excluded venues are counted but not listed")
+    for result in body["results"]:
+        expect({"venue", "availability", "excluded", "reasons"} <= result.keys(), f"a result has {result.keys()}")
+        expect(result["availability"] in ("available", "unavailable", "not_checked"), result["availability"])
+
+
 @check("TC-VENUE-065", "Venue staff deactivate a venue with a reason; search stops showing it", needs_db=True)
 def _(ctx: Context) -> None:
     venue_id = throwaway_venue(ctx, "065")
