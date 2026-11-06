@@ -9,26 +9,27 @@ import BauhausSelect from "@/components/common/BauhausSelect.vue";
 import { REQUEST_STATUS_LABELS } from "@/features/equipment/equipmentRequest";
 import {
   ALL_ITEMS,
+  ALL_STATUSES,
   equipmentFilterOptions,
   filterRequests,
   isWaiting,
   REQUEST_SORT_OPTIONS,
   requestStatusFilterOptions,
   sortRequests,
-  WAITING,
   waitingDays,
 } from "@/features/equipment/requestList";
 import { formatTechnicalTime } from "@/features/equipment/technical";
 
 // SCRUM-24: tech support's equipment request lines across every open event,
-// shaped like venue staff's booking requests. Lines waiting on a decision come
-// first; resolved ones stay available for reference. Each opens its event's
-// technical page, where it is arranged.
+// shaped like venue staff's booking requests. Each opens its event's technical
+// page, where it is arranged. It opens on every status (D75, developer decision
+// 2026-11-06): "Waiting on you" hid Reserved lines, so events ready for technical
+// preparation weren't listed until the filter was changed.
 const props = defineProps({
   queue: { type: Object, required: true },
 });
 
-const status = ref(WAITING);
+const status = ref(ALL_STATUSES);
 const equipmentId = ref(ALL_ITEMS);
 const sort = ref("event_soonest");
 const startDate = ref("");
@@ -66,7 +67,7 @@ const emptyDetail = computed(() =>
       Equipment requests
     </h2>
     <p class="mb-4 text-xs font-medium text-ink/60">
-      Lines waiting on you appear first. Reserved, not available and released lines remain available for reference.
+      Every line on an open event is listed, including reserved ones on events ready for preparation. Choose "Waiting on you" under Status to see only the lines that need your decision.
     </p>
 
     <p v-if="queue.error" role="alert" class="mb-4 border-2 border-ink bg-bauhaus-red px-3 py-2 text-sm font-bold text-canvas">

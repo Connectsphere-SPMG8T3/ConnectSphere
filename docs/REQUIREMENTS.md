@@ -1103,6 +1103,8 @@ available(type, W) = total_quantity
 - **RS-R5 (SCRUM-24 AC7):** when an event's date or time changes (story 37), each reservation moves to the new window and is re-checked. One that no longer fits is kept and still counts as taken; its line goes to `re_review` and the coordinator is notified. **[Assumption, D8]** Tech support clear it by reserving the line again, or by marking it Not available (§9 item 76).
 - **RS-R6 (SCRUM-24 AC10):** the exit check is cleared when a line is added or removed, a line's item or quantity changes, or the event's venue booking changes (a new booking, a different venue or space, or a booking that stops occupying). Approving a booking, flags, and note-only edits don't clear it (§9 item 75).
 
+**[Team decision, D75, developer 2026-11-06]** Tech support's Requests page opens on **All statuses**, not "Waiting on you". An event can only be Confirmed once its lines are Reserved, so "Waiting on you" hid every event ready for technical preparation (CR-110). "Waiting on you" stays a Status choice. Chosen over a separate preparation list to keep the change small before the customer review; events with no equipment lines still have no link from this page (D75 stays open for that).
+
 **Acceptance criteria**
 - **Given** 5 available, **when** two tech staff simultaneously reserve 3 for two overlapping events, **then** exactly one succeeds and the other sees "Insufficient: 2 available."
 - **Given** a confirmed event with reserved equipment, **when** its cancellation is approved, **then** the equipment is available again for that window.
