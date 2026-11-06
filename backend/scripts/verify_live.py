@@ -6249,13 +6249,14 @@ def _(ctx: Context) -> None:
                f"{role} sees the edit made by {edit['actor']}")
 
 
-@check("TC-HIST-009", "The organiser's history has no staff-only entries or safety comments; "
-                      "the coordinator's has them", needs_db=True)
+@check("TC-HIST-009", "The organiser's history has the organiser comment but no staff-only entries or private "
+                      "safety note; the coordinator's has them all", needs_db=True)
 def _(ctx: Context) -> None:
     event_id = throwaway_event(ctx, "HIST009", "2031-12-11 09:00+08", "2031-12-11 12:00+08", status="planning")
     db_query(
-        "insert into public.event_safety_decisions (event_id, decision, comment, decided_by) values "
-        f"('{event_id}', 'changes_requested', 'HIST009 officer note', 'a0000000-0000-4000-8000-000000000006');"
+        "insert into public.event_safety_decisions (event_id, decision, comment, organiser_comment, decided_by) values "
+        f"('{event_id}', 'changes_requested', 'HIST009 private note', 'HIST009 organiser comment', "
+        "'a0000000-0000-4000-8000-000000000006');"
         "insert into public.event_technical_history (event_id, action, actor_id) values "
         f"('{event_id}', 'preparation', 'a0000000-0000-4000-8000-000000000004')"
     )
@@ -6264,12 +6265,14 @@ def _(ctx: Context) -> None:
     kinds = [entry["kind"] for entry in organiser.json()["entries"]]
     expect("safety_decision" in kinds, f"the organiser doesn't see the safety outcome: {kinds}")
     expect("technical" not in kinds and "booking" not in kinds, f"the organiser sees staff-only entries: {kinds}")
-    expect("HIST009 officer note" not in organiser.text, "the safety comment reached the organiser's response")
+    expect("HIST009 organiser comment" in organiser.text, "the organiser doesn't see the organiser comment")
+    expect("HIST009 private note" not in organiser.text, "the private note reached the organiser's response")
     coordinator = event_history(ctx, event_id, "event_coordinator")
     expect_status(coordinator, 200)
     kinds = [entry["kind"] for entry in coordinator.json()["entries"]]
     expect({"safety_decision", "technical"} <= set(kinds), f"the coordinator misses entries: {kinds}")
-    expect("HIST009 officer note" in coordinator.text, "the coordinator doesn't see the safety comment")
+    expect("HIST009 organiser comment" in coordinator.text, "the coordinator doesn't see the organiser comment")
+    expect("HIST009 private note" in coordinator.text, "the coordinator doesn't see the private note")
 
 
 @check("TC-HIST-015", "A venue edit made while the event holds the venue shows in the coordinator's history only",
