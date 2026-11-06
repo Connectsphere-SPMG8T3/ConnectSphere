@@ -250,7 +250,6 @@ Acceptance criteria from the Product backlog row `CR-94`, summarised. The backlo
 | Acceptance criterion | Covered by | Status |
 |---|---|---|
 | AC1. [W7 CR-01] When Venue Staff save any change to a venue, its future held or approved bookings are re-checked. | TC-VENUE-076; `pytest` `test_venue_impact.py`, `test_venues_api.py::TestVenueEdit::TestWarnings` | Built (also re-checks `re_review`) |
-| AC2. (Removed 13/10) | — | Removed |
 | AC3. A booking is flagged Unsuitable if the venue's capacity is now below the event's expected attendance, or a facility the event requires was removed. | TC-VENUE-076, TC-VENUE-077, TC-VENUE-083, TC-VENUE-085, TC-VENUE-087; `pytest` `test_venue_suitability.py` (`TestCapacity`, `TestFacilities`), `test_venue_impact.py::TestOutcome`, `TestVenueEdit::TestSpaceRequirements`, `TestVenueEdit::TestFlagging`; `venue_edit_checks.sql` (CR-94 block) | Built. `re_review` bookings are not flagged (§9 item 59) |
 | AC4. Changes that only cause a suitability warning (layout, accessibility, operating hours) show the warning but do not flag the booking. | TC-VENUE-078, TC-VENUE-079, TC-VENUE-084, TC-VENUE-086, TC-VENUE-089; `pytest` `test_venue_suitability.py` (`TestLayout`, `TestOperatingHours`), `test_venue_impact.py::TestAccessibilityChanged`, `TestFlagging::test_a_warning_only_change_flags_nothing_and_notifies_the_coordinator`; Vitest `VenueEditWarningModal.spec.js` | Built |
 | AC5. Each flag shows its reason, and the assigned coordinator and venue staff are notified. | TC-VENUE-080, TC-VENUE-085, TC-VENUE-087, TC-VENUE-090; `pytest` `TestVenueEdit::TestWarnings::test_confirming_*`, `test_venue_staff_get_one_notification_per_event_not_per_booking`, `test_a_warning_only_edit_tells_venue_staff_it_needs_a_check`, `TestFlagging::test_an_unsuitable_booking_is_flagged_with_its_reason` | Reason stored on the flag and sent to the coordinator; venue staff notified. The coordinator's event page and the booking page show it (TC-BOOK-049, TC-BOOK-050) |
@@ -289,7 +288,7 @@ Acceptance criteria from the Product backlog row `CR-94`, summarised. The backlo
 | AC1 Request creates a tentative hold, shown on the calendar, venue staff notified | TC-BOOK-001, TC-BOOK-008, TC-BOOK-012; `pytest` `TestRequest::test_the_assigned_coordinator_holds_a_venue_and_venue_staff_are_told`, `TestEventShowsItsBooking`; Vitest `venueBookingStore.spec.js`; SQL checks (hold, notification fan-out) |
 | AC2 Overlapping requests refused (incl. blocks); back-to-back allowed | TC-BOOK-002, TC-BOOK-003, TC-BOOK-011; `pytest` `::test_a_refusal_from_the_database_is_answered_with_its_message[held_by_other / blocked]`; SQL checks |
 | AC3 First come, first served under concurrency | TC-BOOK-007; SQL checks (exclusion constraint) |
-| Original AC4: one booking per event (superseded by CR-97/CR-98); legacy `event_id` requests resolve to the backfilled Main space | TC-BOOK-004; `pytest` `[already_booked]`; SQL checks |
+| Legacy `event_id` requests resolve to the backfilled Main space (from 19's removed AC4, replaced by CR-97 AC1) | TC-BOOK-004; `pytest` `[already_booked]`; SQL checks |
 | AC5 Only while planning | TC-BOOK-005, TC-BOOK-009; `pytest` `[returned]`, `::test_an_event_outside_planning_is_refused_naming_its_status`; SQL checks |
 | AC6 Only the assigned coordinator, acting as coordinator | TC-BOOK-006; `pytest` `TestWhoMayRequest`; SQL checks (`not_assigned`, grants) |
 
@@ -433,7 +432,6 @@ Venue selection and booking for each proposed space are downstream of CR-98's co
 | AC1 More than one venue booking for one event | TC-BOOK-028, TC-BOOK-032, TC-BOOK-034 |
 | AC2 Each booking checked for conflicts independently | TC-BOOK-028, TC-BOOK-032; SQL checks |
 | AC3 The same venue twice for overlapping times is refused | TC-BOOK-028, TC-BOOK-032 |
-| AC4 (Removed 20/10: covered by 85 AC7) | — |
 | AC5 The event page lists every booking and its status | TC-BOOK-028, TC-BOOK-034, TC-BOOK-035; Vitest `CoordinatorEventView.spec.js` (CR-97 cases) |
 | AC6 Each booking's own setup and turnaround | TC-BOOK-037, TC-BOOK-040 (delivered by story 21 and CR-100) |
 | AC7 Each booking's own window within the event's schedule | Own window and availability: TC-BOOK-028, TC-BOOK-032 (BR-R15). Setup and turnaround: TC-BOOK-037, TC-BOOK-040. Suitability: `pytest` `test_venue_suitability_api.py::test_a_space_window_replaces_the_event_window` |
