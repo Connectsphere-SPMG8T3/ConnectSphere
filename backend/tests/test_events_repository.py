@@ -573,6 +573,23 @@ def test_cancel_event_sends_the_decision_and_every_message(monkeypatch):
         "p_safety_message": "to safety"}}
 
 
+def test_reject_event_sends_the_decision_and_both_messages(monkeypatch):
+    """115-R RPC contract: one jsonb object with the outcome and the rejected event."""
+    sent = {}
+    answer = {"outcome": "ok", "event": {"id": "event-1", "status": "rejected"}}
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: _rpc_client(answer, sent))
+
+    result = repository.reject_event(
+        "event-1", "user-2", 4, ["planning", "under_review"], "No venue",
+        organiser_message="to organiser", attendee_message="to attendees")
+
+    assert result == answer
+    assert sent == {"name": "reject_event", "params": {
+        "p_event_id": "event-1", "p_actor_id": "user-2", "p_expected_version": 4,
+        "p_from_statuses": ["planning", "under_review"], "p_reason": "No venue",
+        "p_organiser_message": "to organiser", "p_attendee_message": "to attendees"}}
+
+
 def test_reject_cancellation_request_sends_the_reason_and_the_organisers_message(monkeypatch):
     sent = {}
     monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: _rpc_client({"outcome": "ok"}, sent))

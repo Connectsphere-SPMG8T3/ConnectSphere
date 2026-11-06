@@ -232,7 +232,7 @@ def cancel(client, auth_headers, reason=COORDINATOR_REASON):
 
 
 class TestDirectCancel:
-    @pytest.mark.parametrize("status", ["planning", "confirmed", "preparation"])
+    @pytest.mark.parametrize("status", ["confirmed", "preparation"])
     def test_the_coordinator_cancels_with_a_reason(self, client, auth_headers, act_as, events, status):
         events["store"][EVENT_ID]["status"] = status
         events["request"]["value"] = None
@@ -244,7 +244,7 @@ class TestDirectCancel:
         assert response.json()["status"] == "cancelled"
         [call] = events["calls"]
         assert call["actor_id"] == COORDINATOR_ID
-        assert call["from_statuses"] == ["confirmed", "planning", "preparation"]
+        assert call["from_statuses"] == ["confirmed", "preparation"]
         assert call["reason"] == COORDINATOR_REASON
         assert call["require_open_request"] is False
 
@@ -263,9 +263,10 @@ class TestDirectCancel:
 
         assert events["calls"][0]["reason"] == COORDINATOR_REASON
 
-    @pytest.mark.parametrize("status", ["submitted", "under_review", "returned", "safety_review"])
+    @pytest.mark.parametrize("status", ["submitted", "under_review", "returned", "planning", "safety_review"])
     def test_other_open_statuses_need_the_organisers_request(self, client, auth_headers, act_as, events, status):
-        """AC3 lists Planning, Confirmed and Preparation only (Q4)."""
+        """115-R AC1: Confirmed and Preparation only. Before confirmation the coordinator
+        rejects instead (QA2-6)."""
         events["store"][EVENT_ID]["status"] = status
         act_as()
 
@@ -296,6 +297,17 @@ class TestDirectCancel:
         assert response.json()["detail"] == "This event has already started, so it can't be cancelled."
         assert events["calls"] == []
 
+    def test_an_open_request_must_be_decided_first(self, client, auth_headers, act_as, events):
+        """115-R AC3: the RPC refuses under the event's lock."""
+        events["outcome"]["value"] = "open_request"
+        act_as()
+
+        response = cancel(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == (
+            "This event has an open cancellation request. Approve or reject it first.")
+
     @pytest.mark.parametrize("reason", ["", "   ", "x" * 1001, None])
     def test_a_missing_blank_or_overlong_reason_is_rejected(self, client, auth_headers, act_as, events, reason):
         act_as()
@@ -308,6 +320,85 @@ class TestDirectCancel:
 
 def past_start():
     return (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+
+
+EVENT_REJECTION_REASON = "The venue is unavailable"
+
+
+@pytest.fixture()
+def event_rejections(monkeypatch, events):
+    """A fake `reject_event` that answers like the RPC."""
+    calls = []
+    outcome = {"value": "ok"}
+
+    def reject_event(event_id, actor_id, expected_version, from_statuses, reason, organiser_message,
+                     attendee_message):
+        calls.append({
+            "actor_id": actor_id, "expected_version": expected_version, "from_statuses": from_statuses,
+            "reason": reason, "organiser_message": organiser_message, "attendee_message": attendee_message,
+        })
+        if outcome["value"] != "ok":
+            return {"outcome": outcome["value"], "event": None}
+        rejected = {**events["store"][event_id], "status": "rejected", "version": expected_version + 1}
+        return {"outcome": "ok", "event": rejected}
+
+    monkeypatch.setattr(repository, "reject_event", reject_event)
+    events["store"][EVENT_ID]["status"] = "planning"
+    return {"calls": calls, "outcome": outcome}
+
+
+def reject_the_event(client, auth_headers, reason=EVENT_REJECTION_REASON):
+    return client.post(f"/api/v1/events/{EVENT_ID}/reject", json={"reason": reason}, headers=auth_headers)
+
+
+class TestRejectingTheEvent:
+    """115-R AC2, AC3: Reject ends the event's registrations too, and waits for an open request."""
+
+    def test_the_attendees_are_told_the_event_is_cancelled(self, client, auth_headers, act_as, events,
+                                                           event_rejections):
+        act_as()
+
+        response = reject_the_event(client, auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "rejected"
+        [call] = event_rejections["calls"]
+        assert call["actor_id"] == COORDINATOR_ID
+        assert call["from_statuses"] == ["planning", "under_review"]
+        assert call["reason"] == EVENT_REJECTION_REASON
+        assert call["organiser_message"] == f'Your event "Partner Summit" was rejected: {EVENT_REJECTION_REASON}'
+        assert call["attendee_message"] == '"Partner Summit" has been cancelled. Your registration is cancelled.'
+
+    def test_an_open_request_must_be_decided_first(self, client, auth_headers, act_as, events, event_rejections):
+        event_rejections["outcome"]["value"] = "open_request"
+        act_as()
+
+        response = reject_the_event(client, auth_headers)
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == (
+            "This event has an open cancellation request. Approve or reject it first.")
+
+    @pytest.mark.parametrize("outcome,status", [
+        ("not_found", 404), ("not_assigned", 403), ("status_changed", 409),
+    ])
+    def test_the_rpc_recheck_under_the_lock_decides(self, client, auth_headers, act_as, events, event_rejections,
+                                                    outcome, status):
+        event_rejections["outcome"]["value"] = outcome
+        act_as()
+
+        assert reject_the_event(client, auth_headers).status_code == status
+
+    @pytest.mark.parametrize("status", ["submitted", "returned", "safety_review", "confirmed", "preparation"])
+    def test_other_statuses_are_refused_without_reaching_the_database(self, client, auth_headers, act_as, events,
+                                                                      event_rejections, status):
+        events["store"][EVENT_ID]["status"] = status
+        act_as()
+
+        response = reject_the_event(client, auth_headers)
+
+        assert response.status_code == 409
+        assert event_rejections["calls"] == []
 
 
 class TestApprovalRefused:

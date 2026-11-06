@@ -57,8 +57,16 @@ def events(monkeypatch):
         row.update(status=to_status, version=row["version"] + 1)
         return deepcopy(row)
 
+    def reject_event(event_id, actor_id, expected_version, from_statuses, reason, organiser_message,
+                     attendee_message):
+        # 115-R: Reject has its own RPC; it records the same transition.
+        updated = transition_event(event_id, actor_id, from_statuses, "rejected", expected_version,
+                                   reason, "event_rejected", organiser_message)
+        return {"outcome": "ok" if updated else "status_changed", "event": updated}
+
     monkeypatch.setattr(repository, "get_event", get_event)
     monkeypatch.setattr(repository, "transition_event", transition_event)
+    monkeypatch.setattr(repository, "reject_event", reject_event)
     # A coordinator's read also looks up the event's venue booking (SCRUM-19).
     monkeypatch.setattr(venues_repository, "get_active_booking", lambda event_id: None)
     monkeypatch.setattr(venues_repository, "list_booking_statuses", lambda event_ids: [])

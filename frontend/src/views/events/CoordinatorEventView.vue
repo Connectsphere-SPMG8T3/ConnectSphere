@@ -85,7 +85,8 @@ const showPastDateAlert = computed(() => {
 });
 const showRequestReassignment = computed(() => canRequestReassignment(event.value));
 const showApprove = computed(() => canApprove(event.value?.status));
-const showReject = computed(() => canReject(event.value?.status));
+// 115-R AC3: an open cancellation request is answered through its banner first.
+const showReject = computed(() => canReject(event.value?.status) && !event.value?.open_cancellation_request);
 const showReturn = computed(() => canReturn(event.value?.status));
 // AC6: any coordinator can open an event, but only its assigned one can edit it, so the
 // button isn't offered to the rest (the API would answer 403).
