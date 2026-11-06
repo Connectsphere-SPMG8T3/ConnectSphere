@@ -62,7 +62,7 @@ ConnectSphere's own user data lives in `public.profiles` and `user_roles`, linke
 - **Row-level security**, the deny-by-default safety net behind the API ([ADR-0006](0006-api-enforces-access-rls-is-a-safety-net.md)).
 - **Database functions called through `.rpc()`**, which make each multi-table write atomic (ADR-0007).
 - **`pg_cron`**, which expires venue holds with no backend worker (CR-99).
-- **The Supabase MCP server** (`mcp/`), which lets AI assistants inspect the live schema, logs and advisors.
+- **The Supabase MCP server**, which lets AI assistants inspect the live schema, logs and advisors.
 
 **Negative**
 

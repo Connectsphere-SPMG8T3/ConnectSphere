@@ -8,10 +8,9 @@ Instructions for any AI coding agent (Claude Code, Codex, Cursor, Copilot, etc.)
 
 ConnectSphere is a regional event planning and venue booking platform for Singapore, built as a **Modular Monolith**:
 
-- **`backend/`** — Python FastAPI, organised into domain modules (`auth`, `events`, `venues`, `equipment`) under `backend/app/modules/`, sharing a common `core` and `db` layer. Each module is self-contained (`router.py`, `schemas.py`, `service.py`) so new domains can be added without touching existing ones.
+- **`backend/`** — Python FastAPI, organised into domain modules (`auth`, `events`, `venues`, `equipment`, `registrations`, `notifications`) under `backend/app/modules/`, sharing a common `core` and `db` layer. Each module is self-contained (`router.py`, `schemas.py`, `service.py`) so new domains can be added without touching existing ones.
 - **`frontend/`** — Vue 3 (Composition API, `<script setup>`), Vite, Pinia, Vue Router, Tailwind CSS.
 - **`supabase/`** — PostgreSQL schema migrations, seed data, and Supabase Auth configuration (project ref `vuiryrzzyfecjqftwicj`).
-- **`mcp/`** — Supabase MCP server configuration.
 
 Layer-specific rules (tech stack, conventions, design system) live in **`backend/AGENTS.md`** and **`frontend/AGENTS.md`**. Read the one for the layer you're touching, in addition to this file.
 

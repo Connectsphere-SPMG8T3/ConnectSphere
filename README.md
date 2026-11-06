@@ -4,10 +4,9 @@ ConnectSphere is a regional event planning and venue booking platform for Singap
 
 This repository implements a **Modular Monolith** architecture:
 
-- **`backend/`** — Python FastAPI, organised into domain modules (`auth`, `events`, `venues`, `equipment`) sharing a common `core` and `db` layer.
+- **`backend/`** — Python FastAPI, organised into domain modules (`auth`, `events`, `venues`, `equipment`, `registrations`, `notifications`) sharing a common `core` and `db` layer.
 - **`frontend/`** — Vue 3 (Composition API, `<script setup>`), Vite, Pinia, Vue Router, and Tailwind CSS styled with a Bauhaus constructivist design system.
 - **`supabase/`** — PostgreSQL schema migrations, seed data, and Supabase Auth configuration.
-- **`mcp/`** — Supabase MCP server configuration for project `vuiryrzzyfecjqftwicj`.
 
 For the full business context (the roles and the architectural reasoning behind the design), see [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) (and [docs/README.md](docs/README.md) for every other doc). For a step-by-step local setup, see [docs/SETUP.md](docs/SETUP.md) (this README's [Getting started](#getting-started) is the short version).
 
@@ -127,4 +126,4 @@ To measure coverage, run `pytest --cov` here, or `npm run test:coverage` in `fro
 
 - Authentication credentials (email/password) live in Supabase-managed `auth.users`; domain attributes (role, department, organisation) live in `public.profiles`, kept in sync via a Postgres trigger on user creation.
 - The FastAPI backend never re-implements password verification — it defers to Supabase's GoTrue API, then verifies the returned JWT via the Supabase SDK's `get_claims`, which validates against the project's published JWKS (supporting both the legacy HS256 shared-secret scheme and the current asymmetric ES256 signing keys) rather than a single hardcoded secret.
-- Each backend module (`auth`, `events`, `venues`, `equipment`) is self-contained (`router.py`, `schemas.py`, `service.py`) so future domains can be added without touching existing modules.
+- Each backend module (`auth`, `events`, `venues`, `equipment`, `registrations`, `notifications`) is self-contained (`router.py`, `schemas.py`, `service.py`) so future domains can be added without touching existing modules.
