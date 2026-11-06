@@ -141,7 +141,7 @@ def _database_will_decide(event: dict, space: dict | None, replacing: bool) -> b
     its own reason, in its own words: the event isn't in Planning, or the space
     (else the event) already holds a venue. The suitability check then stays out
     of the way, so those refusals read as they always have (TC-BOOK-004, 005).
-    A replacement is the exception: it may come from a confirmed event and has
+    A replacement is the exception: it may come from a later event status and has
     its own booking in the way, which the database sets aside."""
     if replacing:
         return False
@@ -902,7 +902,7 @@ def _prepare_replacement(replaces_id: str, event: dict, space_id: str | None) ->
     """Refuse before changing anything unless `replaces_id` is this event's (or
     space's) own flagged booking (Affected, Safety rejected, Conflict or Unsuitable) that is still
     held or approved, then return a
-    Confirmed or Safety-review event to planning, which the booking functions
+    Safety-review, Confirmed or Preparation event to planning, which the booking functions
     require (CR-95 AC4, AC7). The coordinator has decided to replace the venue
     by asking, so the event stays in planning even if the venue they pick is
     taken; if the return fails, nothing has been requested."""
