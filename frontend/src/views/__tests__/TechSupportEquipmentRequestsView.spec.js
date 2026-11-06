@@ -75,8 +75,11 @@ afterEach(() => {
 });
 
 describe("TechSupportEquipmentRequestsView (SCRUM-24)", () => {
-  it("opens on the lines waiting on tech support, soonest event first", async () => {
+  // D75 (developer decision, 2026-11-06): the page opens on All statuses, so
+  // these lines are reached by choosing "Waiting on you".
+  it("Waiting on you lists the lines waiting on tech support, soonest event first", async () => {
     const el = await mountView();
+    await choose(el, "Status", "waiting");
 
     expect(el.textContent).toContain("Equipment requests");
     expect(cards(el).map((c) => c.dataset.requestStatus)).toEqual(["re_review", "pending"]);
@@ -122,6 +125,7 @@ describe("TechSupportEquipmentRequestsView (SCRUM-24)", () => {
   it("says when nothing matches", async () => {
     equipmentApi.requestList.mockResolvedValue({ lines: [line({ status: "reserved" })] });
     const el = await mountView();
+    await choose(el, "Status", "waiting");
 
     expect(cards(el)).toHaveLength(0);
     expect(el.textContent).toContain("No matching requests");

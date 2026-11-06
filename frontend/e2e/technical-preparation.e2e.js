@@ -1,7 +1,9 @@
 // Technical preparation (CR-110) against real data. Cases: docs/test-cases/equipment.md.
 // Every check uses a throwaway 2031 event, deleted after the run.
 import { expect, seedSession, test } from "./support/fixtures.js";
-import { createThrowawayEquipment, createThrowawayEvent, createThrowawayLine, setThrowawayEventStatus } from "./support/throwaway.js";
+import {
+  createThrowawayEquipment, createThrowawayEvent, createThrowawayLine, setThrowawayEventStatus, setThrowawayLineStatus,
+} from "./support/throwaway.js";
 
 test("TC-TPREP-012 tech support record a stage on a Confirmed event; the organiser sees the stage, never the note", async ({ page, browser, sharedSessions }) => {
   const event = createThrowawayEvent("TPREP012", "2031-12-10 09:00+08", "2031-12-10 12:00+08");
@@ -50,4 +52,21 @@ test("TC-TPREP-013 technical preparation is locked until the Safety Officer conf
   await expect(card).toContainText("Technical preparation opens once the Safety Officer has confirmed the event.");
   await expect(card.getByLabel("Stage")).toBeDisabled();
   await expect(card.getByRole("button", { name: "Save preparation" })).toHaveCount(0);
+});
+
+test("TC-TPREP-018 D75: a Confirmed event whose line is Reserved is listed when the Requests page opens", async ({ page, sharedSessions }) => {
+  const event = createThrowawayEvent("TPREP018", "2031-12-12 09:00+08", "2031-12-12 12:00+08");
+  const line = createThrowawayLine(event, createThrowawayEquipment("TPREP018", 2), 1);
+  setThrowawayLineStatus(line, "reserved");
+  setThrowawayEventStatus(event, "confirmed");
+
+  await seedSession(page, await sharedSessions("tech_support"));
+  await page.goto("/dashboard/tech-support/requests");
+  // No filter is touched: the page opens on every status.
+  await expect(page.getByLabel("Status")).toHaveValue("all");
+  const card = page.getByTestId("equipment-request-card").filter({ hasText: event.name });
+  await expect(card).toHaveAttribute("data-request-status", "reserved");
+  await card.getByRole("link").click();
+  await expect(page).toHaveURL(`/tech-support/events/${event.id}`);
+  await expect(page.getByTestId("technical-preparation").getByLabel("Stage")).toBeEnabled();
 });
