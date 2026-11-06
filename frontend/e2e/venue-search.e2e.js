@@ -1,10 +1,18 @@
 // SCRUM-39: the venue search page. Seeded catalogue; bookings are throwaway and dated 2031.
-// Cases: docs/test-cases/venues.md (TC-VENUE-003, 008, 009, 010, 012, 055).
+// Cases: docs/test-cases/venues.md (TC-VENUE-003, 004, 008, 009, 010, 012, 055).
 import { expect, seedSession, test } from "./support/fixtures.js";
-import { createThrowawayBooking, createThrowawayEvent } from "./support/throwaway.js";
+import {
+  createThrowawayBlock,
+  createThrowawayBooking,
+  createThrowawayEvent,
+  deleteThrowawayBlocks,
+} from "./support/throwaway.js";
 
 const AUDITORIUM_A = "b0000000-0000-4000-8000-000000000002";
 const SEMINAR_ROOM_1 = "b0000000-0000-4000-8000-000000000003";
+const HERITAGE_HALL = "b0000000-0000-4000-8000-000000000007";
+
+test.afterEach(() => deleteThrowawayBlocks());
 
 test("TC-VENUE-003 a back-to-back booking doesn't exclude a venue", async ({ page, sharedSessions }) => {
   const starts = "2031-07-07 11:00+08";
@@ -25,6 +33,35 @@ test("TC-VENUE-003 a back-to-back booking doesn't exclude a venue", async ({ pag
   await page.getByRole("tab", { name: /Upcoming bookings/ }).click();
   await expect(page.locator("#panel-bookings")).toContainText(event.name);
   await expect(page.locator("#panel-bookings")).toContainText("Approved");
+});
+
+test("TC-VENUE-004 excluded venues are listed greyed out with their reasons", async ({ page, sharedSessions }) => {
+  const starts = "2031-07-10 14:00+08";
+  const ends = "2031-07-10 17:00+08";
+  const event = createThrowawayEvent("search004", starts, ends);
+  createThrowawayBooking(event, SEMINAR_ROOM_1, starts, ends, "held");
+  createThrowawayBlock(HERITAGE_HALL, "2031-07-10 00:00+08", "2031-07-11 00:00+08", "renovation");
+
+  await seedSession(page, await sharedSessions("event_coordinator"));
+  await page.goto("/venues");
+  await page.getByLabel("Event date").fill("2031-07-10");
+  await page.getByLabel("Start time").fill("14:00");
+  await page.getByLabel("End time").fill("17:00");
+  await page.getByLabel("Expected attendance").fill("150");
+  await page.getByLabel("Projector").check();
+  await page.getByRole("button", { name: "Search venues" }).click();
+
+  const card = (name) => page.getByTestId("venue-result").filter({ hasText: name });
+  await expect(page.getByText("2 matching venues")).toBeVisible();
+  await expect(card("Boardroom Orchid")).toContainText("Capacity 16 is below the required 150");
+  await expect(card("Boardroom Orchid")).toContainText("Missing facilities: projector");
+  await expect(card("Heritage Hall").getByTestId("availability-badge")).toHaveText("Unavailable");
+  await expect(card("Heritage Hall")).toContainText("Blocked: renovation");
+  await expect(card("Seminar Room 1").getByTestId("availability-badge")).toHaveText("Unavailable");
+  await expect(card("Seminar Room 1")).toContainText("Held by another event 10 Jul 14:00–17:00");
+  await expect(card("Seminar Room 1").getByRole("button", { name: /Request/ })).toHaveCount(0);
+  await expect(card("Old Lecture Theatre")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /excluded/i })).toHaveCount(0);
 });
 
 test("TC-VENUE-008 an incomplete or inverted period is refused before any request", async ({ page, sharedSessions }) => {
