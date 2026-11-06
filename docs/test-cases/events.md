@@ -248,7 +248,7 @@ Regressions for two defects found during the SCRUM-82 manual pass. Both checks a
 | TC-EVENT-043 | DEFECTS D23 | Logged in as `organiser@connectsphere.dev`; fixture `…0201` | Open `/events/e0000000-0000-4000-8000-000000000201`; look at the Registration card. For the labels, use an owned event with registration enabled | — | The timezone line is dark text, readable on the white card. With registration enabled, Capacity, Opens and Closes labels are visible above their values | Browser | Medium | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2353-e2e-1f6e3cb.md)) |
 | TC-EVENT-044 | DEFECTS D24 | Same | Same page; look at the Planning status card | — | "Coordinator: Marcus Lim". Never an account ID; "To be assigned" when no coordinator is assigned | Browser | Medium | 2026-10-08 | 2026-10-08 Pass ([run](runs/2026-10-08-2353-e2e-1f6e3cb.md)) |
 
-## Require total expected attendance on submit (116)
+## Require total expected attendance on submit (D86)
 
 Regressions for DEFECTS D86, against §6.2 (QA-19, QA-24) and §9 item 140.
 
@@ -260,7 +260,7 @@ Regressions for DEFECTS D86, against §6.2 (QA-19, QA-24) and §9 item 140.
 | TC-EVENT-046 | AC1, AC3 — the form refuses to submit with no total attendance | E2E | On `/events/new` | Fill in every required field and a complete space, leave **Total expected attendance** empty, click **Submit request** | — | "Enter expected attendance of at least 1." shows under the field, no confirmation dialog opens and nothing is sent | 🔴 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1020-e2e-78ab129.md) |
 | TC-EVENT-047 | AC3 — the label and error read well | Manual | On `/events/new` | Read the **Total expected attendance** field at desktop and phone width, with and without its error showing | — | The label reads clearly and the error sits tidily under the field | 🟠 | 2026-11-04 | 2026-11-04 · Pass · [run](runs/2026-11-04-1103-manual-836585b.md) |
 
-### Traceability — 116
+### Traceability — D86
 
 | Acceptance criterion | Covered by | Automated equivalent / coverage gap |
 |---|---|---|

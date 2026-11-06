@@ -17,7 +17,7 @@ Every item is tagged with who owns it:
 
 Agents never push, open PRs, or edit the team's Google Sheets unless the developer asks (root `AGENTS.md`, "Git workflow"). An agent's work ends after §3. The PBI is not Done until a person finishes §4 and §5.
 
-_Last updated: 2026-11-01 — §3: the PR description replaces a BUILD_LOG entry and follows the PR template; the map has no status table or "Last updated" line (`chore/freeze-build-log-trim-map`). 2026-10-21 — AC ticks and notes for Sprint 3 onwards move to the **AC ticks** tab, matched by story ID and AC number (`chore/dod-ticks-tab`). 2026-10-16 — §2 and End of sprint: when to run mutation testing (`chore/mutation-testing`). 2026-10-13 — the DoD (Sprint N) tabs are tracked in the sheet and checked before the PR (§4) and before the merge (§5); "Editing the backlog sheet" lists the Notes column (T) and explains the DoD tabs (`chore/backlog-notes-column`)._
+_Last updated: 2026-11-06 — §1: bug fixes have no Product backlog row; `DEFECTS.md` is their record (`chore/bug-fixes-outside-backlog`). 2026-11-01 — §3: the PR description replaces a BUILD_LOG entry and follows the PR template; the map has no status table or "Last updated" line (`chore/freeze-build-log-trim-map`). 2026-10-21 — AC ticks and notes for Sprint 3 onwards move to the **AC ticks** tab, matched by story ID and AC number (`chore/dod-ticks-tab`). 2026-10-16 — §2 and End of sprint: when to run mutation testing (`chore/mutation-testing`). 2026-10-13 — the DoD (Sprint N) tabs are tracked in the sheet and checked before the PR (§4) and before the merge (§5); "Editing the backlog sheet" lists the Notes column (T) and explains the DoD tabs (`chore/backlog-notes-column`)._
 
 ---
 
@@ -56,7 +56,7 @@ An agent with the Google Sheets connector can read and write the sheet directly.
 - [ ] **[D]** The PBI meets the **Definition of Ready** (playbook §5). It is written as "As a… I want to be able to… So that…" and follows INVEST. Its acceptance criteria are testable. All customer clarifications are resolved, and no dependency blocks it. It was estimated by planning poker and fits in one sprint.
 - [ ] **[A/D]** The work is identified as one of:
   - a **story** or **enhancement** (a PBI ID);
-  - a **bug fix** (a defect `D<n>` in [`DEFECTS.md`](DEFECTS.md), plus its Bug fix PBI in the backlog);
+  - a **bug fix** (a defect `D<n>` in [`DEFECTS.md`](DEFECTS.md), linked to the PBI it affects, with no row of its own in the backlog). A change to a rule or an acceptance criterion is a story instead: a new PBI linked to the original;
   - an **enabler**, such as docs, tooling or config.
 - [ ] **[A/D]** The user story and acceptance criteria come from the PBI's row in the Product backlog, or are pasted by the developer if the agent can't read the sheet. Never work from the title alone, and never invent acceptance criteria.
 - [ ] **[A/D]** `docs/REQUIREMENTS.md`, `docs/IMPLEMENTATION_MAP.md` and the live Supabase project have been checked. Don't rely only on the migration files, which have drifted before.
