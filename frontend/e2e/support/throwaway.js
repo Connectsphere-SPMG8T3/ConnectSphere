@@ -45,6 +45,10 @@ export function deleteThrowawayAccounts() {
     ],
     { cwd: REPO_ROOT, stdio: "pipe" },
   );
+  assertNoRunRows(
+    "throwaway account cleanup",
+    `select count(*) as accounts from auth.users where email like '${PREFIX}${RUN_ID}-%${DOMAIN}'`,
+  );
 }
 
 function query(sql) {
@@ -54,6 +58,15 @@ function query(sql) {
     { cwd: REPO_ROOT, stdio: "pipe", encoding: "utf8" },
   );
   return parseRows(out);
+}
+
+function assertNoRunRows(label, sql) {
+  const rows = query(sql);
+  if (rows.length !== 1) throw new Error(`Could not verify ${label}: expected one count row.`);
+  const remaining = Object.values(rows[0]).map(Number);
+  if (remaining.some((count) => !Number.isFinite(count) || count !== 0)) {
+    throw new Error(`Throwaway cleanup left ${Object.entries(rows[0]).map(([kind, count]) => `${count} ${kind}`).join(", ")}.`);
+  }
 }
 
 /**
@@ -279,6 +292,14 @@ export function deleteThrowawayEvents() {
   // SCRUM-24's throwaway equipment, after its events' lines (that foreign key
   // restricts); its reservations cascade.
   query(`delete from public.equipment where ${mineOrStale("name", `${EVENT_PREFIX}equipment ${RUN_ID} %`, `${EVENT_PREFIX}%`)}`);
+  assertNoRunRows(
+    "throwaway event cleanup",
+    `select ` +
+      `(select count(*) from public.events where name like '${EVENT_PREFIX}${RUN_ID} %') as events, ` +
+      `(select count(*) from public.venue_bookings where event_id in ` +
+      `(select id from public.events where name like '${EVENT_PREFIX}${RUN_ID} %')) as bookings, ` +
+      `(select count(*) from public.equipment where name like '${EVENT_PREFIX}equipment ${RUN_ID} %') as equipment`,
+  );
 }
 
 /** A throwaway catalogue item (SCRUM-24), so seeded stock is never reserved.

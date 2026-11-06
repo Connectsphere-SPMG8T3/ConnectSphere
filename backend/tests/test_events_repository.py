@@ -153,6 +153,24 @@ def test_event_responses_attach_space_requests_to_full_event_rows(monkeypatch):
     assert repository.create_event("organiser-1", {"name": "Summit"}) == {**event, "spaces": [space]}
 
 
+def test_event_reads_select_registration_reuse_flags_for_template_cloning(monkeypatch):
+    event = {
+        "id": "event-1",
+        "status": "draft",
+        "name": "Summit",
+        "re_registration_allowed": False,
+        "waitlist_enabled": False,
+    }
+    client = TableClient(SimpleNamespace(data=event))
+    monkeypatch.setattr(repository, "get_supabase_admin_client", lambda: client)
+    monkeypatch.setattr(repository, "list_event_spaces", lambda event_id: [])
+
+    assert repository.get_event("event-1") == event | {"spaces": []}
+    selected_columns = next(call[1] for call in client.queries[0].calls if call[0] == "select")
+    assert "re_registration_allowed" in selected_columns
+    assert "waitlist_enabled" in selected_columns
+
+
 def test_update_event_enriches_a_full_event_row_with_its_spaces(monkeypatch):
     event = {"id": "event-1", "status": "draft", "name": "Summit", "version": 2}
     space = {"id": "space-1", "event_id": "event-1", "label": "Main venue"}
@@ -854,4 +872,3 @@ def test_the_single_event_read_names_the_organiser_and_their_organisation(monkey
 
     [columns] = [call[1] for call in client.queries[-1].calls if call[0] == "select"]
     assert "organiser:profiles!events_organiser_id_fkey(full_name, organisation_name)" in columns
-

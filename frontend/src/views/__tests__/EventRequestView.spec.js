@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { createApp, nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { dismissToast, toastState } from "@/composables/useToast";
 import { eventsApi } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
@@ -116,11 +117,13 @@ const TODAY = new Date("2026-10-20T02:00:00Z");
 describe("EventRequestView amending a returned request (SCRUM-33)", () => {
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+    dismissToast();
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
   beforeEach(() => {
+    dismissToast();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(TODAY);
     document.body.innerHTML = "";
@@ -868,6 +871,7 @@ describe("EventRequestView amending a returned request (SCRUM-33)", () => {
 
     await vi.waitFor(() => expect(eventsApi.submit).toHaveBeenCalled());
     expect(callOrder).toEqual(["create-event", "create-space", "get-event", "submit-event"]);
+    expect(toastState.value.message).toBe("Request submitted");
     expect(eventsApi.createSpace).toHaveBeenCalledWith("draft-submit", expect.objectContaining({
       label: "Main venue",
       expected_pax: 30,

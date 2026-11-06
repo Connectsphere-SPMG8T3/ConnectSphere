@@ -133,6 +133,27 @@ describe("OrganiserDashboard", () => {
     expect(el.textContent).toContain("Awaiting assignment");
   });
 
+  it("does not render internal planning details supplied with event rows", async () => {
+    eventsApi.list.mockResolvedValue(EVENT_RESPONSES.map((event) => ({
+      ...event,
+      coordinator_notes: "PRIVATE_COORDINATOR_NOTE",
+      venue_preparation_notes: "PRIVATE_VENUE_NOTE",
+      technical_preparation_notes: "PRIVATE_TECHNICAL_NOTE",
+      internal_history_entry: "PRIVATE_HISTORY_ENTRY",
+    })));
+    const { el } = await mountDashboard();
+    await openEvents(el);
+
+    for (const privateValue of [
+      "PRIVATE_COORDINATOR_NOTE",
+      "PRIVATE_VENUE_NOTE",
+      "PRIVATE_TECHNICAL_NOTE",
+      "PRIVATE_HISTORY_ENTRY",
+    ]) {
+      expect(el.textContent).not.toContain(privateValue);
+    }
+  });
+
   it("opens on the board without count tiles and switches to the full events tab", async () => {
     const { el, router } = await mountDashboard();
 
@@ -379,6 +400,8 @@ describe("OrganiserDashboard", () => {
     const rejected = el.querySelector('[aria-labelledby="rejected-events"]');
     expect(rejected.querySelector('[data-event-row="rejected-1"]').dataset.tone).toBe("rejected");
     expect(rejected.textContent).toContain("Refused Gala");
+    expect(past.querySelector('[data-event-row="completed-1"]').getAttribute("href")).toBe("/events/completed-1");
+    expect(rejected.querySelector('[data-event-row="rejected-1"]').getAttribute("href")).toBe("/events/rejected-1");
 
     const board = el.querySelector("[data-board-legend]").parentElement;
     for (const id of ["completed-1", "confirmed-old", "rejected-1"]) {
@@ -550,6 +573,35 @@ describe("OrganiserDashboard", () => {
     await vi.waitFor(() => expect(eventsApi.clone).toHaveBeenCalledWith("review-1", "access"));
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
     expect(router.currentRoute.value.query.id).toBe("cloned-1");
+  });
+
+  it("keeps the rejected event style while opening its copy as a new draft", async () => {
+    const { el, eventsStore, router } = await mountDashboard();
+    eventsStore.events.push({
+      ...EVENT_RESPONSES[1],
+      id: "rejected-copy",
+      name: "Refused Gala",
+      status: "rejected",
+    });
+    await openEvents(el);
+    eventsApi.clone.mockResolvedValue({
+      id: "rejected-copy-draft",
+      status: "draft",
+      name: "Refused Gala",
+      event_timezone: "Asia/Singapore",
+      facilities_required: [],
+      registration_enabled: false,
+    });
+
+    const card = [...el.querySelectorAll('[data-event-name]')]
+      .find((node) => node.querySelector("h3")?.textContent.trim() === "Refused Gala")
+      .closest(".border-4");
+    expect(card.className).toContain("bg-muted");
+    card.querySelector('button[aria-label="Use Refused Gala as a template"]').click();
+
+    await vi.waitFor(() => expect(eventsApi.clone).toHaveBeenCalledWith("rejected-copy", "access"));
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe("event-new"));
+    expect(router.currentRoute.value.query.id).toBe("rejected-copy-draft");
   });
 
   it("opens mobile event actions from the three-dot menu", async () => {

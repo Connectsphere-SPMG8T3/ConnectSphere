@@ -1521,9 +1521,10 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 
 **Behaviour and rules**
 
-- An organiser can choose one of their own previous event requests as a template while starting a new request.
-- The new draft copies reusable request information: name, purpose, expected attendance, location and layout preferences, required facilities, accessibility needs, preliminary equipment needs, and registration settings.
-- Event-specific or workflow-owned data is not copied: event ID, status, owner identity, coordinator assignment, dates and times, venue bookings, equipment reservations, registrations, notifications, comments, and history.
+- An organiser can choose any of their own event requests, regardless of lifecycle status, as a template while starting a new request. If the organiser owns no events, they can start a blank request.
+- The new draft copies reusable request information: name, purpose, expected attendance, event-level layout and facility preferences, accessibility needs, preliminary equipment needs, and registration configuration (enabled state, capacity, re-registration, and waitlist flags).
+- For each source space request, the new draft creates an independent space request and copies its label, expected attendance, layout preference, and required facilities. It does not reuse the source space ID, event ID, version, primary-space selection, or schedule.
+- Event-specific or workflow-owned data is not copied: source event ID, status, owner identity, coordinator assignment, event and space schedule dates/times, registration opening/closing and withdrawal cutoffs, venue bookings, equipment reservations, registrations, notifications, comments, and history.
 - The new request starts as a new draft with its own identity and audit trail. Editing or submitting it never changes the source event.
 - All copied values remain editable before submission, subject to the normal draft validation and submission rules in §6.2.
 - Only the organiser's own eligible event requests can be selected as templates in SCRUM-66. Drafts remain visible only to their owner, and `organisation_name` from SCRUM-80 is descriptive profile data, not an authorisation relationship. Shared access to another organiser's events is deferred to a future client-organisation story because client organisations are outside the first-release core scope.
@@ -1531,9 +1532,10 @@ As an Event Organiser, I want to create a new request based on a previous or rec
 
 **Acceptance criteria**
 
-- **Given** I am an authenticated Event Organiser and select an eligible event with **Use as template**, **then** exactly one new draft is created with reusable request fields pre-filled; if no eligible event exists, I can still start a blank request. The source event's ID, status, owner, coordinator, dates, bookings, reservations, registrations, notifications, comments, and history are not copied.
-- **Given** the template draft is created, **when** I edit its copied fields, dates, or requirements and submit it, **then** the changes are validated by the normal event-request rules, saved only on the new draft, and the source event remains unchanged. The new draft has a distinct event ID and follows the normal submission and review lifecycle.
-- **Given** another organiser owns an event, **then** it is not available as a template, even when both organisers have the same `organisation_name`; the source event's details are not disclosed.
+- **AC1 Given** I am an authenticated Event Organiser and select any event I own with **Use as template**, regardless of its lifecycle status, **then** exactly one new draft is created with reusable request fields pre-filled; if I own no event, I can still start a blank request. Another organiser's event is unavailable, even when both organisers have the same `organisation_name`, and its details are not disclosed.
+- **AC2 Given** the template draft is created, **then** it contains copied event and space requirement fields and registration configuration, but no source event/space identities, event or space schedules, registration schedule dates, coordinator assignment, bookings, reservations, registrations, notifications, comments, or history.
+- **AC3 Given** the template draft is created, **when** I edit its copied fields, schedule, or requirements and submit it, **then** the changes are validated by the normal event-request rules, saved only on the new draft, and the source event remains unchanged.
+- **AC4 Given** I create a template draft, **then** it belongs to me, has a distinct event ID and creation audit trail, starts as a draft, and follows the normal submission and review lifecycle.
 
 ---
 
