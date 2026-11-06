@@ -245,9 +245,9 @@ For SCRUM-39, `backend/tests/test_venue_search.py` and `test_venues_api.py` cove
 
 ### Traceability — CR-94
 
-Acceptance criteria from the Product backlog row `CR-94` (read 2026-10-16, re-read 2026-10-17).
+Acceptance criteria from the Product backlog row `CR-94`, summarised. The backlog holds the current wording.
 
-| Acceptance criterion (verbatim) | Covered by | Status |
+| Acceptance criterion | Covered by | Status |
 |---|---|---|
 | AC1. [W7 CR-01] When Venue Staff save any change to a venue, its future held or approved bookings are re-checked. | TC-VENUE-076; `pytest` `test_venue_impact.py`, `test_venues_api.py::TestVenueEdit::TestWarnings` | Built (also re-checks `re_review`) |
 | AC2. (Removed 13/10) | — | Removed |
@@ -471,11 +471,10 @@ Venue selection and booking for each proposed space are downstream of CR-98's co
 | AC1 The occupied window is start − setup to end + turnaround, per booking | TC-BOOK-037, TC-BOOK-039, TC-BOOK-040 |
 | AC2 Refused on overlapping an approved, re-review or unexpired held booking, naming the event | TC-BOOK-037, TC-BOOK-038, TC-BOOK-040, TC-BOOK-041, TC-BOOK-042; `pytest` `test_venue_booking_request_api.py` (conflict cases); Vitest `api.spec.js`, `venueBookingStore.spec.js`, `bookingRequest.spec.js`, `RequestVenueModal.spec.js` |
 | AC3 Touching windows don't conflict | TC-BOOK-037, TC-BOOK-040 |
-| AC4 One check, used by search, requests, approval, re-review and blocking, enforced on the server | `venue_conflicts` is used by search and both request paths (TC-BOOK-037–040; `pytest` `test_venues_api.py::test_search_takes_its_occupants_from_the_single_conflict_check`), approval (TC-BOOK-056), re-review (TC-CHANGE-016) and blocking (TC-BLOCK-010). |
+| AC4 Search shows an occupied venue as unavailable, and a request for it is refused, including through a direct API call | `venue_conflicts` is used by search and both request paths (TC-BOOK-037–040; `pytest` `test_venues_api.py::test_search_takes_its_occupants_from_the_single_conflict_check`), approval (TC-BOOK-056), re-review (TC-CHANGE-016) and blocking (TC-BLOCK-010). |
 | AC5 Expired holds and rejected, cancelled or released bookings are ignored | TC-BOOK-040 |
 | AC6 Each venue booking on a multi-venue event is checked separately | TC-BOOK-038, TC-BOOK-040 (space path) |
 | AC7 Different venues never conflict | TC-BOOK-040 |
-| AC8 Flagging existing bookings after a venue change | Out of scope: CR-94 |
 
 ## Rearranging bookings affected by venue unavailability (CR-95)
 
