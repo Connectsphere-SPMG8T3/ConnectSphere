@@ -128,19 +128,66 @@ describe("Story 115 coordinator decides a cancellation", () => {
     expect(dialog()).toBeNull();
   });
 
-  it.each(["planning", "confirmed", "preparation"])("offers a direct cancel for a %s event", async (status) => {
+  it.each(["confirmed", "preparation"])("offers a direct cancel for a %s event", async (status) => {
     const el = await mountView(eventResponse({ status }));
 
     expect(button(el, "Cancel event")).not.toBeNull();
   });
 
-  it.each(["under_review", "returned", "safety_review", "cancelled", "completed"])(
+  it.each(["under_review", "returned", "planning", "safety_review", "cancelled", "completed"])(
     "offers no direct cancel for a %s event", async (status) => {
       const el = await mountView(eventResponse({ status }));
 
       expect(button(el, "Cancel event")).toBeNull();
     },
   );
+
+  // 115-R AC1: before confirmation the coordinator rejects; from confirmation, cancels.
+  it.each([
+    ["under_review", true, false],
+    ["planning", true, false],
+    ["safety_review", false, false],
+    ["confirmed", false, true],
+    ["preparation", false, true],
+  ])("a %s event offers Reject %s and Cancel event %s, never both", async (status, reject, cancel) => {
+    const el = await mountView(eventResponse({ status }));
+
+    expect(button(el, "Open reject dialog") !== null).toBe(reject);
+    expect(button(el, "Cancel event") !== null).toBe(cancel);
+  });
+
+  // 115-R AC3: the open request is answered first, through its banner.
+  it.each(["under_review", "planning", "confirmed", "preparation"])(
+    "a %s event with an open request offers only the banner's decisions", async (status) => {
+      const el = await mountView(eventResponse({ status, open_cancellation_request: OPEN_REQUEST }));
+
+      expect(button(el, "Open reject dialog")).toBeNull();
+      expect(button(el, "Cancel event")).toBeNull();
+      expect(button(el, "Approve cancellation")).not.toBeNull();
+      expect(button(el, "Reject cancellation")).not.toBeNull();
+    },
+  );
+
+  it("keeps the other header actions while a request is open", async () => {
+    const el = await mountView(eventResponse({ status: "planning", open_cancellation_request: OPEN_REQUEST }));
+
+    expect(button(el, "Request reassignment")).not.toBeNull();
+    expect(button(el, "Edit event details")).not.toBeNull();
+  });
+
+  // 115-R AC4: rejecting the request gives the header action back.
+  it("offers Reject again once the request is rejected", async () => {
+    const el = await mountView(eventResponse({ status: "planning", open_cancellation_request: OPEN_REQUEST }));
+    eventsApi.rejectCancellation.mockResolvedValue(eventResponse({ status: "planning" }));
+    eventsApi.get.mockResolvedValue(eventResponse({ status: "planning" }));
+
+    button(el, "Reject cancellation").click();
+    await nextTick();
+    await typeReason("The venue is already paid for");
+    button(dialog(), "Reject cancellation request").click();
+
+    await vi.waitFor(() => expect(button(el, "Open reject dialog")).not.toBeNull());
+  });
 
   it("offers no direct cancel once the event has started", async () => {
     const el = await mountView(eventResponse({ starts_at: "2020-01-01T00:00:00Z" }));

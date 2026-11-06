@@ -429,8 +429,9 @@ def cancel_event(
     """Story 115: run `public.cancel_event` under the event's lock. It cancels the event,
     closes an open cancellation request as approved, releases its venue bookings,
     equipment and registrations, and notifies everyone involved, in one transaction.
+    A direct cancel is refused while a request is open (115-R).
     Answers `{outcome, event}`: ok / not_found / not_assigned / status_changed /
-    no_open_request / started."""
+    no_open_request / open_request / started."""
     response = get_supabase_admin_client().rpc("cancel_event", {
         "p_event_id": event_id,
         "p_actor_id": actor_id,
@@ -442,6 +443,31 @@ def cancel_event(
         "p_staff_message": staff_message,
         "p_attendee_message": attendee_message,
         "p_safety_message": safety_message,
+    }).execute()
+    return response.data
+
+
+def reject_event(
+    event_id: str,
+    actor_id: str,
+    expected_version: int,
+    from_statuses: list[str],
+    reason: str,
+    organiser_message: str,
+    attendee_message: str,
+) -> dict:
+    """115-R: run `public.reject_event` under the event's lock. It rejects the event,
+    releases its venue bookings and equipment, ends its registrations and notifies the
+    organiser and attendees, in one transaction. Answers `{outcome, event}`: ok /
+    not_found / not_assigned / open_request / status_changed."""
+    response = get_supabase_admin_client().rpc("reject_event", {
+        "p_event_id": event_id,
+        "p_actor_id": actor_id,
+        "p_expected_version": expected_version,
+        "p_from_statuses": from_statuses,
+        "p_reason": reason,
+        "p_organiser_message": organiser_message,
+        "p_attendee_message": attendee_message,
     }).execute()
     return response.data
 

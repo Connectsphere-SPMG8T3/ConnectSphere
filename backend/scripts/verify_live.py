@@ -5055,7 +5055,7 @@ def _(ctx: Context) -> None:
     expect(notices and sorted(n["recipient_id"] for n in notices) == sorted(l["profile_id"] for l in leads)
            and all(n["role"] == "event_coordinator_lead" for n in notices), f"notices: {notices}, leads: {leads}")
 
-    closing, _ = change_fixture(ctx, "32-006b", "2031-11-10")
+    closing, _ = change_fixture(ctx, "32-006b", "2031-11-10", status="confirmed")
     expect_status(request_change(ctx, closing, event={"expected_attendance": 120}), 201)
     expect_status(decide(ctx, closing, "cancel", "live-check: venue withdrawn"), 200)
     [row] = stored_requests(closing)
@@ -5144,19 +5144,16 @@ def _(ctx: Context) -> None:
     expect_detail(again, "There is no open cancellation request for this event.")
 
 
-@check("TC-CANCEL-016", "The coordinator cancels directly only from planning, confirmed or preparation, before the start",
+@check("TC-CANCEL-016", "The coordinator cancels directly only from confirmed or preparation, before the start",
        needs_db=True)
 def _(ctx: Context) -> None:
-    event_id, booking_id, _line = cancellation_fixture(ctx, "115-016", "2031-11-05", status="planning")
-    expect_status(request_cancellation(ctx, event_id), 201)
+    event_id, booking_id, _line = cancellation_fixture(ctx, "115-016", "2031-11-05")
     response = decide(ctx, event_id, "cancel", DECISION_REASON)
     expect_status(response, 200)
-    [request] = db_query(f"select status, decision_reason from public.event_change_requests where event_id = '{event_id}'")
-    expect(request == {"status": "approved", "decision_reason": DECISION_REASON}, f"request: {request}")
     [booking] = db_query(f"select status::text from public.venue_bookings where id = '{booking_id}'")
     expect(booking["status"] == "released", f"the venue booking is {booking['status']}")
 
-    for status in ("under_review", "safety_review", "rejected", "completed"):
+    for status in ("under_review", "planning", "safety_review", "rejected", "completed"):
         other = throwaway_event(ctx, f"115-016-{status}", "2031-11-06 10:00+08", "2031-11-06 12:00+08", status=status)
         expect_status(decide(ctx, other, "cancel", DECISION_REASON), 409)
         [event] = db_query(f"select status::text from public.events where id = '{other}'")
@@ -5185,23 +5182,76 @@ def _(ctx: Context) -> None:
            f"a refused decision changed something: request {request}, event {event}")
 
 
-@check("TC-CANCEL-024", "Rejecting the event closes its open cancellation request (CR-R22)", needs_db=True)
+OPEN_REQUEST_REFUSAL = "This event has an open cancellation request. Approve or reject it first."
+
+
+def stored_registrations(event_id: str) -> list[dict]:
+    return db_query(f"select attendee_id, status from public.event_registrations where event_id = '{event_id}' "
+                    "order by attendee_id")
+
+
+def attendees_in_every_state(event_id: str) -> None:
+    """One registered, one waitlisted, one invited and one withdrawn attendee."""
+    db_query(
+        "insert into public.event_registrations "
+        "(event_id, attendee_id, status, waitlist_order, invited_at, invitation_expires_at, withdrawn_at) values "
+        f"('{event_id}', '{ATTENDEE_ID}', 'registered', null, null, null, null), "
+        f"('{event_id}', '{TECH_SUPPORT_ID}', 'waitlisted', 1, null, null, null), "
+        f"('{event_id}', '{VENUE_STAFF_ID}', 'invited', null, now(), now() + interval '1 day', null), "
+        f"('{event_id}', '{SAFETY_OFFICER_ID}', 'withdrawn', null, null, null, now())"
+    )
+
+
+def expect_attendees_told_and_closed(event_id: str) -> None:
+    rows = {row["attendee_id"]: row["status"] for row in stored_registrations(event_id)}
+    expect(rows == {ATTENDEE_ID: "cancelled", TECH_SUPPORT_ID: "cancelled", VENUE_STAFF_ID: "cancelled",
+                    SAFETY_OFFICER_ID: "withdrawn"}, f"registrations: {rows}")
+    told = db_query("select recipient_id from public.notifications "
+                    f"where event_id = '{event_id}' and type = 'attendee_event_cancelled' order by recipient_id")
+    expect(sorted(row["recipient_id"] for row in told) == sorted([ATTENDEE_ID, TECH_SUPPORT_ID, VENUE_STAFF_ID]),
+           f"told: {told}")
+
+
+@check("TC-CANCEL-024", "An open cancellation request is answered before Reject or a direct cancel (115-R AC3, AC4)",
+       needs_db=True)
 def _(ctx: Context) -> None:
-    event_id = throwaway_event(ctx, "115-024", "2031-11-09 10:00+08", "2031-11-09 12:00+08", status="planning")
-    expect_status(request_cancellation(ctx, event_id), 201)
-    expect_status(decide(ctx, event_id, "reject", DECISION_REASON), 200)
-    [request] = db_query(f"select status, decision_reason from public.event_change_requests where event_id = '{event_id}'")
-    expect(request == {"status": "superseded", "decision_reason": "Closed because the event was rejected."},
-           f"request: {request}")
-    event = ctx.client.get(f"{ctx.api}/events/{event_id}", headers=ctx.shared("event_coordinator").headers).json()
-    expect(event["status"] == "rejected" and event.get("open_cancellation_request") is None,
-           f"the coordinator still sees an open request: {event.get('open_cancellation_request')}")
-    refused = decide(ctx, event_id, "cancellation-request/reject", DECISION_REASON)
+    planning = throwaway_event(ctx, "115-024", "2031-11-09 10:00+08", "2031-11-09 12:00+08", status="planning")
+    expect_status(request_cancellation(ctx, planning), 201)
+    refused = decide(ctx, planning, "reject", DECISION_REASON)
     expect_status(refused, 409)
-    expect_detail(refused, "There is no open cancellation request for this event.")
-    notices = db_query(f"select count(*) as n from public.notifications "
-                       f"where event_id = '{event_id}' and type = 'event_cancellation_rejected'")
-    expect(int(notices[0]["n"]) == 0, "the organiser was told their request was rejected")
+    expect_detail(refused, OPEN_REQUEST_REFUSAL)
+    [request] = db_query(f"select status from public.event_change_requests where event_id = '{planning}'")
+    expect(request["status"] == "open", f"a refused Reject closed the request: {request}")
+
+    confirmed = throwaway_event(ctx, "115-024-confirmed", "2031-11-09 14:00+08", "2031-11-09 16:00+08", status="confirmed")
+    expect_status(request_cancellation(ctx, confirmed), 201)
+    refused = decide(ctx, confirmed, "cancel", DECISION_REASON)
+    expect_status(refused, 409)
+    expect_detail(refused, OPEN_REQUEST_REFUSAL)
+
+    expect_status(decide(ctx, planning, "cancellation-request/reject", DECISION_REASON), 200)
+    expect_status(decide(ctx, planning, "reject", DECISION_REASON), 200)
+    expect_status(decide(ctx, confirmed, "cancellation-request/reject", DECISION_REASON), 200)
+    expect_status(decide(ctx, confirmed, "cancel", DECISION_REASON), 200)
+
+
+@check("TC-CANCEL-025", "Rejecting an event back in planning ends its registrations and tells the attendees (115-R AC2)",
+       needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "115-025", "2031-11-13 10:00+08", "2031-11-13 12:00+08", status="planning")
+    attendees_in_every_state(event_id)
+    response = decide(ctx, event_id, "reject", DECISION_REASON)
+    expect_status(response, 200)
+    expect(response.json()["status"] == "rejected", f"the event is {response.json()['status']}")
+    expect_attendees_told_and_closed(event_id)
+
+
+@check("TC-CANCEL-026", "A direct cancel also ends the waiting list and invitations (115-R AC2)", needs_db=True)
+def _(ctx: Context) -> None:
+    event_id = throwaway_event(ctx, "115-026", "2031-11-14 10:00+08", "2031-11-14 12:00+08", status="confirmed")
+    attendees_in_every_state(event_id)
+    expect_status(decide(ctx, event_id, "cancel", DECISION_REASON), 200)
+    expect_attendees_told_and_closed(event_id)
 
 
 # --- Story 37: the coordinator decides a change request ---------------------------

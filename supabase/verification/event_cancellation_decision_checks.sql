@@ -1,5 +1,5 @@
--- Story 115 cancel an event: the real cancel_event and reject_cancellation_request
--- functions. Run with the Supabase MCP execute_sql or `psql "$DATABASE_URL" -f`.
+-- Story 115 cancel an event and 115-R: the real cancel_event, reject_event and
+-- reject_cancellation_request functions. Run with the Supabase MCP execute_sql or `psql "$DATABASE_URL" -f`.
 -- Raises on the first failure and prints CANCELLATION DECISION CHECKS PASSED
 -- otherwise. Everything runs inside `begin; ... rollback;`, so the throwaway events,
 -- bookings, lines and registrations leave no trace. Uses the seeded organiser
@@ -18,9 +18,9 @@ insert into public.events (id, organiser_id, coordinator_id, status, name, start
     ('e0000000-0000-4000-8000-000000001b02', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000000002', 'planning', 'Reject check (rolled back)',
      '2031-03-16 10:00+08', '2031-03-16 12:00+08'),
-    -- Direct cancel with an open request (Q9).
+    -- Direct cancel with an open request: refused until it is decided (115-R AC3).
     ('e0000000-0000-4000-8000-000000001b03', 'a0000000-0000-4000-8000-000000000001',
-     'a0000000-0000-4000-8000-000000000002', 'planning', 'Direct cancel check (rolled back)',
+     'a0000000-0000-4000-8000-000000000002', 'confirmed', 'Direct cancel check (rolled back)',
      '2031-03-17 10:00+08', '2031-03-17 12:00+08'),
     -- Approved from safety review: the Safety Officers are told (Q12).
     ('e0000000-0000-4000-8000-000000001b04', 'a0000000-0000-4000-8000-000000000001',
@@ -40,13 +40,27 @@ insert into public.events (id, organiser_id, coordinator_id, status, name, start
      '2031-03-19 10:00+08', '2031-03-19 12:00+08'),
     ('e0000000-0000-4000-8000-000000001b08', 'a0000000-0000-4000-8000-000000000001',
      'a0000000-0000-4000-8000-000000000002', 'confirmed', 'Event completed check (rolled back)',
-     '2031-03-20 10:00+08', '2031-03-20 12:00+08');
+     '2031-03-20 10:00+08', '2031-03-20 12:00+08'),
+    -- 115-R: back in planning with registrations; rejecting ends them.
+    ('e0000000-0000-4000-8000-000000001b09', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'planning', 'Reject with attendees check (rolled back)',
+     '2031-03-21 10:00+08', '2031-03-21 12:00+08'),
+    -- 115-R: an open request holds back Reject.
+    ('e0000000-0000-4000-8000-000000001b0a', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'under_review', 'Reject held back check (rolled back)',
+     '2031-03-22 10:00+08', '2031-03-22 12:00+08'),
+    -- 115-R: a direct cancel ends the waiting list too.
+    ('e0000000-0000-4000-8000-000000001b0b', 'a0000000-0000-4000-8000-000000000001',
+     'a0000000-0000-4000-8000-000000000002', 'confirmed', 'Cancel with a waiting list check (rolled back)',
+     '2031-03-23 10:00+08', '2031-03-23 12:00+08');
 
 insert into public.venue_bookings (event_id, venue_id, occupied_period, status) values
     ('e0000000-0000-4000-8000-000000001b01', 'b0000000-0000-4000-8000-000000000001',
      tstzrange('2031-03-15 09:00+08', '2031-03-15 13:00+08', '[)'), 'approved'),
     ('e0000000-0000-4000-8000-000000001b02', 'b0000000-0000-4000-8000-000000000001',
-     tstzrange('2031-03-16 09:00+08', '2031-03-16 13:00+08', '[)'), 'approved');
+     tstzrange('2031-03-16 09:00+08', '2031-03-16 13:00+08', '[)'), 'approved'),
+    ('e0000000-0000-4000-8000-000000001b09', 'b0000000-0000-4000-8000-000000000001',
+     tstzrange('2031-03-21 09:00+08', '2031-03-21 13:00+08', '[)'), 'approved');
 
 insert into public.equipment_requests (event_id, equipment_id, submission_id, quantity) values
     ('e0000000-0000-4000-8000-000000001b01', 'b0000000-0000-4000-8000-000000000001', gen_random_uuid(), 2);
@@ -54,13 +68,29 @@ insert into public.equipment_requests (event_id, equipment_id, submission_id, qu
 insert into public.event_registrations (event_id, attendee_id) values
     ('e0000000-0000-4000-8000-000000001b01', 'a0000000-0000-4000-8000-000000000005');
 
+-- 115-R: one attendee in each active state, and one already gone.
+insert into public.event_registrations
+    (event_id, attendee_id, status, waitlist_order, invited_at, invitation_expires_at, withdrawn_at)
+select event_id, attendee_id, status, waitlist_order, invited_at, invitation_expires_at, withdrawn_at
+  from (values
+    ('a0000000-0000-4000-8000-000000000005'::uuid, 'registered', null::bigint, null::timestamptz, null::timestamptz, null::timestamptz),
+    ('a0000000-0000-4000-8000-000000000004'::uuid, 'waitlisted', 1, null, null, null),
+    ('a0000000-0000-4000-8000-000000000003'::uuid, 'invited', null, now(), now() + interval '1 day', null),
+    ('a0000000-0000-4000-8000-000000000006'::uuid, 'withdrawn', null, null, null, now())
+  ) as attendees(attendee_id, status, waitlist_order, invited_at, invitation_expires_at, withdrawn_at)
+ cross join (values
+    ('e0000000-0000-4000-8000-000000001b09'::uuid),
+    ('e0000000-0000-4000-8000-000000001b0b'::uuid)
+  ) as events(event_id);
+
 insert into public.event_change_requests (event_id, kind, reason, requested_by) values
     ('e0000000-0000-4000-8000-000000001b01', 'cancellation', 'Speaker withdrew', 'a0000000-0000-4000-8000-000000000001'),
     ('e0000000-0000-4000-8000-000000001b02', 'cancellation', 'Budget cut', 'a0000000-0000-4000-8000-000000000001'),
     ('e0000000-0000-4000-8000-000000001b03', 'cancellation', 'Low sign-ups', 'a0000000-0000-4000-8000-000000000001'),
     ('e0000000-0000-4000-8000-000000001b04', 'cancellation', 'Clash with a holiday', 'a0000000-0000-4000-8000-000000000001'),
     ('e0000000-0000-4000-8000-000000001b07', 'cancellation', 'Sponsor pulled out', 'a0000000-0000-4000-8000-000000000001'),
-    ('e0000000-0000-4000-8000-000000001b08', 'cancellation', 'Venue too far', 'a0000000-0000-4000-8000-000000000001');
+    ('e0000000-0000-4000-8000-000000001b08', 'cancellation', 'Venue too far', 'a0000000-0000-4000-8000-000000000001'),
+    ('e0000000-0000-4000-8000-000000001b0a', 'cancellation', 'Date moved', 'a0000000-0000-4000-8000-000000000001');
 
 do $$
 declare
@@ -72,6 +102,9 @@ declare
     v_draft uuid := 'e0000000-0000-4000-8000-000000001b06';
     v_rejected uuid := 'e0000000-0000-4000-8000-000000001b07';
     v_completed uuid := 'e0000000-0000-4000-8000-000000001b08';
+    v_reject_attendees uuid := 'e0000000-0000-4000-8000-000000001b09';
+    v_reject_held uuid := 'e0000000-0000-4000-8000-000000001b0a';
+    v_cancel_waitlist uuid := 'e0000000-0000-4000-8000-000000001b0b';
     v_organiser uuid := 'a0000000-0000-4000-8000-000000000001';
     v_coordinator uuid := 'a0000000-0000-4000-8000-000000000002';
     v_venue_staff uuid := 'a0000000-0000-4000-8000-000000000003';
@@ -80,7 +113,8 @@ declare
     v_officer uuid := 'a0000000-0000-4000-8000-000000000006';
     v_requestable text[] := array['submitted', 'under_review', 'returned', 'planning', 'safety_review',
                                   'confirmed', 'preparation'];
-    v_direct_from text[] := array['confirmed', 'planning', 'preparation'];
+    v_direct_from text[] := array['confirmed', 'preparation'];
+    v_reject_from text[] := array['planning', 'under_review'];
     v_result jsonb;
     v_rows integer;
     v_request public.event_change_requests;
@@ -200,17 +234,105 @@ begin
         raise exception 'DECISION FAIL: rejecting on a draft was not refused as not found: %', v_result;
     end if;
 
-    -- AC3 + Q9: a direct cancel closes the open request as approved with the coordinator's reason.
+    -- 115-R AC3: a direct cancel waits for an open request to be decided.
     select version into v_version from public.events where id = v_direct;
+    v_result := public.cancel_event(v_direct, v_coordinator, v_version, v_direct_from,
+        'No replacement venue', false, 'o', 's', 'a', 'f');
+    if v_result->>'outcome' is distinct from 'open_request' then
+        raise exception 'DECISION FAIL: a direct cancel went past an open request: %', v_result;
+    end if;
+    select * into v_request from public.event_change_requests where event_id = v_direct;
+    if v_request.status <> 'open'
+       or (select status from public.events where id = v_direct) <> 'confirmed' then
+        raise exception 'DECISION FAIL: a refused direct cancel changed the event or its request';
+    end if;
+
+    -- 115-R AC4: once the request is rejected, the direct cancel goes through.
+    v_result := public.reject_cancellation_request(v_direct, v_coordinator, 'Keeping it for now', 'o');
+    if v_result->>'outcome' is distinct from 'ok' then
+        raise exception 'DECISION FAIL: the request could not be rejected: %', v_result;
+    end if;
     v_result := public.cancel_event(v_direct, v_coordinator, v_version, v_direct_from,
         'No replacement venue', false, 'o', 's', 'a', 'f');
     if v_result->>'outcome' is distinct from 'ok' then
         raise exception 'DECISION FAIL: the direct cancel was refused: %', v_result;
     end if;
-    select * into v_request from public.event_change_requests where event_id = v_direct;
-    if v_request.status <> 'approved' or v_request.decision_reason <> 'No replacement venue' then
-        raise exception 'DECISION FAIL: the direct cancel did not close the open request as approved (Q9)';
+
+    -- 115-R AC2: a direct cancel ends every active registration and tells each attendee once.
+    select version into v_version from public.events where id = v_cancel_waitlist;
+    v_result := public.cancel_event(v_cancel_waitlist, v_coordinator, v_version, v_direct_from,
+        'No replacement venue', false, 'o', 's', 'to attendees', 'f');
+    if v_result->>'outcome' is distinct from 'ok' then
+        raise exception 'DECISION FAIL: the direct cancel with a waiting list was refused: %', v_result;
     end if;
+    select count(*) into v_rows from public.event_registrations
+     where event_id = v_cancel_waitlist and status = 'cancelled'
+       and waitlist_order is null and invitation_expires_at is null;
+    if v_rows <> 3 then raise exception 'DECISION FAIL: cancelling left a waitlisted or invited attendee active'; end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = v_cancel_waitlist and type = 'attendee_event_cancelled' and message = 'to attendees';
+    if v_rows <> 3 then raise exception 'DECISION FAIL: cancelling told % attendees, not 3', v_rows; end if;
+
+    -- 115-R: reject_event's refusals change nothing.
+    select version into v_version from public.events where id = v_reject_attendees;
+    v_result := public.reject_event(v_reject_attendees, v_venue_staff, v_version, v_reject_from, 'x', 'o', 'a');
+    if v_result->>'outcome' is distinct from 'not_assigned' then
+        raise exception 'DECISION FAIL: a rejection by someone not assigned was not refused: %', v_result;
+    end if;
+    v_result := public.reject_event(v_draft, v_coordinator, 1, v_reject_from, 'x', 'o', 'a');
+    if v_result->>'outcome' is distinct from 'not_found' then
+        raise exception 'DECISION FAIL: rejecting a draft was not refused as not found: %', v_result;
+    end if;
+    v_result := public.reject_event(v_reject_attendees, v_coordinator, 999, v_reject_from, 'x', 'o', 'a');
+    if v_result->>'outcome' is distinct from 'status_changed' then
+        raise exception 'DECISION FAIL: a stale rejection was not refused: %', v_result;
+    end if;
+    select count(*) into v_rows from public.event_registrations
+     where event_id = v_reject_attendees and status = 'cancelled';
+    if v_rows <> 0 then raise exception 'DECISION FAIL: a refused rejection ended a registration'; end if;
+
+    -- 115-R AC3: Reject waits for an open request to be decided.
+    select version into v_version from public.events where id = v_reject_held;
+    v_result := public.reject_event(v_reject_held, v_coordinator, v_version, v_reject_from, 'x', 'o', 'a');
+    if v_result->>'outcome' is distinct from 'open_request' then
+        raise exception 'DECISION FAIL: a rejection went past an open request: %', v_result;
+    end if;
+    select * into v_request from public.event_change_requests where event_id = v_reject_held;
+    if v_request.status <> 'open'
+       or (select status from public.events where id = v_reject_held) <> 'under_review' then
+        raise exception 'DECISION FAIL: a refused rejection changed the event or its request';
+    end if;
+
+    -- 115-R AC2: rejecting ends every active registration and tells each attendee once.
+    select version into v_version from public.events where id = v_reject_attendees;
+    v_result := public.reject_event(v_reject_attendees, v_coordinator, v_version, v_reject_from,
+        '  No replacement venue  ', 'to organiser', 'to attendees');
+    if v_result->>'outcome' is distinct from 'ok' or v_result->'event'->>'status' <> 'rejected' then
+        raise exception 'DECISION FAIL: the rejection was refused: %', v_result;
+    end if;
+    select count(*) into v_rows from public.event_registrations
+     where event_id = v_reject_attendees and status = 'cancelled'
+       and waitlist_order is null and invitation_expires_at is null;
+    if v_rows <> 3 then raise exception 'DECISION FAIL: rejecting left an attendee active'; end if;
+    select count(*) into v_rows from public.event_registrations
+     where event_id = v_reject_attendees and status = 'withdrawn';
+    if v_rows <> 1 then raise exception 'DECISION FAIL: rejecting changed a withdrawn registration'; end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = v_reject_attendees and type = 'attendee_event_cancelled' and message = 'to attendees';
+    if v_rows <> 3 then raise exception 'DECISION FAIL: rejecting told % attendees, not 3', v_rows; end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = v_reject_attendees and type = 'attendee_event_cancelled' and recipient_id = v_officer;
+    if v_rows <> 0 then raise exception 'DECISION FAIL: a withdrawn attendee was told of the rejection'; end if;
+    select count(*) into v_rows from public.notifications
+     where event_id = v_reject_attendees and type = 'event_rejected' and recipient_id = v_organiser
+       and message = 'to organiser';
+    if v_rows <> 1 then raise exception 'DECISION FAIL: the organiser was not told of the rejection once'; end if;
+    select count(*) into v_rows from public.venue_bookings
+     where event_id = v_reject_attendees and status = 'released';
+    if v_rows <> 1 then raise exception 'DECISION FAIL: rejecting left the venue booking occupied'; end if;
+    select count(*) into v_rows from public.event_status_history
+     where event_id = v_reject_attendees and to_status = 'rejected' and reason = 'No replacement venue';
+    if v_rows <> 1 then raise exception 'DECISION FAIL: the rejection''s history row is missing'; end if;
 
     -- Q12: approving from safety review tells each Safety Officer, as Safety Officer.
     select version into v_version from public.events where id = v_safety;
@@ -255,7 +377,11 @@ begin
        or has_function_privilege('authenticated',
             'public.reject_cancellation_request(uuid, uuid, text, text)', 'execute')
        or has_function_privilege('anon',
-            'public.reject_cancellation_request(uuid, uuid, text, text)', 'execute') then
+            'public.reject_cancellation_request(uuid, uuid, text, text)', 'execute')
+       or has_function_privilege('authenticated',
+            'public.reject_event(uuid, uuid, integer, text[], text, text, text)', 'execute')
+       or has_function_privilege('anon',
+            'public.reject_event(uuid, uuid, integer, text[], text, text, text)', 'execute') then
         raise exception 'DECISION FAIL: a signed-in or anonymous user can execute a decision function';
     end if;
 
