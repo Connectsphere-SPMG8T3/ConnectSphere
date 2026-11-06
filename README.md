@@ -1,7 +1,5 @@
 # ConnectSphere
 
-**Repository:** https://github.com/chasingsunsets/ConnectSphere
-
 ConnectSphere is a regional event planning and venue booking platform for Singapore, orchestrating workflows across seven user roles: **Event Organiser**, **Event Coordinator**, **Event Coordinator Lead**, **Venue Staff**, **Technical Support Staff**, **Safety Officer**, and **Attendee**.
 
 This repository implements a **Modular Monolith** architecture:
