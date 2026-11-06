@@ -2,7 +2,7 @@
 
 **The release plan across the four sprints, and the detailed plan for the current one.**
 
-Drafted in the 13 Sep 2026 design review ([`archive/2026-09-13-design-review.md`](archive/2026-09-13-design-review.md)), where it was Part C of `docs/PROJECT_REVIEW.md`; section labels C1–C4 are kept so older references still resolve. Behaviour specs cited as §x.y are in [`REQUIREMENTS.md`](REQUIREMENTS.md). The [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit) is the source of truth for current priority (Jira was, until Sprint 2); this file records the plan and its reasoning.
+Drafted in the 13 Sep 2026 design review ([`archive/2026-09-13-design-review.md`](https://github.com/chasingsunsets/ConnectSphere/blob/91fec10aab05070169286fbbed5268fef9cf6930/docs/archive/2026-09-13-design-review.md)), where it was Part C of `docs/PROJECT_REVIEW.md`; section labels C1–C4 are kept so older references still resolve. Behaviour specs cited as §x.y are in [`REQUIREMENTS.md`](REQUIREMENTS.md). The [Product backlog sheet](https://docs.google.com/spreadsheets/d/18y09jIMc9t1FtvTEM_6u74uWNAg8hrW0eF_LehVgWVY/edit) is the source of truth for current priority (Jira was, until Sprint 2); this file records the plan and its reasoning.
 
 ### C1. Constraints
 

@@ -192,7 +192,7 @@ export function mostUrgentActionByEvent(items = []) {
  * customer confirmed (QA-22, QA-77): the coordinator returns a request with a
  * message, the organiser edits the same request and resubmits. A resubmission
  * *is* the clarification response. See REQUIREMENTS §6.4 — this replaced the
- * older "clarification thread" reading of SCRUM-33 (docs/archive/2026-09-13-design-review.md B2a).
+ * older "clarification thread" reading of SCRUM-33 (design review B2a: git show 91fec10:docs/archive/2026-09-13-design-review.md).
  */
 export const ACTION_CATEGORY_KINDS = {
   immediate: ["needs_alternative_venue", "arrangement_issue", "re_review_rejected", "cancellation_request", "change_request"],

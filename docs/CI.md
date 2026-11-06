@@ -159,7 +159,7 @@ This project's situation makes the case stronger. Checked live on 2026-09-22:
 2. **It invalidates the manual test evidence.** The Venue Staff and Technical Support dashboard cases in `docs/test-cases/dashboards.md` trace explicitly "against real seeded data". Those cases assume a stable seed; CI churning it breaks the trace from test case to result.
 3. **It forces the secret key into CI.** The backend cannot reach Postgres without it, and that key **bypasses RLS** (root `AGENTS.md`, "Security baseline"). This repository has already failed GitGuardian twice over generated secrets (PRs #4 and #6 — `IMPLEMENTATION_MAP.md` §5). CI currently needs **zero** secrets; that is a property to keep, not to trade away.
 4. **Free projects pause after about a week of inactivity.** CI would then go red across a quiet recess week for reasons unrelated to any code — directly undermining "reliably" in the grading rubric.
-5. **Concurrent runs collide.** Six developers with overlapping pull requests against one mutable database produces flaky tests: the same collision the design review's A3 item 10 (`archive/2026-09-13-design-review.md`) warns about for migrations, and tests write far more often than migrations do.
+5. **Concurrent runs collide.** Six developers with overlapping pull requests against one mutable database produces flaky tests: the same collision the design review's A3 item 10 ([`archive/2026-09-13-design-review.md`](https://github.com/chasingsunsets/ConnectSphere/blob/91fec10aab05070169286fbbed5268fef9cf6930/docs/archive/2026-09-13-design-review.md)) warns about for migrations, and tests write far more often than migrations do.
 
 **The one honest counter-argument** is configuration drift. A local stack has its own configuration and cannot catch the hosted project's settings changing underneath the code — which is exactly what bit SCRUM-48, recorded in `BUILD_LOG.md` §4.1: a green mocked run *"does not prove the code is compatible with ... the actual live project's configuration (key format, JWT signing scheme, exception types)"*.
 
@@ -179,7 +179,7 @@ Add to `requirements.txt` and run `ruff check .` in the backend job. Start non-b
 
 ### 6. End-to-end browser test — ~half a day, Sprint 4
 
-One Playwright run through the reference workflow in `PROJECT_OVERVIEW.md` §2.2, against the stack from item 3. One journey, not a suite. The design review's A3 item 8 (`archive/2026-09-13-design-review.md`) already reserves room for this in the showcase sprint.
+One Playwright run through the reference workflow in `PROJECT_OVERVIEW.md` §2.2, against the stack from item 3. One journey, not a suite. The design review's A3 item 8 ([`archive/2026-09-13-design-review.md`](https://github.com/chasingsunsets/ConnectSphere/blob/91fec10aab05070169286fbbed5268fef9cf6930/docs/archive/2026-09-13-design-review.md)) already reserves room for this in the showcase sprint.
 
 ---
 
@@ -220,6 +220,6 @@ cd frontend && npm run build
 
 - `docs/DEFINITION_OF_DONE.md` — where "merged only after CI passes" and the coverage rule sit, and its "Checked by people, not tools (yet)" table.
 - `docs/DEVELOPMENT_WORKFLOW.md` §4 — the review step where CI must pass before a PR moves to In Review.
-- `docs/archive/2026-09-13-design-review.md` A3 item 9 — the original recommendation, with what shipped and what did not.
+- [`docs/archive/2026-09-13-design-review.md`](https://github.com/chasingsunsets/ConnectSphere/blob/91fec10aab05070169286fbbed5268fef9cf6930/docs/archive/2026-09-13-design-review.md) A3 item 9 — the original recommendation, with what shipped and what did not.
 - `docs/IMPLEMENTATION_MAP.md` §5 — the one-paragraph version for someone starting a story.
 - `docs/adr/0001` and `0002` — structural rules CI does **not** check, and why they remain review checks.

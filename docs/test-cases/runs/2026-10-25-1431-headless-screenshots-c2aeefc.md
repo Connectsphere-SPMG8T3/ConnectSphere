@@ -32,7 +32,7 @@
 | Duplicate validation tablet: no document overflow (768/768) | Pass |
 | No console errors or uncaught page errors | Pass |
 
-[Screenshot gallery](../screenshots/23r-2026-10-25/README.md). Captured actual page/element screenshots only, without tokens, headers, localStorage or browser developer tools. Desktop/tablet/phone screenshots were visually inspected by Codex; that does not replace the separately reported developer manual judgement.
+[Screenshot gallery](https://github.com/chasingsunsets/ConnectSphere/blob/91fec10aab05070169286fbbed5268fef9cf6930/docs/test-cases/screenshots/23r-2026-10-25/README.md). Captured actual page/element screenshots only, without tokens, headers, localStorage or browser developer tools. Desktop/tablet/phone screenshots were visually inspected by Codex; that does not replace the separately reported developer manual judgement.
 
 The screenshot script initially used an exact label match that did not match the native selector’s accessible label; corrected the capture locator to match the existing working E2E locator before completing this run. No product change was made.
 

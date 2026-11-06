@@ -35,7 +35,7 @@ frontend/src/
 
 ### Where stores go
 
-This is a team decision, following `docs/archive/2026-09-13-design-review.md` A3 #8 ("restructure the frontend around features").
+This is a team decision, following [`docs/archive/2026-09-13-design-review.md`](https://github.com/chasingsunsets/ConnectSphere/blob/91fec10aab05070169286fbbed5268fef9cf6930/docs/archive/2026-09-13-design-review.md) A3 #8 ("restructure the frontend around features").
 
 - **Domain stores go in `features/<domain>/`** (events, venues, equipment, registrations, notifications), next to that domain's pure logic. A store that belongs to one domain never goes in `stores/`.
 - **When a domain has more than one store**, give each file the store's name (e.g. `features/events/coordinatorDashboardStore.js`, `features/events/eventRequestStore.js`) instead of adding a second `store.js`.

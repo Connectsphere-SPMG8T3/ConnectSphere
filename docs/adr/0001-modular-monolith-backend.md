@@ -52,7 +52,7 @@ Two rules make the boundaries real rather than cosmetic:
 
 - **Module boundaries are enforced by convention, not by a compiler or a network.** They erode quietly, and already have twice: the `equipment` module reached Postgres directly with SQLAlchemy while every other module went through the Supabase client, corrected only at review (`3d4110d`); and `events/service.py` raises its own `HTTPException` subclasses instead of adding them to `app/core/exceptions.py`, which `backend/AGENTS.md` asks for. *(A third case, schema imports, is in the [Clarification](#clarification-2026-11-06).)*
 - **No independent scaling or deployment.** Accepted — no evidence yet that any one domain has a different load profile.
-- **One shared database and one migration history**, which is already the project's main collision point (`archive/2026-09-13-design-review.md` §A3.10; the migration-drift defect, D8).
+- **One shared database and one migration history**, which is already the project's main collision point ([`archive/2026-09-13-design-review.md`](https://github.com/chasingsunsets/ConnectSphere/blob/91fec10aab05070169286fbbed5268fef9cf6930/docs/archive/2026-09-13-design-review.md) §A3.10; the migration-drift defect, D8).
 
 **Neutral**
 
@@ -105,5 +105,5 @@ This is a third case of the erosion described under Negative consequences. Nothi
 - `docs/PROJECT_OVERVIEW.md` §5 — the original architecture narrative
 - `docs/REQUIREMENTS.md` §3.2 — container decisions table, §3.3 — component diagram
 - `docs/PROJECT_OVERVIEW.md` §2.3 — the customer's non-functional requirements
-- `docs/archive/2026-09-13-design-review.md` §A3 — design improvements that build on this structure
+- [`docs/archive/2026-09-13-design-review.md`](https://github.com/chasingsunsets/ConnectSphere/blob/91fec10aab05070169286fbbed5268fef9cf6930/docs/archive/2026-09-13-design-review.md) §A3 — design improvements that build on this structure
 - [ADR-0007](0007-postgres-functions-own-multi-table-writes.md) — constraints and single-function writes, and why compensation was rejected
